@@ -27,8 +27,10 @@ let refreshToken: string | null = localStorage.getItem('refresh_token');
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    // Always get fresh token from localStorage
+    const currentToken = localStorage.getItem('access_token');
+    if (currentToken) {
+      config.headers.Authorization = `Bearer ${currentToken}`;
     }
     return config;
   },
@@ -46,10 +48,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      if (refreshToken) {
+      const currentRefreshToken = localStorage.getItem('refresh_token');
+      if (currentRefreshToken) {
         try {
           const response = await axios.post(`${API_BASE_URL}/api/refresh`, {
-            refresh_token: refreshToken
+            refresh_token: currentRefreshToken
           });
 
           const { access_token, refresh_token: newRefreshToken } = response.data;
@@ -92,7 +95,7 @@ export const clearTokens = () => {
 };
 
 export const isAuthenticated = (): boolean => {
-  return !!accessToken;
+  return !!localStorage.getItem('access_token');
 };
 
 // Auth API
