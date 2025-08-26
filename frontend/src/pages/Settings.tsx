@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import api from '../services/api';
 
 interface SMTPSettings {
   host: string;
@@ -18,7 +18,6 @@ interface SMTPTestResult {
 }
 
 const Settings: React.FC = () => {
-  const { token } = useAuth();
   const [smtpSettings, setSmtpSettings] = useState<SMTPSettings>({
     host: '',
     port: 587,
@@ -42,19 +41,8 @@ const Settings: React.FC = () => {
   const fetchSMTPSettings = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/notification/smtp/settings', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setSmtpSettings(data);
+      const response = await api.get('/api/notification/smtp/settings');
+      setSmtpSettings(response.data);
       setError(null);
     } catch (err) {
       console.error('Error fetching SMTP settings:', err);
@@ -70,26 +58,15 @@ const Settings: React.FC = () => {
       setError(null);
       setSuccess(null);
 
-      const response = await fetch('/api/notification/smtp/settings', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          host: smtpSettings.host,
-          port: smtpSettings.port,
-          username: smtpSettings.username,
-          password: smtpSettings.password,
-          use_tls: smtpSettings.use_tls,
-          from_email: smtpSettings.from_email,
-          from_name: smtpSettings.from_name
-        })
+      await api.post('/api/notification/smtp/settings', {
+        host: smtpSettings.host,
+        port: smtpSettings.port,
+        username: smtpSettings.username,
+        password: smtpSettings.password,
+        use_tls: smtpSettings.use_tls,
+        from_email: smtpSettings.from_email,
+        from_name: smtpSettings.from_name
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
 
       setSuccess('SMTP settings saved successfully!');
       // Refresh settings to get updated data
@@ -113,23 +90,11 @@ const Settings: React.FC = () => {
       setTestResult(null);
       setError(null);
 
-      const response = await fetch('/api/notification/smtp/test', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          test_email: testEmail
-        })
+      const response = await api.post('/api/notification/smtp/test', {
+        test_email: testEmail
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      setTestResult(result);
+      setTestResult(response.data);
     } catch (err) {
       console.error('Error testing SMTP settings:', err);
       setTestResult({
@@ -143,7 +108,7 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     fetchSMTPSettings();
-  }, [token]);
+  }, []);
 
   const handleInputChange = (field: keyof SMTPSettings, value: any) => {
     setSmtpSettings(prev => ({
