@@ -1,0 +1,246 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: opsconductor-postgres
+    environment:
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init-schema.sql:/docker-entrypoint-initdb.d/init-schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service (Python FastAPI)
+  auth-service:
+    build: ./auth-service
+    container_name: opsconductor-auth
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      JWT_SECRET_KEY: your-jwt-secret-change-in-production
+    ports:
+      - "3001:3001"
+    networks:
+      - opsconductor-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # User Service (Python FastAPI)
+  user-service:
+    build: ./user-service
+    container_name: opsconductor-users
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+    ports:
+      - "3002:3002"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+    restart: unless-stopped
+
+  # Credentials Service (Python FastAPI)
+  credentials-service:
+    build: ./credentials-service
+    container_name: opsconductor-credentials
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+      MASTER_KEY: your-master-key-change-in-production-must-be-32-chars-long
+    ports:
+      - "3004:3004"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+    restart: unless-stopped
+
+  # Targets Service (Python FastAPI)
+  targets-service:
+    build: ./targets-service
+    container_name: opsconductor-targets
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+      CREDENTIALS_SERVICE_URL: http://credentials-service:3004
+    ports:
+      - "3005:3005"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+      - credentials-service
+    restart: unless-stopped
+
+  # Jobs Service (Python FastAPI)
+  jobs-service:
+    build: ./jobs-service
+    container_name: opsconductor-jobs
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+    ports:
+      - "3006:3006"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+    restart: unless-stopped
+
+  # Executor Service (Python pywinrm)
+  executor-service:
+    build: ./executor-service
+    container_name: opsconductor-executor
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+      CREDENTIALS_SERVICE_URL: http://credentials-service:3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3009
+      WORKER_ENABLED: "true"
+      WORKER_POLL_INTERVAL: "5"
+    ports:
+      - "3007:3007"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+      - credentials-service
+    restart: unless-stopped
+
+  # Scheduler Service (Python FastAPI)
+  scheduler-service:
+    build: ./scheduler-service
+    container_name: opsconductor-scheduler
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+      JOBS_SERVICE_URL: http://jobs-service:3006
+    ports:
+      - "3008:3008"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+      - jobs-service
+    restart: unless-stopped
+
+  # Notification Service (Python FastAPI)
+  notification-service:
+    build: ./notification-service
+    container_name: opsconductor-notification
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      AUTH_SERVICE_URL: http://auth-service:3001
+      # SMTP Configuration (customize for your environment)
+      SMTP_HOST: localhost
+      SMTP_PORT: 587
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
+      SMTP_USE_TLS: "true"
+      SMTP_FROM_EMAIL: noreply@opsconductor.local
+      SMTP_FROM_NAME: OpsConductor
+    ports:
+      - "3009:3009"
+    networks:
+      - opsconductor-net
+    depends_on:
+      - postgres
+      - auth-service
+    restart: unless-stopped
+
+  # Frontend (React)
+  frontend:
+    build: ./frontend
+    container_name: opsconductor-frontend
+    networks:
+      - opsconductor-net
+    depends_on:
+      - auth-service
+      - user-service
+      - credentials-service
+      - targets-service
+      - jobs-service
+      - executor-service
+      - scheduler-service
+      - notification-service
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    build: ./nginx
+    container_name: opsconductor-nginx
+    ports:
+      - "8080:8080"    # HTTP (redirects to HTTPS)
+      - "8443:8443"    # HTTPS
+    volumes:
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - opsconductor-net
+    depends_on:
+      - frontend
+      - auth-service
+      - user-service
+      - credentials-service
+      - targets-service
+      - jobs-service
+      - executor-service
+    restart: unless-stopped
+
+networks:
+  opsconductor-net:
+    driver: bridge
+
+volumes:
+  postgres_data:

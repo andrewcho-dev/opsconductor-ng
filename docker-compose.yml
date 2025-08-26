@@ -1,0 +1,163 @@
+version: '3.9'
+
+services:
+  # Database
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: opsconductor
+      POSTGRES_PASSWORD: opsconductor123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init-schema.sql:/docker-entrypoint-initdb.d/01-init-schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsconductor -d opsconductor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opsconductor
+
+  # User Service
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: opsconductor
+      DB_PASS: opsconductor123
+      JWT_SECRET: your-super-secret-jwt-key
+    depends_on:
+      - postgres
+    networks:
+      - opsconductor
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./auth-service-simple
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./auth-service-simple:/app
+      - /app/node_modules
+    environment:
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: opsconductor
+      DB_PASS: opsconductor123
+      JWT_SECRET: your-super-secret-jwt-key
+    depends_on:
+      - postgres
+    networks:
+      - opsconductor
+
+  # Credentials Service
+  credentials-service:
+    build:
+      context: ./credentials-service
+      dockerfile: Dockerfile
+    ports:
+      - "3004:3004"
+    volumes:
+      - ./credentials-service:/app
+      - /app/node_modules
+    environment:
+      PORT: 3004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: opsconductor
+      DB_PASS: opsconductor123
+      JWT_SECRET: your-super-secret-jwt-key
+      MASTER_KEY_B64: YWRtaW4xMjNhZG1pbjEyM2FkbWluMTIzYWRtaW4xMjM= # base64 encoded 32-byte key for AES-GCM
+    depends_on:
+      - postgres
+    networks:
+      - opsconductor
+
+  # Targets Service
+  targets-service:
+    build:
+      context: ./targets-service
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3005"
+    volumes:
+      - ./targets-service:/app
+      - /app/node_modules
+    environment:
+      PORT: 3005
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: opsconductor
+      DB_PASS: opsconductor123
+      JWT_SECRET: your-super-secret-jwt-key
+      CREDENTIALS_SERVICE_URL: http://credentials-service:3004
+    depends_on:
+      - postgres
+      - credentials-service
+    networks:
+      - opsconductor
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      PORT: 3000
+      AUTH_SERVICE_URL: http://auth-service:3002
+      USER_SERVICE_URL: http://user-service:3001
+      CREDENTIALS_SERVICE_URL: http://credentials-service:3004
+      TARGETS_SERVICE_URL: http://targets-service:3005
+    depends_on:
+      - auth-service
+      - user-service
+      - credentials-service
+      - targets-service
+    networks:
+      - opsconductor
+
+  # API Gateway (Nginx)
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - auth-service
+      - user-service
+      - credentials-service
+      - targets-service
+    networks:
+      - opsconductor
+
+networks:
+  opsconductor:
+    driver: bridge
+
+volumes:
+  postgres_data:
