@@ -1,203 +1,274 @@
-# OpsConductor Microservice System
+# OpsConductor - Windows Management System
 
-**WORKING SYSTEM** - User management, authentication, credential storage, and target management with web interface.
+A comprehensive microservices-based system for managing Windows environments, job scheduling, and automation tasks.
 
-> **📋 See [CURRENT_STATUS.md](./CURRENT_STATUS.md) for accurate system status and capabilities**
+## 🚀 Features
 
-## Architecture
+- **Microservices Architecture**: 8 independent services with clear separation of concerns
+- **Windows Management**: Remote Windows server management via WinRM
+- **Job Scheduling**: Advanced job scheduling and execution system
+- **User Management**: Complete user authentication and authorization
+- **Credential Management**: Secure storage and management of credentials
+- **Email Notifications**: SMTP-based notification system with web UI configuration
+- **Modern Frontend**: React TypeScript UI with responsive design
+- **Containerized**: Full Docker containerization with docker-compose
 
-```
-┌─────────────────┐    ┌─────────────────┐
-│     Browser     │────│      Nginx      │ (HTTPS/SSL)
-└─────────────────┘    │  Reverse Proxy  │
-                       └─────────────────┘
-                              │ (HTTP)
-                    ┌─────────┼─────────┐
-                    │         │         │
-            ┌───────▼───┐ ┌───▼───┐ ┌───▼───┐
-            │ Frontend  │ │ Auth  │ │ User  │
-            │ Service   │ │Service│ │Service│
-            │  :3000    │ │ :3002 │ │ :3001 │
-            └───────────┘ └───┬───┘ └───┬───┘
-                              │         │
-                        ┌─────▼───┐ ┌───▼─────┐
-                        │ Auth DB │ │ User DB │
-                        │(Postgres│ │(Postgres│
-                        └─────────┘ └─────────┘
-```
+## 🏗️ Architecture
 
-## Services
+### Services
 
-### 1. User Service (Port 3001)
-- Manages user information (username, firstname, lastname, password)
-- PostgreSQL database for user data
-- RESTful API for user operations
+1. **auth-service** (Port 3001) - JWT authentication and authorization
+2. **user-service** (Port 3002) - User management and profiles
+3. **credentials-service** (Port 3004) - Secure credential storage
+4. **targets-service** (Port 3003) - Windows target management
+5. **jobs-service** (Port 3006) - Job definition and management
+6. **executor-service** (Port 3007) - Job execution via WinRM
+7. **scheduler-service** (Port 3008) - Job scheduling system
+8. **notification-service** (Port 3009) - Email notifications
+9. **frontend** (Port 3000) - React TypeScript UI
+10. **nginx** (Ports 8080/8443) - Reverse proxy and SSL termination
 
-### 2. Authentication Service (Port 3002)
-- Handles login/logout operations
-- JWT token management
-- Session tracking in PostgreSQL database
-- Communicates with User Service for credential verification
+### Database
+- **PostgreSQL** (Port 5432) - Primary database for all services
 
-### 3. Frontend Service (Port 3000)
-- Serves HTML/CSS/JavaScript
-- Login and main dashboard pages
-- Proxy for API calls to backend services
+## 🛠️ Quick Start
 
-### 4. Nginx Reverse Proxy (Ports 80/443)
-- SSL termination with self-signed certificate
-- HTTP to HTTPS redirect
-- Load balancing and routing
-- Security headers
+### Prerequisites
+- Docker and Docker Compose
+- Git
 
-## Features
+### Installation
 
-- **Complete isolation**: Each service has its own database
-- **Docker containerization**: All services run in separate containers
-- **SSL/HTTPS**: Self-signed certificate for secure communication
-- **Service discovery**: Docker DNS for inter-service communication
-- **Responsive UI**: Modern login and dashboard interface
-- **JWT authentication**: Secure token-based authentication
-- **Health checks**: Service monitoring endpoints
-
-## Quick Start
-
-1. **Start the system:**
+1. **Clone the repository**
    ```bash
-   ./start.sh
+   git clone https://github.com/andrewcho-dev/opsconductor-ms.git
+   cd opsconductor-ms
    ```
 
-2. **Access the application:**
-   - Open https://localhost in your browser
-   - Accept the self-signed certificate warning
+2. **Set up environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env file with your configuration
+   ```
 
-3. **Register a new user:**
-   - Click "Register here" on the login page
-   - Fill in username, first name, last name, and password
-   - Click "Register"
+3. **Start the system**
+   ```bash
+   # Start all services
+   ./start-python-system.sh
+   
+   # Or manually with docker-compose
+   docker-compose -f docker-compose-python.yml up -d
+   ```
 
-4. **Login:**
-   - Use your registered credentials to login
-   - You'll be redirected to the main dashboard
+4. **Access the application**
+   - Web UI: https://localhost:8443
+   - Default credentials: admin / admin123
 
-## Manual Commands
-
-### Start services:
+### System Status
+Check system health:
 ```bash
-docker-compose up --build -d
+./system-status.sh
 ```
 
-### View logs:
+## 📱 Web Interface
+
+### Login
+- Navigate to https://localhost:8443
+- Use default credentials: `admin` / `admin123`
+
+### Main Features
+- **Dashboard**: System overview and metrics
+- **Users**: User management
+- **Credentials**: Secure credential storage
+- **Targets**: Windows server management
+- **Jobs**: Job creation and management
+- **Schedules**: Job scheduling
+- **Job Runs**: Execution history and monitoring
+- **Notifications**: System notifications
+- **Settings**: SMTP email configuration
+
+## 🔧 Configuration
+
+### SMTP Email Setup
+1. Navigate to Settings in the web UI
+2. Configure your SMTP server settings
+3. Test the configuration with a test email
+4. Supported providers: Gmail, Outlook, custom SMTP
+
+### Environment Variables
+Key environment variables in `.env`:
 ```bash
-docker-compose logs -f [service-name]
+# Database
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=opsconductor
+DB_USER=postgres
+DB_PASSWORD=postgres123
+
+# JWT
+JWT_SECRET=your-secret-key
+
+# Services
+AUTH_SERVICE_URL=http://auth-service:3001
+USER_SERVICE_URL=http://user-service:3002
+# ... other service URLs
 ```
 
-### Stop services:
+## 🧪 Testing
+
+### Run System Tests
 ```bash
-docker-compose down
+# Test all services
+./test-sprint1.sh
+
+# Test specific components
+./test-python-rebuild.sh
+./test-user-management.sh
 ```
 
-### Remove all data:
+### API Testing
+All services expose REST APIs. Example:
 ```bash
-docker-compose down -v
+# Get auth token
+curl -X POST https://localhost:8443/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+
+# Use token for authenticated requests
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/users
 ```
 
-## API Endpoints
+## 📚 Documentation
 
-### User Service (Internal: http://user-service:3001)
-- `POST /users` - Create user
-- `GET /users/:username` - Get user by username
-- `GET /users/id/:id` - Get user by ID
-- `PUT /users/:id` - Update user
+- [Architecture Documentation](ARCHITECTURE_DOCUMENTATION.md)
+- [System Overview](SYSTEM_OVERVIEW.md)
+- [Add New Service Guide](ADD_NEW_SERVICE_GUIDE.md)
+- [User Management Features](USER_MANAGEMENT_FEATURES.md)
 
-### Auth Service (Internal: http://auth-service:3002)
-- `POST /login` - User login
-- `POST /verify` - Verify JWT token
-- `POST /logout` - User logout
+## 🔒 Security
 
-### Frontend Service (Internal: http://frontend:3000)
-- `GET /` - Login page
-- `GET /main` - Dashboard page
-- `POST /api/login` - Login proxy
-- `POST /api/register` - Register proxy
-- `POST /api/verify` - Token verification proxy
-
-### External Access (via Nginx HTTPS)
-- `https://localhost/` - Main application
-- `https://localhost/auth/` - Direct auth service access
-- `https://localhost/users/` - Direct user service access
-
-## Database Schema
-
-### User Database (userdb)
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    firstname VARCHAR(100) NOT NULL,
-    lastname VARCHAR(100) NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### Auth Database (authdb)
-```sql
-CREATE TABLE auth_sessions (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
-    token_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL
-);
-```
-
-## Security Features
-
+- JWT-based authentication
 - Password hashing with bcrypt
-- JWT tokens with expiration
-- HTTPS with SSL/TLS
-- Security headers (HSTS, XSS protection, etc.)
-- CORS configuration
-- Input validation
+- Secure credential storage
+- HTTPS/SSL encryption
+- Input validation and sanitization
 
-## Development
+## 🐳 Docker Services
 
-Each service can be developed independently:
-
-1. **User Service**: Node.js + Express + PostgreSQL
-2. **Auth Service**: Node.js + Express + PostgreSQL + JWT
-3. **Frontend**: Node.js + Express + Vanilla JavaScript
-4. **Nginx**: Reverse proxy with SSL termination
-
-## Troubleshooting
-
-### Services not starting:
+### Build Services
 ```bash
-docker-compose logs [service-name]
+# Build all services
+docker-compose -f docker-compose-python.yml build
+
+# Build specific service
+docker-compose -f docker-compose-python.yml build auth-service
 ```
 
-### Database connection issues:
+### Service Management
 ```bash
-docker-compose restart [db-service-name]
+# View logs
+docker-compose -f docker-compose-python.yml logs -f [service-name]
+
+# Restart service
+docker-compose -f docker-compose-python.yml restart [service-name]
+
+# Scale service
+docker-compose -f docker-compose-python.yml up -d --scale user-service=2
 ```
 
-### SSL certificate warnings:
-- This is expected with self-signed certificates
-- Click "Advanced" → "Proceed to localhost (unsafe)" in your browser
+## 🔍 Monitoring
 
-### Port conflicts:
-- Make sure ports 80 and 443 are not in use by other applications
-- Stop other web servers before starting this system
+### Health Checks
+- All services include health check endpoints
+- System status monitoring via web UI
+- Service dependency management
 
-## Production Considerations
+### Logs
+```bash
+# View all logs
+docker-compose -f docker-compose-python.yml logs -f
 
-For production deployment:
-1. Use proper SSL certificates (Let's Encrypt, etc.)
-2. Use environment variables for secrets
-3. Implement proper logging and monitoring
-4. Add rate limiting and security middleware
-5. Use production-grade databases with backups
-6. Implement proper error handling and recovery
-7. Add health checks and service discovery
-8. Use container orchestration (Kubernetes, Docker Swarm)
+# View specific service logs
+docker-compose -f docker-compose-python.yml logs -f notification-service
+```
+
+## 🚀 Development
+
+### Adding New Services
+1. Follow the [Add New Service Guide](ADD_NEW_SERVICE_GUIDE.md)
+2. Use the service template in `service-template/`
+3. Update docker-compose configuration
+4. Add routing in nginx configuration
+
+### Frontend Development
+```bash
+cd frontend
+npm install
+npm start  # Development server
+npm run build  # Production build
+```
+
+### Backend Development
+Each service is a Python FastAPI application:
+```bash
+cd [service-name]
+pip install -r requirements.txt
+python main.py  # Development server
+```
+
+## 📋 API Endpoints
+
+### Authentication
+- `POST /auth/login` - User login
+- `POST /auth/logout` - User logout
+- `POST /auth/refresh` - Refresh token
+
+### Users
+- `GET /users` - List users
+- `POST /users` - Create user
+- `PUT /users/{id}` - Update user
+- `DELETE /users/{id}` - Delete user
+
+### Jobs
+- `GET /jobs` - List jobs
+- `POST /jobs` - Create job
+- `POST /jobs/{id}/run` - Execute job
+- `GET /runs` - List job runs
+
+### Notifications
+- `GET /api/notification/smtp/settings` - Get SMTP settings
+- `POST /api/notification/smtp/settings` - Update SMTP settings
+- `POST /api/notification/smtp/test` - Test SMTP configuration
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+- Create an issue on GitHub
+- Check the documentation in the `docs/` folder
+- Review the system status and logs
+
+## 🔄 Updates
+
+To update the system:
+```bash
+git pull origin main
+docker-compose -f docker-compose-python.yml pull
+docker-compose -f docker-compose-python.yml up -d
+```
+
+---
+
+**OpsConductor** - Streamlining Windows management and automation tasks through modern microservices architecture.
