@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from 'axios';
 import {
   User, UserCreate, UserUpdate, UserListResponse,
   Credential, CredentialCreate, CredentialListResponse, CredentialDecrypted,
-  Target, TargetCreate, TargetListResponse,
+  Target, TargetCreate, TargetListResponse, WinRMTestResult,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
   Schedule, ScheduleCreate, ScheduleUpdate, ScheduleListResponse, SchedulerStatus,
@@ -10,7 +10,27 @@ import {
 } from '../types';
 
 // Base API configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+// Explicitly construct the API URL to ensure HTTPS and correct port
+const getApiBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Use current window location but ensure correct protocol
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  // Only include port if it's not the standard port for the protocol
+  if (window.location.port && 
+      !((protocol === 'https:' && window.location.port === '443') || 
+        (protocol === 'http:' && window.location.port === '80'))) {
+    return `${protocol}//${hostname}:${window.location.port}`;
+  }
+  
+  return `${protocol}//${hostname}`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 const api = axios.create({
@@ -29,6 +49,11 @@ api.interceptors.request.use(
   (config) => {
     // Always get fresh token from localStorage
     const currentToken = localStorage.getItem('access_token');
+    console.log('API Request Interceptor:', { 
+      url: config.url, 
+      hasToken: !!currentToken,
+      tokenPreview: currentToken ? currentToken.substring(0, 20) + '...' : null
+    });
     if (currentToken) {
       config.headers.Authorization = `Bearer ${currentToken}`;
     }
@@ -45,30 +70,48 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle both 401 (Unauthorized) and 403 (Forbidden) errors
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
       originalRequest._retry = true;
+      console.log(`Auth error (${error.response?.status}), attempting token refresh`);
 
       const currentRefreshToken = localStorage.getItem('refresh_token');
       if (currentRefreshToken) {
         try {
-          const response = await axios.post(`${API_BASE_URL}/api/refresh`, {
+          console.log('Refreshing token with refresh_token');
+          const response = await axios.post(`${API_BASE_URL}/api/v1/refresh`, {
             refresh_token: currentRefreshToken
           });
 
           const { access_token, refresh_token: newRefreshToken } = response.data;
+          console.log('Token refresh successful, updating tokens');
           
           setTokens(access_token, newRefreshToken);
+          
+          // Update user data in AuthContext
+          try {
+            const userResponse = await axios.get(`${API_BASE_URL}/api/v1/verify`, {
+              headers: { Authorization: `Bearer ${access_token}` }
+            });
+            if (userResponse.data?.user) {
+              localStorage.setItem('user', JSON.stringify(userResponse.data.user));
+            }
+          } catch (userError) {
+            console.error('Failed to refresh user data:', userError);
+          }
           
           // Retry the original request
           originalRequest.headers.Authorization = `Bearer ${access_token}`;
           return api(originalRequest);
         } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
           // Refresh failed, redirect to login
           clearTokens();
           window.location.href = '/login';
           return Promise.reject(refreshError);
         }
       } else {
+        console.log('No refresh token found, redirecting to login');
         // No refresh token, redirect to login
         clearTokens();
         window.location.href = '/login';
@@ -101,24 +144,24 @@ export const isAuthenticated = (): boolean => {
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/api/login', credentials);
+    const response: AxiosResponse<AuthResponse> = await api.post('/api/v1/auth/login', credentials);
     return response.data;
   },
 
   refresh: async (): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/api/refresh', {
+    const response: AxiosResponse<AuthResponse> = await api.post('/api/v1/auth/refresh', {
       refresh_token: refreshToken
     });
     return response.data;
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/api/revoke-all');
+    await api.post('/api/v1/auth/revoke-all');
     clearTokens();
   },
 
   verify: async (): Promise<{ valid: boolean; user: User }> => {
-    const response = await api.get('/api/verify');
+    const response = await api.get('/api/v1/auth/verify');
     return response.data;
   }
 };
@@ -126,104 +169,104 @@ export const authApi = {
 // User API
 export const userApi = {
   list: async (skip = 0, limit = 100): Promise<UserListResponse> => {
-    const response: AxiosResponse<UserListResponse> = await api.get('/users', {
+    const response: AxiosResponse<UserListResponse> = await api.get('/api/v1/users', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<User> => {
-    const response: AxiosResponse<User> = await api.get(`/users/${id}`);
+    const response: AxiosResponse<User> = await api.get(`/api/v1/users/${id}`);
     return response.data;
   },
 
   create: async (userData: UserCreate): Promise<User> => {
-    const response: AxiosResponse<User> = await api.post('/users', userData);
+    const response: AxiosResponse<User> = await api.post('/api/v1/users', userData);
     return response.data;
   },
 
   update: async (id: number, userData: UserUpdate): Promise<User> => {
-    const response: AxiosResponse<User> = await api.put(`/users/${id}`, userData);
+    const response: AxiosResponse<User> = await api.put(`/api/v1/users/${id}`, userData);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/users/${id}`);
+    await api.delete(`/api/v1/users/${id}`);
   },
 
   assignRole: async (id: number, role: string): Promise<void> => {
-    await api.post(`/users/${id}/roles`, { role });
+    await api.post(`/api/v1/users/${id}/roles`, { role });
   }
 };
 
 // Credential API
 export const credentialApi = {
   list: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
-    const response: AxiosResponse<CredentialListResponse> = await api.get('/credentials', {
+    const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.get(`/credentials/${id}`);
+    const response: AxiosResponse<Credential> = await api.get(`/api/v1/credentials/${id}`);
     return response.data;
   },
 
   getDecrypted: async (id: number): Promise<CredentialDecrypted> => {
-    const response: AxiosResponse<CredentialDecrypted> = await api.get(`/credentials/${id}/decrypt`);
+    const response: AxiosResponse<CredentialDecrypted> = await api.get(`/api/v1/credentials/${id}/decrypt`);
     return response.data;
   },
 
   create: async (credData: CredentialCreate): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.post('/credentials', credData);
+    const response: AxiosResponse<Credential> = await api.post('/api/v1/credentials', credData);
     return response.data;
   },
 
   update: async (id: number, credData: Partial<CredentialCreate>): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.put(`/credentials/${id}`, credData);
+    const response: AxiosResponse<Credential> = await api.put(`/api/v1/credentials/${id}`, credData);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/credentials/${id}`);
+    await api.delete(`/api/v1/credentials/${id}`);
   },
 
   rotate: async (id: number, newCredentialData: Record<string, any>): Promise<void> => {
-    await api.post(`/credentials/${id}/rotate`, newCredentialData);
+    await api.post(`/api/v1/credentials/${id}/rotate`, newCredentialData);
   }
 };
 
 // Target API
 export const targetApi = {
   list: async (skip = 0, limit = 100): Promise<TargetListResponse> => {
-    const response: AxiosResponse<TargetListResponse> = await api.get('/targets', {
+    const response: AxiosResponse<TargetListResponse> = await api.get('/api/v1/targets', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.get(`/targets/${id}`);
+    const response: AxiosResponse<Target> = await api.get(`/api/v1/targets/${id}`);
     return response.data;
   },
 
   create: async (targetData: TargetCreate): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.post('/targets', targetData);
+    const response: AxiosResponse<Target> = await api.post('/api/v1/targets', targetData);
     return response.data;
   },
 
   update: async (id: number, targetData: Partial<TargetCreate>): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.put(`/targets/${id}`, targetData);
+    const response: AxiosResponse<Target> = await api.put(`/api/v1/targets/${id}`, targetData);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/targets/${id}`);
+    await api.delete(`/api/v1/targets/${id}`);
   },
 
-  testWinRM: async (id: number): Promise<{ success: boolean; message: string; details?: any }> => {
-    const response = await api.post(`/targets/${id}/test-winrm`);
+  testWinRM: async (id: number): Promise<WinRMTestResult> => {
+    const response = await api.post(`/api/v1/targets/${id}/test-winrm`);
     return response.data;
   }
 };
@@ -231,33 +274,33 @@ export const targetApi = {
 // Job API
 export const jobApi = {
   list: async (skip = 0, limit = 100, activeOnly = true): Promise<JobListResponse> => {
-    const response: AxiosResponse<JobListResponse> = await api.get('/jobs', {
+    const response: AxiosResponse<JobListResponse> = await api.get('/api/v1/jobs', {
       params: { skip, limit, active_only: activeOnly }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.get(`/jobs/${id}`);
+    const response: AxiosResponse<Job> = await api.get(`/api/v1/jobs/${id}`);
     return response.data;
   },
 
   create: async (jobData: JobCreate): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.post('/jobs', jobData);
+    const response: AxiosResponse<Job> = await api.post('/api/v1/jobs', jobData);
     return response.data;
   },
 
   update: async (id: number, jobData: Partial<JobCreate>): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.put(`/jobs/${id}`, jobData);
+    const response: AxiosResponse<Job> = await api.put(`/api/v1/jobs/${id}`, jobData);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/jobs/${id}`);
+    await api.delete(`/api/v1/jobs/${id}`);
   },
 
   run: async (id: number, parameters: Record<string, any> = {}): Promise<JobRun> => {
-    const response: AxiosResponse<JobRun> = await api.post(`/jobs/${id}/run`, { parameters });
+    const response: AxiosResponse<JobRun> = await api.post(`/api/v1/jobs/${id}/run`, { parameters });
     return response.data;
   }
 };
@@ -265,19 +308,19 @@ export const jobApi = {
 // Job Run API
 export const jobRunApi = {
   list: async (skip = 0, limit = 100, jobId?: number): Promise<JobRunListResponse> => {
-    const response: AxiosResponse<JobRunListResponse> = await api.get('/runs', {
+    const response: AxiosResponse<JobRunListResponse> = await api.get('/api/v1/runs', {
       params: { skip, limit, job_id: jobId }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<JobRun> => {
-    const response: AxiosResponse<JobRun> = await api.get(`/runs/${id}`);
+    const response: AxiosResponse<JobRun> = await api.get(`/api/v1/runs/${id}`);
     return response.data;
   },
 
   getSteps: async (id: number): Promise<JobRunStep[]> => {
-    const response: AxiosResponse<JobRunStep[]> = await api.get(`/runs/${id}/steps`);
+    const response: AxiosResponse<JobRunStep[]> = await api.get(`/api/v1/runs/${id}/steps`);
     return response.data;
   }
 };
@@ -286,44 +329,44 @@ export const jobRunApi = {
 export const schedulerApi = {
   // Schedule management
   list: async (skip = 0, limit = 100): Promise<ScheduleListResponse> => {
-    const response: AxiosResponse<ScheduleListResponse> = await api.get('/schedules', {
+    const response: AxiosResponse<ScheduleListResponse> = await api.get('/api/v1/schedules', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.get(`/schedules/${id}`);
+    const response: AxiosResponse<Schedule> = await api.get(`/api/v1/schedules/${id}`);
     return response.data;
   },
 
   create: async (schedule: ScheduleCreate): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.post('/schedules', schedule);
+    const response: AxiosResponse<Schedule> = await api.post('/api/v1/schedules', schedule);
     return response.data;
   },
 
   update: async (id: number, schedule: ScheduleUpdate): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.put(`/schedules/${id}`, schedule);
+    const response: AxiosResponse<Schedule> = await api.put(`/api/v1/schedules/${id}`, schedule);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/schedules/${id}`);
+    await api.delete(`/api/v1/schedules/${id}`);
   },
 
   // Scheduler control
   getStatus: async (): Promise<SchedulerStatus> => {
-    const response: AxiosResponse<SchedulerStatus> = await api.get('/scheduler/status');
+    const response: AxiosResponse<SchedulerStatus> = await api.get('/api/v1/scheduler/status');
     return response.data;
   },
 
   start: async (): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post('/scheduler/start');
+    const response: AxiosResponse<{ message: string }> = await api.post('/api/v1/scheduler/start');
     return response.data;
   },
 
   stop: async (): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post('/scheduler/stop');
+    const response: AxiosResponse<{ message: string }> = await api.post('/api/v1/scheduler/stop');
     return response.data;
   }
 };
@@ -335,17 +378,17 @@ export const healthApi = {
     try {
       // Map service names to their health endpoints
       const serviceMap: Record<string, string> = {
-        'auth': '/auth/health',
-        'users': '/users/health', 
-        'credentials': '/credentials/health',
-        'targets': '/targets/health',
-        'jobs': '/jobs/health',
-        'executor': '/executor/health',
-        'scheduler': '/scheduler/health'
+        'auth': '/api/v1/auth/health',
+        'users': '/api/v1/users/health', 
+        'credentials': '/api/v1/credentials/health',
+        'targets': '/api/v1/targets/health',
+        'jobs': '/api/v1/jobs/health',
+        'executor': '/api/v1/executor/health',
+        'scheduler': '/api/v1/scheduler/health'
       };
       
-      const endpoint = serviceMap[service] || `/${service}/health`;
-      const response = await axios.get(`${API_BASE_URL}${endpoint}`, {
+      const endpoint = serviceMap[service] || `/api/v1/${service}/health`;
+      const response = await api.get(endpoint, {
         timeout: 5000 // 5 second timeout
       });
       const responseTime = Date.now() - startTime;

@@ -222,8 +222,8 @@ services:
     build: ./nginx
     container_name: opsconductor-nginx
     ports:
-      - "8080:8080"    # HTTP (redirects to HTTPS)
-      - "8443:8443"    # HTTPS
+      - "80:80"      # HTTP (redirects to HTTPS)
+      - "443:443"    # HTTPS
     volumes:
       - ./ssl:/etc/nginx/ssl:ro
     networks:

@@ -21,9 +21,10 @@ const Users: React.FC = () => {
   const fetchUsers = async () => {
     try {
       const response = await userApi.list();
-      setUsers(response.users);
+      setUsers(response.users || []);
     } catch (error) {
       console.error('Failed to fetch users:', error);
+      setUsers([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -88,7 +89,7 @@ const Users: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
+            {(users || []).map(user => (
               <tr key={user.id}>
                 <td>{user.id}</td>
                 <td>{user.username}</td>

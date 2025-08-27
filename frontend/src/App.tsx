@@ -1,7 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { isAuthenticated } from './services/api';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -21,7 +20,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  return isAuthenticated() ? <>{children}</> : <Navigate to="/login" />;
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>;
+  }
+  
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
 };
 
 const App: React.FC = () => {
@@ -39,13 +44,13 @@ const App: React.FC = () => {
                   <div className="container">
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
-                      <Route path="/users" element={<Users />} />
-                      <Route path="/credentials" element={<Credentials />} />
-                      <Route path="/targets" element={<Targets />} />
-                      <Route path="/jobs" element={<Jobs />} />
+                      <Route path="/user-management" element={<Users />} />
+                      <Route path="/credential-management" element={<Credentials />} />
+                      <Route path="/targets-management" element={<Targets />} />
+                      <Route path="/job-management" element={<Jobs />} />
                       <Route path="/schedule-management" element={<Schedules />} />
-                      <Route path="/runs" element={<JobRuns />} />
-                      <Route path="/runs/:id" element={<JobRunDetail />} />
+                      <Route path="/job-runs" element={<JobRuns />} />
+                      <Route path="/job-runs/:id" element={<JobRunDetail />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="*" element={<Navigate to="/" />} />

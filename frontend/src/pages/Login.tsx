@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi, setTokens } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -8,6 +9,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,6 +19,10 @@ const Login: React.FC = () => {
     try {
       const response = await authApi.login({ username, password });
       setTokens(response.access_token, response.refresh_token);
+      
+      // Also update the AuthContext with both tokens
+      login(response.access_token, response.user, response.refresh_token);
+      
       navigate('/');
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Login failed');

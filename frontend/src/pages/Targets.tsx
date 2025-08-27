@@ -20,6 +20,7 @@ const Targets: React.FC = () => {
   });
 
   useEffect(() => {
+    // Remove auth dependency - just fetch data immediately like working pages
     fetchTargets();
     fetchCredentials();
   }, []);
@@ -27,9 +28,10 @@ const Targets: React.FC = () => {
   const fetchTargets = async () => {
     try {
       const response = await targetApi.list();
-      setTargets(response.targets);
+      setTargets(response.targets || []);
     } catch (error) {
       console.error('Failed to fetch targets:', error);
+      setTargets([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -38,9 +40,10 @@ const Targets: React.FC = () => {
   const fetchCredentials = async () => {
     try {
       const response = await credentialApi.list();
-      setCredentials(response.credentials);
+      setCredentials(response.credentials || []);
     } catch (error) {
       console.error('Failed to fetch credentials:', error);
+      setCredentials([]); // Set empty array on error
     }
   };
 
@@ -80,23 +83,26 @@ const Targets: React.FC = () => {
     setTestingTarget(id);
     try {
       const result = await targetApi.testWinRM(id);
-      if (result.success) {
-        alert(`Connection successful!\n${result.message}\nDetails: ${JSON.stringify(result.details, null, 2)}`);
+      if (result.test?.status === 'success') {
+        alert(`Connection Test Successful!\n\nDetails:\n${JSON.stringify(result.test.details, null, 2)}\n\nNote: ${result.note || 'Test completed'}`);
       } else {
-        alert(`Connection failed: ${result.message}`);
+        alert(`Connection Test Failed:\n${result.test?.details?.message || 'Unknown error'}\n\nNote: ${result.note || 'Test completed'}`);
       }
-    } catch (error) {
-      alert(`Test failed: ${error}`);
+    } catch (error: any) {
+      console.error('Test connection error:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error occurred';
+      alert(`Test failed: ${errorMessage}`);
     } finally {
       setTestingTarget(null);
     }
   };
 
   const getCredentialName = (credId: number) => {
-    const cred = credentials.find(c => c.id === credId);
+    const cred = (credentials || []).find(c => c.id === credId);
     return cred ? cred.name : `ID: ${credId}`;
   };
 
+  // Show loading while data is being fetched
   if (loading) return <div>Loading targets...</div>;
 
   return (
@@ -126,7 +132,7 @@ const Targets: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {targets.map(target => (
+            {(targets || []).map(target => (
               <tr key={target.id}>
                 <td>{target.id}</td>
                 <td>{target.name}</td>
@@ -236,7 +242,7 @@ const Targets: React.FC = () => {
                   required
                 >
                   <option value={0}>Select credential...</option>
-                  {credentials.map(cred => (
+                  {(credentials || []).map(cred => (
                     <option key={cred.id} value={cred.id}>
                       {cred.name} ({cred.credential_type})
                     </option>

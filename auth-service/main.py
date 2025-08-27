@@ -60,11 +60,20 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    username: str
+    role: str
+    created_at: str
+    token_version: int
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+    user: UserResponse
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -232,7 +241,15 @@ async def login(login_request: LoginRequest):
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            username=user.username,
+            role=user.role,
+            created_at=user.created_at.isoformat(),
+            token_version=user.token_version
+        )
     )
 
 @app.post("/refresh", response_model=TokenResponse)
@@ -254,7 +271,7 @@ async def refresh_token(refresh_request: RefreshRequest):
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, username, role, token_version FROM users WHERE id = %s",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
             )
             user_data = cursor.fetchone()
@@ -288,7 +305,15 @@ async def refresh_token(refresh_request: RefreshRequest):
             return TokenResponse(
                 access_token=access_token,
                 refresh_token=new_refresh_token,
-                expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                user=UserResponse(
+                    id=user_data['id'],
+                    email=user_data['email'],
+                    username=user_data['username'],
+                    role=user_data['role'],
+                    created_at=user_data['created_at'].isoformat(),
+                    token_version=user_data['token_version']
+                )
             )
             
         finally:

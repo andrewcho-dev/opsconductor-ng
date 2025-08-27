@@ -19,7 +19,8 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
 from pydantic import BaseModel, Field, EmailStr
-from jinja2 import Template
+from jinja2 import Template, Environment
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -135,7 +136,7 @@ async def verify_token_with_auth_service(authorization: str = None):
     token = authorization.split(" ")[1]
     
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
                 f"{AUTH_SERVICE_URL}/verify",
                 headers={"Authorization": f"Bearer {token}"}
@@ -583,6 +584,54 @@ async def create_notification(
     finally:
         conn.close()
 
+@app.post("/internal/notifications", response_model=NotificationResponse)
+async def create_internal_notification(notification: NotificationCreate):
+    """Create and queue a new notification (internal service endpoint - no auth required)"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Insert notification
+        cursor.execute(
+            """INSERT INTO notifications (job_run_id, channel, dest, payload, status, sent_at, retries)
+               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (
+                notification.job_run_id,
+                notification.channel,
+                notification.dest,
+                json.dumps(notification.payload),
+                "pending",
+                None,
+                0
+            )
+        )
+        
+        notification_id = cursor.fetchone()["id"]
+        conn.commit()
+        
+        logger.info(f"Internal notification {notification_id} created for job run {notification.job_run_id}")
+        
+        return NotificationResponse(
+            id=notification_id,
+            job_run_id=notification.job_run_id,
+            channel=notification.channel,
+            dest=notification.dest,
+            payload=notification.payload,
+            status="pending",
+            sent_at=None,
+            retries=0
+        )
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error creating internal notification: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create notification"
+        )
+    finally:
+        conn.close()
+
 @app.get("/notifications", response_model=NotificationListResponse)
 async def list_notifications(
     request: Request,
@@ -801,6 +850,116 @@ async def stop_notification_worker(request: Request):
     
     logger.info("Notification worker stopped")
     return {"message": "Notification worker stopped", "status": "stopped"}
+
+@app.post("/notifications/send")
+async def send_immediate_notification(
+    notification_data: NotificationCreate,
+    background_tasks: BackgroundTasks,
+    request: Request
+):
+    """Send notification immediately without queuing"""
+    # Verify authentication
+    await verify_token(request)
+    
+    try:
+        # Process notification immediately
+        if notification_data.channel == "email":
+            success = await send_email_notification(0, notification_data.dest, notification_data.payload)
+        elif notification_data.channel == "webhook":
+            success = await send_webhook_notification(0, notification_data.dest, notification_data.payload)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported notification channel: {notification_data.channel}"
+            )
+        
+        if success:
+            return {"message": "Notification sent successfully", "status": "sent"}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send notification"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error sending immediate notification: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send notification: {str(e)}"
+        )
+
+@app.get("/notifications/templates")
+async def get_notification_templates(request: Request):
+    """Get available notification templates"""
+    # Verify authentication
+    await verify_token(request)
+    
+    templates = []
+    for template_name, template_content in EMAIL_TEMPLATES.items():
+        # Extract variables from template using regex
+        variable_pattern = r'\{\{\s*(\w+)(?:\.\w+)*\s*\}\}'
+        variables = list(set(re.findall(variable_pattern, template_content)))
+        
+        templates.append({
+            "name": template_name,
+            "description": f"Template for {template_name.replace('_', ' ').title()}",
+            "variables": variables,
+            "preview": template_content[:200] + "..." if len(template_content) > 200 else template_content
+        })
+    
+    return {"templates": templates}
+
+@app.post("/notifications/retry/{notification_id}")
+async def retry_failed_notification(notification_id: int, request: Request):
+    """Retry a failed notification"""
+    # Verify authentication
+    await verify_token(request)
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Get notification details
+        cursor.execute("""
+            SELECT id, channel, dest, payload, status, retries
+            FROM notifications 
+            WHERE id = %s
+        """, (notification_id,))
+        
+        notification = cursor.fetchone()
+        if not notification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Notification not found"
+            )
+        
+        if notification['status'] != 'failed':
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only failed notifications can be retried"
+            )
+        
+        # Reset notification status for retry
+        cursor.execute("""
+            UPDATE notifications 
+            SET status = 'pending', retries = 0
+            WHERE id = %s
+        """, (notification_id,))
+        
+        conn.commit()
+        
+        logger.info(f"Notification {notification_id} queued for retry")
+        return {"message": "Notification queued for retry", "status": "pending"}
+        
+    except Exception as e:
+        logger.error(f"Error retrying notification {notification_id}: {e}")
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retry notification"
+        )
+    finally:
+        conn.close()
 
 # Auto-start notification worker on startup
 @app.on_event("startup")

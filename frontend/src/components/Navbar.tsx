@@ -1,17 +1,21 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const Navbar: React.FC = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleLogout = async () => {
     try {
       await authApi.logout();
+      logout(); // Clear AuthContext
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
-      // Still navigate to login even if logout call fails
+      // Still clear context and navigate to login even if logout call fails
+      logout();
       navigate('/login');
     }
   };
@@ -26,12 +30,12 @@ const Navbar: React.FC = () => {
         </div>
         <ul className="nav-links">
           <li><Link to="/">Dashboard</Link></li>
-          <li><Link to="/users">Users</Link></li>
-          <li><Link to="/credentials">Credentials</Link></li>
-          <li><Link to="/targets">Targets</Link></li>
-          <li><Link to="/jobs">Jobs</Link></li>
+          <li><Link to="/user-management">Users</Link></li>
+          <li><Link to="/credential-management">Credentials</Link></li>
+          <li><Link to="/targets-management">Targets</Link></li>
+          <li><Link to="/job-management">Jobs</Link></li>
           <li><Link to="/schedule-management">Schedules</Link></li>
-          <li><Link to="/runs">Job Runs</Link></li>
+          <li><Link to="/job-runs">Job Runs</Link></li>
           <li><Link to="/notifications">Notifications</Link></li>
           <li><Link to="/settings">Settings</Link></li>
           <li>

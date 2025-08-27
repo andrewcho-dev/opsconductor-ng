@@ -536,7 +536,7 @@ class JobExecutor:
             # Send email notification
             try:
                 response = requests.post(
-                    f"{NOTIFICATION_SERVICE_URL}/notifications",
+                    f"{NOTIFICATION_SERVICE_URL}/internal/notifications",
                     json={
                         "job_run_id": job_run_id,
                         "channel": "email",

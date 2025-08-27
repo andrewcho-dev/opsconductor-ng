@@ -20,9 +20,10 @@ const Credentials: React.FC = () => {
   const fetchCredentials = async () => {
     try {
       const response = await credentialApi.list();
-      setCredentials(response.credentials);
+      setCredentials(response.credentials || []);
     } catch (error) {
       console.error('Failed to fetch credentials:', error);
+      setCredentials([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ const Credentials: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {credentials.map(credential => (
+            {(credentials || []).map(credential => (
               <tr key={credential.id}>
                 <td>{credential.id}</td>
                 <td>{credential.name}</td>

@@ -40,6 +40,7 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   expires_in: number;
+  user: User;
 }
 
 // Credential Types
@@ -134,6 +135,21 @@ export interface JobRunStep {
   metrics?: Record<string, any>;
   started_at?: string;
   finished_at?: string;
+}
+
+export interface WinRMTestResult {
+  test: {
+    status: 'success' | 'error';
+    details: {
+      message?: string;
+      whoami?: string;
+      powershellVersion?: string;
+      hostname?: string;
+      port?: number;
+      transport?: string;
+    };
+  };
+  note?: string;
 }
 
 // List Response Types

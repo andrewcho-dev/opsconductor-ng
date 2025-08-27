@@ -11,9 +11,10 @@ const RecentActivity: React.FC = () => {
     const fetchRecentRuns = async () => {
       try {
         const response = await jobRunApi.list(0, 10); // Get last 10 runs
-        setRecentRuns(response.runs);
+        setRecentRuns(response.runs || []);
       } catch (error) {
         console.error('Failed to fetch recent runs:', error);
+        setRecentRuns([]); // Set empty array on error
       } finally {
         setLoading(false);
       }
@@ -85,13 +86,13 @@ const RecentActivity: React.FC = () => {
         </Link>
       </div>
 
-      {recentRuns.length === 0 ? (
+      {(recentRuns || []).length === 0 ? (
         <div style={{ textAlign: 'center', color: '#666', padding: '20px' }}>
           No recent job runs
         </div>
       ) : (
         <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-          {recentRuns.map((run) => (
+          {(recentRuns || []).map((run) => (
             <div 
               key={run.id}
               style={{
@@ -124,7 +125,7 @@ const RecentActivity: React.FC = () => {
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Link 
-                    to={`/runs/${run.id}`}
+                    to={`/job-runs/${run.id}`}
                     style={{ 
                       textDecoration: 'none', 
                       color: '#007bff',

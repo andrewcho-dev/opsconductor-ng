@@ -170,7 +170,7 @@ const JobRuns: React.FC = () => {
                   </td>
                   <td>
                     <Link 
-                      to={`/runs/${run.id}`} 
+                      to={`/job-runs/${run.id}`} 
                       className="btn btn-primary"
                       style={{ fontSize: '12px' }}
                     >

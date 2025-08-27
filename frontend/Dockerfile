@@ -8,11 +8,14 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy source code (with better cache invalidation)
+COPY src/ ./src/
+COPY public/ ./public/
+COPY tsconfig.json ./
+COPY *.config.js ./
 
-# Build the app
-RUN npm run build
+# Build the app with timestamp to force rebuild
+RUN echo "Build timestamp: $(date)" > build-info.txt && npm run build
 
 # Production stage
 FROM nginx:alpine

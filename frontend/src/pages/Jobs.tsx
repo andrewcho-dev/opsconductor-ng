@@ -27,9 +27,10 @@ const Jobs: React.FC = () => {
   const fetchJobs = async () => {
     try {
       const response = await jobApi.list();
-      setJobs(response.jobs);
+      setJobs(response.jobs || []);
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
+      setJobs([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -38,9 +39,10 @@ const Jobs: React.FC = () => {
   const fetchTargets = async () => {
     try {
       const response = await targetApi.list();
-      setTargets(response.targets);
+      setTargets(response.targets || []);
     } catch (error) {
       console.error('Failed to fetch targets:', error);
+      setTargets([]); // Set empty array on error
     }
   };
 
@@ -157,7 +159,7 @@ const Jobs: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {jobs.map(job => (
+            {(jobs || []).map(job => (
               <tr key={job.id}>
                 <td>{job.id}</td>
                 <td>{job.name}</td>
@@ -287,7 +289,7 @@ const Jobs: React.FC = () => {
                         required
                       >
                         <option value="">Select target...</option>
-                        {targets.map(target => (
+                        {(targets || []).map(target => (
                           <option key={target.id} value={target.name}>
                             {target.name} ({target.hostname})
                           </option>
