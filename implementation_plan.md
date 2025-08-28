@@ -143,6 +143,7 @@ linux_system_info        ✅ Cached Linux system information from SSH targets
 19. **Target Groups**: Organize targets into logical groups with bulk operations and tag management
 20. **Advanced Scheduler**: Enhanced scheduling with maintenance windows, job dependencies, and retry policies
 21. **Improved Form UX**: Clean form state management with proper create/edit mode distinction and form reset functionality
+22. **Target Discovery** (PLANNED): Automated network scanning and target onboarding with bulk import capabilities
 
 ### **API Endpoints - ALL OPERATIONAL:**
 
@@ -1754,7 +1755,263 @@ onClick={() => {
 ---
 
 **System Status: CORE SYSTEM + ENHANCED MULTI-CHANNEL NOTIFICATIONS + WINRM TEST FIXES + UI/UX IMPROVEMENTS COMPLETE ✅**  
-**Next: SSH/Linux support, REST API integration, database connections, security features**
+**Next: PHASE 10 - TARGET DISCOVERY SYSTEM (Network scanning, automatic target onboarding, bulk import)**
+
+---
+
+## 🔍 **PHASE 10: TARGET DISCOVERY SYSTEM** (PLANNED)
+
+### **🎯 CONCEPT OVERVIEW**
+
+Target Discovery will automatically find and catalog network devices, servers, and services across infrastructure, making it easy to onboard targets into OpsConductor without manual configuration.
+
+### **🏗️ PROPOSED ARCHITECTURE**
+
+**Core Components:**
+- **Discovery Service** - New microservice for orchestrating discovery operations (Port 3010)
+- **Discovery Engine** - Pluggable discovery methods (network scan, AD, cloud APIs)
+- **Discovery Jobs** - Scheduled/on-demand discovery operations
+- **Target Validation** - Automatic connection testing and capability detection
+- **Discovery UI** - Frontend interface for managing discovery operations
+
+### **📋 IMPLEMENTATION PHASES**
+
+#### **PHASE 10.1: Discovery Service Foundation** (Week 1)
+
+**New Service: `discovery-service` (Port 3010)**
+```
+discovery-service/
+├── main.py                 # FastAPI service
+├── discovery_engine.py     # Core discovery logic
+├── network_scanner.py      # Network scanning capabilities
+├── service_detector.py     # Service detection (WinRM, SSH, etc.)
+├── target_validator.py     # Connection testing
+├── discovery_models.py     # Data models
+└── requirements.txt        # Dependencies (nmap-python, python-nmap, etc.)
+```
+
+**Database Schema Extensions:**
+```sql
+-- Discovery operations tracking
+CREATE TABLE discovery_jobs (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    discovery_type VARCHAR(50) NOT NULL, -- 'network_scan', 'ad_query', 'cloud_api'
+    config JSONB NOT NULL,              -- Discovery configuration
+    status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'running', 'completed', 'failed'
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    results_summary JSONB                -- Summary of discovered targets
+);
+
+-- Discovered targets (before import to main targets table)
+CREATE TABLE discovered_targets (
+    id SERIAL PRIMARY KEY,
+    discovery_job_id INTEGER REFERENCES discovery_jobs(id),
+    hostname VARCHAR(255),
+    ip_address INET NOT NULL,
+    os_type VARCHAR(50),                 -- Detected OS
+    os_version VARCHAR(255),
+    services JSONB,                      -- Detected services (WinRM, SSH, etc.)
+    connection_test_results JSONB,       -- Test results for each service
+    system_info JSONB,                   -- Additional system information
+    import_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'imported', 'ignored'
+    imported_target_id INTEGER REFERENCES targets(id),
+    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Discovery templates for reusable configurations
+CREATE TABLE discovery_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    discovery_type VARCHAR(50) NOT NULL,
+    config JSONB NOT NULL,
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### **PHASE 10.2: Network Discovery Engine** (Week 2)
+
+**Discovery Methods:**
+
+1. **Network Range Scanning**
+   - CIDR range input (e.g., 192.168.1.0/24)
+   - Port scanning configuration (22/SSH, 5985-5986/WinRM, 3389/RDP)
+   - OS fingerprinting using nmap
+   - Service detection and connectivity testing
+
+2. **Service Detection Logic**
+   ```python
+   DETECTION_RULES = {
+       "windows": {
+           "indicators": [135, 445, 3389, 5985, 5986],
+           "primary_service": "winrm",
+           "test_ports": [5985, 5986]
+       },
+       "linux": {
+           "indicators": [22],
+           "primary_service": "ssh", 
+           "test_ports": [22]
+       }
+   }
+   ```
+
+#### **PHASE 10.3: Discovery Job Management** (Week 3)
+
+**API Endpoints:**
+```
+POST   /api/v1/discovery/jobs          # Create discovery job
+GET    /api/v1/discovery/jobs          # List discovery jobs
+GET    /api/v1/discovery/jobs/:id      # Get job details
+DELETE /api/v1/discovery/jobs/:id      # Delete job
+POST   /api/v1/discovery/jobs/:id/run  # Execute discovery job
+
+GET    /api/v1/discovery/targets       # List discovered targets
+POST   /api/v1/discovery/targets/import # Import selected targets
+POST   /api/v1/discovery/targets/:id/test # Test discovered target
+
+GET    /api/v1/discovery/templates     # List discovery templates
+POST   /api/v1/discovery/templates     # Create template
+```
+
+**Discovery Job Types:**
+- ✅ **Network Range Discovery**: CIDR scanning with service detection
+- 🔄 **Active Directory Discovery**: Query AD for computer objects (Future)
+- 🔄 **Cloud Provider Discovery**: AWS/Azure/GCP instance discovery (Future)
+
+#### **PHASE 10.4: Frontend Integration** (Week 4)
+
+**New UI Components:**
+- **Discovery Dashboard** (`frontend/src/pages/Discovery.tsx`)
+  - Discovery job management interface
+  - Discovered targets review and filtering
+  - Import target workflow with bulk operations
+
+- **Discovery Job Builder** (`frontend/src/components/DiscoveryJobBuilder.tsx`)
+  - Network range input and validation
+  - Discovery method selection
+  - Credential assignment options
+  - Scheduling integration
+
+- **Target Import Wizard** (`frontend/src/components/TargetImportWizard.tsx`)
+  - Review discovered targets with system information
+  - Bulk selection/deselection capabilities
+  - Credential and target group assignment
+  - Import confirmation and progress tracking
+
+#### **PHASE 10.5: Testing & Integration** (Week 5)
+
+**Integration Points:**
+- ✅ **Targets Service**: Automatic target creation from discovery results
+- ✅ **Credentials Service**: Test discovered targets with existing credentials
+- ✅ **Jobs Service**: Discovery jobs as scheduled operations
+- ✅ **Notification Service**: Discovery completion and failure notifications
+
+**Security Features:**
+- ✅ **Network Scanning Ethics**: Rate limiting and authorized network scanning only
+- ✅ **Access Control**: Admin-only discovery job creation, operator-level import
+- ✅ **Audit Trail**: Complete logging of all discovery operations
+- ✅ **Credential Security**: No credential storage in discovery results
+
+### **📊 USER WORKFLOW**
+
+**Typical Discovery Process:**
+1. **Create Discovery Job**
+   - Select discovery method (Network Scan)
+   - Configure IP ranges and ports (e.g., 192.168.1.0/24)
+   - Optionally assign test credentials
+   - Schedule or run immediately
+
+2. **Review Results**
+   - View discovered targets in sortable table
+   - See detected services, OS information, and connection test results
+   - Filter by OS type, service availability, or connection status
+
+3. **Import Targets**
+   - Select targets for import with bulk selection
+   - Assign credentials and target groups
+   - Configure target-specific settings
+   - Execute bulk import with progress tracking
+
+4. **Validation**
+   - Automatic connection testing post-import
+   - System information gathering and caching
+   - Integration with existing target management workflows
+
+### **📈 EXPECTED BENEFITS**
+
+**Operational Benefits:**
+- ✅ **Automated Onboarding**: Reduce manual target configuration by 80%
+- ✅ **Network Visibility**: Discover unknown or forgotten systems
+- ✅ **Inventory Management**: Keep target inventory current and accurate
+- ✅ **Compliance**: Ensure all systems are managed and monitored
+
+**Technical Benefits:**
+- ✅ **Scalability**: Handle large network ranges (Class A/B networks) efficiently
+- ✅ **Accuracy**: Automatic OS and service detection with 95%+ accuracy
+- ✅ **Integration**: Seamless integration with existing OpsConductor workflows
+- ✅ **Flexibility**: Multiple discovery methods and customizable configurations
+
+### **🚀 IMPLEMENTATION TIMELINE**
+
+**Week 1: Foundation**
+- ✅ Create discovery-service microservice
+- ✅ Implement basic network scanning with nmap integration
+- ✅ Database schema creation and migration scripts
+
+**Week 2: Core Engine**
+- ✅ Network range scanning with concurrent processing
+- ✅ Service detection logic for Windows/Linux systems
+- ✅ OS fingerprinting and system information gathering
+
+**Week 3: Job Management**
+- ✅ Discovery job CRUD operations and execution framework
+- ✅ Results storage, filtering, and management
+- ✅ Discovery templates for reusable configurations
+
+**Week 4: Frontend Integration**
+- ✅ Discovery UI components with modern React design
+- ✅ Target import workflow with bulk operations
+- ✅ Integration with existing navigation and user management
+
+**Week 5: Testing & Polish**
+- ✅ End-to-end testing with real network environments
+- ✅ Performance optimization for large-scale discovery
+- ✅ Documentation, user guides, and API documentation
+
+### **🔧 TECHNICAL SPECIFICATIONS**
+
+**Network Scanning Configuration:**
+```yaml
+Configuration Example:
+  ip_ranges: ["192.168.1.0/24", "10.0.0.0/16"]
+  ports: [22, 135, 445, 3389, 5985, 5986]
+  timeout: 30
+  concurrent_scans: 50
+  os_detection: true
+  service_detection: true
+  credential_testing: false  # Optional
+```
+
+**Service Integration:**
+- ✅ **Docker Compose**: Add discovery-service to existing orchestration
+- ✅ **NGINX Routing**: Add `/api/v1/discovery/` routes
+- ✅ **Database**: Extend existing PostgreSQL with discovery tables
+- ✅ **Authentication**: Integrate with existing JWT authentication system
+
+### **📋 SUCCESS CRITERIA**
+
+**Phase 10 Complete When:**
+- ✅ Users can create and execute network discovery jobs
+- ✅ System automatically detects Windows and Linux targets
+- ✅ Discovered targets can be imported with bulk operations
+- ✅ Discovery integrates seamlessly with existing target management
+- ✅ All discovery operations are properly audited and secured
+- ✅ Frontend provides intuitive discovery and import workflows
 
 ---
 
@@ -1778,4 +2035,7 @@ onClick={() => {
 
 **The system is ready for production deployment and advanced feature development.**
 
-This roadmap provides a clear path forward while building on the solid foundation we've established. The immediate focus on enhanced notifications will provide high user value while setting up the architecture for more advanced enterprise features.
+**🔍 NEXT MAJOR MILESTONE: PHASE 10 - TARGET DISCOVERY SYSTEM**
+The next major enhancement will be automated target discovery, enabling users to scan network ranges, automatically detect Windows and Linux systems, and bulk import targets with minimal manual configuration. This will significantly reduce the operational overhead of target onboarding and provide comprehensive network visibility.
+
+This roadmap provides a clear path forward while building on the solid foundation we've established. The focus on target discovery will provide high operational value by automating one of the most time-consuming aspects of infrastructure management.
