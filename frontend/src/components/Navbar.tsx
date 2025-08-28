@@ -33,8 +33,10 @@ const Navbar: React.FC = () => {
           <li><Link to="/user-management">Users</Link></li>
           <li><Link to="/credential-management">Credentials</Link></li>
           <li><Link to="/targets-management">Targets</Link></li>
+          <li><Link to="/target-groups">Target Groups</Link></li>
           <li><Link to="/job-management">Jobs</Link></li>
           <li><Link to="/schedule-management">Schedules</Link></li>
+          <li><Link to="/advanced-scheduler">Advanced Scheduler</Link></li>
           <li><Link to="/job-runs">Job Runs</Link></li>
           <li><Link to="/notifications">Notifications</Link></li>
           <li><Link to="/settings">Settings</Link></li>

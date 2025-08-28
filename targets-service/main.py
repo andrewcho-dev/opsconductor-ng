@@ -14,6 +14,10 @@ import psycopg2
 import psycopg2.extras
 import requests
 import winrm
+import paramiko
+import socket
+import time
+from io import StringIO
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,8 +61,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 class TargetCreate(BaseModel):
     name: str
     hostname: str
-    protocol: str = "winrm"  # 'winrm', 'ssh', 'http'
+    protocol: str = "winrm"  # 'winrm', 'ssh', 'http', 'https', 'snmp', 'database'
     port: int = 5985
+    os_type: str = "windows"  # 'windows', 'linux', 'unix', 'network', 'other'
     credential_ref: int  # Reference to credentials table
     tags: Optional[List[str]] = []
     metadata: Optional[Dict[str, Any]] = {}
@@ -69,6 +74,7 @@ class TargetUpdate(BaseModel):
     hostname: Optional[str] = None
     protocol: Optional[str] = None
     port: Optional[int] = None
+    os_type: Optional[str] = None
     credential_ref: Optional[int] = None
     tags: Optional[List[str]] = None
     metadata: Optional[Dict[str, Any]] = None
@@ -80,6 +86,7 @@ class TargetResponse(BaseModel):
     hostname: str
     protocol: str
     port: int
+    os_type: Optional[str] = None
     credential_ref: int
     tags: List[str]
     metadata: Dict[str, Any]
@@ -198,14 +205,15 @@ async def create_target(
         
         # Insert target
         cursor.execute(
-            """INSERT INTO targets (name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-               RETURNING id, name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at""",
+            """INSERT INTO targets (name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at""",
             (
                 target_data.name,
                 target_data.hostname,
                 target_data.protocol,
                 target_data.port,
+                target_data.os_type,
                 target_data.credential_ref,
                 target_data.tags or [],  # PostgreSQL array type
                 json.dumps(target_data.metadata or {}),  # JSONB type
@@ -252,7 +260,7 @@ async def list_targets(
         
         # Get targets with pagination
         cursor.execute(
-            """SELECT id, name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at
+            """SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
                FROM targets 
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
@@ -290,7 +298,7 @@ async def get_target(target_id: int, current_user: dict = Depends(verify_token_w
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+            "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
             (target_id,)
         )
         target_data = cursor.fetchone()
@@ -301,8 +309,13 @@ async def get_target(target_id: int, current_user: dict = Depends(verify_token_w
                 detail="Target not found"
             )
         
+        # Debug logging
+        logger.info(f"Raw target data: {target_data}")
+        logger.info(f"Target data keys: {target_data.keys() if hasattr(target_data, 'keys') else 'No keys method'}")
+        
         # Parse fields for response
         target_dict = dict(target_data)
+        logger.info(f"Target dict: {target_dict}")
         target_dict['tags'] = target_dict.get('tags', [])  # Already a list
         target_dict['metadata'] = target_dict.get('metadata', {})  # Already parsed
         target_dict['depends_on'] = target_dict.get('depends_on', [])  # Already a list
@@ -315,6 +328,32 @@ async def get_target(target_id: int, current_user: dict = Depends(verify_token_w
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve target"
         )
+    finally:
+        conn.close()
+
+@app.get("/debug/targets/{target_id}")
+async def debug_target(target_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Debug endpoint to see raw target data"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+            (target_id,)
+        )
+        target_data = cursor.fetchone()
+        
+        if not target_data:
+            return {"error": "Target not found"}
+        
+        return {
+            "raw_data": dict(target_data),
+            "os_type_value": target_data.get('os_type'),
+            "os_type_type": type(target_data.get('os_type')).__name__
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
     finally:
         conn.close()
 
@@ -357,6 +396,10 @@ async def update_target(
             update_fields.append("port = %s")
             update_values.append(target_data.port)
             
+        if target_data.os_type is not None:
+            update_fields.append("os_type = %s")
+            update_values.append(target_data.os_type)
+            
         if target_data.credential_ref is not None:
             # Verify credential exists
             cursor.execute("SELECT id FROM credentials WHERE id = %s", (target_data.credential_ref,))
@@ -383,7 +426,7 @@ async def update_target(
         if not update_fields:
             # No fields to update, just return current target
             cursor.execute(
-                "SELECT id, name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+                "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
                 (target_id,)
             )
             target = cursor.fetchone()
@@ -398,7 +441,7 @@ async def update_target(
             UPDATE targets 
             SET {', '.join(update_fields)}
             WHERE id = %s
-            RETURNING id, name, hostname, protocol, port, credential_ref, tags, metadata, depends_on, created_at
+            RETURNING id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
         """
         update_values.append(target_id)
         
@@ -644,6 +687,306 @@ async def test_winrm_connection(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to test target connection"
+        )
+    finally:
+        conn.close()
+
+class SSHTestResult(BaseModel):
+    test: Dict[str, Any]
+    note: str
+
+@app.post("/targets/{target_id}/test-ssh", response_model=SSHTestResult)
+async def test_ssh_connection(
+    target_id: int,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: dict = Depends(verify_token_with_auth_service)
+):
+    """Test SSH connection to target"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Get target info
+        cursor.execute(
+            "SELECT hostname, port, credential_ref, protocol FROM targets WHERE id = %s",
+            (target_id,)
+        )
+        target_data = cursor.fetchone()
+        
+        if not target_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target not found"
+            )
+        
+        if target_data["protocol"] != "ssh":
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": "Target is not configured for SSH protocol"
+                    }
+                },
+                note="Target protocol is not SSH"
+            )
+        
+        # Get credential data for the connection
+        try:
+            credential_data = await get_credential_data(
+                target_data["credential_ref"], 
+                credentials.credentials
+            )
+        except Exception as e:
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": f"Failed to retrieve credentials: {str(e)}"
+                    }
+                },
+                note="Credential retrieval failed"
+            )
+        
+        # Perform actual SSH connection test
+        try:
+            ssh_client = paramiko.SSHClient()
+            ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # Use port 22 as default for SSH if not specified
+            ssh_port = target_data['port'] if target_data['port'] != 5985 else 22
+            
+            logger.info(f"Testing SSH connection to: {target_data['hostname']}:{ssh_port}")
+            
+            start_time = time.time()
+            
+            # Connect using username/password or SSH key
+            if 'private_key' in credential_data:
+                # SSH key authentication
+                private_key_str = credential_data['private_key']
+                passphrase = credential_data.get('private_key_passphrase')
+                
+                # Try different key types
+                key_obj = None
+                for key_class in [paramiko.RSAKey, paramiko.ECDSAKey, paramiko.Ed25519Key]:
+                    try:
+                        key_obj = key_class.from_private_key(
+                            StringIO(private_key_str), 
+                            password=passphrase
+                        )
+                        break
+                    except Exception:
+                        continue
+                
+                if not key_obj:
+                    return SSHTestResult(
+                        test={
+                            "status": "error",
+                            "details": {
+                                "message": "Invalid SSH private key format"
+                            }
+                        },
+                        note="SSH private key could not be parsed"
+                    )
+                
+                ssh_client.connect(
+                    hostname=target_data['hostname'],
+                    port=ssh_port,
+                    username=credential_data['username'],
+                    pkey=key_obj,
+                    timeout=30
+                )
+            else:
+                # Username/password authentication
+                ssh_client.connect(
+                    hostname=target_data['hostname'],
+                    port=ssh_port,
+                    username=credential_data['username'],
+                    password=credential_data['password'],
+                    timeout=30
+                )
+            
+            connection_time = int((time.time() - start_time) * 1000)
+            
+            # Test connection with system information commands
+            stdin, stdout, stderr = ssh_client.exec_command(
+                "uname -a && whoami && hostname && cat /etc/os-release 2>/dev/null || echo 'OS info not available'"
+            )
+            
+            stdout_data = stdout.read().decode('utf-8', errors='replace').strip()
+            stderr_data = stderr.read().decode('utf-8', errors='replace').strip()
+            exit_status = stdout.channel.recv_exit_status()
+            
+            if exit_status == 0:
+                # Parse system information
+                output_lines = stdout_data.split('\n')
+                uname_info = output_lines[0] if len(output_lines) > 0 else "Unknown"
+                whoami = output_lines[1] if len(output_lines) > 1 else "Unknown"
+                hostname = output_lines[2] if len(output_lines) > 2 else target_data['hostname']
+                
+                # Parse OS information
+                os_info = {}
+                for line in output_lines[3:]:
+                    if '=' in line and not line.startswith('#'):
+                        key, value = line.split('=', 1)
+                        os_info[key] = value.strip('"')
+                
+                # Store system information in database
+                try:
+                    cursor.execute("""
+                        INSERT INTO ssh_connection_tests 
+                        (target_id, status, connection_time_ms, system_info, created_by)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        target_id, 
+                        'success', 
+                        connection_time,
+                        json.dumps({
+                            "uname": uname_info,
+                            "username": whoami,
+                            "hostname": hostname,
+                            "os_info": os_info,
+                            "connection_time_ms": connection_time
+                        }),
+                        current_user.get('id')
+                    ))
+                    conn.commit()
+                except Exception as db_error:
+                    logger.warning(f"Failed to store SSH test result: {db_error}")
+                
+                return SSHTestResult(
+                    test={
+                        "status": "success",
+                        "details": {
+                            "connection_time_ms": connection_time,
+                            "system_info": {
+                                "uname": uname_info,
+                                "username": whoami,
+                                "hostname": hostname,
+                                "os_distribution": os_info.get('NAME', 'Unknown'),
+                                "os_version": os_info.get('VERSION', 'Unknown'),
+                                "os_id": os_info.get('ID', 'Unknown')
+                            },
+                            "hostname": target_data['hostname'],
+                            "port": ssh_port
+                        }
+                    },
+                    note=f"SSH connection successful. Connected as {whoami} to {hostname}"
+                )
+            else:
+                return SSHTestResult(
+                    test={
+                        "status": "warning",
+                        "details": {
+                            "connection_time_ms": connection_time,
+                            "message": "SSH connection established but system command failed",
+                            "stdout": stdout_data,
+                            "stderr": stderr_data,
+                            "exit_status": exit_status,
+                            "hostname": target_data['hostname'],
+                            "port": ssh_port
+                        }
+                    },
+                    note="SSH connection established but system information retrieval failed"
+                )
+                
+        except paramiko.AuthenticationException:
+            error_msg = "SSH authentication failed - check username/password or SSH key"
+            try:
+                cursor.execute("""
+                    INSERT INTO ssh_connection_tests 
+                    (target_id, status, error_message, created_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (target_id, 'failure', error_msg, current_user.get('id')))
+                conn.commit()
+            except Exception:
+                pass
+                
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": error_msg,
+                        "hostname": target_data['hostname'],
+                        "port": ssh_port
+                    }
+                },
+                note="SSH authentication failed"
+            )
+            
+        except paramiko.SSHException as ssh_error:
+            error_msg = f"SSH connection failed: {str(ssh_error)}"
+            try:
+                cursor.execute("""
+                    INSERT INTO ssh_connection_tests 
+                    (target_id, status, error_message, created_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (target_id, 'failure', error_msg, current_user.get('id')))
+                conn.commit()
+            except Exception:
+                pass
+                
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": error_msg,
+                        "hostname": target_data['hostname'],
+                        "port": ssh_port
+                    }
+                },
+                note="SSH connection failed - check network connectivity and SSH service"
+            )
+            
+        except socket.timeout:
+            error_msg = "SSH connection timeout - check network connectivity"
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": error_msg,
+                        "hostname": target_data['hostname'],
+                        "port": ssh_port
+                    }
+                },
+                note="SSH connection timeout"
+            )
+            
+        except Exception as ssh_error:
+            logger.error(f"SSH connection test failed: {ssh_error}")
+            error_msg = f"SSH connection failed: {str(ssh_error)}"
+            
+            try:
+                cursor.execute("""
+                    INSERT INTO ssh_connection_tests 
+                    (target_id, status, error_message, created_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (target_id, 'failure', error_msg, current_user.get('id')))
+                conn.commit()
+            except Exception:
+                pass
+                
+            return SSHTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": error_msg,
+                        "hostname": target_data['hostname'],
+                        "port": ssh_port
+                    }
+                },
+                note="SSH connection test failed"
+            )
+        finally:
+            try:
+                ssh_client.close()
+            except Exception:
+                pass
+            
+    except Exception as e:
+        logger.error(f"SSH target test error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to test SSH target connection"
         )
     finally:
         conn.close()

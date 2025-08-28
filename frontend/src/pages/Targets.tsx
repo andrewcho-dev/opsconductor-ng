@@ -8,11 +8,13 @@ const Targets: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [testingTarget, setTestingTarget] = useState<number | null>(null);
+  const [editingTarget, setEditingTarget] = useState<Target | null>(null);
   const [formData, setFormData] = useState<TargetCreate>({
     name: '',
     hostname: '',
     protocol: 'winrm',
     port: 5985,
+    os_type: 'windows',
     credential_ref: 0,
     tags: [],
     metadata: {},
@@ -50,13 +52,19 @@ const Targets: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await targetApi.create(formData);
+      if (editingTarget) {
+        await targetApi.update(editingTarget.id, formData);
+      } else {
+        await targetApi.create(formData);
+      }
       setShowCreateModal(false);
+      setEditingTarget(null);
       setFormData({
         name: '',
         hostname: '',
         protocol: 'winrm',
         port: 5985,
+        os_type: 'windows',
         credential_ref: 0,
         tags: [],
         metadata: {},
@@ -64,8 +72,39 @@ const Targets: React.FC = () => {
       });
       fetchTargets();
     } catch (error) {
-      console.error('Failed to create target:', error);
+      console.error(`Failed to ${editingTarget ? 'update' : 'create'} target:`, error);
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      hostname: '',
+      protocol: 'winrm',
+      port: 5985,
+      os_type: 'windows',
+      credential_ref: 0,
+      tags: [],
+      metadata: {},
+      depends_on: []
+    });
+    setEditingTarget(null);
+  };
+
+  const handleEdit = (target: Target) => {
+    setEditingTarget(target);
+    setFormData({
+      name: target.name,
+      hostname: target.hostname,
+      protocol: target.protocol,
+      port: target.port,
+      os_type: target.os_type,
+      credential_ref: target.credential_ref,
+      tags: target.tags,
+      metadata: target.metadata,
+      depends_on: target.depends_on
+    });
+    setShowCreateModal(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -111,7 +150,10 @@ const Targets: React.FC = () => {
         <h1>Targets</h1>
         <button 
           className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowCreateModal(true);
+          }}
         >
           Add Target
         </button>
@@ -125,6 +167,7 @@ const Targets: React.FC = () => {
               <th>Name</th>
               <th>Hostname</th>
               <th>Protocol</th>
+              <th>OS Type</th>
               <th>Port</th>
               <th>Credential</th>
               <th>Tags</th>
@@ -145,6 +188,22 @@ const Targets: React.FC = () => {
                     {target.protocol}
                   </span>
                 </td>
+                <td>
+                  <span className="status" style={{ 
+                    backgroundColor: 
+                      target.os_type === 'windows' ? '#e2e3e5' : 
+                      target.os_type === 'linux' ? '#d1ecf1' :
+                      target.os_type === 'unix' ? '#fff3cd' :
+                      '#f8d7da',
+                    color: 
+                      target.os_type === 'windows' ? '#383d41' : 
+                      target.os_type === 'linux' ? '#0c5460' :
+                      target.os_type === 'unix' ? '#856404' :
+                      '#721c24'
+                  }}>
+                    {target.os_type}
+                  </span>
+                </td>
                 <td>{target.port}</td>
                 <td>{getCredentialName(target.credential_ref)}</td>
                 <td>{target.tags.join(', ') || '-'}</td>
@@ -160,6 +219,13 @@ const Targets: React.FC = () => {
                         {testingTarget === target.id ? 'Testing...' : 'Test'}
                       </button>
                     )}
+                    <button 
+                      className="btn btn-primary"
+                      onClick={() => handleEdit(target)}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Edit
+                    </button>
                     <button 
                       className="btn btn-danger"
                       onClick={() => handleDelete(target.id)}
@@ -190,7 +256,7 @@ const Targets: React.FC = () => {
           zIndex: 1000
         }}>
           <div className="card" style={{ width: '500px', margin: '20px' }}>
-            <h3>Add New Target</h3>
+            <h3>{editingTarget ? 'Edit Target' : 'Add New Target'}</h3>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Name:</label>
@@ -216,11 +282,33 @@ const Targets: React.FC = () => {
                 <label>Protocol:</label>
                 <select 
                   value={formData.protocol}
-                  onChange={(e) => setFormData({...formData, protocol: e.target.value})}
+                  onChange={(e) => {
+                    const protocol = e.target.value;
+                    setFormData({
+                      ...formData, 
+                      protocol,
+                      port: protocol === 'winrm' ? 5985 : protocol === 'ssh' ? 22 : 80,
+                      os_type: protocol === 'winrm' ? 'windows' : protocol === 'ssh' ? 'linux' : formData.os_type
+                    });
+                  }}
                 >
                   <option value="winrm">WinRM</option>
                   <option value="ssh">SSH</option>
                   <option value="http">HTTP</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>OS Type:</label>
+                <select 
+                  value={formData.os_type}
+                  onChange={(e) => setFormData({...formData, os_type: e.target.value})}
+                >
+                  <option value="windows">Windows</option>
+                  <option value="linux">Linux</option>
+                  <option value="unix">Unix</option>
+                  <option value="network">Network Device</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
 
@@ -254,16 +342,22 @@ const Targets: React.FC = () => {
                 <label>Tags (comma-separated):</label>
                 <input
                   type="text"
+                  value={formData.tags?.join(', ') || ''}
                   onChange={(e) => setFormData({...formData, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)})}
                 />
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary">Create Target</button>
+                <button type="submit" className="btn btn-primary">
+                  {editingTarget ? 'Update Target' : 'Create Target'}
+                </button>
                 <button 
                   type="button" 
                   className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
                 >
                   Cancel
                 </button>

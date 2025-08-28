@@ -79,6 +79,7 @@ const Schedules: React.FC = () => {
       }
       await fetchData();
       resetForm();
+      setShowCreateForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save schedule');
     }
@@ -114,7 +115,6 @@ const Schedules: React.FC = () => {
       is_active: true
     });
     setEditingSchedule(null);
-    setShowCreateForm(false);
   };
 
   const handleSchedulerToggle = async () => {
@@ -161,7 +161,10 @@ const Schedules: React.FC = () => {
             </div>
           )}
           <button
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => {
+              resetForm();
+              setShowCreateForm(true);
+            }}
             className="btn btn-primary"
           >
             Create Schedule
@@ -276,7 +279,10 @@ const Schedules: React.FC = () => {
               </div>
 
               <div className="modal-actions">
-                <button type="button" onClick={resetForm} className="btn btn-secondary">
+                <button type="button" onClick={() => {
+                  resetForm();
+                  setShowCreateForm(false);
+                }} className="btn btn-secondary">
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">

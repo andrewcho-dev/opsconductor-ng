@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { jobApi, targetApi } from '../services/api';
 import { Job, JobCreate, Target } from '../types';
+import VisualJobBuilder from '../components/VisualJobBuilder';
 
 const Jobs: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [useVisualBuilder, setUseVisualBuilder] = useState(false);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [formData, setFormData] = useState<JobCreate>({
     name: '',
     version: 1,
@@ -49,8 +52,13 @@ const Jobs: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await jobApi.create(formData);
+      if (editingJob) {
+        await jobApi.update(editingJob.id, formData);
+      } else {
+        await jobApi.create(formData);
+      }
       setShowCreateModal(false);
+      setEditingJob(null);
       setFormData({
         name: '',
         version: 1,
@@ -64,9 +72,37 @@ const Jobs: React.FC = () => {
       });
       fetchJobs();
     } catch (error) {
-      console.error('Failed to create job:', error);
-      alert('Failed to create job. Please check the job definition.');
+      console.error(`Failed to ${editingJob ? 'update' : 'create'} job:`, error);
+      alert(`Failed to ${editingJob ? 'update' : 'create'} job. Please check the job definition.`);
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      version: 1,
+      definition: {
+        name: '',
+        version: 1,
+        parameters: {},
+        steps: []
+      },
+      is_active: true
+    });
+    setEditingJob(null);
+    setUseVisualBuilder(false);
+  };
+
+  const handleEdit = (job: Job) => {
+    setEditingJob(job);
+    setFormData({
+      name: job.name,
+      version: job.version,
+      definition: job.definition,
+      is_active: job.is_active
+    });
+    setUseVisualBuilder(false);
+    setShowCreateModal(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -137,12 +173,28 @@ const Jobs: React.FC = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>Jobs</h1>
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          Create Job
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button 
+            className="btn btn-secondary"
+            onClick={() => {
+              resetForm();
+              setUseVisualBuilder(false);
+              setShowCreateModal(true);
+            }}
+          >
+            Create Job (Traditional)
+          </button>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              resetForm();
+              setUseVisualBuilder(true);
+              setShowCreateModal(true);
+            }}
+          >
+            🎨 Visual Job Builder
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -182,6 +234,13 @@ const Jobs: React.FC = () => {
                       Run
                     </button>
                     <button 
+                      className="btn btn-secondary"
+                      onClick={() => handleEdit(job)}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Edit
+                    </button>
+                    <button 
                       className="btn btn-danger"
                       onClick={() => handleDelete(job.id)}
                       style={{ fontSize: '12px' }}
@@ -211,8 +270,44 @@ const Jobs: React.FC = () => {
           zIndex: 1000,
           overflow: 'auto'
         }}>
-          <div className="card" style={{ width: '800px', margin: '20px', maxHeight: '90vh', overflow: 'auto' }}>
-            <h3>Create New Job</h3>
+          {useVisualBuilder ? (
+            <div className="card" style={{ width: '95vw', height: '90vh', margin: '20px', overflow: 'hidden' }}>
+              <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h3>🎨 Visual Job Builder</h3>
+                  <button 
+                    onClick={() => setShowCreateModal(false)}
+                    style={{ 
+                      background: 'none', 
+                      border: 'none', 
+                      fontSize: '24px', 
+                      cursor: 'pointer',
+                      color: '#666'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <VisualJobBuilder
+                    onJobCreate={async (jobData) => {
+                      try {
+                        await jobApi.create(jobData);
+                        setShowCreateModal(false);
+                        fetchJobs();
+                      } catch (error) {
+                        console.error('Failed to create job:', error);
+                        alert('Failed to create job. Please try again.');
+                      }
+                    }}
+                    onCancel={() => setShowCreateModal(false)}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ width: '800px', margin: '20px', maxHeight: '90vh', overflow: 'auto' }}>
+              <h3>{editingJob ? 'Edit Job' : 'Create New Job'} (Traditional)</h3>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Name:</label>
@@ -345,17 +440,23 @@ const Jobs: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary">Create Job</button>
+                <button type="submit" className="btn btn-primary">
+                  {editingJob ? 'Update Job' : 'Create Job'}
+                </button>
                 <button 
                   type="button" 
                   className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
                 >
                   Cancel
                 </button>
               </div>
             </form>
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -199,6 +199,32 @@ async def create_credential(
                 detail="Credential with this name already exists"
             )
         
+        # Validate credential type and required fields
+        valid_types = ["winrm", "ssh", "ssh_key", "api_key", "certificate", "database", "snmp"]
+        if cred_data.credential_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid credential type. Must be one of: {valid_types}"
+            )
+        
+        # Validate required fields based on credential type
+        if cred_data.credential_type == "ssh_key":
+            required_fields = ["username", "private_key"]
+            for field in required_fields:
+                if field not in cred_data.credential_data:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Missing required field for ssh_key credential: {field}"
+                    )
+        elif cred_data.credential_type == "api_key":
+            required_fields = ["api_key"]
+            for field in required_fields:
+                if field not in cred_data.credential_data:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Missing required field for api_key credential: {field}"
+                    )
+        
         # Encrypt credential data and wrap in JSON structure
         encrypted_data = encrypt_data(cred_data.credential_data)
         credential_json = {"encrypted": encrypted_data}

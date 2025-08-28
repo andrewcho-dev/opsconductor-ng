@@ -16,11 +16,15 @@ from typing import Dict, Any, Optional
 import psycopg2
 import psycopg2.extras
 import requests
+import hmac
+import hashlib
+from urllib.parse import urljoin, urlparse
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import winrm
 from jinja2 import Template
+from ssh_executor import SSHExecutor, SFTPExecutor, SSHExecutionError
 
 # Load environment variables
 load_dotenv()
@@ -78,6 +82,8 @@ class JobExecutor:
     def __init__(self):
         self.running = False
         self.worker_thread = None
+        self.ssh_executor = SSHExecutor()
+        self.sftp_executor = SFTPExecutor(self.ssh_executor)
     
     def start_worker(self):
         """Start the worker thread"""
@@ -164,6 +170,28 @@ class JobExecutor:
                 result = self._execute_winrm_exec(step)
             elif step['type'] == 'winrm.copy':
                 result = self._execute_winrm_copy(step)
+            elif step['type'] == 'ssh.exec':
+                result = self._execute_ssh_exec(step)
+            elif step['type'] == 'ssh.copy':
+                result = self._execute_ssh_copy(step)
+            elif step['type'] == 'sftp.upload':
+                result = self._execute_sftp_upload(step)
+            elif step['type'] == 'sftp.download':
+                result = self._execute_sftp_download(step)
+            elif step['type'] == 'sftp.sync':
+                result = self._execute_sftp_sync(step)
+            elif step['type'] == 'http.get':
+                result = self._execute_http_get(step)
+            elif step['type'] == 'http.post':
+                result = self._execute_http_post(step)
+            elif step['type'] == 'http.put':
+                result = self._execute_http_put(step)
+            elif step['type'] == 'http.delete':
+                result = self._execute_http_delete(step)
+            elif step['type'] == 'http.patch':
+                result = self._execute_http_patch(step)
+            elif step['type'] == 'webhook.call':
+                result = self._execute_webhook_call(step)
             else:
                 result = {
                     'status': 'failed',
@@ -375,6 +403,852 @@ class JobExecutor:
                 'stdout': '',
                 'stderr': f'WinRM copy failed: {str(e)}'
             }
+    
+    def _execute_ssh_exec(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute ssh.exec step"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render command template
+            command_template = Template(step_definition['command'])
+            rendered_command = command_template.render(**run_parameters)
+            
+            # Use SSH port from target or default to 22
+            ssh_port = target_info.get('ssh_port', 22)
+            if ssh_port == 5985:  # Default WinRM port, use SSH default
+                ssh_port = 22
+            
+            logger.info(f"Connecting to SSH: {target_info['hostname']}:{ssh_port} with user: {credential_data['username']}")
+            
+            # Execute command via SSH
+            result = self.ssh_executor.execute_command(
+                host=target_info['hostname'],
+                port=ssh_port,
+                username=credential_data['username'],
+                password=credential_data.get('password'),
+                private_key=credential_data.get('private_key'),
+                passphrase=credential_data.get('passphrase'),
+                key_type=credential_data.get('key_type', 'rsa'),
+                shell=step_definition.get('shell', 'bash'),
+                working_directory=step_definition.get('working_directory'),
+                environment=step_definition.get('environment'),
+                timeout=step_definition.get('timeout_sec', 300),
+                command=rendered_command
+            )
+            
+            return result
+        
+        except SSHExecutionError as e:
+            logger.error(f"SSH execution error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SSH execution failed: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"SSH execution error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SSH execution failed: {str(e)}'
+            }
+    
+    def _execute_ssh_copy(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute ssh.copy step (SCP file transfer)"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render paths
+            source_template = Template(step_definition['source_path'])
+            dest_template = Template(step_definition['dest_path'])
+            
+            source_path = source_template.render(**run_parameters)
+            dest_path = dest_template.render(**run_parameters)
+            
+            # Use SSH port from target or default to 22
+            ssh_port = target_info.get('ssh_port', 22)
+            if ssh_port == 5985:  # Default WinRM port, use SSH default
+                ssh_port = 22
+            
+            logger.info(f"SSH copy: {source_path} -> {target_info['hostname']}:{dest_path}")
+            
+            # Execute file copy via SSH/SCP
+            with SSHExecutor() as ssh_executor:
+                # Connect to target
+                connection_info = ssh_executor.connect(
+                    hostname=target_info['hostname'],
+                    port=ssh_port,
+                    credential_data=credential_data,
+                    timeout=30
+                )
+                
+                # Upload file
+                result = ssh_executor.upload_file(
+                    local_path=source_path,
+                    remote_path=dest_path,
+                    preserve_permissions=True
+                )
+                
+                return {
+                    'status': 'succeeded' if result['success'] else 'failed',
+                    'exit_code': 0 if result['success'] else 1,
+                    'stdout': f"File uploaded successfully: {result['file_size_bytes']} bytes in {result['transfer_time_ms']}ms",
+                    'stderr': '',
+                    'metrics': {
+                        'target': target_info['hostname'],
+                        'port': ssh_port,
+                        'auth_method': connection_info['auth_method'],
+                        'source_path': source_path,
+                        'dest_path': dest_path,
+                        'file_size_bytes': result['file_size_bytes'],
+                        'transfer_time_ms': result['transfer_time_ms'],
+                        'transfer_rate_mbps': result['transfer_rate_mbps']
+                    }
+                }
+                
+        except SSHExecutionError as e:
+            logger.error(f"SSH copy error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SSH copy failed: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"SSH copy error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SSH copy failed: {str(e)}'
+            }
+    
+    def _execute_sftp_upload(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute sftp.upload step"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render paths
+            local_template = Template(step_definition['local_path'])
+            remote_template = Template(step_definition['remote_path'])
+            
+            local_path = local_template.render(**run_parameters)
+            remote_path = remote_template.render(**run_parameters)
+            
+            # Use SSH port from target or default to 22
+            ssh_port = target_info.get('ssh_port', 22)
+            if ssh_port == 5985:  # Default WinRM port, use SSH default
+                ssh_port = 22
+            
+            logger.info(f"SFTP upload: {local_path} -> {target_info['hostname']}:{remote_path}")
+            
+            # Execute file upload via SFTP
+            result = self.sftp_executor.upload_file(
+                host=target_info['hostname'],
+                port=ssh_port,
+                username=credential_data['username'],
+                password=credential_data.get('password'),
+                private_key=credential_data.get('private_key'),
+                passphrase=credential_data.get('passphrase'),
+                key_type=credential_data.get('key_type', 'rsa'),
+                local_path=local_path,
+                remote_path=remote_path,
+                preserve_permissions=step_definition.get('preserve_permissions', True),
+                preserve_timestamps=step_definition.get('preserve_timestamps', True),
+                timeout=step_definition.get('timeout_sec', 300)
+            )
+            
+            return result
+        
+        except Exception as e:
+            logger.error(f"SFTP upload error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SFTP upload failed: {str(e)}'
+            }
+    
+    def _execute_sftp_download(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute sftp.download step"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render paths
+            remote_template = Template(step_definition['remote_path'])
+            local_template = Template(step_definition['local_path'])
+            
+            remote_path = remote_template.render(**run_parameters)
+            local_path = local_template.render(**run_parameters)
+            
+            # Use SSH port from target or default to 22
+            ssh_port = target_info.get('ssh_port', 22)
+            if ssh_port == 5985:  # Default WinRM port, use SSH default
+                ssh_port = 22
+            
+            logger.info(f"SFTP download: {target_info['hostname']}:{remote_path} -> {local_path}")
+            
+            # Execute file download via SFTP
+            result = self.sftp_executor.download_file(
+                host=target_info['hostname'],
+                port=ssh_port,
+                username=credential_data['username'],
+                password=credential_data.get('password'),
+                private_key=credential_data.get('private_key'),
+                passphrase=credential_data.get('passphrase'),
+                key_type=credential_data.get('key_type', 'rsa'),
+                remote_path=remote_path,
+                local_path=local_path,
+                preserve_permissions=step_definition.get('preserve_permissions', True),
+                preserve_timestamps=step_definition.get('preserve_timestamps', True),
+                timeout=step_definition.get('timeout_sec', 300)
+            )
+            
+            return result
+        
+        except SSHExecutionError as e:
+            logger.error(f"SFTP download error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SFTP download failed: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"SFTP download error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SFTP download failed: {str(e)}'
+            }
+    
+    def _execute_sftp_sync(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute sftp.sync step"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render paths
+            local_template = Template(step_definition['local_path'])
+            remote_template = Template(step_definition['remote_path'])
+            
+            local_path = local_template.render(**run_parameters)
+            remote_path = remote_template.render(**run_parameters)
+            direction = step_definition.get('direction', 'upload')  # 'upload' or 'download'
+            
+            # Use SSH port from target or default to 22
+            ssh_port = target_info.get('ssh_port', 22)
+            if ssh_port == 5985:  # Default WinRM port, use SSH default
+                ssh_port = 22
+            
+            logger.info(f"SFTP sync ({direction}): {local_path} <-> {target_info['hostname']}:{remote_path}")
+            
+            # Execute directory sync via SFTP
+            with SSHExecutor() as ssh_executor:
+                # Connect to target
+                connection_info = ssh_executor.connect(
+                    hostname=target_info['hostname'],
+                    port=ssh_port,
+                    credential_data=credential_data,
+                    timeout=30
+                )
+                
+                # Sync directory
+                result = ssh_executor.sync_directory(
+                    local_path=local_path,
+                    remote_path=remote_path,
+                    direction=direction
+                )
+                
+                status_msg = f"Directory sync completed: {result['files_transferred']} files, {result['total_bytes']} bytes"
+                if result['errors']:
+                    status_msg += f" with {len(result['errors'])} errors"
+                
+                return {
+                    'status': 'succeeded' if result['success'] else 'failed',
+                    'exit_code': 0 if result['success'] else 1,
+                    'stdout': status_msg,
+                    'stderr': '\n'.join(result['errors']) if result['errors'] else '',
+                    'metrics': {
+                        'target': target_info['hostname'],
+                        'port': ssh_port,
+                        'auth_method': connection_info['auth_method'],
+                        'local_path': local_path,
+                        'remote_path': remote_path,
+                        'direction': direction,
+                        'files_transferred': result['files_transferred'],
+                        'total_bytes': result['total_bytes'],
+                        'sync_time_ms': result['sync_time_ms'],
+                        'transfer_rate_mbps': result['transfer_rate_mbps'],
+                        'error_count': len(result['errors'])
+                    }
+                }
+                
+        except SSHExecutionError as e:
+            logger.error(f"SFTP sync error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SFTP sync failed: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"SFTP sync error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'SFTP sync failed: {str(e)}'
+            }
+    
+    def _execute_http_get(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute HTTP GET request"""
+        return self._execute_http_request(step, 'GET')
+    
+    def _execute_http_post(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute HTTP POST request"""
+        return self._execute_http_request(step, 'POST')
+    
+    def _execute_http_put(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute HTTP PUT request"""
+        return self._execute_http_request(step, 'PUT')
+    
+    def _execute_http_delete(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute HTTP DELETE request"""
+        return self._execute_http_request(step, 'DELETE')
+    
+    def _execute_http_patch(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute HTTP PATCH request"""
+        return self._execute_http_request(step, 'PATCH')
+    
+    def _execute_http_request(self, step: Dict[str, Any], method: str) -> Dict[str, Any]:
+        """Execute HTTP request with authentication and response handling"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render URL template
+            url_template = Template(step_definition['url'])
+            url = url_template.render(**run_parameters)
+            
+            # Prepare request configuration
+            timeout = step_definition.get('timeout_sec', 30)
+            ssl_verify = step_definition.get('ssl_verify', True)
+            max_redirects = step_definition.get('max_redirects', 5)
+            
+            # Prepare headers
+            headers = step_definition.get('headers', {})
+            if isinstance(headers, dict):
+                # Render header templates
+                rendered_headers = {}
+                for key, value in headers.items():
+                    if isinstance(value, str):
+                        header_template = Template(value)
+                        rendered_headers[key] = header_template.render(**run_parameters)
+                    else:
+                        rendered_headers[key] = str(value)
+                headers = rendered_headers
+            
+            # Prepare request body for POST/PUT/PATCH
+            request_body = None
+            if method in ['POST', 'PUT', 'PATCH'] and 'body' in step_definition:
+                body_data = step_definition['body']
+                if isinstance(body_data, str):
+                    # Render body template
+                    body_template = Template(body_data)
+                    request_body = body_template.render(**run_parameters)
+                elif isinstance(body_data, dict):
+                    # JSON body - render each value
+                    rendered_body = {}
+                    for key, value in body_data.items():
+                        if isinstance(value, str):
+                            value_template = Template(value)
+                            rendered_body[key] = value_template.render(**run_parameters)
+                        else:
+                            rendered_body[key] = value
+                    request_body = json.dumps(rendered_body)
+                    if 'Content-Type' not in headers:
+                        headers['Content-Type'] = 'application/json'
+                else:
+                    request_body = json.dumps(body_data)
+                    if 'Content-Type' not in headers:
+                        headers['Content-Type'] = 'application/json'
+            
+            # Handle authentication
+            auth = None
+            auth_type = step_definition.get('auth_type', 'none')
+            
+            if auth_type == 'basic' and 'auth_username' in step_definition and 'auth_password' in step_definition:
+                username_template = Template(step_definition['auth_username'])
+                password_template = Template(step_definition['auth_password'])
+                username = username_template.render(**run_parameters)
+                password = password_template.render(**run_parameters)
+                auth = (username, password)
+            
+            elif auth_type == 'bearer' and 'auth_token' in step_definition:
+                token_template = Template(step_definition['auth_token'])
+                token = token_template.render(**run_parameters)
+                headers['Authorization'] = f'Bearer {token}'
+            
+            elif auth_type == 'api_key':
+                if 'auth_header' in step_definition and 'auth_token' in step_definition:
+                    header_name = step_definition['auth_header']
+                    token_template = Template(step_definition['auth_token'])
+                    token = token_template.render(**run_parameters)
+                    headers[header_name] = token
+                elif 'auth_token' in step_definition:
+                    token_template = Template(step_definition['auth_token'])
+                    token = token_template.render(**run_parameters)
+                    headers['X-API-Key'] = token
+            
+            logger.info(f"HTTP {method} request to: {url}")
+            
+            # Execute HTTP request
+            start_time = datetime.utcnow()
+            
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                data=request_body,
+                auth=auth,
+                timeout=timeout,
+                verify=ssl_verify,
+                allow_redirects=True if max_redirects > 0 else False
+            )
+            
+            end_time = datetime.utcnow()
+            response_time_ms = int((end_time - start_time).total_seconds() * 1000)
+            
+            # Store HTTP request details in database
+            self._store_http_request(
+                step['id'],
+                method,
+                url,
+                headers,
+                request_body,
+                response.status_code,
+                dict(response.headers),
+                response.text,
+                response_time_ms,
+                ssl_verify,
+                timeout,
+                max_redirects
+            )
+            
+            # Check expected status code
+            expected_status = step_definition.get('expected_status', [200, 201, 202, 204])
+            if isinstance(expected_status, int):
+                expected_status = [expected_status]
+            
+            success = response.status_code in expected_status
+            
+            # Prepare response data
+            response_data = {
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'body': response.text,
+                'response_time_ms': response_time_ms
+            }
+            
+            return {
+                'status': 'succeeded' if success else 'failed',
+                'exit_code': 0 if success else response.status_code,
+                'stdout': f"HTTP {method} {url} -> {response.status_code} ({response_time_ms}ms)",
+                'stderr': '' if success else f"Unexpected status code: {response.status_code}",
+                'metrics': {
+                    'method': method,
+                    'url': url,
+                    'status_code': response.status_code,
+                    'response_time_ms': response_time_ms,
+                    'response_size_bytes': len(response.content),
+                    'ssl_verify': ssl_verify,
+                    'auth_type': auth_type
+                },
+                'response_data': response_data
+            }
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"HTTP {method} request timeout: {url}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'HTTP {method} request timeout after {timeout}s'
+            }
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"HTTP {method} connection error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'HTTP {method} connection failed: {str(e)}'
+            }
+        except Exception as e:
+            logger.error(f"HTTP {method} request error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'HTTP {method} request failed: {str(e)}'
+            }
+    
+    def _execute_webhook_call(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute webhook call with payload and signature"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Add current timestamp to parameters
+            run_parameters['current_timestamp'] = datetime.utcnow().isoformat()
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Render URL template
+            url_template = Template(step_definition['url'])
+            url = url_template.render(**run_parameters)
+            
+            # Prepare payload
+            payload_data = step_definition.get('payload', {})
+            if isinstance(payload_data, dict):
+                # Render payload templates
+                rendered_payload = {}
+                for key, value in payload_data.items():
+                    if isinstance(value, str):
+                        value_template = Template(value)
+                        rendered_payload[key] = value_template.render(**run_parameters)
+                    else:
+                        rendered_payload[key] = value
+                payload = rendered_payload
+            else:
+                payload = payload_data
+            
+            # Convert payload to JSON
+            payload_json = json.dumps(payload)
+            
+            # Prepare headers
+            headers = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'OpsConductor-Webhook/1.0'
+            }
+            
+            # Add custom headers
+            custom_headers = step_definition.get('headers', {})
+            for key, value in custom_headers.items():
+                if isinstance(value, str):
+                    header_template = Template(value)
+                    headers[key] = header_template.render(**run_parameters)
+                else:
+                    headers[key] = str(value)
+            
+            # Handle webhook signature
+            signature_method = step_definition.get('signature_method')
+            signature_header = step_definition.get('signature_header', 'X-Hub-Signature-256')
+            signature_secret = step_definition.get('signature_secret')
+            signature_value = None
+            
+            if signature_method and signature_secret:
+                secret_template = Template(signature_secret)
+                secret = secret_template.render(**run_parameters)
+                
+                if signature_method == 'hmac-sha256':
+                    signature_value = hmac.new(
+                        secret.encode('utf-8'),
+                        payload_json.encode('utf-8'),
+                        hashlib.sha256
+                    ).hexdigest()
+                    headers[signature_header] = f'sha256={signature_value}'
+                elif signature_method == 'hmac-sha1':
+                    signature_value = hmac.new(
+                        secret.encode('utf-8'),
+                        payload_json.encode('utf-8'),
+                        hashlib.sha1
+                    ).hexdigest()
+                    headers[signature_header] = f'sha1={signature_value}'
+            
+            # Request configuration
+            timeout = step_definition.get('timeout_sec', 30)
+            max_retries = step_definition.get('max_retries', 3)
+            
+            logger.info(f"Webhook call to: {url}")
+            
+            # Execute webhook with retry logic
+            last_error = None
+            for attempt in range(max_retries + 1):
+                try:
+                    start_time = datetime.utcnow()
+                    
+                    response = requests.post(
+                        url=url,
+                        headers=headers,
+                        data=payload_json,
+                        timeout=timeout,
+                        verify=True
+                    )
+                    
+                    end_time = datetime.utcnow()
+                    response_time_ms = int((end_time - start_time).total_seconds() * 1000)
+                    
+                    # Store webhook execution details
+                    self._store_webhook_execution(
+                        step['id'],
+                        url,
+                        payload,
+                        signature_method,
+                        signature_header,
+                        signature_value,
+                        response.status_code,
+                        response.text,
+                        response_time_ms,
+                        attempt,
+                        max_retries
+                    )
+                    
+                    # Check if webhook was successful
+                    success = 200 <= response.status_code < 300
+                    
+                    if success:
+                        return {
+                            'status': 'succeeded',
+                            'exit_code': 0,
+                            'stdout': f"Webhook delivered successfully: {response.status_code} ({response_time_ms}ms)",
+                            'stderr': '',
+                            'metrics': {
+                                'url': url,
+                                'status_code': response.status_code,
+                                'response_time_ms': response_time_ms,
+                                'payload_size_bytes': len(payload_json),
+                                'retry_count': attempt,
+                                'signature_method': signature_method
+                            }
+                        }
+                    else:
+                        last_error = f"HTTP {response.status_code}: {response.text}"
+                        if attempt < max_retries:
+                            # Wait before retry (exponential backoff)
+                            wait_time = 2 ** attempt
+                            logger.warning(f"Webhook failed (attempt {attempt + 1}), retrying in {wait_time}s: {last_error}")
+                            time.sleep(wait_time)
+                        continue
+                        
+                except requests.exceptions.Timeout:
+                    last_error = f"Timeout after {timeout}s"
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"Webhook timeout (attempt {attempt + 1}), retrying in {wait_time}s")
+                        time.sleep(wait_time)
+                    continue
+                except requests.exceptions.ConnectionError as e:
+                    last_error = f"Connection error: {str(e)}"
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"Webhook connection error (attempt {attempt + 1}), retrying in {wait_time}s: {last_error}")
+                        time.sleep(wait_time)
+                    continue
+            
+            # All retries failed
+            logger.error(f"Webhook failed after {max_retries + 1} attempts: {last_error}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Webhook failed after {max_retries + 1} attempts: {last_error}'
+            }
+            
+        except Exception as e:
+            logger.error(f"Webhook execution error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Webhook execution failed: {str(e)}'
+            }
+    
+    def _store_http_request(self, step_id: int, method: str, url: str, request_headers: dict,
+                           request_body: str, status_code: int, response_headers: dict,
+                           response_body: str, response_time_ms: int, ssl_verify: bool,
+                           timeout_seconds: int, max_redirects: int):
+        """Store HTTP request details in database"""
+        try:
+            conn = get_db_connection()
+            if not conn:
+                return
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO http_requests (
+                    job_run_step_id, method, url, request_headers, request_body,
+                    response_status_code, response_headers, response_body,
+                    response_time_ms, ssl_verify, timeout_seconds, max_redirects
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                step_id, method, url, json.dumps(request_headers), request_body,
+                status_code, json.dumps(response_headers), response_body,
+                response_time_ms, ssl_verify, timeout_seconds, max_redirects
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error storing HTTP request details: {e}")
+    
+    def _store_webhook_execution(self, step_id: int, webhook_url: str, payload: dict,
+                                signature_method: str, signature_header: str, signature_value: str,
+                                status_code: int, response_body: str, response_time_ms: int,
+                                retry_count: int, max_retries: int):
+        """Store webhook execution details in database"""
+        try:
+            conn = get_db_connection()
+            if not conn:
+                return
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO webhook_executions (
+                    job_run_step_id, webhook_url, payload, signature_method,
+                    signature_header, signature_value, response_status_code,
+                    response_body, response_time_ms, retry_count, max_retries
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                step_id, webhook_url, json.dumps(payload), signature_method,
+                signature_header, signature_value, status_code,
+                response_body, response_time_ms, retry_count, max_retries
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error storing webhook execution details: {e}")
     
     def _get_target_info(self, target_id: int) -> Optional[Dict[str, Any]]:
         """Get target information from database"""

@@ -33,13 +33,46 @@ const Users: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await userApi.create(formData);
+      if (editingUser) {
+        // For updates, only send fields that have values
+        const updateData: any = {};
+        if (formData.email) updateData.email = formData.email;
+        if (formData.username) updateData.username = formData.username;
+        if (formData.password) updateData.password = formData.password;
+        if (formData.role) updateData.role = formData.role;
+        
+        await userApi.update(editingUser.id, updateData);
+      } else {
+        await userApi.create(formData);
+      }
       setShowCreateModal(false);
+      setEditingUser(null);
       setFormData({ email: '', username: '', password: '', role: 'viewer' });
       fetchUsers();
     } catch (error) {
-      console.error('Failed to create user:', error);
+      console.error(`Failed to ${editingUser ? 'update' : 'create'} user:`, error);
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      email: '',
+      username: '',
+      password: '',
+      role: 'viewer'
+    });
+    setEditingUser(null);
+  };
+
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setFormData({
+      email: user.email,
+      username: user.username,
+      password: '', // Don't pre-fill password for security
+      role: user.role
+    });
+    setShowCreateModal(true);
   };
 
   const handleDelete = async (id: number) => {
@@ -70,7 +103,10 @@ const Users: React.FC = () => {
         <h1>Users</h1>
         <button 
           className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            resetForm();
+            setShowCreateModal(true);
+          }}
         >
           Add User
         </button>
@@ -108,13 +144,22 @@ const Users: React.FC = () => {
                 </td>
                 <td>{new Date(user.created_at).toLocaleDateString()}</td>
                 <td>
-                  <button 
-                    className="btn btn-danger"
-                    onClick={() => handleDelete(user.id)}
-                    style={{ fontSize: '12px' }}
-                  >
-                    Delete
-                  </button>
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button 
+                      className="btn btn-secondary"
+                      onClick={() => handleEdit(user)}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Edit
+                    </button>
+                    <button 
+                      className="btn btn-danger"
+                      onClick={() => handleDelete(user.id)}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -137,7 +182,7 @@ const Users: React.FC = () => {
           zIndex: 1000
         }}>
           <div className="card" style={{ width: '400px', margin: '20px' }}>
-            <h3>Add New User</h3>
+            <h3>{editingUser ? 'Edit User' : 'Add New User'}</h3>
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>Email:</label>
@@ -158,12 +203,12 @@ const Users: React.FC = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Password:</label>
+                <label>Password{editingUser ? ' (leave blank to keep current)' : ''}:</label>
                 <input
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  required
+                  required={!editingUser}
                 />
               </div>
               <div className="form-group">
@@ -178,11 +223,16 @@ const Users: React.FC = () => {
                 </select>
               </div>
               <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary">Create User</button>
+                <button type="submit" className="btn btn-primary">
+                  {editingUser ? 'Update User' : 'Create User'}
+                </button>
                 <button 
                   type="button" 
                   className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetForm();
+                  }}
                 >
                   Cancel
                 </button>

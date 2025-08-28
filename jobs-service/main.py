@@ -91,6 +91,99 @@ JOB_SCHEMA = {
                             "timeoutSec": {"type": "integer", "minimum": 1}
                         },
                         "additionalProperties": False
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "url"],
+                        "properties": {
+                            "type": {"enum": ["http.get", "http.post", "http.put", "http.delete", "http.patch"]},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+                            "body": {"oneOf": [{"type": "string"}, {"type": "object"}]},
+                            "auth_type": {"enum": ["none", "basic", "bearer", "api_key"]},
+                            "auth_username": {"type": "string"},
+                            "auth_password": {"type": "string"},
+                            "auth_token": {"type": "string"},
+                            "auth_header": {"type": "string"},
+                            "timeout_sec": {"type": "integer", "minimum": 1},
+                            "ssl_verify": {"type": "boolean"},
+                            "max_redirects": {"type": "integer", "minimum": 0},
+                            "expected_status": {"oneOf": [
+                                {"type": "integer"},
+                                {"type": "array", "items": {"type": "integer"}}
+                            ]}
+                        },
+                        "additionalProperties": True
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "url", "payload"],
+                        "properties": {
+                            "type": {"const": "webhook.call"},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                            "payload": {"type": "object"},
+                            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+                            "signature_method": {"enum": ["hmac-sha256", "hmac-sha1"]},
+                            "signature_header": {"type": "string"},
+                            "signature_secret": {"type": "string"},
+                            "timeout_sec": {"type": "integer", "minimum": 1},
+                            "max_retries": {"type": "integer", "minimum": 0}
+                        },
+                        "additionalProperties": True
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "target", "command"],
+                        "properties": {
+                            "type": {"const": "ssh.exec"},
+                            "target": {"type": "string"},
+                            "command": {"type": "string"},
+                            "shell": {"enum": ["bash", "sh", "zsh", "fish"], "default": "bash"},
+                            "timeout_sec": {"type": "integer", "minimum": 1}
+                        },
+                        "additionalProperties": True
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "target", "local_path", "remote_path"],
+                        "properties": {
+                            "type": {"const": "sftp.upload"},
+                            "target": {"type": "string"},
+                            "local_path": {"type": "string"},
+                            "remote_path": {"type": "string"},
+                            "preserve_permissions": {"type": "boolean", "default": True},
+                            "timeout_sec": {"type": "integer", "minimum": 1}
+                        },
+                        "additionalProperties": True
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "target", "local_path", "remote_path"],
+                        "properties": {
+                            "type": {"const": "sftp.download"},
+                            "target": {"type": "string"},
+                            "local_path": {"type": "string"},
+                            "remote_path": {"type": "string"},
+                            "preserve_permissions": {"type": "boolean", "default": True},
+                            "timeout_sec": {"type": "integer", "minimum": 1}
+                        },
+                        "additionalProperties": True
+                    },
+                    {
+                        "type": "object",
+                        "required": ["type", "target", "local_path", "remote_path"],
+                        "properties": {
+                            "type": {"const": "sftp.sync"},
+                            "target": {"type": "string"},
+                            "local_path": {"type": "string"},
+                            "remote_path": {"type": "string"},
+                            "direction": {"enum": ["upload", "download"], "default": "upload"},
+                            "preserve_permissions": {"type": "boolean", "default": True},
+                            "timeout_sec": {"type": "integer", "minimum": 1}
+                        },
+                        "additionalProperties": True
                     }
                 ]
             }

@@ -72,6 +72,7 @@ export interface Target {
   hostname: string;
   protocol: string;
   port: number;
+  os_type: string;
   credential_ref: number;
   tags: string[];
   metadata: Record<string, any>;
@@ -84,6 +85,7 @@ export interface TargetCreate {
   hostname: string;
   protocol: string;
   port: number;
+  os_type: string;
   credential_ref: number;
   tags?: string[];
   metadata?: Record<string, any>;
@@ -106,6 +108,17 @@ export interface JobCreate {
   version?: number;
   definition: Record<string, any>;
   is_active?: boolean;
+}
+
+export interface JobStep {
+  id?: string;
+  type: string;
+  name?: string;
+  target: string;
+  shell?: string;
+  command?: string;
+  timeoutSec: number;
+  config?: Record<string, any>;
 }
 
 export interface JobRun {
@@ -184,6 +197,7 @@ export interface Schedule {
   job_id: number;
   cron: string;
   timezone: string;
+  next_run?: string;
   next_run_at?: string;
   last_run_at?: string;
   is_active: boolean;
@@ -210,6 +224,7 @@ export interface ScheduleListResponse {
 
 export interface SchedulerStatus {
   scheduler_running: boolean;
+  is_running: boolean;
   active_schedules: number;
   next_execution?: string;
   last_check?: string;
