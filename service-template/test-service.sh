@@ -1,9 +1,9 @@
 #!/bin/bash
 
-echo "🧪 Testing New Service"
-echo "====================="
+echo "🧪 Testing New Service Template"
+echo "==============================="
 
-BASE_URL="https://localhost"
+BASE_URL="http://localhost:3010"
 SERVICE_NAME="new-service"
 
 # Colors for output
@@ -31,13 +31,13 @@ test_endpoint() {
     local data=$6
     
     if [ -n "$data" ]; then
-        response=$(curl -k -s -X $method "$BASE_URL$endpoint" \
+        response=$(curl -s -X $method "$BASE_URL$endpoint" \
             -H "Content-Type: application/json" \
             $headers \
             -d "$data" \
             -w "%{http_code}")
     else
-        response=$(curl -k -s -X $method "$BASE_URL$endpoint" \
+        response=$(curl -s -X $method "$BASE_URL$endpoint" \
             $headers \
             -w "%{http_code}")
     fi
@@ -57,102 +57,100 @@ test_endpoint() {
 
 echo ""
 echo "1. Testing service health endpoint..."
-test_endpoint "GET" "/api/$SERVICE_NAME/health" "200" "Health check endpoint"
+test_endpoint "GET" "/health" "200" "Health check endpoint"
 
 echo ""
-echo "2. Testing service info endpoint..."
-test_endpoint "GET" "/api/$SERVICE_NAME/info" "200" "Service info endpoint"
-
-echo ""
-echo "3. Getting authentication token..."
-LOGIN_RESPONSE=$(curl -k -s -X POST $BASE_URL/api/login \
+echo "2. Getting authentication token..."
+# Get token from auth service (assuming it's running on port 3001)
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:3001/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","password":"testpass123"}')
+  -d '{"username":"admin","password":"admin123"}')
 
-if [[ "$LOGIN_RESPONSE" == *"token"* ]]; then
-    TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+if [[ "$LOGIN_RESPONSE" == *"access_token"* ]]; then
+    TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
     print_result 0 "Authentication token obtained"
     AUTH_HEADER="-H \"Authorization: Bearer $TOKEN\""
 else
     print_result 1 "Failed to get authentication token"
     echo "Response: $LOGIN_RESPONSE"
+    echo "Note: Make sure auth-service is running on port 3001"
     exit 1
 fi
 
 echo ""
-echo "4. Testing protected endpoints..."
+echo "3. Testing protected endpoints..."
 
-# Test GET /data endpoint
-echo "   Testing GET /data..."
-test_endpoint "GET" "/api/$SERVICE_NAME/data" "200" "Get data endpoint" "$AUTH_HEADER"
+# Test GET /items endpoint
+echo "   Testing GET /items..."
+test_endpoint "GET" "/items" "200" "Get items endpoint" "$AUTH_HEADER"
 
-# Test POST /data endpoint
-echo "   Testing POST /data..."
-test_endpoint "POST" "/api/$SERVICE_NAME/data" "201" "Create data endpoint" \
+# Test POST /items endpoint
+echo "   Testing POST /items..."
+test_endpoint "POST" "/items" "200" "Create item endpoint" \
     "$AUTH_HEADER" '{"name":"Test Item","description":"Test description"}'
 
-# Test GET /data with pagination
-echo "   Testing GET /data with pagination..."
-test_endpoint "GET" "/api/$SERVICE_NAME/data?page=1&limit=5" "200" "Get data with pagination" "$AUTH_HEADER"
-
-echo ""
-echo "5. Testing service-to-service communication..."
-# Get current user ID from token verification
-USER_INFO=$(curl -k -s -X POST $BASE_URL/api/verify -H "Authorization: Bearer $TOKEN")
-if [[ "$USER_INFO" == *"user"* ]]; then
-    USER_ID=$(echo "$USER_INFO" | grep -o '"id":[0-9]*' | cut -d':' -f2)
-    test_endpoint "GET" "/api/$SERVICE_NAME/user-info/$USER_ID" "200" "Service-to-service communication" "$AUTH_HEADER"
-else
-    print_result 1 "Could not get user ID for service-to-service test"
+# Get the created item ID for further tests
+ITEMS_RESPONSE=$(curl -s -X GET "$BASE_URL/items" $AUTH_HEADER)
+if [[ "$ITEMS_RESPONSE" == *"Test Item"* ]]; then
+    ITEM_ID=$(echo "$ITEMS_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+    
+    if [ -n "$ITEM_ID" ]; then
+        echo "   Testing GET /items/$ITEM_ID..."
+        test_endpoint "GET" "/items/$ITEM_ID" "200" "Get item by ID" "$AUTH_HEADER"
+        
+        echo "   Testing PUT /items/$ITEM_ID..."
+        test_endpoint "PUT" "/items/$ITEM_ID" "200" "Update item endpoint" \
+            "$AUTH_HEADER" '{"name":"Updated Test Item","description":"Updated description"}'
+        
+        echo "   Testing DELETE /items/$ITEM_ID..."
+        test_endpoint "DELETE" "/items/$ITEM_ID" "200" "Delete item endpoint" "$AUTH_HEADER"
+    fi
 fi
 
 echo ""
-echo "6. Testing error handling..."
+echo "4. Testing error handling..."
 
 # Test unauthorized access
 echo "   Testing unauthorized access..."
-test_endpoint "GET" "/api/$SERVICE_NAME/data" "401" "Unauthorized access handling"
+test_endpoint "GET" "/items" "401" "Unauthorized access handling"
 
 # Test invalid endpoint
 echo "   Testing invalid endpoint..."
-test_endpoint "GET" "/api/$SERVICE_NAME/nonexistent" "404" "404 error handling" "$AUTH_HEADER"
+test_endpoint "GET" "/nonexistent" "404" "404 error handling" "$AUTH_HEADER"
 
 # Test invalid data
 echo "   Testing invalid data..."
-test_endpoint "POST" "/api/$SERVICE_NAME/data" "400" "Invalid data handling" \
+test_endpoint "POST" "/items" "422" "Invalid data handling" \
     "$AUTH_HEADER" '{"invalid":"data"}'
 
 echo ""
-echo "7. Testing service integration..."
+echo "5. Testing service health and database connectivity..."
 
-# Check if service is accessible through nginx
-NGINX_RESPONSE=$(curl -k -s -o /dev/null -w "%{http_code}" $BASE_URL/api/$SERVICE_NAME/health)
-if [ "$NGINX_RESPONSE" = "200" ]; then
-    print_result 0 "Service accessible through nginx gateway"
+# Check health endpoint response
+HEALTH_RESPONSE=$(curl -s "$BASE_URL/health")
+if [[ "$HEALTH_RESPONSE" == *"healthy"* ]]; then
+    print_result 0 "Service reports healthy status"
 else
-    print_result 1 "Service not accessible through nginx gateway"
-fi
-
-# Check if service can communicate with other services
-AUTH_HEALTH=$(curl -k -s -o /dev/null -w "%{http_code}" $BASE_URL/api/verify -H "Authorization: Bearer $TOKEN")
-if [ "$AUTH_HEALTH" = "200" ]; then
-    print_result 0 "Service can communicate with auth service"
-else
-    print_result 1 "Service cannot communicate with auth service"
+    print_result 1 "Service reports unhealthy status"
+    echo "Health response: $HEALTH_RESPONSE"
 fi
 
 echo ""
-echo "🎉 Service Testing Complete!"
+echo "🎉 Service Template Testing Complete!"
 echo ""
 echo "📋 Test Summary:"
 echo "   - Health check endpoint"
-echo "   - Service info endpoint"
-echo "   - Authentication integration"
-echo "   - Protected endpoints"
-echo "   - CRUD operations"
-echo "   - Service-to-service communication"
-echo "   - Error handling"
-echo "   - Gateway integration"
+echo "   - JWT authentication integration"
+echo "   - CRUD operations (Create, Read, Update, Delete)"
+echo "   - Error handling (401, 404, 422)"
+echo "   - Database connectivity"
 echo ""
-echo "🌐 Service accessible at: $BASE_URL/api/$SERVICE_NAME/"
-echo "📚 API Documentation: See README.md"
+echo "🌐 Service accessible at: $BASE_URL"
+echo "📚 API Documentation: $BASE_URL/docs (Swagger UI)"
+echo "📖 Alternative docs: $BASE_URL/redoc (ReDoc)"
+echo ""
+echo "💡 To customize this template:"
+echo "   1. Update service name and description in main.py"
+echo "   2. Modify the database schema and models"
+echo "   3. Add your business logic to the endpoints"
+echo "   4. Update this test script for your specific endpoints"

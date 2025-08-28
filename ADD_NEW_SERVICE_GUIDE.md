@@ -2,11 +2,11 @@
 
 ## 📋 Quick Start Checklist
 
-Follow this step-by-step guide to add a new service to the microservice system.
+Follow this step-by-step guide to add a new service to the OpsConductor microservice system.
 
 ### ✅ Prerequisites
 - [ ] Docker and Docker Compose installed
-- [ ] Basic understanding of Node.js and Express
+- [ ] Basic understanding of Python and FastAPI
 - [ ] PostgreSQL knowledge (if database needed)
 - [ ] Understanding of JWT authentication
 
@@ -28,88 +28,140 @@ cd your-new-service
 
 ### Step 2: Customize Service Files
 
-#### 2.1 Update `package.json`
-```json
-{
-  "name": "your-new-service",
-  "description": "Description of your new service",
-  "author": "Your Name"
-}
+#### 2.1 Update Service Configuration
+- Rename files and update references
+- Choose an available port number (next in sequence: 3010, 3011, etc.)
+- Update service name throughout files
+
+#### 2.2 Create `main.py` (FastAPI Service)
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import os
+from typing import List, Optional
+
+app = FastAPI(title="Your New Service", version="1.0.0")
+security = HTTPBearer()
+
+# Database connection
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv('DB_HOST', 'postgres'),
+        port=os.getenv('DB_PORT', '5432'),
+        database=os.getenv('DB_NAME', 'opsconductor'),
+        user=os.getenv('DB_USER', 'opsconductor'),
+        password=os.getenv('DB_PASSWORD', 'opsconductor123')
+    )
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "your-new-service"}
+
+@app.get("/your-endpoint")
+async def your_endpoint():
+    # Your business logic here
+    return {"message": "Your new service is working!"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=3010)
 ```
 
-#### 2.2 Update `server.js`
-Replace all instances of:
-- `new-service` → `your-new-service`
-- `3003` → `your-port-number` (use next available port)
-- Modify endpoints based on your business logic
-
-#### 2.3 Update `init.sql`
-- Modify database schema for your service needs
-- Update table names and structure
-- Add your specific indexes and constraints
+#### 2.3 Create `requirements.txt`
+```txt
+fastapi==0.104.1
+uvicorn==0.24.0
+psycopg2-binary==2.9.9
+python-jose[cryptography]==3.3.0
+python-dotenv==1.0.0
+```
 
 #### 2.4 Update `Dockerfile`
-- Change the EXPOSE port if needed
-- Modify health check URL if needed
+```dockerfile
+FROM python:3.11-slim
 
-#### 2.5 Update `README.md`
-- Replace service description
-- Update API documentation
-- Add your specific environment variables
+WORKDIR /app
 
-### Step 3: Add to Docker Compose
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-Edit `docker-compose.yml` and add your service:
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-```yaml
-# Add database (if needed)
-your-new-service-db:
-  image: postgres:15
-  environment:
-    POSTGRES_DB: yournewservicedb
-    POSTGRES_USER: yournewservice
-    POSTGRES_PASSWORD: yournewservicepass123
-  volumes:
-    - your_new_service_data:/var/lib/postgresql/data
-    - ./your-new-service/init.sql:/docker-entrypoint-initdb.d/init.sql
-  networks:
-    - microservice-network
+# Copy application code
+COPY . .
 
-# Add service
-your-new-service:
-  build: ./your-new-service
-  depends_on:
-    - your-new-service-db  # if database needed
-  environment:
-    PORT: 3004  # use next available port
-    DB_HOST: your-new-service-db
-    DB_PORT: 5432
-    DB_NAME: yournewservicedb
-    DB_USER: yournewservice
-    DB_PASS: yournewservicepass123
-    AUTH_SERVICE_URL: http://auth-service:3002
-    USER_SERVICE_URL: http://user-service:3001
-  networks:
-    - microservice-network
+# Expose port
+EXPOSE 3010
 
-# Add volume (if database needed)
-volumes:
-  your_new_service_data:
+# Run the application
+CMD ["python", "main.py"]
 ```
 
-### Step 4: Update Nginx Configuration
+### Step 3: Database Schema (if needed)
 
-Edit `nginx/nginx.conf` and add:
+#### 3.1 Create Database Migration
+Create a new SQL file in `database/` directory:
+```sql
+-- database/add-your-service-schema.sql
+CREATE TABLE IF NOT EXISTS your_table (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
+-- Add indexes
+CREATE INDEX IF NOT EXISTS idx_your_table_name ON your_table(name);
+```
+
+#### 3.2 Apply Migration
+```bash
+# Apply the migration
+docker exec opsconductor-postgres psql -U opsconductor -d opsconductor -f /docker-entrypoint-initdb.d/add-your-service-schema.sql
+```
+
+### Step 4: Update Docker Compose
+
+#### 4.1 Add Service to `docker-compose-python.yml`
+```yaml
+  your-new-service:
+    build: ./your-new-service
+    container_name: opsconductor-your-new-service
+    ports:
+      - "3010:3010"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=opsconductor
+      - DB_USER=opsconductor
+      - DB_PASSWORD=opsconductor123
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+    depends_on:
+      - postgres
+    networks:
+      - opsconductor-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+### Step 5: Update Nginx Configuration
+
+#### 5.1 Add Route to `nginx/nginx.conf`
 ```nginx
-# Add upstream
-upstream your-new-service {
-    server your-new-service:3004;  # use your port
-}
-
-# Add location block in server section
-location /api/your-new-service/ {
-    proxy_pass http://your-new-service/;
+# Add to the server block
+location /api/v1/your-service/ {
+    proxy_pass http://your-new-service:3010/;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -117,523 +169,229 @@ location /api/your-new-service/ {
 }
 ```
 
-### Step 5: Update Frontend Service (Optional)
+### Step 6: Frontend Integration (if needed)
 
-If you need frontend integration, edit `frontend/server.js`:
+#### 6.1 Add API Service
+Create `frontend/src/services/yourNewService.ts`:
+```typescript
+import axios from 'axios';
+import { getAuthToken } from './auth';
 
-```javascript
-// Add service URL
-const YOUR_NEW_SERVICE_URL = process.env.YOUR_NEW_SERVICE_URL || 'http://your-new-service:3004';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://localhost:8443';
 
-// Add proxy endpoints
-app.get('/api/your-new-service/*', async (req, res) => {
-  try {
-    const path = req.path.replace('/api/your-new-service', '');
-    const response = await axios.get(`${YOUR_NEW_SERVICE_URL}${path}`, {
-      params: req.query,
-      headers: {
-        'Authorization': req.headers.authorization
-      }
+export const yourNewService = {
+  async getItems() {
+    const token = getAuthToken();
+    const response = await axios.get(`${API_BASE_URL}/api/v1/your-service/items`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
-    res.json(response.data);
-  } catch (error) {
-    if (error.response) {
-      res.status(error.response.status).json(error.response.data);
-    } else {
-      console.error('Service proxy error:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
+    return response.data;
+  },
+
+  async createItem(data: any) {
+    const token = getAuthToken();
+    const response = await axios.post(`${API_BASE_URL}/api/v1/your-service/items`, data, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
   }
-});
-
-// Add POST, PUT, DELETE proxies as needed
+};
 ```
 
-Update frontend environment in `docker-compose.yml`:
-```yaml
-frontend:
-  environment:
-    YOUR_NEW_SERVICE_URL: http://your-new-service:3004
+#### 6.2 Add React Component
+Create `frontend/src/components/YourNewComponent.tsx`:
+```typescript
+import React, { useState, useEffect } from 'react';
+import { yourNewService } from '../services/yourNewService';
+
+const YourNewComponent: React.FC = () => {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadItems();
+  }, []);
+
+  const loadItems = async () => {
+    try {
+      const data = await yourNewService.getItems();
+      setItems(data);
+    } catch (error) {
+      console.error('Error loading items:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <h2>Your New Service</h2>
+      {/* Your component UI here */}
+    </div>
+  );
+};
+
+export default YourNewComponent;
 ```
 
-### Step 6: Create Test Script
+### Step 7: Testing
 
-Copy and customize the test script:
+#### 7.1 Create Test Script
+Create `test-your-service.sh`:
 ```bash
-cp service-template/test-service.sh test-your-new-service.sh
-chmod +x test-your-new-service.sh
+#!/bin/bash
 
-# Edit the script and update:
-# - SERVICE_NAME="your-new-service"
-# - Test endpoints specific to your service
+echo "🧪 Testing Your New Service"
+echo "=========================="
+
+# Test service health
+echo "1. Testing service health..."
+HEALTH_RESPONSE=$(curl -s http://localhost:3010/health)
+if [[ "$HEALTH_RESPONSE" == *"healthy"* ]]; then
+    echo "✅ Service is healthy"
+else
+    echo "❌ Service health check failed"
+    exit 1
+fi
+
+# Test your endpoints
+echo "2. Testing your endpoints..."
+# Add your specific tests here
+
+echo "✅ All tests passed!"
 ```
 
-### Step 7: Build and Deploy
-
+#### 7.2 Make Script Executable
 ```bash
-# Build and start all services
-sudo docker compose up --build -d
+chmod +x test-your-service.sh
+```
 
-# Check if your service is running
-sudo docker compose ps
+### Step 8: Deployment
+
+#### 8.1 Build and Start Service
+```bash
+# Build the new service
+docker-compose -f docker-compose-python.yml build your-new-service
+
+# Start the service
+docker-compose -f docker-compose-python.yml up -d your-new-service
 
 # Check logs
-sudo docker compose logs -f your-new-service
-
-# Test your service
-./test-your-new-service.sh
+docker-compose -f docker-compose-python.yml logs -f your-new-service
 ```
 
----
-
-## 🎯 Service Development Patterns
-
-### 1. Database Service Pattern
-For services that need persistent data storage:
-
-```javascript
-// Database connection with connection pooling
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// CRUD operations
-app.get('/items', validateToken, async (req, res) => {
-  const result = await pool.query('SELECT * FROM items WHERE user_id = $1', [req.user.id]);
-  res.json(result.rows);
-});
-```
-
-### 2. Stateless Service Pattern
-For services that don't need a database:
-
-```javascript
-// Remove database-related code
-// Focus on business logic and external API calls
-
-app.get('/calculate', validateToken, (req, res) => {
-  const { value1, value2 } = req.query;
-  const result = performCalculation(value1, value2);
-  res.json({ result });
-});
-```
-
-### 3. Integration Service Pattern
-For services that integrate with external APIs:
-
-```javascript
-const axios = require('axios');
-
-app.get('/external-data', validateToken, async (req, res) => {
-  try {
-    const response = await axios.get('https://external-api.com/data', {
-      headers: { 'API-Key': process.env.EXTERNAL_API_KEY }
-    });
-    res.json(response.data);
-  } catch (error) {
-    res.status(500).json({ error: 'External service unavailable' });
-  }
-});
-```
-
----
-
-## 🔧 Common Customizations
-
-### Authentication Variations
-
-#### Optional Authentication
-```javascript
-// Middleware that allows both authenticated and anonymous access
-async function optionalAuth(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (token) {
-    try {
-      const response = await axios.post(`${AUTH_SERVICE_URL}/verify`, {}, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      req.user = response.data.user;
-    } catch (error) {
-      // Continue without user info
-    }
-  }
-  next();
-}
-```
-
-#### Role-Based Access
-```javascript
-function requireRole(role) {
-  return async (req, res, next) => {
-    await validateToken(req, res, () => {});
-    if (!req.user.roles || !req.user.roles.includes(role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
-    }
-    next();
-  };
-}
-
-app.get('/admin-only', requireRole('admin'), (req, res) => {
-  res.json({ message: 'Admin access granted' });
-});
-```
-
-### Database Patterns
-
-#### Soft Delete
-```sql
-ALTER TABLE your_table ADD COLUMN deleted_at TIMESTAMP NULL;
-CREATE INDEX idx_your_table_deleted_at ON your_table(deleted_at);
-```
-
-```javascript
-// Soft delete implementation
-app.delete('/items/:id', validateToken, async (req, res) => {
-  await pool.query(
-    'UPDATE items SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2',
-    [req.params.id, req.user.id]
-  );
-  res.json({ message: 'Item deleted' });
-});
-
-// Filter out deleted items in queries
-app.get('/items', validateToken, async (req, res) => {
-  const result = await pool.query(
-    'SELECT * FROM items WHERE user_id = $1 AND deleted_at IS NULL',
-    [req.user.id]
-  );
-  res.json(result.rows);
-});
-```
-
-#### Audit Trail
-```javascript
-async function logAudit(tableName, recordId, action, oldValues, newValues, userId) {
-  await pool.query(
-    'INSERT INTO audit_log (table_name, record_id, action, old_values, new_values, user_id) VALUES ($1, $2, $3, $4, $5, $6)',
-    [tableName, recordId, action, JSON.stringify(oldValues), JSON.stringify(newValues), userId]
-  );
-}
-```
-
-### Error Handling Patterns
-
-#### Custom Error Classes
-```javascript
-class ValidationError extends Error {
-  constructor(message, field) {
-    super(message);
-    this.name = 'ValidationError';
-    this.field = field;
-    this.statusCode = 400;
-  }
-}
-
-class NotFoundError extends Error {
-  constructor(resource) {
-    super(`${resource} not found`);
-    this.name = 'NotFoundError';
-    this.statusCode = 404;
-  }
-}
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  if (error.statusCode) {
-    res.status(error.statusCode).json({ 
-      error: error.message,
-      field: error.field 
-    });
-  } else {
-    log.error('Unhandled error', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-```
-
----
-
-## 📊 Monitoring and Observability
-
-### Health Check Enhancements
-```javascript
-app.get('/health', async (req, res) => {
-  const health = {
-    status: 'healthy',
-    service: 'your-service',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    version: process.env.npm_package_version || '1.0.0'
-  };
-
-  // Check database connectivity
-  if (pool) {
-    try {
-      await pool.query('SELECT 1');
-      health.database = 'healthy';
-    } catch (error) {
-      health.database = 'unhealthy';
-      health.status = 'degraded';
-    }
-  }
-
-  // Check external dependencies
-  try {
-    await axios.get(`${AUTH_SERVICE_URL}/health`, { timeout: 5000 });
-    health.authService = 'healthy';
-  } catch (error) {
-    health.authService = 'unhealthy';
-    health.status = 'degraded';
-  }
-
-  const statusCode = health.status === 'healthy' ? 200 : 503;
-  res.status(statusCode).json(health);
-});
-```
-
-### Metrics Collection
-```javascript
-let requestCount = 0;
-let errorCount = 0;
-
-// Metrics middleware
-app.use((req, res, next) => {
-  requestCount++;
-  const start = Date.now();
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    if (res.statusCode >= 400) errorCount++;
-    
-    log.info('Request completed', {
-      method: req.method,
-      path: req.path,
-      statusCode: res.statusCode,
-      duration,
-      userAgent: req.get('User-Agent')
-    });
-  });
-  
-  next();
-});
-
-// Metrics endpoint
-app.get('/metrics', (req, res) => {
-  res.json({
-    requests: requestCount,
-    errors: errorCount,
-    errorRate: requestCount > 0 ? (errorCount / requestCount) * 100 : 0,
-    uptime: process.uptime(),
-    memory: process.memoryUsage()
-  });
-});
-```
-
----
-
-## 🧪 Testing Strategies
-
-### Unit Tests
-```javascript
-// tests/service.test.js
-const request = require('supertest');
-const app = require('../server');
-
-describe('Service Endpoints', () => {
-  test('GET /health should return 200', async () => {
-    const response = await request(app).get('/health');
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe('healthy');
-  });
-
-  test('GET /info should return service information', async () => {
-    const response = await request(app).get('/info');
-    expect(response.status).toBe(200);
-    expect(response.body.service).toBe('your-service');
-  });
-});
-```
-
-### Integration Tests
-```javascript
-describe('Integration Tests', () => {
-  let authToken;
-
-  beforeAll(async () => {
-    // Get auth token for tests
-    const loginResponse = await request(app)
-      .post('/api/login')
-      .send({ username: 'testuser', password: 'testpass123' });
-    authToken = loginResponse.body.token;
-  });
-
-  test('Protected endpoint should require authentication', async () => {
-    const response = await request(app).get('/data');
-    expect(response.status).toBe(401);
-  });
-
-  test('Protected endpoint should work with valid token', async () => {
-    const response = await request(app)
-      .get('/data')
-      .set('Authorization', `Bearer ${authToken}`);
-    expect(response.status).toBe(200);
-  });
-});
-```
-
----
-
-## 🚀 Deployment Best Practices
-
-### Environment Configuration
+#### 8.2 Verify Deployment
 ```bash
-# .env.example
-PORT=3004
-DB_HOST=your-new-service-db
-DB_PORT=5432
-DB_NAME=yournewservicedb
-DB_USER=yournewservice
-DB_PASS=yournewservicepass123
-AUTH_SERVICE_URL=http://auth-service:3002
-USER_SERVICE_URL=http://user-service:3001
-LOG_LEVEL=info
-NODE_ENV=production
+# Test the service
+./test-your-service.sh
+
+# Check system status
+./system-status.sh
 ```
 
-### Production Considerations
-1. **Security**: Use strong passwords and secrets
-2. **Logging**: Implement structured logging
-3. **Monitoring**: Add health checks and metrics
-4. **Scaling**: Design for horizontal scaling
-5. **Backup**: Implement database backup strategies
-6. **SSL**: Use proper SSL certificates in production
+---
 
-### Performance Optimization
-```javascript
-// Connection pooling
-const pool = new Pool({
-  max: 20,                    // Maximum connections
-  idleTimeoutMillis: 30000,   // Close idle connections
-  connectionTimeoutMillis: 2000, // Connection timeout
-});
+## 📋 Service Development Best Practices
 
-// Request caching (if applicable)
-const cache = new Map();
-app.get('/cached-data', (req, res) => {
-  const cacheKey = `data-${req.user.id}`;
-  if (cache.has(cacheKey)) {
-    return res.json(cache.get(cacheKey));
-  }
-  
-  // Fetch data and cache it
-  const data = fetchData();
-  cache.set(cacheKey, data);
-  setTimeout(() => cache.delete(cacheKey), 300000); // 5 min cache
-  res.json(data);
-});
+### 1. API Design
+- Follow RESTful conventions
+- Use consistent error responses
+- Implement proper HTTP status codes
+- Add OpenAPI/Swagger documentation
+
+### 2. Security
+- Validate JWT tokens for protected endpoints
+- Sanitize all input data
+- Use parameterized queries for database operations
+- Implement proper error handling
+
+### 3. Database
+- Use connection pooling
+- Implement proper indexing
+- Handle database errors gracefully
+- Use transactions for multi-step operations
+
+### 4. Monitoring
+- Implement health check endpoints
+- Add structured logging
+- Include metrics collection
+- Handle graceful shutdown
+
+### 5. Testing
+- Write unit tests for business logic
+- Create integration tests for API endpoints
+- Test error scenarios
+- Validate database operations
+
+---
+
+## 🔧 Common Patterns
+
+### Authentication Middleware
+```python
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer
+import jwt
+import os
+
+security = HTTPBearer()
+
+async def verify_token(token: str = Depends(security)):
+    try:
+        payload = jwt.decode(token.credentials, os.getenv('JWT_SECRET_KEY'), algorithms=['HS256'])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+```
+
+### Database Connection Pool
+```python
+from psycopg2 import pool
+import os
+
+# Create connection pool
+db_pool = psycopg2.pool.SimpleConnectionPool(
+    1, 20,  # min and max connections
+    host=os.getenv('DB_HOST'),
+    port=os.getenv('DB_PORT'),
+    database=os.getenv('DB_NAME'),
+    user=os.getenv('DB_USER'),
+    password=os.getenv('DB_PASSWORD')
+)
+
+def get_db_connection():
+    return db_pool.getconn()
+
+def return_db_connection(conn):
+    db_pool.putconn(conn)
+```
+
+### Error Handling
+```python
+from fastapi import HTTPException
+import logging
+
+logger = logging.getLogger(__name__)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global exception: {exc}")
+    return HTTPException(status_code=500, detail="Internal server error")
 ```
 
 ---
 
 ## 📚 Additional Resources
 
-### Documentation Templates
-- API documentation with OpenAPI/Swagger
-- Database schema documentation
-- Deployment guides
-- Troubleshooting guides
-
-### Useful Libraries
-- **Validation**: `joi`, `express-validator`
-- **Testing**: `jest`, `supertest`, `nock`
-- **Monitoring**: `prom-client`, `winston`
-- **Security**: `helmet`, `rate-limiter-flexible`
-- **Caching**: `redis`, `node-cache`
-
-### Common Patterns
-- Repository pattern for data access
-- Service layer for business logic
-- Middleware for cross-cutting concerns
-- Event-driven architecture with message queues
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+- [JWT Authentication](https://jwt.io/)
 
 ---
 
-## 🎯 Success Criteria
-
-Your new service is successfully integrated when:
-
-- [ ] Service starts without errors
-- [ ] Health check endpoint returns 200
-- [ ] Database connections work (if applicable)
-- [ ] Authentication integration works
-- [ ] Service is accessible through nginx gateway
-- [ ] All tests pass
-- [ ] Service can communicate with other services
-- [ ] Logging is working properly
-- [ ] Documentation is updated
-
----
-
-## 🆘 Troubleshooting
-
-### Common Issues
-
-#### Service Won't Start
-```bash
-# Check logs
-sudo docker compose logs your-new-service
-
-# Common causes:
-# - Port conflicts
-# - Database connection issues
-# - Missing environment variables
-# - Syntax errors in code
-```
-
-#### Database Connection Issues
-```bash
-# Check if database is running
-sudo docker compose ps
-
-# Check database logs
-sudo docker compose logs your-new-service-db
-
-# Test connection manually
-sudo docker compose exec your-new-service-db psql -U yournewservice -d yournewservicedb
-```
-
-#### Authentication Issues
-```bash
-# Verify auth service is running
-curl -k https://localhost/api/auth/health
-
-# Check token format
-echo "YOUR_TOKEN" | base64 -d
-
-# Verify service can reach auth service
-sudo docker compose exec your-new-service curl http://auth-service:3002/health
-```
-
-#### Nginx Routing Issues
-```bash
-# Check nginx configuration
-sudo docker compose exec nginx nginx -t
-
-# Reload nginx configuration
-sudo docker compose restart nginx
-
-# Check nginx logs
-sudo docker compose logs nginx
-```
-
----
-
-This guide provides everything you need to successfully add new services to the microservice system. Follow the steps carefully and refer to the troubleshooting section if you encounter issues.
+**Happy coding!** 🚀 Your new service should now be fully integrated into the OpsConductor system.

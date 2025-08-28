@@ -20,7 +20,7 @@ A comprehensive microservices-based system for managing Windows environments, jo
 1. **auth-service** (Port 3001) - JWT authentication and authorization
 2. **user-service** (Port 3002) - User management and profiles
 3. **credentials-service** (Port 3004) - Secure credential storage
-4. **targets-service** (Port 3003) - Windows target management
+4. **targets-service** (Port 3005) - Windows target management
 5. **jobs-service** (Port 3006) - Job definition and management
 6. **executor-service** (Port 3007) - Job execution via WinRM
 7. **scheduler-service** (Port 3008) - Job scheduling system
@@ -141,10 +141,9 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ## 📚 Documentation
 
-- [Architecture Documentation](ARCHITECTURE_DOCUMENTATION.md)
 - [System Overview](SYSTEM_OVERVIEW.md)
 - [Add New Service Guide](ADD_NEW_SERVICE_GUIDE.md)
-- [User Management Features](USER_MANAGEMENT_FEATURES.md)
+
 
 ## 🔒 Security
 
