@@ -144,6 +144,7 @@ linux_system_info        ✅ Cached Linux system information from SSH targets
 20. **Advanced Scheduler**: Enhanced scheduling with maintenance windows, job dependencies, and retry policies
 21. **Improved Form UX**: Clean form state management with proper create/edit mode distinction and form reset functionality
 22. **Target Discovery** (PLANNED): Automated network scanning and target onboarding with bulk import capabilities
+23. **Job Notification Steps** (PLANNED): Insert notification actions anywhere in job workflows with dynamic content and multi-channel support
 
 ### **API Endpoints - ALL OPERATIONAL:**
 
@@ -1755,7 +1756,7 @@ onClick={() => {
 ---
 
 **System Status: CORE SYSTEM + ENHANCED MULTI-CHANNEL NOTIFICATIONS + WINRM TEST FIXES + UI/UX IMPROVEMENTS COMPLETE ✅**  
-**Next: PHASE 10 - TARGET DISCOVERY SYSTEM (Network scanning, automatic target onboarding, bulk import)**
+**Next: PHASE 10 - TARGET DISCOVERY SYSTEM & PHASE 11 - JOB NOTIFICATION STEPS**
 
 ---
 
@@ -2015,6 +2016,315 @@ Configuration Example:
 
 ---
 
+## 📧 **PHASE 11: JOB NOTIFICATION STEPS** (PLANNED)
+
+### **🎯 CONCEPT OVERVIEW**
+
+Job Notification Steps will allow users to insert notification actions anywhere within job workflows. These steps can send contextual notifications via multiple channels (email, Slack, Teams, webhooks) with dynamic content based on job variables and execution state.
+
+### **🏗️ PROPOSED ARCHITECTURE**
+
+**Core Components:**
+- **Notification Step Executor** - New step type in executor-service
+- **Template Engine** - Variable substitution and message rendering
+- **Conditional Logic** - Send notifications based on job state/results
+- **Multi-Channel Support** - Integration with existing notification service
+- **Template Variables** - Rich job context available for message customization
+
+### **📋 IMPLEMENTATION PHASES**
+
+#### **PHASE 11.1: Email Notification Step Foundation** (Week 1)
+
+**New Step Type: `notification.email`**
+```json
+{
+  "type": "notification.email",
+  "name": "Send Status Update",
+  "config": {
+    "recipients": ["admin@company.com", "team@company.com"],
+    "subject": "Job {{job_name}} - Step {{step_number}} Complete",
+    "message": "Job '{{job_name}}' has completed step {{step_number}}: {{step_name}}\n\nStatus: {{step_status}}\nTarget: {{target_hostname}}\nExecution Time: {{execution_time}}",
+    "send_condition": "always",  // "always", "on_success", "on_failure", "on_error"
+    "include_job_context": true,
+    "include_execution_logs": false
+  }
+}
+```
+
+**Database Schema Extensions:**
+```sql
+-- Extend job_run_steps table to support notification steps
+ALTER TABLE job_run_steps ADD COLUMN notification_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE job_run_steps ADD COLUMN notification_details JSONB;
+
+-- Track notification attempts within job execution
+CREATE TABLE job_notification_attempts (
+    id SERIAL PRIMARY KEY,
+    job_run_id INTEGER REFERENCES job_runs(id),
+    step_id INTEGER REFERENCES job_run_steps(id),
+    notification_type VARCHAR(50) NOT NULL, -- 'email', 'slack', 'teams', 'webhook'
+    recipients JSONB NOT NULL,              -- Array of recipients
+    subject VARCHAR(500),
+    message TEXT,
+    rendered_message TEXT,                  -- Message after variable substitution
+    status VARCHAR(50) DEFAULT 'pending',   -- 'pending', 'sent', 'failed'
+    sent_at TIMESTAMP,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### **PHASE 11.2: Template Engine & Variable Substitution** (Week 2)
+
+**Available Template Variables:**
+```javascript
+{
+  // Job Information
+  job_id: 123,
+  job_name: "Windows Update Check",
+  job_run_id: 456,
+  target_hostname: "server01.company.com",
+  target_ip: "192.168.1.100",
+  
+  // Execution Context
+  step_number: 3,
+  step_name: "Check Windows Updates",
+  step_status: "success", // "success", "failed", "error"
+  execution_time: "00:02:15",
+  started_at: "2025-08-28T10:30:00Z",
+  
+  // Previous Step Results
+  previous_step_output: "Found 5 available updates",
+  previous_step_error: null,
+  
+  // Job Parameters (user-defined)
+  update_type: "security",
+  reboot_allowed: false
+}
+```
+
+**Send Conditions:**
+- ✅ **Always**: Send notification regardless of step status
+- ✅ **On Success**: Send only when previous step succeeded
+- ✅ **On Failure**: Send only when previous step failed
+- ✅ **On Error**: Send only when step encountered an error
+- ✅ **On Completion**: Send when step completes (success or failure)
+
+#### **PHASE 11.3: Frontend Integration** (Week 3)
+
+**Visual Job Builder Enhancement:**
+```typescript
+// New step type in VisualJobBuilder
+const STEP_TYPES = {
+  'notification.email': {
+    name: 'Send Email Notification',
+    icon: '📧',
+    category: 'Notification',
+    defaultConfig: {
+      recipients: [],
+      subject: 'Job {{job_name}} Update',
+      message: 'Job step completed successfully.',
+      send_condition: 'always',
+      include_job_context: true
+    }
+  }
+};
+```
+
+**Notification Step Configuration UI:**
+- ✅ **Recipients Management**: Tag input for email addresses
+- ✅ **Subject Template**: Text input with variable suggestions
+- ✅ **Message Template**: Textarea with rich variable helper
+- ✅ **Send Condition**: Dropdown for conditional logic
+- ✅ **Variable Helper**: Visual guide showing available template variables
+- ✅ **Template Preview**: Real-time preview with sample data
+
+#### **PHASE 11.4: Multi-Channel Support** (Week 4)
+
+**Additional Step Types:**
+- ✅ **notification.slack**: Send to Slack channels/users
+- ✅ **notification.teams**: Send to Microsoft Teams channels
+- ✅ **notification.webhook**: Send to custom webhook endpoints
+- ✅ **notification.sms**: Send SMS notifications (future)
+
+**Channel-Specific Features:**
+```json
+// Slack notification step
+{
+  "type": "notification.slack",
+  "config": {
+    "channel": "#ops-alerts",
+    "username": "OpsConductor Bot",
+    "message": "🚀 Job {{job_name}} completed on {{target_hostname}}",
+    "attachments": [
+      {
+        "color": "good",
+        "fields": [
+          {"title": "Duration", "value": "{{execution_time}}", "short": true},
+          {"title": "Status", "value": "{{step_status}}", "short": true}
+        ]
+      }
+    ]
+  }
+}
+```
+
+### **📊 USER WORKFLOW EXAMPLES**
+
+#### **Example 1: Progress Notification**
+```json
+{
+  "type": "notification.email",
+  "name": "Notify Job Start",
+  "config": {
+    "recipients": ["ops-team@company.com"],
+    "subject": "Job Started: {{job_name}} on {{target_hostname}}",
+    "message": "Automated job '{{job_name}}' has started on target {{target_hostname}} ({{target_ip}}).\n\nJob ID: {{job_run_id}}\nStarted: {{started_at}}\n\nYou will receive another notification when the job completes.",
+    "send_condition": "always"
+  }
+}
+```
+
+#### **Example 2: Conditional Error Alert**
+```json
+{
+  "type": "notification.email",
+  "name": "Error Alert",
+  "config": {
+    "recipients": ["admin@company.com", "oncall@company.com"],
+    "subject": "🚨 Job Failed: {{job_name}} on {{target_hostname}}",
+    "message": "ALERT: Job '{{job_name}}' has failed on {{target_hostname}}.\n\nError Details:\n{{previous_step_error}}\n\nStep Output:\n{{previous_step_output}}\n\nPlease investigate immediately.",
+    "send_condition": "on_failure"
+  }
+}
+```
+
+#### **Example 3: Success Summary with Slack**
+```json
+{
+  "type": "notification.slack",
+  "name": "Success Notification",
+  "config": {
+    "channel": "#infrastructure",
+    "message": "✅ Job '{{job_name}}' completed successfully on {{target_hostname}} in {{execution_time}}",
+    "send_condition": "on_success"
+  }
+}
+```
+
+### **🔧 TECHNICAL IMPLEMENTATION**
+
+**Enhanced Step Executor:**
+```python
+# In executor-service/main.py
+class NotificationStepExecutor:
+    async def execute_notification_step(self, step_config: dict, job_context: dict) -> dict:
+        """Execute notification step with variable substitution"""
+        
+        # 1. Check send condition
+        if not self._should_send_notification(step_config, job_context):
+            return {"status": "skipped", "message": "Send condition not met"}
+        
+        # 2. Render message template with job variables
+        rendered_content = self._render_notification_template(step_config, job_context)
+        
+        # 3. Send notification via notification service
+        notification_result = await self._send_notification(rendered_content)
+        
+        # 4. Log notification attempt
+        await self._log_notification_attempt(step_config, rendered_content, notification_result)
+        
+        return notification_result
+```
+
+**Integration with Notification Service:**
+```python
+# New endpoint in notification-service
+@app.post("/internal/job-notification")
+async def send_job_notification(notification_data: JobNotificationRequest):
+    """Send notification from job execution with context"""
+    
+    # Create notification record
+    notification = await create_job_notification(notification_data)
+    
+    # Send via appropriate channel
+    if notification_data.type == "email":
+        result = await send_email_notification(notification_data)
+    elif notification_data.type == "slack":
+        result = await send_slack_notification(notification_data)
+    
+    # Update notification status
+    await update_notification_status(notification.id, result)
+    
+    return result
+```
+
+### **📈 EXPECTED BENEFITS**
+
+**Operational Benefits:**
+- ✅ **Real-time Job Monitoring**: Get notified of job progress without polling
+- ✅ **Proactive Error Handling**: Immediate alerts when jobs fail
+- ✅ **Stakeholder Communication**: Keep managers informed of job completion
+- ✅ **Custom Workflows**: Tailor notifications to specific job requirements
+
+**Technical Benefits:**
+- ✅ **Flexible Integration**: Works with any job workflow at any step
+- ✅ **Dynamic Content**: Context-aware notifications with live job data
+- ✅ **Multi-Channel Support**: Email, Slack, Teams, webhooks in one system
+- ✅ **Conditional Logic**: Smart notifications based on job state and results
+
+### **🚀 IMPLEMENTATION TIMELINE**
+
+**Week 1: Email Foundation**
+- ✅ Add `notification.email` step type to executor-service
+- ✅ Implement basic template variable substitution
+- ✅ Create notification step configuration UI component
+- ✅ Add send condition logic and database schema updates
+
+**Week 2: Enhanced Template System**
+- ✅ Advanced template variables (job parameters, step results)
+- ✅ Template validation and preview functionality
+- ✅ Variable helper UI with autocomplete
+- ✅ Error handling for template rendering failures
+
+**Week 3: Frontend Integration**
+- ✅ Integrate notification steps into Visual Job Builder
+- ✅ Add notification step to traditional job builder
+- ✅ Create notification step configuration modal
+- ✅ Add template preview and variable suggestion features
+
+**Week 4: Multi-Channel Support**
+- ✅ Add `notification.slack` step type with Slack-specific features
+- ✅ Add `notification.teams` step type with Teams integration
+- ✅ Add `notification.webhook` step type for custom integrations
+- ✅ Channel-specific configuration options and validation
+
+### **🔧 INTEGRATION POINTS**
+
+**With Existing Services:**
+- ✅ **Executor Service**: New step type execution logic
+- ✅ **Notification Service**: Enhanced API for job-context notifications
+- ✅ **Jobs Service**: Step definition and validation updates
+- ✅ **Frontend**: Visual Job Builder and traditional job builder integration
+
+**Security & Access Control:**
+- ✅ **Recipient Validation**: Ensure users can only send to authorized recipients
+- ✅ **Template Security**: Prevent template injection attacks
+- ✅ **Rate Limiting**: Prevent notification spam from job executions
+- ✅ **Audit Trail**: Complete logging of all notification attempts
+
+### **📋 SUCCESS CRITERIA**
+
+**Phase 11 Complete When:**
+- ✅ Users can add notification steps anywhere in job workflows
+- ✅ Email notifications work with full template variable support
+- ✅ Multi-channel notifications (Slack, Teams, webhooks) operational
+- ✅ Conditional sending logic works correctly for all conditions
+- ✅ Template preview and variable helper provide good user experience
+- ✅ All notification attempts are properly logged and auditable
+
+---
+
 ## 🎉 **FINAL SUMMARY**
 
 **OpsConductor is now a complete, production-ready Windows management platform with:**
@@ -2035,7 +2345,12 @@ Configuration Example:
 
 **The system is ready for production deployment and advanced feature development.**
 
-**🔍 NEXT MAJOR MILESTONE: PHASE 10 - TARGET DISCOVERY SYSTEM**
-The next major enhancement will be automated target discovery, enabling users to scan network ranges, automatically detect Windows and Linux systems, and bulk import targets with minimal manual configuration. This will significantly reduce the operational overhead of target onboarding and provide comprehensive network visibility.
+**🔍 NEXT MAJOR MILESTONES: PHASE 10 & 11**
 
-This roadmap provides a clear path forward while building on the solid foundation we've established. The focus on target discovery will provide high operational value by automating one of the most time-consuming aspects of infrastructure management.
+**PHASE 10 - TARGET DISCOVERY SYSTEM**
+Automated target discovery will enable users to scan network ranges, automatically detect Windows and Linux systems, and bulk import targets with minimal manual configuration. This will significantly reduce the operational overhead of target onboarding and provide comprehensive network visibility.
+
+**PHASE 11 - JOB NOTIFICATION STEPS**
+Job notification steps will allow users to insert notification actions anywhere within job workflows, sending contextual notifications via multiple channels (email, Slack, Teams, webhooks) with dynamic content based on job variables and execution state. This will provide real-time job monitoring and proactive error handling.
+
+This roadmap provides a clear path forward while building on the solid foundation we've established. These two phases will provide high operational value by automating target onboarding and enhancing job workflow communication capabilities.
