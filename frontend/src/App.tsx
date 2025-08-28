@@ -11,8 +11,8 @@ import Jobs from './pages/Jobs';
 import Schedules from './pages/Schedules';
 import JobRuns from './pages/JobRuns';
 import JobRunDetail from './pages/JobRunDetail';
-import Notifications from './components/Notifications';
-import Settings from './pages/Settings';
+import Notifications from './pages/Notifications';
+import EnhancedSettings from './pages/EnhancedSettings';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -52,7 +52,7 @@ const App: React.FC = () => {
                       <Route path="/job-runs" element={<JobRuns />} />
                       <Route path="/job-runs/:id" element={<JobRunDetail />} />
                       <Route path="/notifications" element={<Notifications />} />
-                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/settings" element={<EnhancedSettings />} />
                       <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
                   </div>

@@ -6,7 +6,9 @@ import {
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
   Schedule, ScheduleCreate, ScheduleUpdate, ScheduleListResponse, SchedulerStatus,
-  LoginRequest, AuthResponse
+  LoginRequest, AuthResponse,
+  NotificationPreferences, NotificationPreferencesResponse, NotificationChannel,
+  SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse
 } from '../types';
 
 // Base API configuration
@@ -425,6 +427,42 @@ export const healthApi = {
     } catch (error) {
       return { error: 'Failed to fetch system stats' };
     }
+  }
+};
+
+// Notification Preferences API
+export const notificationApi = {
+  // User notification preferences
+  getUserPreferences: async (userId: number): Promise<NotificationPreferencesResponse> => {
+    const response = await api.get(`/api/v1/users/${userId}/notification-preferences`);
+    return response.data;
+  },
+
+  updateUserPreferences: async (userId: number, preferences: NotificationPreferences): Promise<NotificationPreferencesResponse> => {
+    const response = await api.put(`/api/v1/users/${userId}/notification-preferences`, preferences);
+    return response.data;
+  },
+
+  // Notification channels
+  getChannels: async (): Promise<NotificationChannel[]> => {
+    const response = await api.get('/api/v1/notification/channels');
+    return response.data;
+  },
+
+  // SMTP settings (admin only)
+  getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
+    const response = await api.get('/api/v1/notification/smtp/settings');
+    return response.data;
+  },
+
+  updateSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
+    const response = await api.post('/api/v1/notification/smtp/settings', settings);
+    return response.data;
+  },
+
+  testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
+    const response = await api.post('/api/v1/notification/smtp/test', testRequest);
+    return response.data;
   }
 };
 

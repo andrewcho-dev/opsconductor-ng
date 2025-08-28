@@ -533,26 +533,30 @@ class JobExecutor:
             if error_details:
                 notification_payload["error_details"] = error_details[:1000]  # Limit error message length
             
-            # Send email notification
+            # Send enhanced notification using new system
             try:
+                # Determine event type based on status
+                event_type = "job_success" if status == "succeeded" else "job_failure"
+                
                 response = requests.post(
-                    f"{NOTIFICATION_SERVICE_URL}/internal/notifications",
+                    f"{NOTIFICATION_SERVICE_URL}/internal/notifications/enhanced",
                     json={
                         "job_run_id": job_run_id,
-                        "channel": "email",
-                        "dest": job_info['user_email'],
+                        "user_id": job_info['requested_by'],
+                        "event_type": event_type,
                         "payload": notification_payload
                     },
                     timeout=10
                 )
                 
                 if response.status_code == 200:
-                    logger.info(f"Notification sent for job run {job_run_id} to {job_info['user_email']}")
+                    result = response.json()
+                    logger.info(f"Enhanced notifications created for job run {job_run_id}: {result.get('count', 0)} notifications")
                 else:
-                    logger.error(f"Failed to send notification for job run {job_run_id}: {response.status_code}")
+                    logger.error(f"Failed to create enhanced notifications for job run {job_run_id}: {response.status_code}")
                     
             except Exception as e:
-                logger.error(f"Error sending notification for job run {job_run_id}: {e}")
+                logger.error(f"Error creating enhanced notifications for job run {job_run_id}: {e}")
                 
         except Exception as e:
             logger.error(f"Error preparing notification for job run {job_run_id}: {e}")

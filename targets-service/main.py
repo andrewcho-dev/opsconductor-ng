@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 import psycopg2
 import psycopg2.extras
 import requests
+import winrm
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -546,24 +547,97 @@ async def test_winrm_connection(
                         "message": "Target is not configured for WinRM protocol"
                     }
                 },
-                note="Mock response for Sprint 1 - no actual WinRM connection attempted"
+                note="Target protocol is not WinRM"
             )
         
-        # For Sprint 1, return mock successful response
-        # In production, this would make actual WinRM connection
-        return WinRMTestResult(
-            test={
-                "status": "success",
-                "details": {
-                    "whoami": f"TESTDOMAIN\\Administrator",
-                    "powershellVersion": "5.1.17763.316",
-                    "hostname": target_data["hostname"],
-                    "port": target_data["port"],
-                    "transport": "ntlm"
-                }
-            },
-            note="Mock response for Sprint 1 - no actual WinRM connection attempted"
-        )
+        # Get credential data for the connection
+        try:
+            credential_data = await get_credential_data(
+                target_data["credential_ref"], 
+                credentials.credentials
+            )
+        except Exception as e:
+            return WinRMTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": f"Failed to retrieve credentials: {str(e)}"
+                    }
+                },
+                note="Credential retrieval failed"
+            )
+        
+        # Perform actual WinRM connection test
+        try:
+            # Use HTTP for port 5985, HTTPS for port 5986
+            protocol = 'https' if target_data['port'] == 5986 else 'http'
+            winrm_url = f"{protocol}://{target_data['hostname']}:{target_data['port']}/wsman"
+            
+            logger.info(f"Testing WinRM connection to: {winrm_url}")
+            
+            # Create WinRM session
+            session = winrm.Session(
+                target=winrm_url,
+                auth=(credential_data['username'], credential_data['password']),
+                transport='ntlm',
+                server_cert_validation='ignore'
+            )
+            
+            # Test connection with a simple command
+            result = session.run_ps("$PSVersionTable.PSVersion.ToString(); whoami; hostname")
+            
+            if result.status_code == 0:
+                # Parse output for details
+                output_lines = result.std_out.decode('utf-8', errors='replace').strip().split('\n')
+                ps_version = output_lines[0].strip() if len(output_lines) > 0 else "Unknown"
+                whoami = output_lines[1].strip() if len(output_lines) > 1 else "Unknown"
+                hostname = output_lines[2].strip() if len(output_lines) > 2 else target_data['hostname']
+                
+                return WinRMTestResult(
+                    test={
+                        "status": "success",
+                        "details": {
+                            "whoami": whoami,
+                            "powershellVersion": ps_version,
+                            "hostname": hostname,
+                            "port": target_data["port"],
+                            "transport": "ntlm",
+                            "protocol": protocol,
+                            "connection_time": "< 1s"
+                        }
+                    },
+                    note="WinRM connection test successful"
+                )
+            else:
+                # Connection failed
+                stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else "Unknown error"
+                return WinRMTestResult(
+                    test={
+                        "status": "error",
+                        "details": {
+                            "message": f"WinRM command failed with exit code {result.status_code}",
+                            "stderr": stderr,
+                            "hostname": target_data['hostname'],
+                            "port": target_data['port']
+                        }
+                    },
+                    note="WinRM connection established but command execution failed"
+                )
+                
+        except Exception as winrm_error:
+            logger.error(f"WinRM connection test failed: {winrm_error}")
+            return WinRMTestResult(
+                test={
+                    "status": "error",
+                    "details": {
+                        "message": f"WinRM connection failed: {str(winrm_error)}",
+                        "hostname": target_data['hostname'],
+                        "port": target_data['port'],
+                        "protocol": protocol if 'protocol' in locals() else 'unknown'
+                    }
+                },
+                note="WinRM connection test failed - check network connectivity, credentials, and WinRM configuration"
+            )
             
     except Exception as e:
         logger.error(f"Target test error: {e}")

@@ -458,6 +458,212 @@ async def assign_role(
     finally:
         conn.close()
 
+# Notification Preferences Models
+class NotificationPreferences(BaseModel):
+    email_enabled: bool = True
+    email_address: Optional[EmailStr] = None
+    webhook_enabled: bool = False
+    webhook_url: Optional[str] = None
+    slack_enabled: bool = False
+    slack_webhook_url: Optional[str] = None
+    slack_channel: Optional[str] = None
+    teams_enabled: bool = False
+    teams_webhook_url: Optional[str] = None
+    notify_on_success: bool = True
+    notify_on_failure: bool = True
+    notify_on_start: bool = False
+    quiet_hours_enabled: bool = False
+    quiet_hours_start: Optional[str] = None  # Time as string "HH:MM"
+    quiet_hours_end: Optional[str] = None    # Time as string "HH:MM"
+    quiet_hours_timezone: str = "America/Los_Angeles"
+
+class NotificationPreferencesResponse(NotificationPreferences):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+# Notification Preferences Endpoints
+
+@app.get("/users/{user_id}/notification-preferences", response_model=NotificationPreferencesResponse)
+async def get_user_notification_preferences(
+    user_id: int,
+    current_user: dict = Depends(verify_token_with_auth_service)
+):
+    """Get user notification preferences"""
+    # Users can only access their own preferences, admins can access any
+    if current_user["role"] != "admin" and current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Get notification preferences
+        cursor.execute("""
+            SELECT * FROM user_notification_preferences WHERE user_id = %s
+        """, (user_id,))
+        
+        preferences = cursor.fetchone()
+        
+        if not preferences:
+            # Return default preferences if none exist
+            return NotificationPreferencesResponse(
+                id=0,
+                user_id=user_id,
+                email_enabled=True,
+                webhook_enabled=False,
+                slack_enabled=False,
+                teams_enabled=False,
+                notify_on_success=True,
+                notify_on_failure=True,
+                notify_on_start=False,
+                quiet_hours_enabled=False,
+                quiet_hours_timezone="America/Los_Angeles",
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+        
+        # Convert time objects to strings for API response
+        preferences_dict = dict(preferences)
+        if preferences_dict.get('quiet_hours_start'):
+            preferences_dict['quiet_hours_start'] = str(preferences_dict['quiet_hours_start'])
+        if preferences_dict.get('quiet_hours_end'):
+            preferences_dict['quiet_hours_end'] = str(preferences_dict['quiet_hours_end'])
+        
+        return NotificationPreferencesResponse(**preferences_dict)
+        
+    except Exception as e:
+        logger.error(f"Error getting notification preferences: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get notification preferences"
+        )
+    finally:
+        conn.close()
+
+@app.put("/users/{user_id}/notification-preferences", response_model=NotificationPreferencesResponse)
+async def update_user_notification_preferences(
+    user_id: int,
+    preferences: NotificationPreferences,
+    current_user: dict = Depends(verify_token_with_auth_service)
+):
+    """Update user notification preferences"""
+    # Users can only update their own preferences, admins can update any
+    if current_user["role"] != "admin" and current_user["user_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Convert time strings to time objects
+        quiet_hours_start = None
+        quiet_hours_end = None
+        
+        if preferences.quiet_hours_start:
+            try:
+                hour, minute = map(int, preferences.quiet_hours_start.split(':'))
+                quiet_hours_start = f"{hour:02d}:{minute:02d}:00"
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid quiet_hours_start format. Use HH:MM"
+                )
+        
+        if preferences.quiet_hours_end:
+            try:
+                hour, minute = map(int, preferences.quiet_hours_end.split(':'))
+                quiet_hours_end = f"{hour:02d}:{minute:02d}:00"
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid quiet_hours_end format. Use HH:MM"
+                )
+        
+        # Upsert preferences
+        cursor.execute("""
+            INSERT INTO user_notification_preferences (
+                user_id, email_enabled, email_address, webhook_enabled, webhook_url,
+                slack_enabled, slack_webhook_url, slack_channel, teams_enabled, teams_webhook_url,
+                notify_on_success, notify_on_failure, notify_on_start,
+                quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_timezone,
+                updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                email_enabled = EXCLUDED.email_enabled,
+                email_address = EXCLUDED.email_address,
+                webhook_enabled = EXCLUDED.webhook_enabled,
+                webhook_url = EXCLUDED.webhook_url,
+                slack_enabled = EXCLUDED.slack_enabled,
+                slack_webhook_url = EXCLUDED.slack_webhook_url,
+                slack_channel = EXCLUDED.slack_channel,
+                teams_enabled = EXCLUDED.teams_enabled,
+                teams_webhook_url = EXCLUDED.teams_webhook_url,
+                notify_on_success = EXCLUDED.notify_on_success,
+                notify_on_failure = EXCLUDED.notify_on_failure,
+                notify_on_start = EXCLUDED.notify_on_start,
+                quiet_hours_enabled = EXCLUDED.quiet_hours_enabled,
+                quiet_hours_start = EXCLUDED.quiet_hours_start,
+                quiet_hours_end = EXCLUDED.quiet_hours_end,
+                quiet_hours_timezone = EXCLUDED.quiet_hours_timezone,
+                updated_at = EXCLUDED.updated_at
+            RETURNING *
+        """, (
+            user_id, preferences.email_enabled, preferences.email_address,
+            preferences.webhook_enabled, preferences.webhook_url,
+            preferences.slack_enabled, preferences.slack_webhook_url, preferences.slack_channel,
+            preferences.teams_enabled, preferences.teams_webhook_url,
+            preferences.notify_on_success, preferences.notify_on_failure, preferences.notify_on_start,
+            preferences.quiet_hours_enabled, quiet_hours_start, quiet_hours_end,
+            preferences.quiet_hours_timezone, datetime.now()
+        ))
+        
+        updated_preferences = cursor.fetchone()
+        conn.commit()
+        
+        # Convert time objects to strings for API response
+        preferences_dict = dict(updated_preferences)
+        if preferences_dict.get('quiet_hours_start'):
+            preferences_dict['quiet_hours_start'] = str(preferences_dict['quiet_hours_start'])
+        if preferences_dict.get('quiet_hours_end'):
+            preferences_dict['quiet_hours_end'] = str(preferences_dict['quiet_hours_end'])
+        
+        logger.info(f"Updated notification preferences for user {user_id}")
+        return NotificationPreferencesResponse(**preferences_dict)
+        
+    except Exception as e:
+        logger.error(f"Error updating notification preferences: {e}")
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update notification preferences"
+        )
+    finally:
+        conn.close()
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
