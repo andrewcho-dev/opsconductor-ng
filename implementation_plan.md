@@ -146,6 +146,7 @@ linux_system_info        ✅ Cached Linux system information from SSH targets
 22. **Target Discovery** (PLANNED): Automated network scanning and target onboarding with bulk import capabilities
 23. **Job Notification Steps** (PLANNED): Insert notification actions anywhere in job workflows with dynamic content and multi-channel support
 24. **File Operations Library & Step Organization** (PLANNED): Comprehensive file management with 25+ operations organized in modular step libraries
+25. **Job Flow Control & Logical Operations** (PLANNED): Transform jobs into programmable workflows with conditionals, loops, branching, and error handling
 
 ### **API Endpoints - ALL OPERATIONAL:**
 
@@ -1757,7 +1758,7 @@ onClick={() => {
 ---
 
 **System Status: CORE SYSTEM + ENHANCED MULTI-CHANNEL NOTIFICATIONS + WINRM TEST FIXES + UI/UX IMPROVEMENTS COMPLETE ✅**  
-**Next: PHASE 10 - TARGET DISCOVERY | PHASE 11 - JOB NOTIFICATIONS | PHASE 12 - FILE OPERATIONS LIBRARY**
+**Next: PHASE 10 - TARGET DISCOVERY | PHASE 11 - JOB NOTIFICATIONS | PHASE 12 - FILE OPERATIONS | PHASE 13 - FLOW CONTROL**
 
 ---
 
@@ -2952,6 +2953,799 @@ class LibraryAwareExecutor:
 
 ---
 
+## 🔀 **PHASE 13: JOB FLOW CONTROL & LOGICAL OPERATIONS** (PLANNED)
+
+### **🎯 CONCEPT OVERVIEW**
+
+The Job Flow Control & Logical Operations System will transform job execution from simple linear sequences into powerful, programmable workflows by adding:
+- **Conditional Logic**: Execute steps based on runtime conditions (if/else, switch/case)
+- **Loop Constructs**: Repeat operations (for, while, foreach, repeat-until)
+- **Parallel Branching**: Execute multiple paths simultaneously with synchronization
+- **Flow Control**: Break, continue, retry, timeout operations
+- **Variable Operations**: Dynamic variable manipulation and scoping
+- **Error Handling**: Try/catch blocks with custom error responses
+
+### **🏗️ PROPOSED ARCHITECTURE**
+
+**Flow Control Step Library Structure:**
+```
+flow-control-library/
+├── conditionals/
+│   ├── if-else.json              # Conditional execution
+│   ├── switch-case.json          # Multi-branch conditionals
+│   └── decision-tree.json        # Complex decision logic
+├── loops/
+│   ├── for-loop.json             # Counted loops
+│   ├── while-loop.json           # Condition-based loops
+│   ├── foreach-loop.json         # Collection iteration
+│   └── repeat-until.json         # Post-condition loops
+├── branching/
+│   ├── parallel-branch.json      # Parallel execution
+│   ├── sequential-branch.json    # Sequential branches
+│   └── race-branch.json          # First-to-complete execution
+├── flow-control/
+│   ├── break.json                # Break from loops
+│   ├── continue.json             # Skip to next iteration
+│   ├── retry.json                # Retry failed operations
+│   └── timeout.json              # Time-limited execution
+├── variables/
+│   ├── set-variable.json         # Set variable values
+│   ├── calculate.json            # Mathematical operations
+│   └── string-operations.json    # String manipulation
+└── error-handling/
+    ├── try-catch.json            # Exception handling
+    ├── throw-error.json          # Custom error throwing
+    └── error-recovery.json       # Error recovery logic
+```
+
+**Core Components:**
+- **Flow Control Executor** - Execute conditional logic, loops, and branching
+- **Variable Scope Manager** - Handle variable scoping (step, job, global)
+- **Condition Evaluator** - Evaluate complex expressions and conditions
+- **Parallel Execution Engine** - Manage concurrent step execution
+- **Error Handler** - Try/catch blocks and error recovery logic
+
+### **📋 IMPLEMENTATION PHASES**
+
+#### **PHASE 13.1: Conditional Logic & Branching** (Week 1)
+
+**Conditional Execution Steps:**
+```json
+// flow.if - Conditional execution
+{
+  "id": "flow.if",
+  "name": "If Condition",
+  "config": {
+    "condition": {
+      "type": "expression",           // "expression", "variable_check", "step_result"
+      "expression": "{{previous_step_exit_code}} == 0",
+      "operator": "equals",           // "equals", "not_equals", "greater", "less", "contains"
+      "left_operand": "{{file_exists_result}}",
+      "right_operand": true
+    },
+    "then_steps": [
+      {
+        "type": "file.copy",
+        "name": "Copy if exists",
+        "config": { /* file copy config */ }
+      }
+    ],
+    "else_steps": [
+      {
+        "type": "file.create",
+        "name": "Create if not exists",
+        "config": { /* file create config */ }
+      }
+    ]
+  }
+}
+
+// flow.switch - Multi-branch conditionals
+{
+  "id": "flow.switch",
+  "name": "Switch Case",
+  "config": {
+    "switch_variable": "{{target_os_type}}",
+    "cases": [
+      {
+        "value": "windows",
+        "steps": [
+          {
+            "type": "powershell.command",
+            "name": "Windows-specific command",
+            "config": { "command": "Get-Service" }
+          }
+        ]
+      },
+      {
+        "value": "linux",
+        "steps": [
+          {
+            "type": "shell.command",
+            "name": "Linux-specific command",
+            "config": { "command": "systemctl list-units" }
+          }
+        ]
+      }
+    ],
+    "default_steps": [
+      {
+        "type": "notification.email",
+        "name": "Unknown OS notification",
+        "config": { "message": "Unknown OS type: {{target_os_type}}" }
+      }
+    ]
+  }
+}
+
+// flow.parallel - Parallel execution
+{
+  "id": "flow.parallel",
+  "name": "Parallel Execution",
+  "config": {
+    "branches": [
+      {
+        "name": "Database Backup",
+        "steps": [
+          {
+            "type": "database.backup",
+            "name": "Backup database",
+            "config": { /* backup config */ }
+          }
+        ]
+      },
+      {
+        "name": "Log Cleanup",
+        "steps": [
+          {
+            "type": "file.delete",
+            "name": "Clean old logs",
+            "config": { /* cleanup config */ }
+          }
+        ]
+      }
+    ],
+    "wait_for_all": true,             // Wait for all branches to complete
+    "fail_on_any_error": false,       // Continue if one branch fails
+    "timeout_seconds": 3600           // Overall timeout for all branches
+  }
+}
+```
+
+#### **PHASE 13.2: Loop Constructs** (Week 2)
+
+**Loop Operations:**
+```json
+// flow.for - Counted loop
+{
+  "id": "flow.for",
+  "name": "For Loop",
+  "config": {
+    "loop_variable": "counter",
+    "start_value": 1,
+    "end_value": 5,
+    "increment": 1,
+    "steps": [
+      {
+        "type": "file.copy",
+        "name": "Copy file {{counter}}",
+        "config": {
+          "source_path": "/source/file{{counter}}.txt",
+          "destination_path": "/dest/file{{counter}}.txt"
+        }
+      }
+    ],
+    "break_on_error": true,           // Stop loop on first error
+    "max_iterations": 100             // Safety limit
+  }
+}
+
+// flow.foreach - Collection iteration
+{
+  "id": "flow.foreach",
+  "name": "For Each Loop",
+  "config": {
+    "collection": "{{target_list}}",  // Array of items to iterate
+    "item_variable": "current_target",
+    "index_variable": "target_index", // Optional index variable
+    "steps": [
+      {
+        "type": "system.ping",
+        "name": "Ping {{current_target.hostname}}",
+        "config": {
+          "target": "{{current_target.hostname}}"
+        }
+      },
+      {
+        "type": "flow.if",
+        "name": "Check if online",
+        "config": {
+          "condition": {
+            "expression": "{{previous_step_success}} == true"
+          },
+          "then_steps": [
+            {
+              "type": "notification.email",
+              "name": "Target online",
+              "config": {
+                "message": "{{current_target.hostname}} is online"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "parallel_execution": false,      // Execute sequentially or in parallel
+    "max_parallel": 5,                // Max parallel executions if parallel
+    "continue_on_error": true         // Continue with next item on error
+  }
+}
+
+// flow.while - Condition-based loop
+{
+  "id": "flow.while",
+  "name": "While Loop",
+  "config": {
+    "condition": {
+      "expression": "{{service_status}} != 'running'"
+    },
+    "steps": [
+      {
+        "type": "system.service",
+        "name": "Start service",
+        "config": {
+          "action": "start",
+          "service_name": "my-service"
+        }
+      },
+      {
+        "type": "system.wait",
+        "name": "Wait 5 seconds",
+        "config": { "seconds": 5 }
+      },
+      {
+        "type": "system.service",
+        "name": "Check service status",
+        "config": {
+          "action": "status",
+          "service_name": "my-service",
+          "output_variable": "service_status"
+        }
+      }
+    ],
+    "max_iterations": 10,             // Prevent infinite loops
+    "timeout_seconds": 300            // Overall timeout
+  }
+}
+```
+
+#### **PHASE 13.3: Variable Operations & Flow Control** (Week 3)
+
+**Variable Management:**
+```json
+// flow.set_variable - Set variable values
+{
+  "id": "flow.set_variable",
+  "name": "Set Variable",
+  "config": {
+    "variables": {
+      "backup_timestamp": "{{current_datetime}}",
+      "backup_path": "/backups/{{backup_timestamp}}",
+      "retry_count": 0,
+      "max_retries": 3
+    },
+    "scope": "job"                    // "step", "job", "global"
+  }
+}
+
+// flow.calculate - Mathematical operations
+{
+  "id": "flow.calculate",
+  "name": "Calculate Value",
+  "config": {
+    "calculations": [
+      {
+        "variable": "total_size",
+        "expression": "{{file1_size}} + {{file2_size}} + {{file3_size}}"
+      },
+      {
+        "variable": "retry_count",
+        "expression": "{{retry_count}} + 1"
+      },
+      {
+        "variable": "percentage_complete",
+        "expression": "({{completed_items}} / {{total_items}}) * 100"
+      }
+    ],
+    "data_types": {
+      "total_size": "integer",
+      "retry_count": "integer",
+      "percentage_complete": "float"
+    }
+  }
+}
+
+// flow.string_operations - String manipulation
+{
+  "id": "flow.string_operations",
+  "name": "String Operations",
+  "config": {
+    "operations": [
+      {
+        "variable": "formatted_date",
+        "operation": "format",
+        "template": "backup-{{current_date}}-{{target_hostname}}",
+        "variables": {
+          "current_date": "{{current_datetime | date:'%Y%m%d'}}",
+          "target_hostname": "{{target_hostname | lower}}"
+        }
+      },
+      {
+        "variable": "clean_filename",
+        "operation": "replace",
+        "source": "{{original_filename}}",
+        "pattern": "[^a-zA-Z0-9.-]",
+        "replacement": "_",
+        "use_regex": true
+      }
+    ]
+  }
+}
+```
+
+**Flow Control Operations:**
+```json
+// flow.retry - Retry failed operations
+{
+  "id": "flow.retry",
+  "name": "Retry Operation",
+  "config": {
+    "steps": [
+      {
+        "type": "file.download",
+        "name": "Download file",
+        "config": {
+          "url": "{{download_url}}",
+          "destination_path": "{{download_path}}"
+        }
+      }
+    ],
+    "max_attempts": 3,
+    "retry_delay": 5,                 // Seconds between retries
+    "retry_on": ["network_error", "timeout", "http_5xx"],
+    "exponential_backoff": true,      // Increase delay each retry
+    "success_condition": {
+      "expression": "{{previous_step_success}} == true"
+    }
+  }
+}
+
+// flow.timeout - Time-limited execution
+{
+  "id": "flow.timeout",
+  "name": "Timeout Wrapper",
+  "config": {
+    "timeout_seconds": 300,
+    "steps": [
+      {
+        "type": "system.command",
+        "name": "Long running command",
+        "config": { "command": "long-running-process" }
+      }
+    ],
+    "on_timeout": [
+      {
+        "type": "system.command",
+        "name": "Kill process",
+        "config": { "command": "pkill long-running-process" }
+      },
+      {
+        "type": "notification.email",
+        "name": "Timeout notification",
+        "config": { "message": "Operation timed out after 5 minutes" }
+      }
+    ]
+  }
+}
+```
+
+#### **PHASE 13.4: Error Handling & Advanced Logic** (Week 4)
+
+**Error Handling:**
+```json
+// flow.try_catch - Exception handling
+{
+  "id": "flow.try_catch",
+  "name": "Try Catch Block",
+  "config": {
+    "try_steps": [
+      {
+        "type": "database.query",
+        "name": "Execute query",
+        "config": { "query": "SELECT * FROM users" }
+      },
+      {
+        "type": "file.create",
+        "name": "Save results",
+        "config": {
+          "file_path": "/results/query_results.json",
+          "content": "{{previous_step_output}}"
+        }
+      }
+    ],
+    "catch_steps": [
+      {
+        "type": "notification.email",
+        "name": "Error notification",
+        "config": {
+          "subject": "Database query failed",
+          "message": "Error: {{error_message}}\nStack: {{error_stack}}"
+        }
+      },
+      {
+        "type": "file.create",
+        "name": "Log error",
+        "config": {
+          "file_path": "/logs/error_{{current_timestamp}}.log",
+          "content": "{{error_details}}"
+        }
+      }
+    ],
+    "finally_steps": [
+      {
+        "type": "database.disconnect",
+        "name": "Close connection",
+        "config": {}
+      }
+    ],
+    "catch_error_types": ["database_error", "file_error", "all"]
+  }
+}
+
+// flow.decision_tree - Complex decision logic
+{
+  "id": "flow.decision_tree",
+  "name": "Decision Tree",
+  "config": {
+    "decisions": [
+      {
+        "condition": {
+          "expression": "{{target_os}} == 'windows' && {{target_version}} >= 10"
+        },
+        "steps": [
+          {
+            "type": "powershell.command",
+            "name": "Windows 10+ specific",
+            "config": { "command": "Get-WindowsFeature" }
+          }
+        ]
+      },
+      {
+        "condition": {
+          "expression": "{{target_os}} == 'windows' && {{target_version}} < 10"
+        },
+        "steps": [
+          {
+            "type": "powershell.command",
+            "name": "Legacy Windows",
+            "config": { "command": "Get-WmiObject Win32_OptionalFeature" }
+          }
+        ]
+      },
+      {
+        "condition": {
+          "expression": "{{target_os}} == 'linux' && {{target_distro}} == 'ubuntu'"
+        },
+        "steps": [
+          {
+            "type": "shell.command",
+            "name": "Ubuntu specific",
+            "config": { "command": "apt list --installed" }
+          }
+        ]
+      }
+    ],
+    "default_steps": [
+      {
+        "type": "notification.email",
+        "name": "Unsupported platform",
+        "config": { "message": "Unsupported platform: {{target_os}}" }
+      }
+    ]
+  }
+}
+```
+
+### **🔧 TECHNICAL IMPLEMENTATION**
+
+**Enhanced Job Execution Engine:**
+```python
+# Enhanced executor with flow control support
+class FlowControlExecutor:
+    def __init__(self):
+        self.variable_scope = {}
+        self.execution_stack = []
+        self.loop_contexts = []
+        self.error_handlers = []
+    
+    async def execute_flow_step(self, step: dict, context: dict) -> dict:
+        """Execute flow control step"""
+        step_type = step['type']
+        
+        if step_type == 'flow.if':
+            return await self.execute_conditional(step, context)
+        elif step_type == 'flow.for':
+            return await self.execute_for_loop(step, context)
+        elif step_type == 'flow.foreach':
+            return await self.execute_foreach_loop(step, context)
+        elif step_type == 'flow.parallel':
+            return await self.execute_parallel(step, context)
+        elif step_type == 'flow.try_catch':
+            return await self.execute_try_catch(step, context)
+        # ... other flow control types
+    
+    async def execute_conditional(self, step: dict, context: dict) -> dict:
+        """Execute if/else conditional logic"""
+        condition = step['config']['condition']
+        
+        if await self.evaluate_condition(condition, context):
+            return await self.execute_steps(step['config']['then_steps'], context)
+        elif 'else_steps' in step['config']:
+            return await self.execute_steps(step['config']['else_steps'], context)
+        
+        return {"status": "skipped", "message": "Condition not met"}
+    
+    async def execute_for_loop(self, step: dict, context: dict) -> dict:
+        """Execute counted for loop"""
+        config = step['config']
+        loop_var = config['loop_variable']
+        start = config['start_value']
+        end = config['end_value']
+        increment = config.get('increment', 1)
+        
+        results = []
+        for i in range(start, end + 1, increment):
+            # Set loop variable in context
+            context[loop_var] = i
+            
+            try:
+                result = await self.execute_steps(config['steps'], context)
+                results.append(result)
+                
+                if config.get('break_on_error', False) and not result.get('success', True):
+                    break
+                    
+            except Exception as e:
+                if config.get('break_on_error', True):
+                    raise
+                results.append({"error": str(e), "iteration": i})
+        
+        return {"results": results, "iterations": len(results)}
+    
+    async def evaluate_condition(self, condition: dict, context: dict) -> bool:
+        """Evaluate conditional expression"""
+        if condition['type'] == 'expression':
+            # Use expression evaluator (could use eval with safety checks)
+            expression = self.substitute_variables(condition['expression'], context)
+            return self.safe_eval(expression)
+        elif condition['type'] == 'variable_check':
+            left = self.get_variable_value(condition['left_operand'], context)
+            right = self.get_variable_value(condition['right_operand'], context)
+            operator = condition['operator']
+            
+            return self.apply_operator(left, right, operator)
+```
+
+**Database Schema Extensions:**
+```sql
+-- Job execution context and variables
+CREATE TABLE job_execution_context (
+    id SERIAL PRIMARY KEY,
+    job_execution_id INTEGER REFERENCES job_executions(id),
+    variable_name VARCHAR(255) NOT NULL,
+    variable_value JSONB,
+    variable_type VARCHAR(50),          -- 'string', 'integer', 'float', 'boolean', 'array', 'object'
+    scope VARCHAR(50) DEFAULT 'job',    -- 'step', 'job', 'global'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Flow control execution tracking
+CREATE TABLE flow_control_executions (
+    id SERIAL PRIMARY KEY,
+    job_execution_id INTEGER REFERENCES job_executions(id),
+    step_execution_id INTEGER REFERENCES step_executions(id),
+    flow_type VARCHAR(100) NOT NULL,    -- 'if', 'for', 'foreach', 'parallel', 'try_catch'
+    flow_config JSONB,
+    execution_path JSONB,               -- Track which branches/iterations executed
+    loop_iterations INTEGER,
+    parallel_branches INTEGER,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'running'
+);
+
+-- Loop iteration tracking
+CREATE TABLE loop_iterations (
+    id SERIAL PRIMARY KEY,
+    flow_execution_id INTEGER REFERENCES flow_control_executions(id),
+    iteration_number INTEGER NOT NULL,
+    iteration_variables JSONB,          -- Variables specific to this iteration
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'running',
+    result JSONB
+);
+```
+
+### **📊 COMPLETE FLOW CONTROL LIBRARY**
+
+#### **Conditional Logic (4 operations)**
+- ✅ **flow.if**: If/else conditional execution with complex expressions
+- ✅ **flow.switch**: Multi-branch switch/case logic with default handling
+- ✅ **flow.condition_group**: Complex condition grouping with AND/OR operators
+- ✅ **flow.decision_tree**: Multi-level decision trees with nested conditions
+
+#### **Loop Constructs (4 operations)**
+- ✅ **flow.for**: Counted for loops with increment/decrement and break conditions
+- ✅ **flow.while**: Condition-based while loops with safety limits
+- ✅ **flow.foreach**: Collection iteration with parallel execution options
+- ✅ **flow.repeat_until**: Post-condition loops with timeout protection
+
+#### **Branching & Parallel Execution (3 operations)**
+- ✅ **flow.parallel**: Parallel branch execution with synchronization options
+- ✅ **flow.sequential**: Sequential branch execution with conditional paths
+- ✅ **flow.race**: First-to-complete branch execution with cleanup
+
+#### **Flow Control (4 operations)**
+- ✅ **flow.break**: Break from loops or branches with custom conditions
+- ✅ **flow.continue**: Skip to next iteration with conditional logic
+- ✅ **flow.retry**: Retry failed operations with exponential backoff
+- ✅ **flow.timeout**: Time-limited execution wrapper with cleanup actions
+
+#### **Variable Operations (4 operations)**
+- ✅ **flow.set_variable**: Set variable values with scoping (step/job/global)
+- ✅ **flow.get_variable**: Retrieve and manipulate variables with defaults
+- ✅ **flow.calculate**: Mathematical operations and complex expressions
+- ✅ **flow.string_operations**: String manipulation, formatting, and regex
+
+#### **Error Handling (3 operations)**
+- ✅ **flow.try_catch**: Exception handling with finally blocks and error types
+- ✅ **flow.throw_error**: Custom error throwing with context information
+- ✅ **flow.error_recovery**: Automatic error recovery with fallback logic
+
+### **🎨 FRONTEND INTEGRATION**
+
+**Visual Flow Designer:**
+```typescript
+// Enhanced Visual Job Builder with flow control
+const FlowControlJobBuilder: React.FC = () => {
+  const [flowSteps, setFlowSteps] = useState<FlowStep[]>([]);
+  const [variables, setVariables] = useState<JobVariable[]>([]);
+  
+  return (
+    <div className="flow-control-builder">
+      <div className="flow-palette">
+        <div className="flow-category">
+          <h3>🔀 Flow Control</h3>
+          <FlowStepItem type="flow.if" name="If Condition" />
+          <FlowStepItem type="flow.for" name="For Loop" />
+          <FlowStepItem type="flow.parallel" name="Parallel Execution" />
+          <FlowStepItem type="flow.try_catch" name="Try Catch" />
+        </div>
+        
+        <div className="flow-category">
+          <h3>🔢 Variables</h3>
+          <FlowStepItem type="flow.set_variable" name="Set Variable" />
+          <FlowStepItem type="flow.calculate" name="Calculate" />
+          <FlowStepItem type="flow.string_operations" name="String Operations" />
+        </div>
+      </div>
+      
+      <div className="flow-canvas">
+        <FlowDiagram
+          steps={flowSteps}
+          onStepAdd={handleStepAdd}
+          onStepEdit={handleStepEdit}
+          onStepDelete={handleStepDelete}
+        />
+      </div>
+      
+      <div className="variable-inspector">
+        <h3>Variables</h3>
+        <VariableList variables={variables} />
+      </div>
+    </div>
+  );
+};
+
+// Flow step configuration modals
+const FlowStepConfigModal: React.FC<{step: FlowStep}> = ({step}) => {
+  if (step.type === 'flow.if') {
+    return <ConditionalStepConfig step={step} />;
+  } else if (step.type === 'flow.for') {
+    return <ForLoopStepConfig step={step} />;
+  } else if (step.type === 'flow.parallel') {
+    return <ParallelStepConfig step={step} />;
+  }
+  // ... other flow step configs
+};
+```
+
+### **📈 EXPECTED BENEFITS**
+
+**Operational Benefits:**
+- ✅ **Programmable Workflows**: Transform simple job sequences into powerful, adaptive programs
+- ✅ **Dynamic Execution**: Jobs adapt to runtime conditions, data, and environmental factors
+- ✅ **Error Resilience**: Comprehensive error handling, recovery, and retry mechanisms
+- ✅ **Parallel Processing**: Execute multiple operations simultaneously for better performance
+
+**Technical Benefits:**
+- ✅ **Reduced Job Complexity**: Handle complex business logic within single, maintainable jobs
+- ✅ **Reusable Logic Patterns**: Common flow control patterns encapsulated in reusable steps
+- ✅ **Better Resource Utilization**: Parallel execution and conditional skipping optimize resources
+- ✅ **Comprehensive Execution Tracking**: Track execution paths, variable states, and decision points
+
+**User Experience Benefits:**
+- ✅ **Visual Flow Design**: Drag-and-drop flow control with intuitive visual representation
+- ✅ **Real-time Debugging**: Step-through execution with variable inspection and breakpoints
+- ✅ **Template Workflows**: Pre-built flow patterns for common operational scenarios
+- ✅ **Live Execution Monitoring**: Real-time view of execution flow, loops, and parallel branches
+
+### **🚀 IMPLEMENTATION TIMELINE**
+
+**Week 1: Conditional Logic & Branching Foundation**
+- ✅ If/else, switch/case, and parallel execution step implementations
+- ✅ Condition evaluation engine with expression parser and safety checks
+- ✅ Basic branching logic with decision trees and complex conditions
+- ✅ Database schema for flow control execution tracking
+
+**Week 2: Loop Constructs & Iteration Management**
+- ✅ For, while, foreach, and repeat-until loop implementations
+- ✅ Loop variable management with proper scoping and iteration tracking
+- ✅ Parallel loop execution options with concurrency controls
+- ✅ Loop safety mechanisms (max iterations, timeouts, break conditions)
+
+**Week 3: Variable Operations & Advanced Flow Control**
+- ✅ Variable set/get operations with multi-level scoping (step/job/global)
+- ✅ Mathematical calculations, string operations, and expression evaluation
+- ✅ Break, continue, retry, and timeout flow control mechanisms
+- ✅ Variable state persistence and cross-step variable sharing
+
+**Week 4: Error Handling & Frontend Integration**
+- ✅ Try/catch blocks with finally support and typed error handling
+- ✅ Custom error throwing, recovery logic, and fallback mechanisms
+- ✅ Advanced decision trees and complex nested conditional logic
+- ✅ Visual flow designer with drag-and-drop flow control step configuration
+
+### **🔧 INTEGRATION POINTS**
+
+**With Existing Services:**
+- ✅ **Executor Service**: Enhanced with flow control execution engine and variable management
+- ✅ **Jobs Service**: Extended step validation with flow control step definitions and syntax checking
+- ✅ **Frontend**: Visual Job Builder enhanced with flow control designer and variable inspector
+- ✅ **Database**: New tables for execution context, flow tracking, and variable state management
+
+**Security & Access Control:**
+- ✅ **Expression Security**: Safe expression evaluation with sandboxed execution environment
+- ✅ **Variable Scoping**: Proper variable isolation and access control between job contexts
+- ✅ **Flow Execution Limits**: Prevent infinite loops and resource exhaustion attacks
+- ✅ **Audit Trail**: Complete logging of flow control decisions, variable changes, and execution paths
+
+### **📋 SUCCESS CRITERIA**
+
+**Phase 13 Complete When:**
+- ✅ Flow control library operational with all 22 flow control operations
+- ✅ Conditional logic (if/else, switch/case) works with complex expressions
+- ✅ Loop constructs (for, while, foreach) execute with proper variable scoping
+- ✅ Parallel execution manages concurrent branches with synchronization
+- ✅ Variable operations provide full mathematical and string manipulation
+- ✅ Error handling (try/catch) provides comprehensive exception management
+- ✅ Visual flow designer enables intuitive drag-and-drop workflow creation
+- ✅ All flow control operations properly tested with edge cases and limits
+
+---
+
 ## 🎉 **FINAL SUMMARY**
 
 **OpsConductor is now a complete, production-ready Windows management platform with:**
@@ -2972,7 +3766,7 @@ class LibraryAwareExecutor:
 
 **The system is ready for production deployment and advanced feature development.**
 
-**🔍 NEXT MAJOR MILESTONES: PHASE 10, 11 & 12**
+**🔍 NEXT MAJOR MILESTONES: PHASE 10, 11, 12 & 13**
 
 **PHASE 10 - TARGET DISCOVERY SYSTEM**
 Automated target discovery will enable users to scan network ranges, automatically detect Windows and Linux systems, and bulk import targets with minimal manual configuration. This will significantly reduce the operational overhead of target onboarding and provide comprehensive network visibility.
@@ -2983,4 +3777,7 @@ Job notification steps will allow users to insert notification actions anywhere 
 **PHASE 12 - FILE OPERATIONS LIBRARY & STEP ORGANIZATION**
 A comprehensive file operations library with 25+ operations (copy, move, download, create, edit, delete, compress, etc.) organized in a modular step library system. This will transform job step management with cross-platform file operations and extensible library architecture for custom step collections.
 
-This roadmap provides a clear path forward while building on the solid foundation we've established. These three phases will provide high operational value by automating target onboarding, enhancing job workflow communication, and providing comprehensive file management capabilities in an organized, extensible system.
+**PHASE 13 - JOB FLOW CONTROL & LOGICAL OPERATIONS**
+Transform job execution from simple linear sequences into powerful, programmable workflows with 22+ flow control operations including conditionals (if/else, switch/case), loops (for, while, foreach), parallel branching, variable operations, and comprehensive error handling (try/catch). This will enable complex business logic within jobs.
+
+This roadmap provides a clear path forward while building on the solid foundation we've established. These four phases will provide exceptional operational value by automating target onboarding, enhancing job workflow communication, providing comprehensive file management capabilities, and transforming jobs into powerful programmable workflows with full logical control.
