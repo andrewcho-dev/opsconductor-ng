@@ -1,6 +1,7 @@
 # Phase 11: Job Notification Steps
 
-**Status:** 📋 PLANNED  
+**Status:** 📋 DEFERRED TO FUTURE PHASE  
+**Note:** Phase 11 was repurposed for Target Groups & UI Improvements. Job Notifications moved to future phase.  
 **Estimated Timeline:** 4 Weeks  
 **Stack:** Python FastAPI, Jinja2, PostgreSQL, React TypeScript
 
