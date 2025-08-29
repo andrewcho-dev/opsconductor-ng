@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from 'axios';
 import {
   User, UserCreate, UserUpdate, UserListResponse,
   Credential, CredentialCreate, CredentialListResponse, CredentialDecrypted,
-  Target, TargetCreate, TargetListResponse, WinRMTestResult,
+  Target, TargetCreate, TargetListResponse, WinRMTestResult, SSHTestResult,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
   Schedule, ScheduleCreate, ScheduleUpdate, ScheduleListResponse, SchedulerStatus,
@@ -272,6 +272,11 @@ export const targetApi = {
 
   testWinRM: async (id: number): Promise<WinRMTestResult> => {
     const response = await api.post(`/api/v1/targets/${id}/test-winrm`);
+    return response.data;
+  },
+
+  testSSH: async (id: number): Promise<SSHTestResult> => {
+    const response = await api.post(`/api/v1/targets/${id}/test-ssh`);
     return response.data;
   }
 };

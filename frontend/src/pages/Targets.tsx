@@ -122,10 +122,18 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleTestConnection = async (id: number) => {
+  const handleTestConnection = async (id: number, protocol: string) => {
     setTestingTarget(id);
     try {
-      const result = await targetApi.testWinRM(id);
+      let result;
+      if (protocol === 'winrm') {
+        result = await targetApi.testWinRM(id);
+      } else if (protocol === 'ssh') {
+        result = await targetApi.testSSH(id);
+      } else {
+        throw new Error(`Unsupported protocol: ${protocol}`);
+      }
+
       if (result.test?.status === 'success') {
         alert(`Connection Test Successful!\n\nDetails:\n${JSON.stringify(result.test.details, null, 2)}\n\nNote: ${result.note || 'Test completed'}`);
       } else {
@@ -215,10 +223,10 @@ const Targets: React.FC = () => {
                 <td>{target.tags.join(', ') || '-'}</td>
                 <td>
                   <div style={{ display: 'flex', gap: '5px' }}>
-                    {target.protocol === 'winrm' && (
+                    {(target.protocol === 'winrm' || target.protocol === 'ssh') && (
                       <button 
                         className="btn btn-secondary"
-                        onClick={() => handleTestConnection(target.id)}
+                        onClick={() => handleTestConnection(target.id, target.protocol)}
                         disabled={testingTarget === target.id}
                         style={{ fontSize: '12px' }}
                       >

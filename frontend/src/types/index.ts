@@ -167,6 +167,26 @@ export interface WinRMTestResult {
   note?: string;
 }
 
+export interface SSHTestResult {
+  test: {
+    status: 'success' | 'error';
+    details: {
+      message?: string;
+      whoami?: string;
+      hostname?: string;
+      port?: number;
+      os_info?: {
+        name?: string;
+        version?: string;
+        kernel?: string;
+        architecture?: string;
+        uptime?: string;
+      };
+    };
+  };
+  note?: string;
+}
+
 // List Response Types
 export interface UserListResponse {
   users: User[];
