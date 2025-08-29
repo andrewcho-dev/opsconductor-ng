@@ -142,9 +142,9 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
     try:
         cursor = conn.cursor()
         
-        # Check if username or email already exists
+        # Check if username or email already exists (excluding soft-deleted)
         cursor.execute(
-            "SELECT id FROM users WHERE email = %s OR username = %s",
+            "SELECT id FROM users WHERE (email = %s OR username = %s) AND deleted_at IS NULL",
             (user_data.email, user_data.username)
         )
         if cursor.fetchone():
@@ -199,7 +199,7 @@ async def list_users(
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
                 (current_user["id"],)
             )
             user_data = cursor.fetchone()
@@ -219,14 +219,15 @@ async def list_users(
     try:
         cursor = conn.cursor()
         
-        # Get total count
-        cursor.execute("SELECT COUNT(*) FROM users")
+        # Get total count (excluding soft-deleted)
+        cursor.execute("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
         total = cursor.fetchone()["count"]
         
-        # Get users with pagination
+        # Get users with pagination (excluding soft-deleted)
         cursor.execute(
             """SELECT id, email, username, role, created_at, token_version 
                FROM users 
+               WHERE deleted_at IS NULL
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (limit, skip)
@@ -261,7 +262,7 @@ async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+            "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
             (user_id,)
         )
         user_data = cursor.fetchone()
@@ -307,8 +308,8 @@ async def update_user(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        # Check if user exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -389,16 +390,26 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin_r
     try:
         cursor = conn.cursor()
         
-        # Check if user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        # Check if user exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
-        # Delete user
-        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        # Soft delete user
+        cursor.execute(
+            "UPDATE users SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), user_id)
+        )
+        
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found or already deleted"
+            )
+        
         conn.commit()
         
         return {"message": "User deleted successfully"}
@@ -431,8 +442,8 @@ async def assign_role(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        # Check if user exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -502,8 +513,8 @@ async def get_user_notification_preferences(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        # Check if user exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -571,8 +582,8 @@ async def update_user_notification_preferences(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists
-        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        # Check if user exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

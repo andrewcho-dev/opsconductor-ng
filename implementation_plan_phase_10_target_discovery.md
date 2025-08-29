@@ -64,9 +64,12 @@ CREATE TABLE discovered_targets (
     os_type VARCHAR(50),                 -- Detected OS
     os_version VARCHAR(255),
     services JSONB,                      -- Detected services (WinRM, SSH, etc.)
+    preferred_service JSONB,             -- Auto-selected preferred service (HTTPS over HTTP)
     connection_test_results JSONB,       -- Test results for each service
     system_info JSONB,                   -- Additional system information
-    import_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'imported', 'ignored'
+    duplicate_status VARCHAR(50) DEFAULT 'none', -- 'none', 'potential_duplicate', 'confirmed_duplicate'
+    existing_target_id INTEGER REFERENCES targets(id), -- Reference to existing target if duplicate
+    import_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'imported', 'ignored', 'duplicate_skipped'
     imported_target_id INTEGER REFERENCES targets(id),
     discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -204,37 +207,70 @@ class NetworkScanner:
         
         return 'unknown'
     
-    def detect_services(self, host_data: Dict) -> List[Dict]:
-        """Detect available services on the host"""
+    def detect_services(self, host_data: Dict) -> Tuple[List[Dict], Dict]:
+        """Detect available services and determine preferred service"""
         services = []
         tcp_ports = host_data.get('tcp', {})
         
         # WinRM detection
+        winrm_services = []
         if 5985 in tcp_ports and tcp_ports[5985]['state'] == 'open':
-            services.append({
+            winrm_http = {
                 'type': 'winrm',
                 'port': 5985,
                 'transport': 'http',
-                'confidence': 'high'
-            })
+                'confidence': 'high',
+                'secure': False
+            }
+            services.append(winrm_http)
+            winrm_services.append(winrm_http)
         
         if 5986 in tcp_ports and tcp_ports[5986]['state'] == 'open':
-            services.append({
+            winrm_https = {
                 'type': 'winrm',
                 'port': 5986,
                 'transport': 'https',
-                'confidence': 'high'
-            })
+                'confidence': 'high',
+                'secure': True
+            }
+            services.append(winrm_https)
+            winrm_services.append(winrm_https)
         
         # SSH detection
         if 22 in tcp_ports and tcp_ports[22]['state'] == 'open':
-            services.append({
+            ssh_service = {
                 'type': 'ssh',
                 'port': 22,
-                'confidence': 'high'
-            })
+                'confidence': 'high',
+                'secure': True
+            }
+            services.append(ssh_service)
         
-        return services
+        # Determine preferred service (HTTPS WinRM > SSH > HTTP WinRM)
+        preferred_service = self.select_preferred_service(services)
+        
+        return services, preferred_service
+    
+    def select_preferred_service(self, services: List[Dict]) -> Dict:
+        """Select preferred service based on security and availability"""
+        if not services:
+            return None
+        
+        # Priority: HTTPS WinRM > SSH > HTTP WinRM > Others
+        winrm_https = next((s for s in services if s['type'] == 'winrm' and s['secure']), None)
+        if winrm_https:
+            return winrm_https
+        
+        ssh_service = next((s for s in services if s['type'] == 'ssh'), None)
+        if ssh_service:
+            return ssh_service
+        
+        winrm_http = next((s for s in services if s['type'] == 'winrm' and not s['secure']), None)
+        if winrm_http:
+            return winrm_http
+        
+        # Fallback to first available service
+        return services[0]
 ```
 
 ---
@@ -250,14 +286,22 @@ class NetworkScanner:
   "name": "Office Network Discovery",
   "config": {
     "cidr_ranges": ["192.168.1.0/24", "10.0.0.0/16"],
-    "ports": "22,135,445,3389,5985,5986",
+    "scan_intensity": "standard",
+    "ports": "22,3389,5985,5986",
     "os_detection": true,
     "service_detection": true,
-    "connection_testing": true,
+    "connection_testing": false,
+    "enhanced_detection": false,
+    "credentials_id": null,
     "timeout": 300
   }
 }
 ```
+
+**Scan Intensity Options:**
+- **light**: Common ports only (22, 3389, 5985)
+- **standard**: Recommended ports (22, 3389, 5985, 5986) - Default
+- **deep**: Extended port range (22, 135, 445, 3389, 5985, 5986, 80, 443)
 
 **2. Active Directory Query Jobs**
 ```json
@@ -385,11 +429,15 @@ const NetworkScanConfig = () => {
 const TargetImportWizard = ({ discoveredTargets }) => {
   const [selectedTargets, setSelectedTargets] = useState([]);
   const [importConfig, setImportConfig] = useState({});
+  const [duplicateHandling, setDuplicateHandling] = useState('ask'); // 'ask', 'skip', 'update'
   
   const handleBulkImport = async () => {
     const importResults = await Promise.all(
       selectedTargets.map(target => 
-        targetsAPI.importDiscoveredTarget(target, importConfig)
+        targetsAPI.importDiscoveredTarget(target, {
+          ...importConfig,
+          duplicateHandling: target.duplicate_status !== 'none' ? duplicateHandling : 'import'
+        })
       )
     );
     // Handle import results
@@ -401,6 +449,12 @@ const TargetImportWizard = ({ discoveredTargets }) => {
         targets={discoveredTargets}
         selectedTargets={selectedTargets}
         onSelectionChange={setSelectedTargets}
+        showDuplicateStatus={true}
+      />
+      <DuplicateHandlingOptions 
+        handling={duplicateHandling}
+        onChange={setDuplicateHandling}
+        duplicateCount={selectedTargets.filter(t => t.duplicate_status !== 'none').length}
       />
       <ImportConfiguration 
         config={importConfig}
@@ -409,6 +463,7 @@ const TargetImportWizard = ({ discoveredTargets }) => {
       <ImportPreview 
         targets={selectedTargets}
         config={importConfig}
+        duplicateHandling={duplicateHandling}
       />
       <button onClick={handleBulkImport}>
         Import {selectedTargets.length} Targets
@@ -494,6 +549,12 @@ GET    /api/v1/discovery/templates      # List discovery templates
 GET    /api/v1/discovery/templates/:id  # Get template details
 PUT    /api/v1/discovery/templates/:id  # Update template
 DELETE /api/v1/discovery/templates/:id  # Delete template
+```
+
+### **Duplicate Detection**
+```
+POST   /api/v1/discovery/targets/check-duplicates  # Check for duplicate targets
+GET    /api/v1/discovery/targets/duplicates        # List potential duplicates
 ```
 
 ---

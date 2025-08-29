@@ -329,8 +329,8 @@ async def create_job(
     try:
         cursor = conn.cursor()
         
-        # Check if job name already exists
-        cursor.execute("SELECT id FROM jobs WHERE name = %s", (job_data.name,))
+        # Check if job name already exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM jobs WHERE name = %s AND deleted_at IS NULL", (job_data.name,))
         if cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -383,8 +383,11 @@ async def list_jobs(
     try:
         cursor = conn.cursor()
         
-        # Build query with optional active filter
-        where_clause = "WHERE is_active = true" if active_only else ""
+        # Build query with optional active filter and soft delete exclusion
+        if active_only:
+            where_clause = "WHERE is_active = true AND deleted_at IS NULL"
+        else:
+            where_clause = "WHERE deleted_at IS NULL"
         
         # Get total count
         cursor.execute(f"SELECT COUNT(*) FROM jobs {where_clause}")
@@ -427,7 +430,7 @@ async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_au
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s",
+            "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s AND deleted_at IS NULL",
             (job_id,)
         )
         job_data = cursor.fetchone()
@@ -464,8 +467,8 @@ async def update_job(
     try:
         cursor = conn.cursor()
         
-        # Check if job exists
-        cursor.execute("SELECT id FROM jobs WHERE id = %s", (job_id,))
+        # Check if job exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (job_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -541,24 +544,18 @@ async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_
     try:
         cursor = conn.cursor()
         
-        # Check if job exists
-        cursor.execute("SELECT id FROM jobs WHERE id = %s", (job_id,))
-        if not cursor.fetchone():
+        # Soft delete job (no need to check job runs anymore)
+        cursor.execute(
+            "UPDATE jobs SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), job_id)
+        )
+        
+        if cursor.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
+                detail="Job not found or already deleted"
             )
         
-        # Check if job has runs
-        cursor.execute("SELECT id FROM job_runs WHERE job_id = %s LIMIT 1", (job_id,))
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete job: it has execution history"
-            )
-        
-        # Delete job
-        cursor.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
         conn.commit()
         
         return {"message": "Job deleted successfully"}

@@ -61,6 +61,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 class TargetCreate(BaseModel):
     name: str
     hostname: str
+    ip_address: Optional[str] = None
     protocol: str = "winrm"  # 'winrm', 'ssh', 'http', 'https', 'snmp', 'database'
     port: int = 5985
     os_type: str = "windows"  # 'windows', 'linux', 'unix', 'network', 'other'
@@ -72,6 +73,7 @@ class TargetCreate(BaseModel):
 class TargetUpdate(BaseModel):
     name: Optional[str] = None
     hostname: Optional[str] = None
+    ip_address: Optional[str] = None
     protocol: Optional[str] = None
     port: Optional[int] = None
     os_type: Optional[str] = None
@@ -84,6 +86,7 @@ class TargetResponse(BaseModel):
     id: int
     name: str
     hostname: str
+    ip_address: Optional[str] = None
     protocol: str
     port: int
     os_type: Optional[str] = None
@@ -92,6 +95,10 @@ class TargetResponse(BaseModel):
     metadata: Dict[str, Any]
     depends_on: List[int]
     created_at: datetime
+    
+    class Config:
+        # Include None values in serialization
+        exclude_none = False
 
 class TargetListResponse(BaseModel):
     targets: List[TargetResponse]
@@ -187,16 +194,16 @@ async def create_target(
     try:
         cursor = conn.cursor()
         
-        # Check if target name already exists
-        cursor.execute("SELECT id FROM targets WHERE name = %s", (target_data.name,))
+        # Check if target name already exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM targets WHERE name = %s AND deleted_at IS NULL", (target_data.name,))
         if cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Target with this name already exists"
             )
         
-        # Verify credential exists
-        cursor.execute("SELECT id FROM credentials WHERE id = %s", (target_data.credential_ref,))
+        # Verify credential exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (target_data.credential_ref,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -205,12 +212,13 @@ async def create_target(
         
         # Insert target
         cursor.execute(
-            """INSERT INTO targets (name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-               RETURNING id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at""",
+            """INSERT INTO targets (name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at""",
             (
                 target_data.name,
                 target_data.hostname,
+                target_data.ip_address,
                 target_data.protocol,
                 target_data.port,
                 target_data.os_type,
@@ -254,14 +262,15 @@ async def list_targets(
     try:
         cursor = conn.cursor()
         
-        # Get total count
-        cursor.execute("SELECT COUNT(*) FROM targets")
+        # Get total count (excluding soft-deleted)
+        cursor.execute("SELECT COUNT(*) FROM targets WHERE deleted_at IS NULL")
         total = cursor.fetchone()["count"]
         
-        # Get targets with pagination
+        # Get targets with pagination (excluding soft-deleted)
         cursor.execute(
-            """SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
+            """SELECT id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
                FROM targets 
+               WHERE deleted_at IS NULL
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (limit, skip)
@@ -298,7 +307,7 @@ async def get_target(target_id: int, current_user: dict = Depends(verify_token_w
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+            "SELECT id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s AND deleted_at IS NULL",
             (target_id,)
         )
         target_data = cursor.fetchone()
@@ -338,7 +347,7 @@ async def debug_target(target_id: int, current_user: dict = Depends(verify_token
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+            "SELECT id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at, deleted_at FROM targets WHERE id = %s",
             (target_id,)
         )
         target_data = cursor.fetchone()
@@ -346,11 +355,27 @@ async def debug_target(target_id: int, current_user: dict = Depends(verify_token
         if not target_data:
             return {"error": "Target not found"}
         
-        return {
-            "raw_data": dict(target_data),
-            "os_type_value": target_data.get('os_type'),
-            "os_type_type": type(target_data.get('os_type')).__name__
-        }
+        target_dict = dict(target_data)
+        target_dict['tags'] = target_dict.get('tags', [])
+        target_dict['metadata'] = target_dict.get('metadata', {})
+        target_dict['depends_on'] = target_dict.get('depends_on', [])
+        
+        # Try to create TargetResponse
+        try:
+            target_response = TargetResponse(**target_dict)
+            return {
+                "raw_data": target_dict,
+                "pydantic_model": target_response.dict(),
+                "ip_address_in_raw": target_dict.get('ip_address'),
+                "ip_address_in_model": target_response.ip_address,
+                "model_dict_with_none": target_response.dict(exclude_none=False)
+            }
+        except Exception as model_error:
+            return {
+                "raw_data": target_dict,
+                "model_error": str(model_error),
+                "ip_address_in_raw": target_dict.get('ip_address')
+            }
         
     except Exception as e:
         return {"error": str(e)}
@@ -368,8 +393,8 @@ async def update_target(
     try:
         cursor = conn.cursor()
         
-        # Check if target exists
-        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
+        # Check if target exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -387,6 +412,10 @@ async def update_target(
         if target_data.hostname is not None:
             update_fields.append("hostname = %s")
             update_values.append(target_data.hostname)
+            
+        if target_data.ip_address is not None:
+            update_fields.append("ip_address = %s")
+            update_values.append(target_data.ip_address)
             
         if target_data.protocol is not None:
             update_fields.append("protocol = %s")
@@ -426,7 +455,7 @@ async def update_target(
         if not update_fields:
             # No fields to update, just return current target
             cursor.execute(
-                "SELECT id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
+                "SELECT id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at FROM targets WHERE id = %s",
                 (target_id,)
             )
             target = cursor.fetchone()
@@ -441,7 +470,7 @@ async def update_target(
             UPDATE targets 
             SET {', '.join(update_fields)}
             WHERE id = %s
-            RETURNING id, name, hostname, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
+            RETURNING id, name, hostname, ip_address, protocol, port, os_type, credential_ref, tags, metadata, depends_on, created_at
         """
         update_values.append(target_id)
         
@@ -477,24 +506,26 @@ async def delete_target(
     try:
         cursor = conn.cursor()
         
-        # Check if target exists
-        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
+        # Check if target exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Target not found"
             )
         
-        # Check if target is referenced by jobs
-        cursor.execute("SELECT id FROM job_run_steps WHERE target_id = %s LIMIT 1", (target_id,))
-        if cursor.fetchone():
+        # Soft delete target (no need to check job references anymore)
+        cursor.execute(
+            "UPDATE targets SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), target_id)
+        )
+        
+        if cursor.rowcount == 0:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete target: it is referenced by jobs"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target not found or already deleted"
             )
         
-        # Delete target
-        cursor.execute("DELETE FROM targets WHERE id = %s", (target_id,))
         conn.commit()
         
         return {"message": "Target deleted successfully"}
@@ -519,28 +550,18 @@ async def delete_target_by_name(
     try:
         cursor = conn.cursor()
         
-        # Check if target exists
-        cursor.execute("SELECT id FROM targets WHERE name = %s", (target_name,))
-        target = cursor.fetchone()
+        # Soft delete target by name (no need to check job references anymore)
+        cursor.execute(
+            "UPDATE targets SET deleted_at = %s WHERE name = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), target_name)
+        )
         
-        if not target:
+        if cursor.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Target not found"
+                detail="Target not found or already deleted"
             )
         
-        target_id = target['id']
-        
-        # Check if target is referenced by jobs
-        cursor.execute("SELECT id FROM job_run_steps WHERE target_id = %s LIMIT 1", (target_id,))
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete target: it is referenced by jobs"
-            )
-        
-        # Delete target
-        cursor.execute("DELETE FROM targets WHERE name = %s", (target_name,))
         conn.commit()
         
         return {"message": "Target deleted successfully"}

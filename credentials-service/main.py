@@ -190,7 +190,7 @@ async def create_credential(
         
         # Check if credential name already exists
         cursor.execute(
-            "SELECT id FROM credentials WHERE name = %s",
+            "SELECT id FROM credentials WHERE name = %s AND deleted_at IS NULL",
             (cred_data.name,)
         )
         if cursor.fetchone():
@@ -275,14 +275,15 @@ async def list_credentials(
     try:
         cursor = conn.cursor()
         
-        # Get total count
-        cursor.execute("SELECT COUNT(*) FROM credentials")
+        # Get total count (excluding soft-deleted)
+        cursor.execute("SELECT COUNT(*) FROM credentials WHERE deleted_at IS NULL")
         total = cursor.fetchone()["count"]
         
-        # Get credentials with pagination
+        # Get credentials with pagination (excluding soft-deleted)
         cursor.execute(
             """SELECT id, name, description, credential_type, created_at, updated_at
                FROM credentials 
+               WHERE deleted_at IS NULL
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (limit, skip)
@@ -313,7 +314,7 @@ async def get_credential(
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, description, credential_type, created_at, updated_at FROM credentials WHERE id = %s",
+            "SELECT id, name, description, credential_type, created_at, updated_at FROM credentials WHERE id = %s AND deleted_at IS NULL",
             (credential_id,)
         )
         cred_data = cursor.fetchone()
@@ -345,7 +346,7 @@ async def get_credential_decrypted(
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, description, credential_type, created_at, updated_at, credential_data FROM credentials WHERE id = %s",
+            "SELECT id, name, description, credential_type, created_at, updated_at, credential_data FROM credentials WHERE id = %s AND deleted_at IS NULL",
             (credential_id,)
         )
         cred_data = cursor.fetchone()
@@ -388,8 +389,8 @@ async def update_credential(
     try:
         cursor = conn.cursor()
         
-        # Check if credential exists
-        cursor.execute("SELECT id FROM credentials WHERE id = %s", (credential_id,))
+        # Check if credential exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -465,24 +466,18 @@ async def delete_credential(
     try:
         cursor = conn.cursor()
         
-        # Check if credential exists
-        cursor.execute("SELECT id FROM credentials WHERE id = %s", (credential_id,))
-        if not cursor.fetchone():
+        # Soft delete credential (no need to check target references anymore)
+        cursor.execute(
+            "UPDATE credentials SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), credential_id)
+        )
+        
+        if cursor.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
+                detail="Credential not found or already deleted"
             )
         
-        # Check if credential is in use by targets
-        cursor.execute("SELECT id FROM targets WHERE credential_ref = %s LIMIT 1", (credential_id,))
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Cannot delete credential: it is in use by targets"
-            )
-        
-        # Delete credential
-        cursor.execute("DELETE FROM credentials WHERE id = %s", (credential_id,))
         conn.commit()
         
         return {"message": "Credential deleted successfully"}
@@ -508,8 +503,8 @@ async def rotate_credential(
     try:
         cursor = conn.cursor()
         
-        # Check if credential exists
-        cursor.execute("SELECT id FROM credentials WHERE id = %s", (credential_id,))
+        # Check if credential exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -555,8 +550,8 @@ async def delete_credential(
     try:
         cursor = conn.cursor()
         
-        # Check if credential exists
-        cursor.execute("SELECT id FROM credentials WHERE id = %s", (credential_id,))
+        # Check if credential exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

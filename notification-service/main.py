@@ -245,7 +245,7 @@ def get_notification_template(channel: str, event_type: str) -> Optional[Dict[st
         cursor = conn.cursor()
         cursor.execute("""
             SELECT * FROM notification_templates 
-            WHERE channel = %s AND event_type = %s AND is_active = true
+            WHERE channel = %s AND event_type = %s AND is_active = true AND deleted_at IS NULL
             ORDER BY is_default DESC, id ASC
             LIMIT 1
         """, (channel, event_type))

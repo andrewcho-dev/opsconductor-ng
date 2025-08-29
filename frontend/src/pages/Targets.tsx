@@ -12,6 +12,7 @@ const Targets: React.FC = () => {
   const [formData, setFormData] = useState<TargetCreate>({
     name: '',
     hostname: '',
+    ip_address: '',
     protocol: 'winrm',
     port: 5985,
     os_type: 'windows',
@@ -62,6 +63,7 @@ const Targets: React.FC = () => {
       setFormData({
         name: '',
         hostname: '',
+        ip_address: '',
         protocol: 'winrm',
         port: 5985,
         os_type: 'windows',
@@ -80,6 +82,7 @@ const Targets: React.FC = () => {
     setFormData({
       name: '',
       hostname: '',
+      ip_address: '',
       protocol: 'winrm',
       port: 5985,
       os_type: 'windows',
@@ -96,6 +99,7 @@ const Targets: React.FC = () => {
     setFormData({
       name: target.name,
       hostname: target.hostname,
+      ip_address: target.ip_address || '',
       protocol: target.protocol,
       port: target.port,
       os_type: target.os_type,
@@ -166,6 +170,7 @@ const Targets: React.FC = () => {
               <th>ID</th>
               <th>Name</th>
               <th>Hostname</th>
+              <th>IP Address</th>
               <th>Protocol</th>
               <th>OS Type</th>
               <th>Port</th>
@@ -180,6 +185,7 @@ const Targets: React.FC = () => {
                 <td>{target.id}</td>
                 <td>{target.name}</td>
                 <td>{target.hostname}</td>
+                <td>{target.ip_address || '-'}</td>
                 <td>
                   <span className="status" style={{ 
                     backgroundColor: target.protocol === 'winrm' ? '#d4edda' : '#d1ecf1',
@@ -275,6 +281,16 @@ const Targets: React.FC = () => {
                   value={formData.hostname}
                   onChange={(e) => setFormData({...formData, hostname: e.target.value})}
                   required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>IP Address:</label>
+                <input
+                  type="text"
+                  value={formData.ip_address}
+                  onChange={(e) => setFormData({...formData, ip_address: e.target.value})}
+                  placeholder="Optional - e.g., 192.168.1.100"
                 />
               </div>
 

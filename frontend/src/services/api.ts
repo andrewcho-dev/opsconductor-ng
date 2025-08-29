@@ -8,7 +8,10 @@ import {
   Schedule, ScheduleCreate, ScheduleUpdate, ScheduleListResponse, SchedulerStatus,
   LoginRequest, AuthResponse,
   NotificationPreferences, NotificationPreferencesResponse, NotificationChannel,
-  SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse
+  SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse,
+  DiscoveryJob, DiscoveryJobCreate, DiscoveryJobListResponse,
+  DiscoveredTarget, DiscoveredTargetListResponse, TargetImportRequest,
+  DiscoveryTemplate, DiscoveryTemplateCreate, DiscoveryTemplateListResponse
 } from '../types';
 
 // Base API configuration
@@ -463,6 +466,102 @@ export const notificationApi = {
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
     const response = await api.post('/api/v1/notification/smtp/test', testRequest);
     return response.data;
+  }
+};
+
+// Discovery API
+export const discoveryApi = {
+  // Discovery Jobs
+  listJobs: async (skip = 0, limit = 100): Promise<DiscoveryJobListResponse> => {
+    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/jobs', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  getJob: async (id: number): Promise<DiscoveryJob> => {
+    const response: AxiosResponse<DiscoveryJob> = await api.get(`/api/v1/discovery/jobs/${id}`);
+    return response.data;
+  },
+
+  createJob: async (jobData: DiscoveryJobCreate): Promise<DiscoveryJob> => {
+    const response: AxiosResponse<DiscoveryJob> = await api.post('/api/v1/discovery/jobs', jobData);
+    return response.data;
+  },
+
+  updateJob: async (id: number, jobData: Partial<DiscoveryJobCreate>): Promise<DiscoveryJob> => {
+    const response: AxiosResponse<DiscoveryJob> = await api.put(`/api/v1/discovery/jobs/${id}`, jobData);
+    return response.data;
+  },
+
+  deleteJob: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/discovery/jobs/${id}`);
+  },
+
+  // Discovered Targets
+  listTargets: async (skip = 0, limit = 100, jobId?: number, status?: string): Promise<DiscoveredTargetListResponse> => {
+    const response: AxiosResponse<DiscoveredTargetListResponse> = await api.get('/api/v1/discovery/targets', {
+      params: { skip, limit, job_id: jobId, status }
+    });
+    return response.data;
+  },
+
+  getTarget: async (id: number): Promise<DiscoveredTarget> => {
+    const response: AxiosResponse<DiscoveredTarget> = await api.get(`/api/v1/discovery/targets/${id}`);
+    return response.data;
+  },
+
+  updateTarget: async (id: number, targetData: Partial<DiscoveredTarget>): Promise<DiscoveredTarget> => {
+    const response: AxiosResponse<DiscoveredTarget> = await api.put(`/api/v1/discovery/targets/${id}`, targetData);
+    return response.data;
+  },
+
+  deleteTarget: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/discovery/targets/${id}`);
+  },
+
+  importTargets: async (importRequest: TargetImportRequest): Promise<{ imported: number; failed: number; details: any[] }> => {
+    const response = await api.post('/api/v1/discovery/targets/import', importRequest);
+    return response.data;
+  },
+
+  ignoreTargets: async (targetIds: number[]): Promise<{ ignored: number }> => {
+    const response = await api.post('/api/v1/discovery/targets/ignore', { target_ids: targetIds });
+    return response.data;
+  },
+
+  bulkDeleteTargets: async (targetIds: number[]): Promise<{ deleted: number }> => {
+    const response = await api.delete('/api/v1/discovery/targets/bulk', { 
+      data: { target_ids: targetIds }
+    });
+    return response.data;
+  },
+
+  // Discovery Templates
+  listTemplates: async (skip = 0, limit = 100): Promise<DiscoveryTemplateListResponse> => {
+    const response: AxiosResponse<DiscoveryTemplateListResponse> = await api.get('/api/v1/discovery/templates', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  getTemplate: async (id: number): Promise<DiscoveryTemplate> => {
+    const response: AxiosResponse<DiscoveryTemplate> = await api.get(`/api/v1/discovery/templates/${id}`);
+    return response.data;
+  },
+
+  createTemplate: async (templateData: DiscoveryTemplateCreate): Promise<DiscoveryTemplate> => {
+    const response: AxiosResponse<DiscoveryTemplate> = await api.post('/api/v1/discovery/templates', templateData);
+    return response.data;
+  },
+
+  updateTemplate: async (id: number, templateData: Partial<DiscoveryTemplateCreate>): Promise<DiscoveryTemplate> => {
+    const response: AxiosResponse<DiscoveryTemplate> = await api.put(`/api/v1/discovery/templates/${id}`, templateData);
+    return response.data;
+  },
+
+  deleteTemplate: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/discovery/templates/${id}`);
   }
 };
 

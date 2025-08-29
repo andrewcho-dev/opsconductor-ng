@@ -200,6 +200,26 @@ services:
       - auth-service
     restart: unless-stopped
 
+  # Discovery Service (Python FastAPI)
+  discovery-service:
+    build: ./discovery-service
+    container_name: opsconductor-discovery
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      JWT_SECRET_KEY: your-jwt-secret-change-in-production
+    ports:
+      - "3010:3010"
+    networks:
+      - opsconductor-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Frontend (React)
   frontend:
     build: ./frontend
@@ -215,6 +235,7 @@ services:
       - executor-service
       - scheduler-service
       - notification-service
+      - discovery-service
     restart: unless-stopped
 
   # Nginx Reverse Proxy

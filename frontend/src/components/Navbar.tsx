@@ -34,6 +34,7 @@ const Navbar: React.FC = () => {
           <li><Link to="/credential-management">Credentials</Link></li>
           <li><Link to="/targets-management">Targets</Link></li>
           <li><Link to="/target-groups">Target Groups</Link></li>
+          <li><Link to="/discovery">Discovery</Link></li>
           <li><Link to="/job-management">Jobs</Link></li>
           <li><Link to="/schedule-management">Schedules</Link></li>
           <li><Link to="/advanced-scheduler">Advanced Scheduler</Link></li>

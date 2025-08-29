@@ -173,6 +173,7 @@ async def scheduler_worker():
                 SELECT id, job_id, cron, timezone, next_run_at
                 FROM schedules 
                 WHERE is_active = true 
+                AND deleted_at IS NULL
                 AND next_run_at <= %s
                 ORDER BY next_run_at
             """, (now,))
@@ -277,8 +278,8 @@ async def create_schedule(
         # Validate cron expression and calculate next run
         next_run = calculate_next_run(schedule_data.cron, schedule_data.timezone)
         
-        # Verify job exists
-        cursor.execute("SELECT id FROM jobs WHERE id = %s", (schedule_data.job_id,))
+        # Verify job exists (excluding soft-deleted)
+        cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (schedule_data.job_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -334,13 +335,13 @@ async def list_schedules(
     try:
         cursor = conn.cursor()
         
-        # Build query with optional job_id filter
-        where_clause = ""
-        params = []
-        
+        # Build query with optional job_id filter and soft delete exclusion
         if job_id is not None:
-            where_clause = "WHERE job_id = %s"
-            params.append(job_id)
+            where_clause = "WHERE job_id = %s AND deleted_at IS NULL"
+            params = [job_id]
+        else:
+            where_clause = "WHERE deleted_at IS NULL"
+            params = []
         
         # Get total count
         count_query = f"SELECT COUNT(*) as count FROM schedules {where_clause}"
@@ -386,7 +387,7 @@ async def get_schedule(
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, job_id, cron, timezone, next_run_at, last_run_at, is_active, created_at
-            FROM schedules WHERE id = %s
+            FROM schedules WHERE id = %s AND deleted_at IS NULL
         """, (schedule_id,))
         
         schedule = cursor.fetchone()
@@ -424,7 +425,7 @@ async def update_schedule(
         # Get current schedule
         cursor.execute("""
             SELECT id, job_id, cron, timezone, next_run_at, last_run_at, is_active, created_at
-            FROM schedules WHERE id = %s
+            FROM schedules WHERE id = %s AND deleted_at IS NULL
         """, (schedule_id,))
         
         current_schedule = cursor.fetchone()
@@ -506,17 +507,21 @@ async def delete_schedule(
     try:
         cursor = conn.cursor()
         
-        cursor.execute("DELETE FROM schedules WHERE id = %s RETURNING id", (schedule_id,))
+        # Soft delete schedule
+        cursor.execute(
+            "UPDATE schedules SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL RETURNING id",
+            (datetime.utcnow(), schedule_id)
+        )
         deleted = cursor.fetchone()
         
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Schedule not found"
+                detail="Schedule not found or already deleted"
             )
         
         conn.commit()
-        logger.info(f"Deleted schedule {schedule_id}")
+        logger.info(f"Soft deleted schedule {schedule_id}")
         return {"message": "Schedule deleted successfully"}
         
     except Exception as e:

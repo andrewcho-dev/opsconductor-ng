@@ -70,6 +70,7 @@ export interface Target {
   id: number;
   name: string;
   hostname: string;
+  ip_address?: string;
   protocol: string;
   port: number;
   os_type: string;
@@ -83,6 +84,7 @@ export interface Target {
 export interface TargetCreate {
   name: string;
   hostname: string;
+  ip_address?: string;
   protocol: string;
   port: number;
   os_type: string;
@@ -289,4 +291,127 @@ export interface SMTPTestRequest {
 export interface SMTPTestResponse {
   success: boolean;
   message: string;
+}
+
+// Discovery Types
+export interface DiscoveryJob {
+  id: number;
+  name: string;
+  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  config: DiscoveryConfig;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  created_by: number;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  results_summary?: DiscoveryResultsSummary;
+}
+
+export interface DiscoveryConfig {
+  cidr_ranges?: string[];
+  scan_intensity?: 'light' | 'standard' | 'deep';
+  ports?: string;
+  os_detection?: boolean;
+  service_detection?: boolean;
+  connection_testing?: boolean;
+  timeout?: number;
+  // AD Query specific
+  domain?: string;
+  ou?: string;
+  // Cloud API specific
+  provider?: 'aws' | 'azure' | 'gcp';
+  region?: string;
+  credentials?: Record<string, any>;
+}
+
+export interface DiscoveryResultsSummary {
+  total_hosts?: number;
+  windows_hosts?: number;
+  linux_hosts?: number;
+  duplicates_found?: number;
+  services_detected?: number;
+}
+
+export interface DiscoveredTarget {
+  id: number;
+  discovery_job_id: number;
+  hostname?: string;
+  ip_address: string;
+  os_type?: string;
+  os_version?: string;
+  services: DiscoveredService[];
+  preferred_service?: DiscoveredService;
+  system_info: Record<string, any>;
+  duplicate_status: 'unique' | 'duplicate' | 'similar';
+  existing_target_id?: number;
+  import_status: 'pending' | 'imported' | 'ignored' | 'duplicate_skipped';
+  discovered_at: string;
+}
+
+export interface DiscoveredService {
+  protocol: string;
+  port: number;
+  service_name?: string;
+  version?: string;
+  is_secure?: boolean;
+}
+
+export interface DiscoveryTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  config: DiscoveryConfig;
+  created_by: number;
+  created_at: string;
+}
+
+export interface DiscoveryJobCreate {
+  name: string;
+  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  config: DiscoveryConfig;
+}
+
+export interface DiscoveryJobUpdate {
+  name?: string;
+  config?: DiscoveryConfig;
+}
+
+export interface DiscoveredTargetUpdate {
+  hostname?: string;
+  os_type?: string;
+  os_version?: string;
+  import_status?: 'pending' | 'imported' | 'ignored' | 'duplicate_skipped';
+}
+
+export interface DiscoveryTemplateCreate {
+  name: string;
+  description?: string;
+  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  config: DiscoveryConfig;
+}
+
+export interface DiscoveryJobListResponse {
+  jobs: DiscoveryJob[];
+  total: number;
+}
+
+export interface DiscoveredTargetListResponse {
+  targets: DiscoveredTarget[];
+  total: number;
+}
+
+export interface DiscoveryTemplateListResponse {
+  templates: DiscoveryTemplate[];
+  total: number;
+}
+
+export interface TargetImportRequest {
+  target_ids: number[];
+  import_options?: {
+    auto_assign_credentials?: boolean;
+    default_credential_id?: number;
+    add_tags?: string[];
+    target_group?: string;
+  };
 }
