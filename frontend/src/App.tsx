@@ -7,11 +7,11 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Credentials from './pages/Credentials';
 import Targets from './pages/Targets';
-import TargetGroups from './components/TargetGroups';
+
 import Discovery from './pages/Discovery';
 import Jobs from './pages/Jobs';
 import Schedules from './pages/Schedules';
-import AdvancedScheduler from './components/AdvancedScheduler';
+
 import JobRuns from './pages/JobRuns';
 import JobRunDetail from './pages/JobRunDetail';
 import Notifications from './pages/Notifications';
@@ -50,11 +50,11 @@ const App: React.FC = () => {
                       <Route path="/user-management" element={<Users />} />
                       <Route path="/credential-management" element={<Credentials />} />
                       <Route path="/targets-management" element={<Targets />} />
-                      <Route path="/target-groups" element={<TargetGroups />} />
+
                       <Route path="/discovery" element={<Discovery />} />
                       <Route path="/job-management" element={<Jobs />} />
                       <Route path="/schedule-management" element={<Schedules />} />
-                      <Route path="/advanced-scheduler" element={<AdvancedScheduler />} />
+
                       <Route path="/job-runs" element={<JobRuns />} />
                       <Route path="/job-runs/:id" element={<JobRunDetail />} />
                       <Route path="/notifications" element={<Notifications />} />
