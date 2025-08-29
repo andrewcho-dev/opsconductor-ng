@@ -1,30 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { jobApi, targetApi } from '../services/api';
-import { Job, JobCreate, Target } from '../types';
+import { Job } from '../types';
+import { jobApi } from '../services/api';
 import VisualJobBuilder from '../components/VisualJobBuilder';
 
 const Jobs: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [useVisualBuilder, setUseVisualBuilder] = useState(false);
+  // Always use visual builder - traditional editor removed
   const [editingJob, setEditingJob] = useState<Job | null>(null);
-  const [formData, setFormData] = useState<JobCreate>({
-    name: '',
-    version: 1,
-    definition: {
-      name: '',
-      version: 1,
-      parameters: {},
-      steps: []
-    },
-    is_active: true
-  });
 
   useEffect(() => {
     fetchJobs();
-    fetchTargets();
   }, []);
 
   const fetchJobs = async () => {
@@ -33,75 +20,17 @@ const Jobs: React.FC = () => {
       setJobs(response.jobs || []);
     } catch (error) {
       console.error('Failed to fetch jobs:', error);
-      setJobs([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTargets = async () => {
-    try {
-      const response = await targetApi.list();
-      setTargets(response.targets || []);
-    } catch (error) {
-      console.error('Failed to fetch targets:', error);
-      setTargets([]); // Set empty array on error
-    }
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingJob) {
-        await jobApi.update(editingJob.id, formData);
-      } else {
-        await jobApi.create(formData);
-      }
-      setShowCreateModal(false);
-      setEditingJob(null);
-      setFormData({
-        name: '',
-        version: 1,
-        definition: {
-          name: '',
-          version: 1,
-          parameters: {},
-          steps: []
-        },
-        is_active: true
-      });
-      fetchJobs();
-    } catch (error) {
-      console.error(`Failed to ${editingJob ? 'update' : 'create'} job:`, error);
-      alert(`Failed to ${editingJob ? 'update' : 'create'} job. Please check the job definition.`);
-    }
-  };
-
   const resetForm = () => {
-    setFormData({
-      name: '',
-      version: 1,
-      definition: {
-        name: '',
-        version: 1,
-        parameters: {},
-        steps: []
-      },
-      is_active: true
-    });
     setEditingJob(null);
-    setUseVisualBuilder(false);
   };
 
   const handleEdit = (job: Job) => {
     setEditingJob(job);
-    setFormData({
-      name: job.name,
-      version: job.version,
-      definition: job.definition,
-      is_active: job.is_active
-    });
-    setUseVisualBuilder(false);
     setShowCreateModal(true);
   };
 
@@ -118,86 +47,29 @@ const Jobs: React.FC = () => {
 
   const handleRunJob = async (id: number) => {
     try {
-      const run = await jobApi.run(id, {});
-      alert(`Job queued for execution! Run ID: ${run.id}`);
+      await jobApi.run(id);
+      alert('Job started successfully!');
     } catch (error) {
       console.error('Failed to run job:', error);
-      alert('Failed to run job.');
+      alert('Failed to run job. Please try again.');
     }
-  };
-
-  const addStep = () => {
-    const newStep = {
-      type: 'winrm.exec',
-      shell: 'powershell',
-      target: '',
-      command: '',
-      timeoutSec: 60
-    };
-    
-    setFormData({
-      ...formData,
-      definition: {
-        ...formData.definition,
-        steps: [...formData.definition.steps, newStep]
-      }
-    });
-  };
-
-  const removeStep = (index: number) => {
-    const newSteps = formData.definition.steps.filter((_: any, i: number) => i !== index);
-    setFormData({
-      ...formData,
-      definition: {
-        ...formData.definition,
-        steps: newSteps
-      }
-    });
-  };
-
-  const updateStep = (index: number, field: string, value: any) => {
-    const newSteps = [...formData.definition.steps];
-    newSteps[index] = { ...newSteps[index], [field]: value };
-    setFormData({
-      ...formData,
-      definition: {
-        ...formData.definition,
-        steps: newSteps
-      }
-    });
   };
 
   if (loading) return <div>Loading jobs...</div>;
 
   return (
-    <div>
+    <div className="container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Jobs</h1>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => {
-              resetForm();
-              setUseVisualBuilder(false);
-              setShowCreateModal(true);
-            }}
-          >
-            Create Job (Traditional)
-          </button>
-          <button 
-            className="btn btn-primary"
-            onClick={() => {
-              resetForm();
-              setUseVisualBuilder(true);
-              setShowCreateModal(true);
-            }}
-          >
-            🎨 Visual Job Builder
-          </button>
-        </div>
+        <h2>Jobs</h2>
+        <button 
+          className="btn btn-primary"
+          onClick={() => setShowCreateModal(true)}
+        >
+          Create New Job
+        </button>
       </div>
 
-      <div className="card">
+      <div className="table-container">
         <table className="table">
           <thead>
             <tr>
@@ -255,7 +127,7 @@ const Jobs: React.FC = () => {
         </table>
       </div>
 
-      {/* Create Job Modal */}
+      {/* Create/Edit Job Modal - Visual Builder Only */}
       {showCreateModal && (
         <div style={{
           position: 'fixed',
@@ -270,193 +142,50 @@ const Jobs: React.FC = () => {
           zIndex: 1000,
           overflow: 'auto'
         }}>
-          {useVisualBuilder ? (
-            <div className="card" style={{ width: '95vw', height: '90vh', margin: '20px', overflow: 'hidden' }}>
-              <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3>🎨 Visual Job Builder</h3>
-                  <button 
-                    onClick={() => setShowCreateModal(false)}
-                    style={{ 
-                      background: 'none', 
-                      border: 'none', 
-                      fontSize: '24px', 
-                      cursor: 'pointer',
-                      color: '#666'
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <VisualJobBuilder
-                    onJobCreate={async (jobData) => {
-                      try {
-                        await jobApi.create(jobData);
-                        setShowCreateModal(false);
-                        fetchJobs();
-                      } catch (error) {
-                        console.error('Failed to create job:', error);
-                        alert('Failed to create job. Please try again.');
-                      }
-                    }}
-                    onCancel={() => setShowCreateModal(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="card" style={{ width: '800px', margin: '20px', maxHeight: '90vh', overflow: 'auto' }}>
-              <h3>{editingJob ? 'Edit Job' : 'Create New Job'} (Traditional)</h3>
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label>Name:</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    setFormData({
-                      ...formData,
-                      name,
-                      definition: { ...formData.definition, name }
-                    });
-                  }}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Version:</label>
-                <input
-                  type="number"
-                  value={formData.version}
-                  onChange={(e) => {
-                    const version = parseInt(e.target.value);
-                    setFormData({
-                      ...formData,
-                      version,
-                      definition: { ...formData.definition, version }
-                    });
-                  }}
-                  min={1}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Job Steps:</label>
-                {formData.definition.steps.map((step: any, index: number) => (
-                  <div key={index} style={{ 
-                    border: '1px solid #ddd', 
-                    padding: '10px', 
-                    margin: '10px 0',
-                    borderRadius: '4px' 
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <h5>Step {index + 1}</h5>
-                      <button 
-                        type="button"
-                        className="btn btn-danger"
-                        onClick={() => removeStep(index)}
-                        style={{ fontSize: '12px' }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    
-                    <div className="form-group">
-                      <label>Type:</label>
-                      <select
-                        value={step.type}
-                        onChange={(e) => updateStep(index, 'type', e.target.value)}
-                      >
-                        <option value="winrm.exec">WinRM Execute</option>
-                        <option value="winrm.copy">WinRM Copy</option>
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label>Target:</label>
-                      <select
-                        value={step.target}
-                        onChange={(e) => updateStep(index, 'target', e.target.value)}
-                        required
-                      >
-                        <option value="">Select target...</option>
-                        {(targets || []).map(target => (
-                          <option key={target.id} value={target.name}>
-                            {target.name} ({target.hostname})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {step.type === 'winrm.exec' && (
-                      <>
-                        <div className="form-group">
-                          <label>Shell:</label>
-                          <select
-                            value={step.shell}
-                            onChange={(e) => updateStep(index, 'shell', e.target.value)}
-                          >
-                            <option value="powershell">PowerShell</option>
-                            <option value="cmd">Command Prompt</option>
-                          </select>
-                        </div>
-
-                        <div className="form-group">
-                          <label>Command:</label>
-                          <textarea
-                            value={step.command}
-                            onChange={(e) => updateStep(index, 'command', e.target.value)}
-                            rows={3}
-                            placeholder="Enter PowerShell or CMD command"
-                            required
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    <div className="form-group">
-                      <label>Timeout (seconds):</label>
-                      <input
-                        type="number"
-                        value={step.timeoutSec}
-                        onChange={(e) => updateStep(index, 'timeoutSec', parseInt(e.target.value))}
-                        min={1}
-                      />
-                    </div>
-                  </div>
-                ))}
-                
+          <div className="card" style={{ width: '95vw', height: '90vh', margin: '20px', overflow: 'hidden' }}>
+            <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3>🎨 {editingJob ? 'Edit Job' : 'Create New Job'}</h3>
                 <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={addStep}
+                  onClick={() => setShowCreateModal(false)}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    fontSize: '24px', 
+                    cursor: 'pointer',
+                    color: '#666'
+                  }}
                 >
-                  Add Step
+                  ×
                 </button>
               </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary">
-                  {editingJob ? 'Update Job' : 'Create Job'}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={() => {
+              
+              <div style={{ flex: 1 }}>
+                <VisualJobBuilder
+                  editingJob={editingJob}
+                  onJobCreate={async (jobData) => {
+                    try {
+                      if (editingJob) {
+                        await jobApi.update(editingJob.id, jobData);
+                      } else {
+                        await jobApi.create(jobData);
+                      }
+                      setShowCreateModal(false);
+                      resetForm();
+                      fetchJobs();
+                    } catch (error) {
+                      console.error(`Failed to ${editingJob ? 'update' : 'create'} job:`, error);
+                      alert(`Failed to ${editingJob ? 'update' : 'create'} job. Please try again.`);
+                    }
+                  }}
+                  onCancel={() => {
                     setShowCreateModal(false);
                     resetForm();
                   }}
-                >
-                  Cancel
-                </button>
+                />
               </div>
-            </form>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

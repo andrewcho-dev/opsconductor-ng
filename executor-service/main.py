@@ -23,8 +23,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import winrm
-from jinja2 import Template
+from jinja2 import Template, Environment, BaseLoader, select_autoescape
 from ssh_executor import SSHExecutor, SFTPExecutor, SSHExecutionError
+import aiohttp
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -170,6 +172,8 @@ class JobExecutor:
                 result = self._execute_winrm_exec(step)
             elif step['type'] == 'winrm.copy':
                 result = self._execute_winrm_copy(step)
+            elif step['type'] == 'windows.command':
+                result = self._execute_windows_command(step)
             elif step['type'] == 'ssh.exec':
                 result = self._execute_ssh_exec(step)
             elif step['type'] == 'ssh.copy':
@@ -192,6 +196,16 @@ class JobExecutor:
                 result = self._execute_http_patch(step)
             elif step['type'] == 'webhook.call':
                 result = self._execute_webhook_call(step)
+            elif step['type'] == 'notify.email':
+                result = self._execute_notify_email(step)
+            elif step['type'] == 'notify.slack':
+                result = self._execute_notify_slack(step)
+            elif step['type'] == 'notify.teams':
+                result = self._execute_notify_teams(step)
+            elif step['type'] == 'notify.webhook':
+                result = self._execute_notify_webhook(step)
+            elif step['type'] == 'notify.conditional':
+                result = self._execute_notify_conditional(step)
             else:
                 result = {
                     'status': 'failed',
@@ -403,6 +417,192 @@ class JobExecutor:
                 'stdout': '',
                 'stderr': f'WinRM copy failed: {str(e)}'
             }
+    
+    def _execute_windows_command(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute windows.command step"""
+        try:
+            # Get target and credential info
+            target_info = self._get_target_info(step['target_id'])
+            if not target_info:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Target not found or not accessible'
+                }
+            
+            credential_data = self._get_credential_data(target_info['credential_ref'])
+            if not credential_data:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': 'Credential not found or not accessible'
+                }
+            
+            # Get job definition and parameters
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Generate PowerShell command based on command type
+            command_type = step_definition.get('command_type', 'system_info')
+            parameters = step_definition.get('parameters', {})
+            
+            powershell_command = self._generate_windows_command(command_type, parameters)
+            
+            # Create WinRM session
+            protocol = 'https' if target_info['port'] == 5986 else 'http'
+            winrm_url = f"{protocol}://{target_info['hostname']}:{target_info['port']}/wsman"
+            
+            logger.info(f"Executing Windows command '{command_type}' on {winrm_url}")
+            
+            session = winrm.Session(
+                target=winrm_url,
+                auth=(credential_data['username'], credential_data['password']),
+                transport='ntlm',
+                server_cert_validation='ignore'
+            )
+            
+            # Execute PowerShell command
+            timeout = step_definition.get('timeoutSec', 60)
+            result = session.run_ps(powershell_command)
+            
+            # Process results
+            status = 'succeeded' if result.status_code == 0 else 'failed'
+            stdout = result.std_out.decode('utf-8', errors='replace') if result.std_out else ''
+            stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else ''
+            
+            return {
+                'status': status,
+                'exit_code': result.status_code,
+                'stdout': stdout,
+                'stderr': stderr,
+                'metrics': {
+                    'target': target_info['hostname'],
+                    'command_type': command_type,
+                    'generated_command': powershell_command
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Windows command execution error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Windows command execution failed: {str(e)}'
+            }
+    
+    def _generate_windows_command(self, command_type: str, parameters: Dict[str, Any]) -> str:
+        """Generate PowerShell command based on command type and parameters"""
+        
+        if command_type == 'system_info':
+            return """
+Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, TotalPhysicalMemory, 
+CsProcessors, CsSystemType, TimeZone, LastBootUpTime | Format-List
+"""
+        
+        elif command_type == 'disk_space':
+            drive = parameters.get('drive', '')
+            if drive:
+                return f"Get-WmiObject -Class Win32_LogicalDisk -Filter \"DeviceID='{drive}'\" | Select-Object DeviceID, Size, FreeSpace, @{{Name='UsedSpace';Expression={{$_.Size - $_.FreeSpace}}}}, @{{Name='PercentFree';Expression={{[math]::Round(($_.FreeSpace / $_.Size) * 100, 2)}}}} | Format-Table -AutoSize"
+            else:
+                return "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, Size, FreeSpace, @{Name='UsedSpace';Expression={$_.Size - $_.FreeSpace}}, @{Name='PercentFree';Expression={[math]::Round(($_.FreeSpace / $_.Size) * 100, 2)}} | Format-Table -AutoSize"
+        
+        elif command_type == 'running_services':
+            service_filter = parameters.get('service_filter', '')
+            if service_filter:
+                return f"Get-Service | Where-Object {{$_.Name -like '*{service_filter}*' -and $_.Status -eq 'Running'}} | Select-Object Name, Status, StartType | Format-Table -AutoSize"
+            else:
+                return "Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, Status, StartType | Format-Table -AutoSize"
+        
+        elif command_type == 'installed_programs':
+            return """
+Get-WmiObject -Class Win32_Product | Select-Object Name, Version, Vendor, InstallDate | 
+Sort-Object Name | Format-Table -AutoSize
+"""
+        
+        elif command_type == 'network_config':
+            return """
+Get-NetIPConfiguration | Select-Object InterfaceAlias, IPv4Address, IPv6Address, 
+DNSServer | Format-List
+"""
+        
+        elif command_type == 'event_logs':
+            log_name = parameters.get('log_name', 'System')
+            max_events = parameters.get('max_events', 50)
+            level = parameters.get('level', '')
+            
+            if level:
+                return f"Get-WinEvent -LogName '{log_name}' -MaxEvents {max_events} | Where-Object {{$_.LevelDisplayName -eq '{level}'}} | Select-Object TimeCreated, Id, LevelDisplayName, Message | Format-Table -Wrap"
+            else:
+                return f"Get-WinEvent -LogName '{log_name}' -MaxEvents {max_events} | Select-Object TimeCreated, Id, LevelDisplayName, Message | Format-Table -Wrap"
+        
+        elif command_type == 'process_list':
+            process_filter = parameters.get('process_filter', '')
+            if process_filter:
+                return f"Get-Process | Where-Object {{$_.ProcessName -like '*{process_filter}*'}} | Select-Object ProcessName, Id, CPU, WorkingSet, StartTime | Format-Table -AutoSize"
+            else:
+                return "Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet, StartTime | Sort-Object CPU -Descending | Select-Object -First 20 | Format-Table -AutoSize"
+        
+        elif command_type == 'windows_updates':
+            return """
+if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
+    Get-WUList | Select-Object Title, Size, Status | Format-Table -AutoSize
+} else {
+    Write-Output "PSWindowsUpdate module not installed. Using alternative method..."
+    Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Sort-Object InstalledOn -Descending | Select-Object -First 20 | Format-Table -AutoSize
+}
+"""
+        
+        elif command_type == 'user_accounts':
+            return """
+Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordLastSet, 
+PasswordExpires | Format-Table -AutoSize
+"""
+        
+        elif command_type == 'system_uptime':
+            return """
+$bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+$uptime = (Get-Date) - $bootTime
+Write-Output "System Boot Time: $bootTime"
+Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($uptime.Minutes) minutes"
+"""
+        
+        elif command_type == 'registry_query':
+            registry_path = parameters.get('registry_path', '')
+            value_name = parameters.get('value_name', '')
+            
+            if not registry_path:
+                return "Write-Error 'Registry path is required'"
+            
+            if value_name:
+                return f"Get-ItemProperty -Path '{registry_path}' -Name '{value_name}' -ErrorAction SilentlyContinue"
+            else:
+                return f"Get-ItemProperty -Path '{registry_path}' -ErrorAction SilentlyContinue | Format-List"
+        
+        elif command_type == 'file_operations':
+            operation = parameters.get('operation', 'list')
+            path = parameters.get('path', '')
+            
+            if not path:
+                return "Write-Error 'Path is required for file operations'"
+            
+            if operation == 'list':
+                file_filter = parameters.get('filter', '*')
+                return f"Get-ChildItem -Path '{path}' -Filter '{file_filter}' | Select-Object Name, Length, LastWriteTime, Attributes | Format-Table -AutoSize"
+            elif operation == 'check_exists':
+                return f"Test-Path -Path '{path}'"
+            elif operation == 'get_size':
+                return f"if (Test-Path -Path '{path}') {{ (Get-Item -Path '{path}').Length }} else {{ Write-Output 'File not found' }}"
+            elif operation == 'get_info':
+                return f"Get-Item -Path '{path}' | Select-Object Name, Length, LastWriteTime, LastAccessTime, CreationTime, Attributes | Format-List"
+        
+        else:
+            return f"Write-Error 'Unknown command type: {command_type}'"
     
     def _execute_ssh_exec(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ssh.exec step"""
@@ -1434,6 +1634,552 @@ class JobExecutor:
                 
         except Exception as e:
             logger.error(f"Error preparing notification for job run {job_run_id}: {e}")
+    
+    def _execute_notify_email(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute notify.email step"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Check send_on condition
+            if not self._should_send_notification(step, step_definition):
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Notification skipped based on send_on condition',
+                    'stderr': ''
+                }
+            
+            # Get context for template rendering
+            context = self._get_notification_context(step)
+            
+            # Render templates
+            subject = self._render_template(
+                step_definition.get('subject_template', 'OpsConductor: Job {{ job.name }} - Notification'),
+                context
+            )
+            
+            body = self._render_template(
+                step_definition.get('body_template', 'Job {{ job.name }} notification from OpsConductor'),
+                context
+            )
+            
+            # Store notification execution
+            self._store_notification_execution(
+                step['id'],
+                'email',
+                step_definition['recipients'],
+                subject,
+                body
+            )
+            
+            # Send via notification service
+            response = requests.post(
+                f"{NOTIFICATION_SERVICE_URL}/internal/notifications/send",
+                json={
+                    "channel": "email",
+                    "recipients": step_definition['recipients'],
+                    "subject": subject,
+                    "content": body,
+                    "metadata": {
+                        "job_run_id": step['job_run_id'],
+                        "step_id": step['id'],
+                        "notification_type": "step_notification"
+                    }
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': f'Email notification sent to {len(step_definition["recipients"])} recipients',
+                    'stderr': ''
+                }
+            else:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': f'Failed to send email notification: {response.text}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Email notification error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Email notification failed: {str(e)}'
+            }
+    
+    def _execute_notify_slack(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute notify.slack step"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Check send_on condition
+            if not self._should_send_notification(step, step_definition):
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Notification skipped based on send_on condition',
+                    'stderr': ''
+                }
+            
+            # Get context for template rendering
+            context = self._get_notification_context(step)
+            
+            # Render message template
+            message = self._render_template(
+                step_definition.get('message_template', 'Job {{ job.name }} notification from OpsConductor'),
+                context
+            )
+            
+            # Prepare Slack payload
+            payload = {
+                "text": message,
+                "channel": step_definition.get('channel')
+            }
+            
+            # Store notification execution
+            self._store_notification_execution(
+                step['id'],
+                'slack',
+                [step_definition['webhook_url']],
+                None,
+                json.dumps(payload)
+            )
+            
+            # Send to Slack webhook
+            response = requests.post(
+                step_definition['webhook_url'],
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Slack notification sent successfully',
+                    'stderr': ''
+                }
+            else:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': f'Failed to send Slack notification: {response.text}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Slack notification error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Slack notification failed: {str(e)}'
+            }
+    
+    def _execute_notify_teams(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute notify.teams step"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Check send_on condition
+            if not self._should_send_notification(step, step_definition):
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Notification skipped based on send_on condition',
+                    'stderr': ''
+                }
+            
+            # Get context for template rendering
+            context = self._get_notification_context(step)
+            
+            # Render message template
+            message = self._render_template(
+                step_definition.get('message_template', 'Job {{ job.name }} notification from OpsConductor'),
+                context
+            )
+            
+            # Prepare Teams payload
+            payload = {
+                "@type": "MessageCard",
+                "@context": "http://schema.org/extensions",
+                "summary": f"Job {context['job']['name']} notification",
+                "text": message
+            }
+            
+            # Store notification execution
+            self._store_notification_execution(
+                step['id'],
+                'teams',
+                [step_definition['webhook_url']],
+                None,
+                json.dumps(payload)
+            )
+            
+            # Send to Teams webhook
+            response = requests.post(
+                step_definition['webhook_url'],
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Teams notification sent successfully',
+                    'stderr': ''
+                }
+            else:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': f'Failed to send Teams notification: {response.text}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Teams notification error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Teams notification failed: {str(e)}'
+            }
+    
+    def _execute_notify_webhook(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute notify.webhook step"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Check send_on condition
+            if not self._should_send_notification(step, step_definition):
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Notification skipped based on send_on condition',
+                    'stderr': ''
+                }
+            
+            # Get context for template rendering
+            context = self._get_notification_context(step)
+            
+            # Render payload template
+            payload_str = self._render_template(
+                step_definition.get('payload_template', '{"message": "Job {{ job.name }} notification"}'),
+                context
+            )
+            
+            try:
+                payload = json.loads(payload_str)
+            except json.JSONDecodeError:
+                payload = {"message": payload_str}
+            
+            # Store notification execution
+            self._store_notification_execution(
+                step['id'],
+                'webhook',
+                [step_definition['webhook_url']],
+                None,
+                json.dumps(payload)
+            )
+            
+            # Prepare headers
+            headers = {'Content-Type': 'application/json'}
+            if 'headers' in step_definition:
+                headers.update(step_definition['headers'])
+            
+            # Send webhook
+            response = requests.post(
+                step_definition['webhook_url'],
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': 'Webhook notification sent successfully',
+                    'stderr': ''
+                }
+            else:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': f'Failed to send webhook notification: {response.text}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Webhook notification error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Webhook notification failed: {str(e)}'
+            }
+    
+    def _execute_notify_conditional(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute notify.conditional step"""
+        try:
+            # Get job definition and parameters for template rendering
+            job_definition = json.loads(step['job_definition'])
+            run_parameters = json.loads(step['run_parameters'])
+            
+            # Find the step definition in job
+            step_definition = job_definition['steps'][step['idx']]
+            
+            # Get context for condition evaluation
+            context = self._get_notification_context(step)
+            
+            # Evaluate condition
+            condition = step_definition['condition']
+            if not self._evaluate_condition(condition, context):
+                return {
+                    'status': 'succeeded',
+                    'exit_code': 0,
+                    'stdout': f'Conditional notification skipped: condition "{condition}" evaluated to false',
+                    'stderr': ''
+                }
+            
+            # Execute the nested notification
+            notification_config = step_definition['notification_config']
+            
+            # Create a temporary step for the nested notification
+            temp_step = step.copy()
+            temp_job_definition = job_definition.copy()
+            temp_job_definition['steps'][step['idx']] = notification_config
+            temp_step['job_definition'] = json.dumps(temp_job_definition)
+            
+            # Execute based on notification type
+            if notification_config['type'] == 'notify.email':
+                return self._execute_notify_email(temp_step)
+            elif notification_config['type'] == 'notify.slack':
+                return self._execute_notify_slack(temp_step)
+            elif notification_config['type'] == 'notify.teams':
+                return self._execute_notify_teams(temp_step)
+            elif notification_config['type'] == 'notify.webhook':
+                return self._execute_notify_webhook(temp_step)
+            else:
+                return {
+                    'status': 'failed',
+                    'exit_code': 1,
+                    'stdout': '',
+                    'stderr': f'Unknown nested notification type: {notification_config["type"]}'
+                }
+                
+        except Exception as e:
+            logger.error(f"Conditional notification error: {e}")
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Conditional notification failed: {str(e)}'
+            }
+    
+    def _should_send_notification(self, step: Dict[str, Any], step_definition: Dict[str, Any]) -> bool:
+        """Check if notification should be sent based on send_on condition"""
+        send_on = step_definition.get('send_on', ['always'])
+        
+        if 'always' in send_on:
+            return True
+        
+        # Get job run status
+        conn = get_db_connection()
+        if not conn:
+            return True  # Default to sending if we can't check
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT status FROM job_runs WHERE id = %s",
+                (step['job_run_id'],)
+            )
+            result = cursor.fetchone()
+            
+            if not result:
+                return True
+            
+            job_status = result['status']
+            
+            if job_status == 'succeeded' and 'success' in send_on:
+                return True
+            elif job_status == 'failed' and 'failure' in send_on:
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking send_on condition: {e}")
+            return True  # Default to sending on error
+        finally:
+            conn.close()
+    
+    def _get_notification_context(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Get context data for notification template rendering"""
+        conn = get_db_connection()
+        if not conn:
+            return {}
+        
+        try:
+            cursor = conn.cursor()
+            
+            # Get job run info with user details
+            cursor.execute("""
+                SELECT jr.id as run_id, jr.job_id, jr.status, jr.started_at, jr.finished_at,
+                       jr.parameters, j.name as job_name, j.definition,
+                       u.username, u.email, u.id as user_id
+                FROM job_runs jr
+                JOIN jobs j ON jr.job_id = j.id
+                LEFT JOIN users u ON jr.requested_by = u.id
+                WHERE jr.id = %s
+            """, (step['job_run_id'],))
+            
+            job_info = cursor.fetchone()
+            if not job_info:
+                return {}
+            
+            # Get target info if step has target_id
+            target_info = None
+            if step.get('target_id'):
+                cursor.execute("""
+                    SELECT id, name, hostname, protocol, port, tags, metadata
+                    FROM targets WHERE id = %s
+                """, (step['target_id'],))
+                target_info = cursor.fetchone()
+            
+            # Get step statistics
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_steps,
+                    COUNT(*) FILTER (WHERE status = 'succeeded') as completed_steps,
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
+                FROM job_run_steps
+                WHERE job_run_id = %s
+            """, (step['job_run_id'],))
+            
+            step_stats = cursor.fetchone()
+            
+            # Calculate execution time
+            execution_time_ms = 0
+            if job_info['started_at'] and job_info['finished_at']:
+                execution_time_ms = int((job_info['finished_at'] - job_info['started_at']).total_seconds() * 1000)
+            
+            # Build context
+            context = {
+                'job': {
+                    'id': job_info['job_id'],
+                    'name': job_info['job_name'],
+                    'status': job_info['status'],
+                    'execution_time_ms': execution_time_ms,
+                    'total_steps': step_stats['total_steps'],
+                    'completed_steps': step_stats['completed_steps'],
+                    'failed_steps': step_stats['failed_steps']
+                },
+                'user': {
+                    'id': job_info['user_id'],
+                    'username': job_info['username'],
+                    'email': job_info['email']
+                },
+                'system': {
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+            }
+            
+            if target_info:
+                context['target'] = dict(target_info)
+            
+            # Add job parameters
+            if job_info['parameters']:
+                context.update(job_info['parameters'])
+            
+            return context
+            
+        except Exception as e:
+            logger.error(f"Error getting notification context: {e}")
+            return {}
+        finally:
+            conn.close()
+    
+    def _render_template(self, template_str: str, context: Dict[str, Any]) -> str:
+        """Render Jinja2 template with context"""
+        try:
+            env = Environment(
+                loader=BaseLoader(),
+                autoescape=select_autoescape(['html', 'xml'])
+            )
+            template = env.from_string(template_str)
+            return template.render(**context)
+        except Exception as e:
+            logger.error(f"Template rendering error: {e}")
+            return template_str  # Return original if rendering fails
+    
+    def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
+        """Evaluate a simple condition string"""
+        try:
+            # Simple condition evaluation - can be extended
+            # For now, support basic comparisons like "job.status == 'failed'"
+            
+            # Replace context variables
+            env = Environment(loader=BaseLoader())
+            template = env.from_string(f"{{{{ {condition} }}}}")
+            result = template.render(**context)
+            
+            # Convert to boolean
+            return result.lower() in ('true', '1', 'yes')
+            
+        except Exception as e:
+            logger.error(f"Condition evaluation error: {e}")
+            return False
+    
+    def _store_notification_execution(self, step_id: int, notification_type: str, 
+                                    recipients: list, subject: str, content: str):
+        """Store notification execution in database"""
+        conn = get_db_connection()
+        if not conn:
+            return
+        
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO notification_step_executions 
+                (job_run_step_id, notification_type, recipients, subject, content, delivery_status)
+                VALUES (%s, %s, %s, %s, %s, 'sent')
+            """, (step_id, notification_type, json.dumps(recipients), subject, content))
+            conn.commit()
+            
+        except Exception as e:
+            logger.error(f"Error storing notification execution: {e}")
+        finally:
+            conn.close()
 
 # Global executor instance
 executor = JobExecutor()

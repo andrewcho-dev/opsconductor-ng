@@ -5,6 +5,7 @@ import { targetApi } from '../services/api';
 interface VisualJobBuilderProps {
   onJobCreate: (jobData: any) => void;
   onCancel: () => void;
+  editingJob?: any;
 }
 
 interface StepTemplate {
@@ -175,7 +176,7 @@ const stepTemplates: StepTemplate[] = [
   }
 ];
 
-const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCancel }) => {
+const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCancel, editingJob }) => {
   const [targets, setTargets] = useState<Target[]>([]);
   const [jobName, setJobName] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -188,6 +189,16 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   useEffect(() => {
     fetchTargets();
   }, []);
+
+  // Initialize form with editing job data
+  useEffect(() => {
+    if (editingJob) {
+      setJobName(editingJob.name || '');
+      setJobDescription(editingJob.definition?.description || '');
+      setJobSteps(editingJob.definition?.steps || []);
+      // Note: selectedTargets would need to be derived from job definition if stored there
+    }
+  }, [editingJob]);
 
   const fetchTargets = async () => {
     try {
