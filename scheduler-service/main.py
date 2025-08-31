@@ -9,10 +9,12 @@ from typing import List, Optional, Dict, Any
 import httpx
 import pytz
 from croniter import croniter
+import requests
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 # Configure logging
@@ -20,6 +22,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Scheduler Service", version="1.0.0")
+
+# Security
+security = HTTPBearer()
 
 # Database configuration
 DB_CONFIG = {
@@ -77,41 +82,35 @@ class SchedulerStatusResponse(BaseModel):
     next_execution: Optional[datetime]
     last_check: Optional[datetime]
 
-# Auth verification
-async def verify_token_with_auth_service(authorization: str = None):
-    """Verify JWT token with auth service"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authorization header"
-        )
-    
-    token = authorization.split(" ")[1]
-    
+# Authentication
+def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify token with auth service"""
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{AUTH_SERVICE_URL}/verify",
-                headers={"Authorization": f"Bearer {token}"}
+        headers = {"Authorization": f"Bearer {credentials.credentials}"}
+        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
+        
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
             )
             
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token"
-                )
-            
-            return response.json()
-    except httpx.RequestError:
+        return response.json()["user"]
+        
+    except requests.RequestException:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Auth service unavailable"
         )
 
-async def verify_token(request: Request):
-    """Dependency for token verification"""
-    authorization = request.headers.get("authorization")
-    return await verify_token_with_auth_service(authorization)
+def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
+    """Require admin or operator role"""
+    if current_user["role"] not in ["admin", "operator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or operator role required"
+        )
+    return current_user
 
 def calculate_next_run(cron_expr: str, timezone_str: str) -> datetime:
     """Calculate next run time for cron expression"""
@@ -265,11 +264,9 @@ async def get_scheduler_status():
 @app.post("/schedules", response_model=ScheduleResponse)
 async def create_schedule(
     schedule_data: ScheduleCreate,
-    request: Request
+    current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Create a new job schedule"""
-    # Verify authentication
-    await verify_token(request)
     
     conn = get_db_connection()
     try:
@@ -286,13 +283,18 @@ async def create_schedule(
                 detail="Job not found"
             )
         
+        # Generate schedule name
+        schedule_name = f"schedule-job-{schedule_data.job_id}-{int(datetime.now().timestamp())}"
+        
         # Create schedule
         cursor.execute("""
-            INSERT INTO schedules (job_id, cron, timezone, next_run_at, is_active)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO schedules (job_id, name, cron_expression, cron, timezone, next_run_at, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id, job_id, cron, timezone, next_run_at, last_run_at, is_active, created_at
         """, (
             schedule_data.job_id,
+            schedule_name,
+            schedule_data.cron,
             schedule_data.cron,
             schedule_data.timezone,
             next_run,
@@ -322,14 +324,12 @@ async def create_schedule(
 
 @app.get("/schedules", response_model=ScheduleListResponse)
 async def list_schedules(
-    request: Request,
     skip: int = 0,
     limit: int = 10,
-    job_id: Optional[int] = None
+    job_id: Optional[int] = None,
+    current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """List job schedules with pagination"""
-    # Verify authentication
-    await verify_token(request)
     
     conn = get_db_connection()
     try:
@@ -376,11 +376,9 @@ async def list_schedules(
 @app.get("/schedules/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(
     schedule_id: int,
-    request: Request
+    current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """Get schedule by ID"""
-    # Verify authentication
-    await verify_token(request)
     
     conn = get_db_connection()
     try:
@@ -412,11 +410,9 @@ async def get_schedule(
 async def update_schedule(
     schedule_id: int,
     schedule_data: ScheduleUpdate,
-    request: Request
+    current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Update schedule"""
-    # Verify authentication
-    await verify_token(request)
     
     conn = get_db_connection()
     try:
@@ -497,11 +493,9 @@ async def update_schedule(
 @app.delete("/schedules/{schedule_id}")
 async def delete_schedule(
     schedule_id: int,
-    request: Request
+    current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Delete schedule"""
-    # Verify authentication
-    await verify_token(request)
     
     conn = get_db_connection()
     try:
@@ -537,11 +531,9 @@ async def delete_schedule(
 @app.post("/scheduler/start")
 async def start_scheduler(
     background_tasks: BackgroundTasks,
-    request: Request
+    current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Start the scheduler worker"""
-    # Verify authentication
-    await verify_token(request)
     
     global scheduler_running, scheduler_task
     
@@ -555,10 +547,8 @@ async def start_scheduler(
     return {"message": "Scheduler started successfully"}
 
 @app.post("/scheduler/stop")
-async def stop_scheduler(request: Request):
+async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_role)):
     """Stop the scheduler worker"""
-    # Verify authentication
-    await verify_token(request)
     
     global scheduler_running, scheduler_task
     

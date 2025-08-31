@@ -145,7 +145,7 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, email, username, pwd_hash, role, created_at, token_version FROM users WHERE username = %s",
+            "SELECT id, email, username, password_hash, role, created_at, token_version FROM users WHERE username = %s",
             (username,)
         )
         user_data = cursor.fetchone()
@@ -153,7 +153,7 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
         if not user_data:
             return None
             
-        if not verify_password(password, user_data['pwd_hash']):
+        if not verify_password(password, user_data['password_hash']):
             return None
             
         return User(**user_data)

@@ -158,7 +158,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
         
         # Insert user
         cursor.execute(
-            """INSERT INTO users (email, username, pwd_hash, role, created_at, token_version)
+            """INSERT INTO users (email, username, password_hash, role, created_at, token_version)
                VALUES (%s, %s, %s, %s, %s, %s)
                RETURNING id, email, username, role, created_at, token_version""",
             (user_data.email, user_data.username, hashed_password, user_data.role, datetime.utcnow(), 1)
@@ -329,7 +329,7 @@ async def update_user(
             update_values.append(user_data.username)
             
         if user_data.password is not None:
-            update_fields.append("pwd_hash = %s")
+            update_fields.append("password_hash = %s")
             update_values.append(get_password_hash(user_data.password))
             
         if user_data.role is not None:

@@ -130,19 +130,23 @@ def get_target_credentials(conn, target_id: int) -> List[TargetCredential]:
     """Get all credentials for a target"""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT tc.id, c.credential_type, c.username, c.description, tc.created_at
+        SELECT tc.id, c.credential_type, c.credential_data, c.description, tc.created_at
         FROM target_credentials tc
         JOIN credentials c ON tc.credential_id = c.id
-        WHERE tc.target_id = %s
-        ORDER BY c.credential_type, c.username
+        WHERE tc.target_id = %s AND c.deleted_at IS NULL
+        ORDER BY c.credential_type, c.name
     """, (target_id,))
     
     credentials = []
     for row in cursor.fetchall():
+        # Extract username from credential_data JSONB
+        credential_data = row['credential_data'] or {}
+        username = credential_data.get('username', 'N/A')
+        
         credentials.append(TargetCredential(
             id=row['id'],
             credential_type=row['credential_type'],
-            username=row['username'],
+            username=username,
             description=row['description'],
             created_at=row['created_at']
         ))
@@ -448,24 +452,22 @@ async def delete_target(
     target_id: int,
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
-    """Delete a target and all its associated services and credentials"""
+    """Delete a target (soft delete)"""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         
-        # Check if target exists
-        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Target not found")
+        # Soft delete target
+        cursor.execute(
+            "UPDATE targets SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), target_id)
+        )
         
-        # Delete associated services (cascade should handle this, but let's be explicit)
-        cursor.execute("DELETE FROM target_services WHERE target_id = %s", (target_id,))
-        
-        # Delete associated credentials
-        cursor.execute("DELETE FROM target_credentials WHERE target_id = %s", (target_id,))
-        
-        # Delete the target
-        cursor.execute("DELETE FROM targets WHERE id = %s", (target_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(
+                status_code=404, 
+                detail="Target not found or already deleted"
+            )
         
         conn.commit()
         

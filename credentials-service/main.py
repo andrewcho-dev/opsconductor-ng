@@ -540,40 +540,6 @@ async def rotate_credential(
     finally:
         conn.close()
 
-@app.delete("/credentials/{credential_id}")
-async def delete_credential(
-    credential_id: int,
-    current_user: dict = Depends(require_admin_or_operator_role)
-):
-    """Delete credential"""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        
-        # Check if credential exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
-        if not cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
-            )
-        
-        # Delete credential
-        cursor.execute("DELETE FROM credentials WHERE id = %s", (credential_id,))
-        conn.commit()
-        
-        return {"message": "Credential deleted successfully"}
-        
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Credential deletion error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete credential"
-        )
-    finally:
-        conn.close()
-
 @app.delete("/credentials/by-name/{credential_name}")
 async def delete_credential_by_name(
     credential_name: str,
@@ -584,16 +550,18 @@ async def delete_credential_by_name(
     try:
         cursor = conn.cursor()
         
-        # Check if credential exists
-        cursor.execute("SELECT id FROM credentials WHERE name = %s", (credential_name,))
-        if not cursor.fetchone():
+        # Soft delete credential by name
+        cursor.execute(
+            "UPDATE credentials SET deleted_at = %s WHERE name = %s AND deleted_at IS NULL",
+            (datetime.utcnow(), credential_name)
+        )
+        
+        if cursor.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
+                detail="Credential not found or already deleted"
             )
         
-        # Delete credential
-        cursor.execute("DELETE FROM credentials WHERE name = %s", (credential_name,))
         conn.commit()
         
         return {"message": "Credential deleted successfully"}
