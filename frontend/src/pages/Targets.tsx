@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { targetApi, credentialApi } from '../services/api';
 import { Target, TargetCreate, Credential } from '../types';
+import EnhancedTargetManagement from '../components/EnhancedTargetManagement';
+
+type ViewMode = 'legacy' | 'enhanced';
 
 const Targets: React.FC = () => {
   const [targets, setTargets] = useState<Target[]>([]);
@@ -9,6 +12,7 @@ const Targets: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [testingTarget, setTestingTarget] = useState<number | null>(null);
   const [editingTarget, setEditingTarget] = useState<Target | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('enhanced');
   const [formData, setFormData] = useState<TargetCreate>({
     name: '',
     hostname: '',
@@ -156,19 +160,42 @@ const Targets: React.FC = () => {
   // Show loading while data is being fetched
   if (loading) return <div>Loading targets...</div>;
 
+  // If enhanced view is selected, render the enhanced component
+  if (viewMode === 'enhanced') {
+    return <EnhancedTargetManagement />;
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>Targets</h1>
-        <button 
-          className="btn btn-primary"
-          onClick={() => {
-            resetForm();
-            setShowCreateModal(true);
-          }}
-        >
-          Add Target
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            <button 
+              className={`btn ${(viewMode as string) === 'enhanced' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('enhanced')}
+              style={{ fontSize: '12px' }}
+            >
+              Enhanced View
+            </button>
+            <button 
+              className={`btn ${(viewMode as string) === 'legacy' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setViewMode('legacy')}
+              style={{ fontSize: '12px' }}
+            >
+              Legacy View
+            </button>
+          </div>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              resetForm();
+              setShowCreateModal(true);
+            }}
+          >
+            Add Target
+          </button>
+        </div>
       </div>
 
       <div className="card">

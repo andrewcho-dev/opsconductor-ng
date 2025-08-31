@@ -1,0 +1,206 @@
+import axios, { AxiosResponse } from 'axios';
+import {
+  ServiceDefinition, ServiceDefinitionResponse,
+  TargetServiceCreate, TargetServiceUpdate, TargetService,
+  TargetCredentialCreate, TargetCredential,
+  EnhancedTarget, EnhancedTargetCreate, EnhancedTargetUpdate, EnhancedTargetListResponse,
+  BulkServiceOperation, BulkServiceResponse,
+  MigrationStatus,
+  TargetFilters
+} from '../types/enhanced';
+
+// Base API configuration - reuse from existing api.ts
+const getApiBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  if (window.location.port && 
+      !((protocol === 'https:' && window.location.port === '443') || 
+        (protocol === 'http:' && window.location.port === '80'))) {
+    return `${protocol}//${hostname}:${window.location.port}`;
+  }
+  
+  return `${protocol}//${hostname}`;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Create axios instance
+const enhancedApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Token management (reuse from existing api.ts)
+let accessToken: string | null = localStorage.getItem('access_token');
+
+// Request interceptor to add auth token
+enhancedApi.interceptors.request.use(
+  (config) => {
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Response interceptor for error handling
+enhancedApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Update token function
+export const setAuthToken = (token: string) => {
+  accessToken = token;
+  localStorage.setItem('access_token', token);
+};
+
+// Service Definitions API
+export const serviceDefinitionApi = {
+  list: async (category?: string, commonOnly?: boolean): Promise<ServiceDefinitionResponse> => {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (commonOnly) params.append('common_only', 'true');
+    
+    const response: AxiosResponse<ServiceDefinitionResponse> = await enhancedApi.get(
+      `/api/v1/targets/service-definitions?${params.toString()}`
+    );
+    return response.data;
+  },
+
+  getCategories: async (): Promise<string[]> => {
+    const response = await serviceDefinitionApi.list();
+    const categories = [...new Set(response.services.map(s => s.category))];
+    return categories.sort();
+  }
+};
+
+// Enhanced Targets API
+export const enhancedTargetApi = {
+  list: async (filters?: TargetFilters, skip = 0, limit = 100): Promise<EnhancedTargetListResponse> => {
+    const params = new URLSearchParams();
+    params.append('skip', skip.toString());
+    params.append('limit', limit.toString());
+    
+    if (filters?.os_type) params.append('os_type', filters.os_type);
+    if (filters?.service_type) params.append('service_type', filters.service_type);
+    if (filters?.tag) params.append('tag', filters.tag);
+    
+    const response: AxiosResponse<EnhancedTargetListResponse> = await enhancedApi.get(
+      `/api/v1/targets?${params.toString()}`
+    );
+    return response.data;
+  },
+
+  get: async (id: number): Promise<EnhancedTarget> => {
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.get(`/api/v1/targets/${id}`);
+    return response.data;
+  },
+
+  create: async (target: EnhancedTargetCreate): Promise<EnhancedTarget> => {
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.post('/api/v1/targets', target);
+    return response.data;
+  },
+
+  update: async (id: number, target: EnhancedTargetUpdate): Promise<EnhancedTarget> => {
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.put(`/api/v1/targets/${id}`, target);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await enhancedApi.delete(`/api/v1/targets/${id}`);
+  }
+};
+
+// Target Services API
+export const targetServiceApi = {
+  add: async (targetId: number, service: TargetServiceCreate): Promise<TargetService> => {
+    const response: AxiosResponse<TargetService> = await enhancedApi.post(
+      `/api/v1/targets/${targetId}/services`, 
+      service
+    );
+    return response.data;
+  },
+
+  update: async (targetId: number, serviceId: number, service: TargetServiceUpdate): Promise<TargetService> => {
+    const response: AxiosResponse<TargetService> = await enhancedApi.put(
+      `/api/v1/targets/${targetId}/services/${serviceId}`, 
+      service
+    );
+    return response.data;
+  },
+
+  delete: async (targetId: number, serviceId: number): Promise<void> => {
+    await enhancedApi.delete(`/api/v1/targets/${targetId}/services/${serviceId}`);
+  },
+
+  testConnection: async (targetId: number, serviceId: number): Promise<any> => {
+    const response = await enhancedApi.post(`/api/v1/targets/${targetId}/services/${serviceId}/test`);
+    return response.data;
+  },
+
+  bulkOperation: async (operation: BulkServiceOperation): Promise<BulkServiceResponse> => {
+    const response: AxiosResponse<BulkServiceResponse> = await enhancedApi.post(
+      '/api/v1/targets/services/bulk', 
+      operation
+    );
+    return response.data;
+  }
+};
+
+// Target Credentials API
+export const targetCredentialApi = {
+  add: async (targetId: number, credential: TargetCredentialCreate): Promise<TargetCredential> => {
+    const response: AxiosResponse<TargetCredential> = await enhancedApi.post(
+      `/api/v1/targets/${targetId}/credentials`, 
+      credential
+    );
+    return response.data;
+  },
+
+  update: async (targetId: number, credentialId: number, credential: Partial<TargetCredentialCreate>): Promise<TargetCredential> => {
+    const response: AxiosResponse<TargetCredential> = await enhancedApi.put(
+      `/api/v1/targets/${targetId}/credentials/${credentialId}`, 
+      credential
+    );
+    return response.data;
+  },
+
+  delete: async (targetId: number, credentialId: number): Promise<void> => {
+    await enhancedApi.delete(`/api/v1/targets/${targetId}/credentials/${credentialId}`);
+  }
+};
+
+// Migration API
+export const migrationApi = {
+  migrateSchema: async (): Promise<MigrationStatus> => {
+    const response: AxiosResponse<MigrationStatus> = await enhancedApi.post('/api/v1/targets/migrate-schema');
+    return response.data;
+  }
+};
+
+// Health check
+export const enhancedHealthApi = {
+  check: async (): Promise<any> => {
+    const response = await enhancedApi.get('/api/v1/targets/health');
+    return response.data;
+  }
+};
+
+export default enhancedApi;

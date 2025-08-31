@@ -432,7 +432,7 @@ export const healthApi = {
   getSystemStats: async (): Promise<any> => {
     try {
       // Get executor status for queue statistics
-      const executorResponse = await api.get('/executor/status');
+      const executorResponse = await api.get('/api/v1/executor/status');
       return executorResponse.data;
     } catch (error) {
       return { error: 'Failed to fetch system stats' };

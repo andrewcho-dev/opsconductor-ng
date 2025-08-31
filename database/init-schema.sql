@@ -37,26 +37,99 @@ CREATE INDEX IF NOT EXISTS idx_credentials_credential_type ON credentials(creden
 CREATE INDEX IF NOT EXISTS idx_credentials_created_at ON credentials(created_at);
 CREATE INDEX IF NOT EXISTS idx_credentials_name ON credentials(name);
 
+-- SERVICE DEFINITIONS (Master list of available service types)
+CREATE TABLE IF NOT EXISTS service_definitions (
+  id SERIAL PRIMARY KEY,
+  service_type VARCHAR(50) UNIQUE NOT NULL,
+  display_name VARCHAR(100) NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  default_port INTEGER,
+  is_secure_by_default BOOLEAN DEFAULT false,
+  description TEXT,
+  is_common BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for service_definitions table
+CREATE INDEX IF NOT EXISTS idx_service_definitions_category ON service_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_service_definitions_common ON service_definitions(is_common);
+CREATE INDEX IF NOT EXISTS idx_service_definitions_service_type ON service_definitions(service_type);
+
+-- TARGETS (Enhanced - removed protocol/port, now service-independent)
 CREATE TABLE IF NOT EXISTS targets (
   id BIGSERIAL PRIMARY KEY,
   name TEXT UNIQUE NOT NULL,
-  protocol TEXT NOT NULL DEFAULT 'winrm' CHECK (protocol IN ('winrm', 'ssh', 'http')),
   hostname TEXT NOT NULL,
-  port INT NOT NULL DEFAULT 5985,
-  credential_ref BIGINT NOT NULL REFERENCES credentials(id) ON DELETE RESTRICT,
+  ip_address INET,
+  os_type VARCHAR(20) CHECK (os_type IN ('windows', 'linux', 'unix', 'macos', 'other')),
+  os_version TEXT,
+  description TEXT,
   tags TEXT[] NOT NULL DEFAULT '{}',
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   depends_on INT[] NOT NULL DEFAULT '{}',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ,
+  
+  -- Legacy columns for backward compatibility (will be deprecated)
+  protocol TEXT CHECK (protocol IN ('winrm', 'ssh', 'http')),
+  port INT,
+  credential_ref BIGINT REFERENCES credentials(id) ON DELETE SET NULL
 );
 
 -- Create indexes for targets table
-CREATE INDEX IF NOT EXISTS idx_targets_protocol ON targets(protocol);
+CREATE INDEX IF NOT EXISTS idx_targets_os_type ON targets(os_type);
 CREATE INDEX IF NOT EXISTS idx_targets_tags_gin ON targets USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_targets_metadata_gin ON targets USING GIN(metadata);
 CREATE INDEX IF NOT EXISTS idx_targets_hostname ON targets(hostname);
+CREATE INDEX IF NOT EXISTS idx_targets_ip_address ON targets(ip_address);
 CREATE INDEX IF NOT EXISTS idx_targets_created_at ON targets(created_at);
 CREATE INDEX IF NOT EXISTS idx_targets_credential_ref ON targets(credential_ref);
+
+-- TARGET SERVICES (Multiple services per target)
+CREATE TABLE IF NOT EXISTS target_services (
+  id SERIAL PRIMARY KEY,
+  target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  service_type VARCHAR(50) NOT NULL REFERENCES service_definitions(service_type),
+  port INTEGER NOT NULL,
+  is_secure BOOLEAN DEFAULT false,
+  is_enabled BOOLEAN DEFAULT true,
+  is_custom_port BOOLEAN DEFAULT false,
+  discovery_method VARCHAR(20) DEFAULT 'manual' CHECK (discovery_method IN ('manual', 'scan', 'import')),
+  connection_status VARCHAR(20) DEFAULT 'unknown' CHECK (connection_status IN ('unknown', 'connected', 'failed', 'timeout')),
+  last_checked TIMESTAMPTZ,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ,
+  
+  -- Ensure no duplicate service types per target
+  UNIQUE(target_id, service_type)
+);
+
+-- Create indexes for target_services table
+CREATE INDEX IF NOT EXISTS idx_target_services_target_id ON target_services(target_id);
+CREATE INDEX IF NOT EXISTS idx_target_services_service_type ON target_services(service_type);
+CREATE INDEX IF NOT EXISTS idx_target_services_enabled ON target_services(is_enabled);
+CREATE INDEX IF NOT EXISTS idx_target_services_status ON target_services(connection_status);
+CREATE INDEX IF NOT EXISTS idx_target_services_port ON target_services(port);
+
+-- TARGET CREDENTIALS (Many-to-many with service specificity)
+CREATE TABLE IF NOT EXISTS target_credentials (
+  id SERIAL PRIMARY KEY,
+  target_id INTEGER NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  credential_id INTEGER NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,
+  service_types TEXT[] NOT NULL DEFAULT '{}', -- Array of service types this credential applies to
+  is_primary BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  
+  -- Ensure no duplicate credential assignments per target
+  UNIQUE(target_id, credential_id)
+);
+
+-- Create indexes for target_credentials table
+CREATE INDEX IF NOT EXISTS idx_target_credentials_target_id ON target_credentials(target_id);
+CREATE INDEX IF NOT EXISTS idx_target_credentials_credential_id ON target_credentials(credential_id);
+CREATE INDEX IF NOT EXISTS idx_target_credentials_service_types_gin ON target_credentials USING GIN(service_types);
+CREATE INDEX IF NOT EXISTS idx_target_credentials_primary ON target_credentials(is_primary);
 
 -- JOBS & SCHEDULES
 CREATE TABLE IF NOT EXISTS jobs (
@@ -203,11 +276,109 @@ INSERT INTO credentials (name, credential_type, description, credential_data, cr
 ('sample-ssh-key', 'ssh', 'Sample SSH key credentials', '{"encrypted": true, "data": ""}', NOW())
 ON CONFLICT (name) DO NOTHING;
 
--- Sample targets
-INSERT INTO targets (name, protocol, hostname, port, credential_ref, tags, metadata, depends_on, created_at) VALUES 
-('sample-windows-server', 'winrm', 'win-server-01.example.com', 5986, 1, ARRAY['environment:dev', 'role:web-server'], '{"domain": "EXAMPLE"}', ARRAY[]::int[], NOW()),
-('sample-linux-server', 'ssh', 'linux-server-01.example.com', 22, 2, ARRAY['environment:dev', 'role:database'], '{}', ARRAY[]::int[], NOW())
+-- Insert comprehensive service definitions
+INSERT INTO service_definitions (service_type, display_name, category, default_port, is_secure_by_default, description, is_common) VALUES 
+-- Remote Management & Execution (Most Common)
+('ssh', 'SSH (Secure Shell)', 'remote', 22, true, 'Secure Shell for Linux/Unix systems', true),
+('winrm', 'WinRM HTTP', 'remote', 5985, false, 'Windows Remote Management over HTTP', true),
+('winrm_https', 'WinRM HTTPS', 'remote', 5986, true, 'Windows Remote Management over HTTPS', true),
+('rdp', 'Remote Desktop Protocol', 'remote', 3389, false, 'Windows Remote Desktop Protocol', true),
+('vnc', 'VNC', 'remote', 5900, false, 'Virtual Network Computing', false),
+('telnet', 'Telnet', 'remote', 23, false, 'Telnet Protocol (Legacy)', false),
+
+-- Web Services
+('http', 'HTTP', 'web', 80, false, 'HTTP Web Service', true),
+('https', 'HTTPS', 'web', 443, true, 'HTTPS Secure Web Service', true),
+('http_alt', 'HTTP Alternative', 'web', 8080, false, 'Alternative HTTP port', false),
+('https_alt', 'HTTPS Alternative', 'web', 8443, true, 'Alternative HTTPS port', false),
+('http_proxy', 'HTTP Proxy', 'web', 3128, false, 'HTTP Proxy Service', false),
+('socks', 'SOCKS Proxy', 'web', 1080, false, 'SOCKS Proxy Service', false),
+
+-- File Transfer & Sharing
+('ftp', 'FTP', 'file', 21, false, 'File Transfer Protocol', true),
+('ftps', 'FTPS', 'file', 990, true, 'FTP over SSL/TLS', false),
+('sftp', 'SFTP', 'file', 22, true, 'SSH File Transfer Protocol', true),
+('smb', 'SMB/CIFS', 'file', 445, false, 'Server Message Block', true),
+('nfs', 'NFS', 'file', 2049, false, 'Network File System', false),
+('rsync', 'Rsync', 'file', 873, false, 'Remote Sync Protocol', false),
+
+-- Database Services
+('mysql', 'MySQL', 'database', 3306, false, 'MySQL Database', true),
+('postgresql', 'PostgreSQL', 'database', 5432, false, 'PostgreSQL Database', true),
+('sql_server', 'Microsoft SQL Server', 'database', 1433, false, 'Microsoft SQL Server', true),
+('oracle', 'Oracle Database', 'database', 1521, false, 'Oracle Database', false),
+('mongodb', 'MongoDB', 'database', 27017, false, 'MongoDB Database', true),
+('redis', 'Redis', 'database', 6379, false, 'Redis In-Memory Database', true),
+('elasticsearch', 'Elasticsearch', 'database', 9200, false, 'Elasticsearch Search Engine', false),
+('cassandra', 'Cassandra', 'database', 9042, false, 'Apache Cassandra', false),
+
+-- Network Management
+('snmp', 'SNMP', 'network', 161, false, 'Simple Network Management Protocol', true),
+('snmp_trap', 'SNMP Trap', 'network', 162, false, 'SNMP Trap Receiver', false),
+('wmi', 'WMI', 'network', 135, false, 'Windows Management Instrumentation', true),
+('netbios', 'NetBIOS', 'network', 139, false, 'NetBIOS Session Service', false),
+('dns', 'DNS', 'network', 53, false, 'Domain Name System', true),
+('dhcp', 'DHCP Server', 'network', 67, false, 'DHCP Server', false),
+('dhcp_client', 'DHCP Client', 'network', 68, false, 'DHCP Client', false),
+('ntp', 'NTP', 'network', 123, false, 'Network Time Protocol', true),
+
+-- Directory & Authentication
+('ldap', 'LDAP', 'directory', 389, false, 'Lightweight Directory Access Protocol', true),
+('ldaps', 'LDAPS', 'directory', 636, true, 'LDAP over SSL', true),
+('kerberos', 'Kerberos', 'directory', 88, false, 'Kerberos Authentication', false),
+('radius', 'RADIUS', 'directory', 1812, false, 'Remote Authentication Dial-In User Service', false),
+
+-- Email Services
+('smtp', 'SMTP', 'email', 25, false, 'Simple Mail Transfer Protocol', true),
+('smtp_submission', 'SMTP Submission', 'email', 587, true, 'SMTP Mail Submission', true),
+('smtps', 'SMTPS', 'email', 465, true, 'SMTP over SSL', true),
+('pop3', 'POP3', 'email', 110, false, 'Post Office Protocol v3', false),
+('pop3s', 'POP3S', 'email', 995, true, 'POP3 over SSL', false),
+('imap', 'IMAP', 'email', 143, false, 'Internet Message Access Protocol', true),
+('imaps', 'IMAPS', 'email', 993, true, 'IMAP over SSL', true),
+
+-- Application & Monitoring
+('docker', 'Docker API', 'application', 2376, true, 'Docker Remote API', true),
+('kubernetes', 'Kubernetes API', 'application', 6443, true, 'Kubernetes API Server', true),
+('prometheus', 'Prometheus', 'monitoring', 9090, false, 'Prometheus Monitoring', true),
+('grafana', 'Grafana', 'monitoring', 3000, false, 'Grafana Dashboard', true),
+('jenkins', 'Jenkins', 'application', 8080, false, 'Jenkins CI/CD', true),
+('nagios', 'Nagios', 'monitoring', 5666, false, 'Nagios Remote Plugin Executor', false),
+('zabbix', 'Zabbix Agent', 'monitoring', 10050, false, 'Zabbix Monitoring Agent', false),
+
+-- Virtualization & Cloud
+('vmware_esxi', 'VMware ESXi', 'virtualization', 443, true, 'VMware ESXi Management', false),
+('hyper_v', 'Hyper-V', 'virtualization', 2179, false, 'Microsoft Hyper-V', false),
+('aws_ssm', 'AWS SSM', 'cloud', 443, true, 'AWS Systems Manager', false),
+('azure_arc', 'Azure Arc', 'cloud', 443, true, 'Azure Arc Agent', false)
+ON CONFLICT (service_type) DO NOTHING;
+
+-- Sample targets (updated for new schema)
+INSERT INTO targets (name, hostname, ip_address, os_type, os_version, description, tags, metadata, depends_on, created_at) VALUES 
+('sample-windows-server', 'win-server-01.example.com', '192.168.1.100', 'windows', 'Windows Server 2019', 'Sample Windows server for development', ARRAY['environment:dev', 'role:web-server'], '{"domain": "EXAMPLE"}', ARRAY[]::int[], NOW()),
+('sample-linux-server', 'linux-server-01.example.com', '192.168.1.101', 'linux', 'Ubuntu 20.04', 'Sample Linux server for development', ARRAY['environment:dev', 'role:database'], '{}', ARRAY[]::int[], NOW())
 ON CONFLICT (name) DO NOTHING;
+
+-- Sample target services (assign services to sample targets)
+INSERT INTO target_services (target_id, service_type, port, is_secure, is_enabled, is_custom_port, discovery_method) VALUES 
+-- Windows server services
+(1, 'winrm_https', 5986, true, true, false, 'manual'),
+(1, 'rdp', 3389, false, true, false, 'manual'),
+(1, 'http', 80, false, true, false, 'manual'),
+(1, 'https', 443, true, true, false, 'manual'),
+(1, 'smb', 445, false, true, false, 'manual'),
+-- Linux server services  
+(2, 'ssh', 22, true, true, false, 'manual'),
+(2, 'http', 80, false, true, false, 'manual'),
+(2, 'mysql', 3306, false, true, false, 'manual'),
+(2, 'snmp', 161, false, false, false, 'manual')
+ON CONFLICT (target_id, service_type) DO NOTHING;
+
+-- Sample target credentials (assign credentials to targets for specific services)
+INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary) VALUES 
+(1, 1, ARRAY['winrm_https', 'rdp'], true),  -- Windows admin creds for WinRM and RDP
+(2, 2, ARRAY['ssh'], true)                  -- SSH key for Linux server
+ON CONFLICT (target_id, credential_id) DO NOTHING;
 
 -- Sample job definition
 INSERT INTO jobs (name, version, definition, created_by, is_active, created_at) VALUES 
@@ -215,6 +386,130 @@ INSERT INTO jobs (name, version, definition, created_by, is_active, created_at) 
 '{"name": "Restart service on Windows", "version": 1, "parameters": {"svc": "Spooler"}, "steps": [{"type": "winrm.exec", "shell": "powershell", "target": "sample-windows-server", "command": "Restart-Service {{ svc }}; (Get-Service {{ svc }}).Status", "timeoutSec": 90}]}', 
 1, true, NOW())
 ON CONFLICT DO NOTHING;
+
+-- MIGRATION FUNCTION: Convert legacy single-service targets to multi-service
+CREATE OR REPLACE FUNCTION migrate_old_targets_to_new_schema()
+RETURNS TEXT AS $$
+DECLARE
+    target_record RECORD;
+    service_count INTEGER := 0;
+    credential_count INTEGER := 0;
+    result_text TEXT := '';
+BEGIN
+    -- Migrate existing targets with legacy protocol/port to new service structure
+    FOR target_record IN 
+        SELECT id, name, protocol, port, credential_ref 
+        FROM targets 
+        WHERE protocol IS NOT NULL AND port IS NOT NULL
+    LOOP
+        -- Create target service based on legacy protocol
+        INSERT INTO target_services (target_id, service_type, port, is_secure, is_enabled, is_custom_port, discovery_method)
+        VALUES (
+            target_record.id,
+            target_record.protocol,
+            target_record.port,
+            CASE 
+                WHEN target_record.protocol = 'winrm_https' OR target_record.protocol = 'ssh' THEN true
+                ELSE false
+            END,
+            true,
+            CASE 
+                WHEN (target_record.protocol = 'winrm' AND target_record.port != 5985) OR
+                     (target_record.protocol = 'winrm_https' AND target_record.port != 5986) OR
+                     (target_record.protocol = 'ssh' AND target_record.port != 22) OR
+                     (target_record.protocol = 'http' AND target_record.port != 80)
+                THEN true
+                ELSE false
+            END,
+            'manual'
+        )
+        ON CONFLICT (target_id, service_type) DO NOTHING;
+        
+        service_count := service_count + 1;
+        
+        -- Create target credential mapping if credential exists
+        IF target_record.credential_ref IS NOT NULL THEN
+            INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary)
+            VALUES (
+                target_record.id,
+                target_record.credential_ref,
+                ARRAY[target_record.protocol],
+                true
+            )
+            ON CONFLICT (target_id, credential_id) DO NOTHING;
+            
+            credential_count := credential_count + 1;
+        END IF;
+    END LOOP;
+    
+    result_text := format('Migration completed: %s services created, %s credential mappings created', 
+                         service_count, credential_count);
+    
+    RETURN result_text;
+END;
+$$ LANGUAGE plpgsql;
+
+-- UTILITY FUNCTIONS for multi-service management
+
+-- Function to get all services for a target
+CREATE OR REPLACE FUNCTION get_target_services(target_id_param INTEGER)
+RETURNS TABLE (
+    service_id INTEGER,
+    service_type VARCHAR(50),
+    display_name VARCHAR(100),
+    category VARCHAR(50),
+    port INTEGER,
+    default_port INTEGER,
+    is_secure BOOLEAN,
+    is_enabled BOOLEAN,
+    is_custom_port BOOLEAN,
+    connection_status VARCHAR(20),
+    last_checked TIMESTAMPTZ
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        ts.id,
+        ts.service_type,
+        sd.display_name,
+        sd.category,
+        ts.port,
+        sd.default_port,
+        ts.is_secure,
+        ts.is_enabled,
+        ts.is_custom_port,
+        ts.connection_status,
+        ts.last_checked
+    FROM target_services ts
+    JOIN service_definitions sd ON ts.service_type = sd.service_type
+    WHERE ts.target_id = target_id_param
+    ORDER BY sd.category, sd.display_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get credentials for a target's services
+CREATE OR REPLACE FUNCTION get_target_credentials(target_id_param INTEGER)
+RETURNS TABLE (
+    credential_id INTEGER,
+    credential_name TEXT,
+    credential_type TEXT,
+    service_types TEXT[],
+    is_primary BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        c.id,
+        c.name,
+        c.credential_type,
+        tc.service_types,
+        tc.is_primary
+    FROM target_credentials tc
+    JOIN credentials c ON tc.credential_id = c.id
+    WHERE tc.target_id = target_id_param
+    ORDER BY tc.is_primary DESC, c.name;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Create a view for easier job run monitoring
 CREATE OR REPLACE VIEW job_run_summary AS

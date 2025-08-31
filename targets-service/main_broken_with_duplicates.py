@@ -1196,6 +1196,12 @@ async def delete_service_endpoint(
     finally:
         conn.close()
 
+# TEST ENDPOINT
+@app.put("/targets/{target_id}/test")
+async def test_update_endpoint(target_id: int):
+    """Simple test endpoint"""
+    return {"message": f"Test endpoint works for target {target_id}"}
+
 # HEALTH CHECK
 @app.get("/health")
 async def health_check():
