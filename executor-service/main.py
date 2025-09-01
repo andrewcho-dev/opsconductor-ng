@@ -1459,7 +1459,7 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
             
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT * FROM targets WHERE id = %s",
+                "SELECT * FROM targets WHERE id = %s AND deleted_at IS NULL",
                 (target_id,)
             )
             

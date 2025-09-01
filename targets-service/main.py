@@ -209,6 +209,7 @@ async def get_targets(
             SELECT id, name, hostname, ip_address, os_type, os_version,
                    description, tags, created_at, updated_at
             FROM targets
+            WHERE deleted_at IS NULL
             ORDER BY name
             LIMIT %s OFFSET %s
         """, (limit, skip))
@@ -317,7 +318,7 @@ async def get_target(
         cursor.execute("""
             SELECT id, name, hostname, ip_address, os_type, os_version,
                    description, tags, created_at, updated_at
-            FROM targets WHERE id = %s
+            FROM targets WHERE id = %s AND deleted_at IS NULL
         """, (target_id,))
         
         target_row = cursor.fetchone()
@@ -361,8 +362,8 @@ async def update_target(
     try:
         cursor = conn.cursor()
         
-        # Check if target exists
-        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
+        # Check if target exists and is not deleted
+        cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Target not found")
         

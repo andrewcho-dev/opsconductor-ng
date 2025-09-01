@@ -339,7 +339,7 @@ async def update_user(
         if not update_fields:
             # No fields to update, just return current user
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
                 (user_id,)
             )
             return UserResponse(**cursor.fetchone())

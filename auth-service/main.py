@@ -145,7 +145,7 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, email, username, password_hash, role, created_at, token_version FROM users WHERE username = %s",
+            "SELECT id, email, username, password_hash, role, created_at, token_version FROM users WHERE username = %s AND deleted_at IS NULL",
             (username,)
         )
         user_data = cursor.fetchone()
@@ -184,7 +184,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
                 (user_id,)
             )
             user_data = cursor.fetchone()
@@ -271,7 +271,7 @@ async def refresh_token(refresh_request: RefreshRequest):
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
                 (user_id,)
             )
             user_data = cursor.fetchone()

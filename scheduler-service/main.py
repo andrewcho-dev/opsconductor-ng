@@ -233,14 +233,14 @@ async def get_scheduler_status():
         cursor = conn.cursor()
         
         # Count active schedules
-        cursor.execute("SELECT COUNT(*) as count FROM schedules WHERE is_active = true")
+        cursor.execute("SELECT COUNT(*) as count FROM schedules WHERE is_active = true AND deleted_at IS NULL")
         active_count = cursor.fetchone()["count"]
         
         # Get next execution time
         cursor.execute("""
             SELECT MIN(next_run_at) as next_run 
             FROM schedules 
-            WHERE is_active = true AND next_run_at > NOW()
+            WHERE is_active = true AND deleted_at IS NULL AND next_run_at > NOW()
         """)
         next_run_result = cursor.fetchone()
         next_execution = next_run_result["next_run"] if next_run_result else None
