@@ -574,6 +574,12 @@ export const discoveryApi = {
 
   deleteTemplate: async (id: number): Promise<void> => {
     await api.delete(`/api/v1/discovery/templates/${id}`);
+  },
+
+  // Network Range Validation
+  validateNetworkRanges: async (ranges: { ranges: string[] }): Promise<any> => {
+    const response = await api.post('/api/v1/discovery/validate-network-ranges', ranges);
+    return response.data;
   }
 };
 

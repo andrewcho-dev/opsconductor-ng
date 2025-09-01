@@ -78,6 +78,11 @@ const Discovery: React.FC = () => {
   const [editingTarget, setEditingTarget] = useState<DiscoveredTarget | null>(null);
   const [showEditJobModal, setShowEditJobModal] = useState(false);
   const [showEditTargetModal, setShowEditTargetModal] = useState(false);
+  
+  // Network range validation states
+  const [validationResults, setValidationResults] = useState<{[key: number]: any}>({});
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [currentValidationResult, setCurrentValidationResult] = useState<any>(null);
 
   // Form state for creating new discovery job
   const [newJob, setNewJob] = useState<DiscoveryJobCreate>({
@@ -281,6 +286,37 @@ const Discovery: React.FC = () => {
         cidr_ranges: prev.config.cidr_ranges?.filter((_, i) => i !== index) || []
       }
     }));
+    
+    // Remove validation result for this index
+    setValidationResults(prev => {
+      const newResults = { ...prev };
+      delete newResults[index];
+      return newResults;
+    });
+  };
+
+  const validateNetworkRange = async (range: string, index: number) => {
+    if (!range.trim()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await discoveryApi.validateNetworkRanges({ ranges: [range] });
+      
+      setValidationResults(prev => ({
+        ...prev,
+        [index]: response.results[0]
+      }));
+      
+      setCurrentValidationResult(response.results[0]);
+      setShowValidationModal(true);
+      
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to validate network range');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Service management functions
@@ -840,26 +876,73 @@ const Discovery: React.FC = () => {
 
 
             <div className="col-12">
-              <label className="form-label">Network Ranges (CIDR)</label>
-              {newJob.config.cidr_ranges?.map((range, index) => (
-                <div key={index} className="input-group mb-2">
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g., 192.168.1.0/24"
-                    value={range}
-                    onChange={(e) => updateCidrRange(index, e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline-danger"
-                    onClick={() => removeCidrRange(index)}
-                    disabled={newJob.config.cidr_ranges?.length === 1}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
+              <label className="form-label">Network Ranges</label>
+              <div className="mb-2">
+                <small className="text-muted">
+                  Supports multiple formats:
+                  <ul className="mb-0 mt-1">
+                    <li><strong>CIDR:</strong> 192.168.1.0/24</li>
+                    <li><strong>IP Range:</strong> 192.168.1.100-120 or 192.168.1.100-192.168.1.120</li>
+                    <li><strong>Individual IPs:</strong> 192.168.1.20, 192.168.1.22, 192.168.1.25</li>
+                    <li><strong>Mixed:</strong> 192.168.1.23, 192.168.1.26-32, 10.0.0.0/24</li>
+                  </ul>
+                </small>
+              </div>
+              {newJob.config.cidr_ranges?.map((range, index) => {
+                const validation = validationResults[index];
+                const inputClass = validation 
+                  ? validation.valid 
+                    ? "form-control is-valid" 
+                    : "form-control is-invalid"
+                  : "form-control";
+                
+                return (
+                  <div key={index} className="input-group mb-2">
+                    <input
+                      type="text"
+                      className={inputClass}
+                      placeholder="e.g., 192.168.1.0/24, 192.168.1.100-120, 10.0.0.1,10.0.0.5"
+                      value={range}
+                      onChange={(e) => {
+                        updateCidrRange(index, e.target.value);
+                        // Clear validation when user changes input
+                        if (validationResults[index]) {
+                          setValidationResults(prev => {
+                            const newResults = { ...prev };
+                            delete newResults[index];
+                            return newResults;
+                          });
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-outline-info"
+                      onClick={() => validateNetworkRange(range, index)}
+                      title="Validate and preview targets"
+                      disabled={!range.trim()}
+                    >
+                      Validate
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      onClick={() => removeCidrRange(index)}
+                      disabled={newJob.config.cidr_ranges?.length === 1}
+                    >
+                      Remove
+                    </button>
+                    {validation && (
+                      <div className={`invalid-feedback d-block ${validation.valid ? 'text-success' : ''}`}>
+                        {validation.valid 
+                          ? `✓ Valid - ${validation.parsed_count} target(s)`
+                          : `✗ ${validation.error}`
+                        }
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <button
                 type="button"
                 className="btn btn-outline-primary btn-sm"
@@ -1162,8 +1245,72 @@ const Discovery: React.FC = () => {
         </div>
       )}
 
+      {/* Network Range Validation Modal */}
+      {showValidationModal && currentValidationResult && (
+        <div className="modal show d-block" tabIndex={-1}>
+          <div className="modal-dialog modal-lg">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Network Range Validation</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setShowValidationModal(false)}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <strong>Input:</strong> <code>{currentValidationResult.input}</code>
+                </div>
+                
+                {currentValidationResult.valid ? (
+                  <div>
+                    <div className="alert alert-success">
+                      <i className="bi bi-check-circle me-2"></i>
+                      Valid network range! Found {currentValidationResult.parsed_count} target(s).
+                    </div>
+                    
+                    <div className="mb-3">
+                      <strong>Sample Targets:</strong>
+                      <div className="mt-2">
+                        {currentValidationResult.sample_targets.map((target: string, idx: number) => (
+                          <span key={idx} className="badge bg-secondary me-1 mb-1">{target}</span>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="mb-3">
+                      <strong>Optimized for Scanning:</strong>
+                      <div className="mt-2">
+                        {currentValidationResult.optimized_ranges.map((range: string, idx: number) => (
+                          <span key={idx} className="badge bg-info me-1 mb-1">{range}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="alert alert-danger">
+                    <i className="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Invalid network range:</strong> {currentValidationResult.error}
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowValidationModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal backdrop */}
-      {(showEditJobModal || showEditTargetModal) && (
+      {(showEditJobModal || showEditTargetModal || showValidationModal) && (
         <div className="modal-backdrop show"></div>
       )}
     </div>

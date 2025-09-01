@@ -9,6 +9,8 @@ import logging
 import asyncio
 import uuid
 import json
+import ipaddress
+import re
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 from enum import Enum
@@ -77,7 +79,7 @@ class DiscoveryService(BaseModel):
     enabled: bool
 
 class NetworkScanConfig(BaseModel):
-    cidr_ranges: List[str] = Field(..., description="CIDR ranges to scan")
+    cidr_ranges: List[str] = Field(..., description="Network ranges to scan (supports CIDR, IP ranges, individual IPs, and mixed formats)")
     services: Optional[List[DiscoveryService]] = None
     ports: Optional[str] = None
     os_detection: bool = True
@@ -145,6 +147,206 @@ class ServiceInfo(BaseModel):
 
 
 
+# Network range parsing utilities
+class NetworkRangeParser:
+    """Utility class for parsing various network range formats"""
+    
+    @staticmethod
+    def parse_network_ranges(range_input: str) -> List[str]:
+        """
+        Parse various network range formats and return a list of individual IP addresses or CIDR ranges.
+        
+        Supported formats:
+        - CIDR: 192.168.1.0/24
+        - IP Range: 192.168.1.100-120 or 192.168.1.100-192.168.1.120
+        - Individual IPs: 192.168.1.20, 192.168.1.22, 192.168.1.25
+        - Mixed: 192.168.1.23, 192.168.1.26-32, 10.0.0.0/24
+        """
+        if not range_input or not range_input.strip():
+            return []
+        
+        # Split by commas first to handle multiple entries
+        entries = [entry.strip() for entry in range_input.split(',') if entry.strip()]
+        all_targets = []
+        
+        for entry in entries:
+            try:
+                targets = NetworkRangeParser._parse_single_entry(entry)
+                all_targets.extend(targets)
+            except Exception as e:
+                logger.warning(f"Failed to parse network range entry '{entry}': {e}")
+                continue
+        
+        return all_targets
+    
+    @staticmethod
+    def _parse_single_entry(entry: str) -> List[str]:
+        """Parse a single network range entry"""
+        entry = entry.strip()
+        
+        # Check if it's a CIDR range
+        if '/' in entry:
+            return NetworkRangeParser._parse_cidr(entry)
+        
+        # Check if it's an IP range
+        elif '-' in entry:
+            return NetworkRangeParser._parse_ip_range(entry)
+        
+        # Check if it's a single IP
+        else:
+            return NetworkRangeParser._parse_single_ip(entry)
+    
+    @staticmethod
+    def _parse_cidr(cidr: str) -> List[str]:
+        """Parse CIDR notation (e.g., 192.168.1.0/24)"""
+        try:
+            network = ipaddress.ip_network(cidr, strict=False)
+            # For large networks (>1000 hosts), return as CIDR for efficiency
+            if network.num_addresses > 1000:
+                return [str(network)]
+            else:
+                # For smaller networks, return individual IPs
+                return [str(ip) for ip in network.hosts()]
+        except ValueError as e:
+            raise ValueError(f"Invalid CIDR format '{cidr}': {e}")
+    
+    @staticmethod
+    def _parse_ip_range(ip_range: str) -> List[str]:
+        """Parse IP range (e.g., 192.168.1.100-120 or 192.168.1.100-192.168.1.120)"""
+        try:
+            start_ip, end_part = ip_range.split('-', 1)
+            start_ip = start_ip.strip()
+            end_part = end_part.strip()
+            
+            # Validate start IP
+            start_addr = ipaddress.ip_address(start_ip)
+            
+            # Check if end_part is just a number (short form) or full IP
+            if '.' in end_part:
+                # Full IP address
+                end_addr = ipaddress.ip_address(end_part)
+            else:
+                # Short form - just the last octet
+                if not end_part.isdigit():
+                    raise ValueError(f"Invalid range end '{end_part}' - must be a number or full IP")
+                
+                end_octet = int(end_part)
+                if end_octet < 0 or end_octet > 255:
+                    raise ValueError(f"Invalid range end '{end_part}' - must be between 0-255")
+                
+                # Construct full end IP
+                start_parts = str(start_addr).split('.')
+                end_ip = f"{start_parts[0]}.{start_parts[1]}.{start_parts[2]}.{end_octet}"
+                end_addr = ipaddress.ip_address(end_ip)
+            
+            # Generate IP list
+            if start_addr > end_addr:
+                raise ValueError(f"Start IP {start_addr} is greater than end IP {end_addr}")
+            
+            ips = []
+            current = int(start_addr)
+            end = int(end_addr)
+            
+            while current <= end:
+                ips.append(str(ipaddress.ip_address(current)))
+                current += 1
+                
+                # Safety limit to prevent memory issues
+                if len(ips) > 10000:
+                    raise ValueError(f"IP range too large (>10000 addresses): {ip_range}")
+            
+            return ips
+            
+        except ValueError as e:
+            raise ValueError(f"Invalid IP range format '{ip_range}': {e}")
+    
+    @staticmethod
+    def _parse_single_ip(ip: str) -> List[str]:
+        """Parse and validate a single IP address"""
+        try:
+            ipaddress.ip_address(ip)
+            return [ip]
+        except ValueError as e:
+            raise ValueError(f"Invalid IP address '{ip}': {e}")
+    
+    @staticmethod
+    def optimize_targets_for_nmap(targets: List[str]) -> List[str]:
+        """
+        Optimize target list for nmap scanning by grouping consecutive IPs into ranges
+        and keeping CIDR ranges as-is.
+        """
+        if not targets:
+            return []
+        
+        # Separate CIDR ranges from individual IPs
+        cidr_ranges = []
+        individual_ips = []
+        
+        for target in targets:
+            if '/' in target:
+                cidr_ranges.append(target)
+            else:
+                try:
+                    individual_ips.append(ipaddress.ip_address(target))
+                except ValueError:
+                    # If it's not a valid IP, keep it as-is (might be hostname)
+                    cidr_ranges.append(target)
+        
+        # Sort individual IPs
+        individual_ips.sort()
+        
+        # Group consecutive IPs into ranges
+        optimized = cidr_ranges.copy()
+        if individual_ips:
+            optimized.extend(NetworkRangeParser._group_consecutive_ips(individual_ips))
+        
+        return optimized
+    
+    @staticmethod
+    def _group_consecutive_ips(ips: List[ipaddress.IPv4Address]) -> List[str]:
+        """Group consecutive IP addresses into ranges for efficient nmap scanning"""
+        if not ips:
+            return []
+        
+        groups = []
+        current_group = [ips[0]]
+        
+        for i in range(1, len(ips)):
+            if int(ips[i]) == int(current_group[-1]) + 1:
+                current_group.append(ips[i])
+            else:
+                # End current group and start new one
+                groups.append(current_group)
+                current_group = [ips[i]]
+        
+        # Add the last group
+        groups.append(current_group)
+        
+        # Convert groups to nmap-friendly format
+        result = []
+        for group in groups:
+            if len(group) == 1:
+                result.append(str(group[0]))
+            elif len(group) == 2:
+                result.extend([str(group[0]), str(group[1])])
+            else:
+                # Use nmap range format for 3+ consecutive IPs
+                start_ip = str(group[0])
+                end_ip = str(group[-1])
+                
+                # Check if they're in the same subnet for range notation
+                start_parts = start_ip.split('.')
+                end_parts = end_ip.split('.')
+                
+                if start_parts[:3] == end_parts[:3]:
+                    # Same subnet - use short range notation
+                    result.append(f"{start_ip}-{end_parts[3]}")
+                else:
+                    # Different subnets - use full range notation
+                    result.append(f"{start_ip}-{end_ip}")
+        
+        return result
+
 # Database connection
 def get_db_connection():
     """Get database connection"""
@@ -156,17 +358,32 @@ def get_db_connection():
         raise HTTPException(status_code=500, detail="Database connection failed")
 
 # Authentication
-async def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify token with auth service"""
     try:
         headers = {"Authorization": f"Bearer {credentials.credentials}"}
+        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
         
-        # Run the synchronous request in a thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None, 
-            lambda: requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+            
+        return response.json()["user"]
+        
+    except requests.RequestException as e:
+        logger.error(f"Auth service request failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Auth service unavailable"
         )
+
+def verify_token_manual(credentials: HTTPAuthorizationCredentials):
+    """Verify token with auth service (manual call)"""
+    try:
+        headers = {"Authorization": f"Bearer {credentials.credentials}"}
+        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
         
         if response.status_code != 200:
             raise HTTPException(
@@ -529,24 +746,42 @@ class DiscoveryService:
         failed_ranges = []
         successful_ranges = []
         
-        # Scan each CIDR range
-        for cidr_range in scan_config.cidr_ranges:
+        # Parse and optimize network ranges
+        all_targets = []
+        for range_input in scan_config.cidr_ranges:
+            try:
+                parsed_targets = NetworkRangeParser.parse_network_ranges(range_input)
+                all_targets.extend(parsed_targets)
+                logger.info(f"Parsed range '{range_input}' into {len(parsed_targets)} targets")
+            except Exception as e:
+                logger.error(f"Failed to parse range '{range_input}': {e}")
+                failed_ranges.append({"range": range_input, "error": str(e)})
+        
+        if not all_targets and not failed_ranges:
+            raise Exception("No valid targets found in provided ranges")
+        
+        # Optimize targets for efficient nmap scanning
+        optimized_targets = NetworkRangeParser.optimize_targets_for_nmap(all_targets)
+        logger.info(f"Optimized {len(all_targets)} targets into {len(optimized_targets)} scan ranges")
+        
+        # Scan each optimized target/range
+        for target_range in optimized_targets:
             # Check for cancellation before each range
             if await self.check_job_cancelled(job_id):
                 logger.info(f"Discovery job {job_id} was cancelled during execution")
                 return
                 
             try:
-                discovered_hosts = await self.scanner.scan_network_range(cidr_range, ports)
+                discovered_hosts = await self.scanner.scan_network_range(target_range, ports)
                 all_discovered_hosts.extend(discovered_hosts)
-                successful_ranges.append(cidr_range)
-                logger.info(f"Successfully scanned {cidr_range}: found {len(discovered_hosts)} hosts")
+                successful_ranges.append(target_range)
+                logger.info(f"Successfully scanned {target_range}: found {len(discovered_hosts)} hosts")
             except Exception as e:
-                logger.error(f"Failed to scan {cidr_range}: {e}")
-                failed_ranges.append({"range": cidr_range, "error": str(e)})
+                logger.error(f"Failed to scan {target_range}: {e}")
+                failed_ranges.append({"range": target_range, "error": str(e)})
         
         # Check if ALL scans failed
-        if len(failed_ranges) == len(scan_config.cidr_ranges):
+        if len(failed_ranges) > 0 and len(successful_ranges) == 0:
             error_details = "; ".join([f"{fr['range']}: {fr['error']}" for fr in failed_ranges])
             raise Exception(f"All network scans failed. Errors: {error_details}")
         
@@ -703,27 +938,96 @@ async def health_check():
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
         conn.close()
-        return {"status": "healthy", "service": "discovery-service"}
+        return {"status": "healthy", "service": "discovery-service", "test": "endpoint registration works"}
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {"status": "unhealthy", "service": "discovery-service", "error": str(e)}
+
+@app.get("/whoami")
+def whoami(current_user: dict = Depends(verify_token_with_auth_service)):
+    """Simple test endpoint to check authentication"""
+    return {"user": current_user, "message": "Authentication working"}
+
+@app.post("/test-simple")
+async def test_simple():
+    """Simple test endpoint without dependencies"""
+    return {"message": "Simple endpoint working", "timestamp": datetime.now().isoformat()}
+
+
+
+@app.post("/validate-network-ranges")
+async def validate_network_ranges(ranges: Dict[str, List[str]]):
+    """Validate network range inputs and return parsed targets"""
+    try:
+        results = []
+        total_targets = 0
+        
+        for range_input in ranges.get("ranges", []):
+            try:
+                parsed_targets = NetworkRangeParser.parse_network_ranges(range_input)
+                optimized_targets = NetworkRangeParser.optimize_targets_for_nmap(parsed_targets)
+                
+                results.append({
+                    "input": range_input,
+                    "valid": True,
+                    "parsed_count": len(parsed_targets),
+                    "optimized_ranges": optimized_targets,
+                    "sample_targets": parsed_targets[:10] if len(parsed_targets) <= 10 else parsed_targets[:10] + [f"... and {len(parsed_targets) - 10} more"]
+                })
+                total_targets += len(parsed_targets)
+                
+            except Exception as e:
+                results.append({
+                    "input": range_input,
+                    "valid": False,
+                    "error": str(e)
+                })
+        
+        return {
+            "results": results,
+            "total_targets": total_targets,
+            "valid_ranges": len([r for r in results if r["valid"]]),
+            "invalid_ranges": len([r for r in results if not r["valid"]])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error validating network ranges: {e}")
+        raise HTTPException(status_code=500, detail="Failed to validate network ranges")
+
+
 
 # Discovery job endpoints
 @app.post("/discovery-jobs", response_model=DiscoveryJobResponse)
 async def create_discovery_job(
     job: DiscoveryJobCreate, 
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """Create and start a discovery job"""
     try:
+        # Manually verify token
+        logger.info("About to verify token...")
+        current_user = verify_token_manual(credentials)
+        logger.info(f"Token verified. Creating discovery job with user: {type(current_user)} - {current_user}")
+        
+        # Extract user ID first to catch any issues early
+        try:
+            logger.info("About to extract user ID...")
+            user_id = current_user['id']
+            logger.info(f"Extracted user ID: {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to extract user ID: {e}")
+            logger.error(f"current_user type: {type(current_user)}")
+            logger.error(f"current_user value: {current_user}")
+            raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
+        
         conn = get_db_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute("""
                 INSERT INTO discovery_jobs (name, discovery_type, config, created_by, created_at)
                 VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                 RETURNING id, name, discovery_type, config, status, created_by, created_at, started_at, completed_at, results_summary
-            """, (job.name, job.discovery_type, Json(job.config), current_user['id']))
+            """, (job.name, job.discovery_type, Json(job.config), user_id))
             new_job = cursor.fetchone()
             conn.commit()
         conn.close()
@@ -733,7 +1037,7 @@ async def create_discovery_job(
             discovery_service.start_discovery_job,
             new_job['id'],
             {'discovery_type': job.discovery_type, 'config': job.config},
-            current_user['id']
+            user_id
         )
         
         logger.info(f"Created discovery job: {new_job['id']}")
@@ -1435,9 +1739,53 @@ async def delete_discovered_target(target_id: int, current_user: dict = Depends(
 
 # Additional frontend compatibility endpoints - aliases for discovery jobs
 @app.post("/jobs", response_model=DiscoveryJobResponse)
-async def create_job_alias(job_data: DiscoveryJobCreate, current_user: dict = Depends(verify_token_with_auth_service)):
+async def create_job_alias(
+    job_data: DiscoveryJobCreate, 
+    background_tasks: BackgroundTasks,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
     """Create discovery job (frontend compatibility endpoint)"""
-    return await create_discovery_job(job_data, current_user)
+    try:
+        # Manually verify token
+        logger.info("About to verify token...")
+        current_user = verify_token_manual(credentials)
+        logger.info(f"Token verified. Creating discovery job with user: {type(current_user)} - {current_user}")
+        
+        # Extract user ID first to catch any issues early
+        try:
+            logger.info("About to extract user ID...")
+            user_id = current_user['id']
+            logger.info(f"Extracted user ID: {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to extract user ID: {e}")
+            logger.error(f"current_user type: {type(current_user)}")
+            logger.error(f"current_user value: {current_user}")
+            raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
+        
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                INSERT INTO discovery_jobs (name, discovery_type, config, created_by, created_at)
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                RETURNING id, name, discovery_type, config, status, created_by, created_at, started_at, completed_at, results_summary
+            """, (job_data.name, job_data.discovery_type, Json(job_data.config), user_id))
+            new_job = cursor.fetchone()
+            conn.commit()
+        conn.close()
+        
+        # Start discovery job in background
+        background_tasks.add_task(
+            discovery_service.start_discovery_job,
+            new_job['id'],
+            {'discovery_type': job_data.discovery_type, 'config': job_data.config},
+            user_id
+        )
+        
+        logger.info(f"Created discovery job: {new_job['id']}")
+        return new_job
+    except Exception as e:
+        logger.error(f"Error creating discovery job: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create discovery job")
 
 @app.get("/jobs/{job_id}", response_model=DiscoveryJobResponse)
 async def get_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):

@@ -220,6 +220,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./discovery-service/main.py:/app/main.py
+      - ./discovery-service/shared:/app/shared
     restart: unless-stopped
 
   # Frontend (React)
