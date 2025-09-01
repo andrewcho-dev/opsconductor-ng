@@ -4,8 +4,61 @@ import {
   DiscoveryJob,
   DiscoveredTarget,
   DiscoveryJobCreate,
-  DiscoveryConfig
+  DiscoveryConfig,
+  DiscoveryService
 } from '../types';
+
+// Default services organized by categories
+const DEFAULT_SERVICES: DiscoveryService[] = [
+  // Remote Access
+  { name: 'SSH', port: 22, protocol: 'tcp', category: 'Remote Access', enabled: false },
+  { name: 'Telnet', port: 23, protocol: 'tcp', category: 'Remote Access', enabled: false },
+  { name: 'RDP', port: 3389, protocol: 'tcp', category: 'Remote Access', enabled: false },
+  { name: 'VNC', port: 5900, protocol: 'tcp', category: 'Remote Access', enabled: false },
+  
+  // Windows Management
+  { name: 'WinRM HTTP', port: 5985, protocol: 'tcp', category: 'Windows Management', enabled: false },
+  { name: 'WinRM HTTPS', port: 5986, protocol: 'tcp', category: 'Windows Management', enabled: false },
+  { name: 'WMI', port: 135, protocol: 'tcp', category: 'Windows Management', enabled: false },
+  { name: 'NetBIOS', port: 139, protocol: 'tcp', category: 'Windows Management', enabled: false },
+  { name: 'SMB', port: 445, protocol: 'tcp', category: 'Windows Management', enabled: false },
+  
+  // Web Services
+  { name: 'HTTP', port: 80, protocol: 'tcp', category: 'Web Services', enabled: false },
+  { name: 'HTTPS', port: 443, protocol: 'tcp', category: 'Web Services', enabled: false },
+  { name: 'HTTP Alt', port: 8080, protocol: 'tcp', category: 'Web Services', enabled: false },
+  { name: 'HTTPS Alt', port: 8443, protocol: 'tcp', category: 'Web Services', enabled: false },
+  
+  // Database Services
+  { name: 'MySQL', port: 3306, protocol: 'tcp', category: 'Database Services', enabled: false },
+  { name: 'PostgreSQL', port: 5432, protocol: 'tcp', category: 'Database Services', enabled: false },
+  { name: 'SQL Server', port: 1433, protocol: 'tcp', category: 'Database Services', enabled: false },
+  { name: 'Oracle', port: 1521, protocol: 'tcp', category: 'Database Services', enabled: false },
+  { name: 'MongoDB', port: 27017, protocol: 'tcp', category: 'Database Services', enabled: false },
+  { name: 'Redis', port: 6379, protocol: 'tcp', category: 'Database Services', enabled: false },
+  
+  // Email Services
+  { name: 'SMTP', port: 25, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'SMTP SSL', port: 465, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'SMTP TLS', port: 587, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'POP3', port: 110, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'POP3S', port: 995, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'IMAP', port: 143, protocol: 'tcp', category: 'Email Services', enabled: false },
+  { name: 'IMAPS', port: 993, protocol: 'tcp', category: 'Email Services', enabled: false },
+  
+  // File Services
+  { name: 'FTP', port: 21, protocol: 'tcp', category: 'File Services', enabled: false },
+  { name: 'FTPS', port: 990, protocol: 'tcp', category: 'File Services', enabled: false },
+  { name: 'SFTP', port: 22, protocol: 'tcp', category: 'File Services', enabled: false },
+  { name: 'NFS', port: 2049, protocol: 'tcp', category: 'File Services', enabled: false },
+  
+  // Network Services
+  { name: 'DNS', port: 53, protocol: 'tcp', category: 'Network Services', enabled: false },
+  { name: 'DHCP', port: 67, protocol: 'udp', category: 'Network Services', enabled: false },
+  { name: 'SNMP', port: 161, protocol: 'udp', category: 'Network Services', enabled: false },
+  { name: 'LDAP', port: 389, protocol: 'tcp', category: 'Network Services', enabled: false },
+  { name: 'LDAPS', port: 636, protocol: 'tcp', category: 'Network Services', enabled: false },
+];
 
 const Discovery: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'jobs' | 'targets' | 'create'>('jobs');
@@ -32,10 +85,8 @@ const Discovery: React.FC = () => {
     discovery_type: 'network_scan',
     config: {
       cidr_ranges: [''],
-      scan_intensity: 'standard',
+      services: [...DEFAULT_SERVICES], // Copy default services
       os_detection: true,
-      service_detection: true,
-      connection_testing: false,
       timeout: 300
     }
   });
@@ -82,10 +133,19 @@ const Discovery: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Filter out empty CIDR ranges
+      // Validate that at least one service is selected
+      const enabledServices = newJob.config.services?.filter(s => s.enabled) || [];
+      if (enabledServices.length === 0) {
+        setError('Please select at least one service to scan for.');
+        setLoading(false);
+        return;
+      }
+      
+      // Filter out empty CIDR ranges and only include enabled services
       const config: DiscoveryConfig = {
         ...newJob.config,
-        cidr_ranges: newJob.config.cidr_ranges?.filter(range => range.trim() !== '') || []
+        cidr_ranges: newJob.config.cidr_ranges?.filter(range => range.trim() !== '') || [],
+        services: enabledServices
       };
 
       await discoveryApi.createJob({
@@ -99,10 +159,8 @@ const Discovery: React.FC = () => {
         discovery_type: 'network_scan',
         config: {
           cidr_ranges: [''],
-          scan_intensity: 'standard',
+          services: [...DEFAULT_SERVICES], // Reset to default services (all disabled)
           os_detection: true,
-          service_detection: true,
-          connection_testing: false,
           timeout: 300
         }
       });
@@ -225,6 +283,55 @@ const Discovery: React.FC = () => {
     }));
   };
 
+  // Service management functions
+  const updateServiceEnabled = (serviceName: string, enabled: boolean) => {
+    setNewJob(prev => ({
+      ...prev,
+      config: {
+        ...prev.config,
+        services: prev.config.services?.map(service => 
+          service.name === serviceName ? { ...service, enabled } : service
+        ) || []
+      }
+    }));
+  };
+
+  const updateServicePort = (serviceName: string, port: number) => {
+    setNewJob(prev => ({
+      ...prev,
+      config: {
+        ...prev.config,
+        services: prev.config.services?.map(service => 
+          service.name === serviceName ? { ...service, port } : service
+        ) || []
+      }
+    }));
+  };
+
+  const toggleCategoryServices = (category: string, enabled: boolean) => {
+    setNewJob(prev => ({
+      ...prev,
+      config: {
+        ...prev.config,
+        services: prev.config.services?.map(service => 
+          service.category === category ? { ...service, enabled } : service
+        ) || []
+      }
+    }));
+  };
+
+  // Group services by category
+  const getServicesByCategory = () => {
+    const categories: { [key: string]: DiscoveryService[] } = {};
+    newJob.config.services?.forEach(service => {
+      if (!categories[service.category]) {
+        categories[service.category] = [];
+      }
+      categories[service.category].push(service);
+    });
+    return categories;
+  };
+
   const getStatusBadge = (status: string) => {
     const statusColors = {
       pending: 'badge-warning',
@@ -250,6 +357,23 @@ const Discovery: React.FC = () => {
     setShowEditJobModal(true);
   };
 
+  const handleCancelJob = async (jobId: number) => {
+    if (!window.confirm('Are you sure you want to cancel this running discovery job?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await discoveryApi.cancelJob(jobId);
+      await loadJobs();
+      alert('Discovery job cancelled successfully');
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel discovery job');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDeleteJob = async (jobId: number) => {
     if (!window.confirm('Are you sure you want to delete this discovery job? This will also delete all discovered targets from this job.')) {
       return;
@@ -259,6 +383,7 @@ const Discovery: React.FC = () => {
       setLoading(true);
       await discoveryApi.deleteJob(jobId);
       await loadJobs();
+      alert('Discovery job deleted successfully');
     } catch (err: any) {
       setError(err.message || 'Failed to delete discovery job');
     } finally {
@@ -384,7 +509,6 @@ const Discovery: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Type</th>
                     <th>Status</th>
                     <th>Created</th>
                     <th>Duration</th>
@@ -395,7 +519,7 @@ const Discovery: React.FC = () => {
                 <tbody>
                   {jobs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center text-muted">
+                      <td colSpan={6} className="text-center text-muted">
                         No discovery jobs found. Create your first discovery job to get started.
                       </td>
                     </tr>
@@ -404,11 +528,6 @@ const Discovery: React.FC = () => {
                       <tr key={job.id}>
                         <td>
                           <strong>{job.name}</strong>
-                        </td>
-                        <td>
-                          <span className="badge badge-secondary">
-                            {job.discovery_type.replace('_', ' ')}
-                          </span>
                         </td>
                         <td>
                           <span className={`badge ${getStatusBadge(job.status)}`}>
@@ -447,13 +566,23 @@ const Discovery: React.FC = () => {
                                 Edit
                               </button>
                             )}
-                            <button
-                              className="btn btn-outline-danger"
-                              onClick={() => handleDeleteJob(job.id)}
-                              title="Delete Job"
-                            >
-                              Delete
-                            </button>
+                            {job.status === 'running' ? (
+                              <button
+                                className="btn btn-outline-warning"
+                                onClick={() => handleCancelJob(job.id)}
+                                title="Cancel Running Job"
+                              >
+                                Cancel
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-outline-danger"
+                                onClick={() => handleDeleteJob(job.id)}
+                                title="Delete Job"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -708,19 +837,7 @@ const Discovery: React.FC = () => {
               />
             </div>
 
-            <div className="col-md-6">
-              <label htmlFor="discoveryType" className="form-label">Discovery Type</label>
-              <select
-                className="form-select"
-                id="discoveryType"
-                value={newJob.discovery_type}
-                onChange={(e) => setNewJob(prev => ({ ...prev, discovery_type: e.target.value as any }))}
-              >
-                <option value="network_scan">Network Scan</option>
-                <option value="ad_query" disabled>Active Directory Query (Coming Soon)</option>
-                <option value="cloud_api" disabled>Cloud API Discovery (Coming Soon)</option>
-              </select>
-            </div>
+
 
             <div className="col-12">
               <label className="form-label">Network Ranges (CIDR)</label>
@@ -752,25 +869,78 @@ const Discovery: React.FC = () => {
               </button>
             </div>
 
-            <div className="col-md-4">
-              <label htmlFor="scanIntensity" className="form-label">Scan Intensity</label>
-              <select
-                className="form-select"
-                id="scanIntensity"
-                value={newJob.config.scan_intensity}
-                onChange={(e) => setNewJob(prev => ({
-                  ...prev,
-                  config: { ...prev.config, scan_intensity: e.target.value as any }
-                }))}
-              >
-                <option value="light">Light - Ports: 22, 3389, 5985</option>
-                <option value="standard">Standard - Ports: 22, 80, 135, 443, 3389, 5985, 5986</option>
-                <option value="deep">Deep - Ports: 22, 80, 135, 139, 443, 445, 3389, 5985, 5986, 8080</option>
-              </select>
-              <div className="form-text">
-                <small>
-                  <strong>Current scan:</strong> 22 (SSH), 3389 (RDP), 5985 (WinRM HTTP), 5986 (WinRM HTTPS)
-                </small>
+            <div className="col-12">
+              <label className="form-label">Services to Scan</label>
+              <div className="card">
+                <div className="card-body">
+                  <div className="row">
+                    {Object.entries(getServicesByCategory()).map(([category, services]) => {
+                      const enabledCount = services.filter(s => s.enabled).length;
+                      const totalCount = services.length;
+                      
+                      return (
+                        <div key={category} className="col-md-6 col-lg-4 mb-3">
+                          <div className="card h-100">
+                            <div className="card-header d-flex justify-content-between align-items-center py-2">
+                              <h6 className="mb-0">{category}</h6>
+                              <div className="form-check">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  id={`category-${category}`}
+                                  checked={enabledCount === totalCount}
+                                  onChange={(e) => toggleCategoryServices(category, e.target.checked)}
+                                />
+                                <label className="form-check-label small" htmlFor={`category-${category}`}>
+                                  All ({enabledCount}/{totalCount})
+                                </label>
+                              </div>
+                            </div>
+                            <div className="card-body py-2">
+                              {services.map(service => (
+                                <div key={service.name} className="row align-items-center mb-2">
+                                  <div className="col-1">
+                                    <input
+                                      className="form-check-input"
+                                      type="checkbox"
+                                      id={`service-${service.name}`}
+                                      checked={service.enabled}
+                                      onChange={(e) => updateServiceEnabled(service.name, e.target.checked)}
+                                    />
+                                  </div>
+                                  <div className="col-5">
+                                    <label className="form-check-label small" htmlFor={`service-${service.name}`}>
+                                      {service.name}
+                                    </label>
+                                  </div>
+                                  <div className="col-6">
+                                    <input
+                                      type="number"
+                                      className="form-control form-control-sm"
+                                      value={service.port}
+                                      onChange={(e) => updateServicePort(service.name, parseInt(e.target.value) || service.port)}
+                                      min="1"
+                                      max="65535"
+                                      disabled={!service.enabled}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2">
+                    <small className="text-muted">
+                      Select the services you want to scan for. Port numbers can be customized for each service.
+                      {newJob.config.services?.filter(s => s.enabled).length === 0 && (
+                        <span className="text-warning"> No services selected - please select at least one service to scan.</span>
+                      )}
+                    </small>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -807,36 +977,7 @@ const Discovery: React.FC = () => {
                   OS Detection
                 </label>
               </div>
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="serviceDetection"
-                  checked={newJob.config.service_detection}
-                  onChange={(e) => setNewJob(prev => ({
-                    ...prev,
-                    config: { ...prev.config, service_detection: e.target.checked }
-                  }))}
-                />
-                <label className="form-check-label" htmlFor="serviceDetection">
-                  Service Detection
-                </label>
-              </div>
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="connectionTesting"
-                  checked={newJob.config.connection_testing}
-                  onChange={(e) => setNewJob(prev => ({
-                    ...prev,
-                    config: { ...prev.config, connection_testing: e.target.checked }
-                  }))}
-                />
-                <label className="form-check-label" htmlFor="connectionTesting">
-                  Connection Testing
-                </label>
-              </div>
+
             </div>
 
             <div className="col-12">

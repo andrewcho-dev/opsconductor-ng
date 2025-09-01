@@ -505,6 +505,11 @@ export const discoveryApi = {
     await api.delete(`/api/v1/discovery/jobs/${id}`);
   },
 
+  cancelJob: async (id: number): Promise<{ message: string }> => {
+    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/jobs/${id}/cancel`);
+    return response.data;
+  },
+
   // Discovered Targets
   listTargets: async (skip = 0, limit = 100, jobId?: number, status?: string): Promise<DiscoveredTargetListResponse> => {
     const response: AxiosResponse<DiscoveredTargetListResponse> = await api.get('/api/v1/discovery/targets', {

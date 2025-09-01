@@ -317,7 +317,7 @@ export interface SMTPTestResponse {
 export interface DiscoveryJob {
   id: number;
   name: string;
-  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  discovery_type: string;
   config: DiscoveryConfig;
   status: 'pending' | 'running' | 'completed' | 'failed';
   created_by: number;
@@ -327,13 +327,19 @@ export interface DiscoveryJob {
   results_summary?: DiscoveryResultsSummary;
 }
 
+export interface DiscoveryService {
+  name: string;
+  port: number;
+  protocol: 'tcp' | 'udp';
+  category: string;
+  enabled: boolean;
+}
+
 export interface DiscoveryConfig {
   cidr_ranges?: string[];
-  scan_intensity?: 'light' | 'standard' | 'deep';
+  services?: DiscoveryService[];
   ports?: string;
   os_detection?: boolean;
-  service_detection?: boolean;
-  connection_testing?: boolean;
   timeout?: number;
   // AD Query specific
   domain?: string;
@@ -380,7 +386,7 @@ export interface DiscoveryTemplate {
   id: number;
   name: string;
   description?: string;
-  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  discovery_type: string;
   config: DiscoveryConfig;
   created_by: number;
   created_at: string;
@@ -388,7 +394,7 @@ export interface DiscoveryTemplate {
 
 export interface DiscoveryJobCreate {
   name: string;
-  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  discovery_type: string;
   config: DiscoveryConfig;
 }
 
@@ -407,7 +413,7 @@ export interface DiscoveredTargetUpdate {
 export interface DiscoveryTemplateCreate {
   name: string;
   description?: string;
-  discovery_type: 'network_scan' | 'ad_query' | 'cloud_api';
+  discovery_type: string;
   config: DiscoveryConfig;
 }
 

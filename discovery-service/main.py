@@ -13,10 +13,11 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 from enum import Enum
 import requests
+import httpx
 
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import jwt
@@ -47,11 +48,6 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 
 # Enums
-class DiscoveryType(str, Enum):
-    NETWORK_SCAN = "network_scan"
-    AD_QUERY = "ad_query"
-    CLOUD_API = "cloud_api"
-
 class JobStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -59,10 +55,7 @@ class JobStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
-class ScanIntensity(str, Enum):
-    LIGHT = "light"
-    STANDARD = "standard"
-    DEEP = "deep"
+
 
 class ImportStatus(str, Enum):
     PENDING = "pending"
@@ -76,20 +69,25 @@ class DuplicateStatus(str, Enum):
     CONFIRMED_DUPLICATE = "confirmed_duplicate"
 
 # Pydantic models
+class DiscoveryService(BaseModel):
+    name: str
+    port: int
+    protocol: str = "tcp"
+    category: str
+    enabled: bool
+
 class NetworkScanConfig(BaseModel):
     cidr_ranges: List[str] = Field(..., description="CIDR ranges to scan")
-    scan_intensity: ScanIntensity = ScanIntensity.STANDARD
+    services: Optional[List[DiscoveryService]] = None
     ports: Optional[str] = None
     os_detection: bool = True
-    service_detection: bool = True
-    connection_testing: bool = False
     enhanced_detection: bool = False
     credentials_id: Optional[int] = None
     timeout: int = 300
 
 class DiscoveryJobCreate(BaseModel):
     name: str
-    discovery_type: DiscoveryType
+    discovery_type: str
     config: Dict[str, Any]
 
 class DiscoveryJobUpdate(BaseModel):
@@ -145,12 +143,7 @@ class ServiceInfo(BaseModel):
     confidence: str
     secure: bool = False
 
-# Port configurations for different scan intensities
-SCAN_PORTS = {
-    ScanIntensity.LIGHT: "22,3389,5985",
-    ScanIntensity.STANDARD: "22,3389,5985,5986",
-    ScanIntensity.DEEP: "22,135,445,3389,5985,5986,80,443"
-}
+
 
 # Database connection
 def get_db_connection():
@@ -163,11 +156,17 @@ def get_db_connection():
         raise HTTPException(status_code=500, detail="Database connection failed")
 
 # Authentication
-def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify token with auth service"""
     try:
         headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
+        
+        # Run the synchronous request in a thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None, 
+            lambda: requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
+        )
         
         if response.status_code != 200:
             raise HTTPException(
@@ -177,13 +176,14 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
             
         return response.json()["user"]
         
-    except requests.RequestException:
+    except requests.RequestException as e:
+        logger.error(f"Auth service request failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Auth service unavailable"
         )
 
-def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
+async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     if current_user["role"] not in ["admin", "operator"]:
         raise HTTPException(
@@ -381,7 +381,7 @@ class DiscoveryService:
             conn.close()
             
             # Execute discovery based on type
-            if job_config['discovery_type'] == DiscoveryType.NETWORK_SCAN:
+            if job_config['discovery_type'] == "network_scan":
                 await self.network_scan_discovery(job_id, job_config['config'])
             else:
                 raise HTTPException(status_code=400, detail=f"Discovery type {job_config['discovery_type']} not implemented")
@@ -489,12 +489,41 @@ class DiscoveryService:
             conn.close()
             raise
     
+    async def check_job_cancelled(self, job_id: int) -> bool:
+        """Check if a job has been cancelled"""
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT status FROM discovery_jobs WHERE id = %s", (job_id,))
+                result = cursor.fetchone()
+                if result and result[0] == JobStatus.CANCELLED:
+                    return True
+            conn.close()
+            return False
+        except Exception as e:
+            logger.error(f"Error checking job cancellation status: {e}")
+            return False
+
     async def network_scan_discovery(self, job_id: int, config: Dict):
         """Execute network scan discovery"""
         scan_config = NetworkScanConfig(**config)
         
+        # Check if job was cancelled before starting
+        if await self.check_job_cancelled(job_id):
+            logger.info(f"Discovery job {job_id} was cancelled before starting")
+            return
+        
         # Determine ports to scan
-        ports = scan_config.ports or SCAN_PORTS[scan_config.scan_intensity]
+        if scan_config.services:
+            # Use new services array - extract enabled services' ports
+            enabled_ports = [str(service.port) for service in scan_config.services if service.enabled]
+            ports = ",".join(enabled_ports) if enabled_ports else "22,3389,5985"  # fallback
+        elif scan_config.ports:
+            # Use explicit ports
+            ports = scan_config.ports
+        else:
+            # Default fallback - common management ports
+            ports = "22,3389,5985,5986"
         
         all_discovered_hosts = []
         failed_ranges = []
@@ -502,6 +531,11 @@ class DiscoveryService:
         
         # Scan each CIDR range
         for cidr_range in scan_config.cidr_ranges:
+            # Check for cancellation before each range
+            if await self.check_job_cancelled(job_id):
+                logger.info(f"Discovery job {job_id} was cancelled during execution")
+                return
+                
             try:
                 discovered_hosts = await self.scanner.scan_network_range(cidr_range, ports)
                 all_discovered_hosts.extend(discovered_hosts)
@@ -734,11 +768,13 @@ async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict
         logger.error(f"Error fetching discovery jobs: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch discovery jobs")
 
-# Frontend compatibility endpoint - alias for discovery jobs
+# Frontend compatibility endpoint - alias for discovery jobs list
 @app.get("/jobs", response_model=DiscoveryJobListResponse)
 async def get_jobs_alias(skip: int = 0, limit: int = 100, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get all discovery jobs (frontend compatibility endpoint)"""
     return await get_discovery_jobs(skip, limit, current_user)
+
+
 
 @app.get("/discovery-jobs/{job_id}", response_model=DiscoveryJobResponse)
 async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1115,32 +1151,92 @@ async def bulk_delete_discovered_targets(
         logger.error(f"Error bulk deleting targets: {e}")
         raise HTTPException(status_code=500, detail="Failed to bulk delete targets")
 
+@app.post("/discovery-jobs/{job_id}/cancel")
+async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Cancel a running discovery job"""
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("SELECT id, status FROM discovery_jobs WHERE id = %s", (job_id,))
+            job = cursor.fetchone()
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Discovery job not found")
+            
+            if job['status'] != JobStatus.RUNNING:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Cannot cancel job with status '{job['status']}'. Only running jobs can be cancelled."
+                )
+            
+            cursor.execute("""
+                UPDATE discovery_jobs 
+                SET status = %s, completed_at = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (JobStatus.CANCELLED, job_id))
+            
+            conn.commit()
+        conn.close()
+        
+        logger.info(f"Cancelled discovery job {job_id}")
+        return {"message": "Discovery job cancelled successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling discovery job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to cancel discovery job")
+
 @app.delete("/discovery-jobs/{job_id}")
 async def delete_discovery_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
     """Delete a discovery job and its associated targets"""
     try:
         conn = get_db_connection()
-        with conn.cursor() as cursor:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # First check if job exists and get current status
+            cursor.execute("SELECT id, status FROM discovery_jobs WHERE id = %s", (job_id,))
+            job = cursor.fetchone()
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Discovery job not found")
+            
+            # If job is running, cancel it first
+            if job['status'] == JobStatus.RUNNING:
+                logger.info(f"Cancelling running discovery job {job_id} before deletion")
+                cursor.execute("""
+                    UPDATE discovery_jobs 
+                    SET status = %s, completed_at = CURRENT_TIMESTAMP 
+                    WHERE id = %s
+                """, (JobStatus.CANCELLED, job_id))
+                conn.commit()
+                
+                # Give a moment for any running processes to notice the cancellation
+                await asyncio.sleep(1)
+            
             # Delete associated discovered targets first
             cursor.execute("DELETE FROM discovered_targets WHERE discovery_job_id = %s", (job_id,))
+            targets_deleted = cursor.rowcount
             
             # Delete the job
             cursor.execute("DELETE FROM discovery_jobs WHERE id = %s", (job_id,))
             
-            if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
-            
             conn.commit()
         conn.close()
         
-        logger.info(f"Deleted discovery job {job_id}")
-        return {"message": "Discovery job deleted successfully"}
+        logger.info(f"Deleted discovery job {job_id} (cancelled if running, deleted {targets_deleted} associated targets)")
+        return {
+            "message": "Discovery job deleted successfully",
+            "targets_deleted": targets_deleted,
+            "was_running": job['status'] == JobStatus.RUNNING
+        }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error deleting discovery job {job_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete discovery job")
+
+
 
 @app.put("/discovery-jobs/{job_id}", response_model=DiscoveryJobResponse)
 async def update_discovery_job(
@@ -1336,6 +1432,32 @@ async def delete_discovered_target(target_id: int, current_user: dict = Depends(
     except Exception as e:
         logger.error(f"Error deleting discovered target {target_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete discovered target")
+
+# Additional frontend compatibility endpoints - aliases for discovery jobs
+@app.post("/jobs", response_model=DiscoveryJobResponse)
+async def create_job_alias(job_data: DiscoveryJobCreate, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Create discovery job (frontend compatibility endpoint)"""
+    return await create_discovery_job(job_data, current_user)
+
+@app.get("/jobs/{job_id}", response_model=DiscoveryJobResponse)
+async def get_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Get discovery job by ID (frontend compatibility endpoint)"""
+    return await get_discovery_job(job_id, current_user)
+
+@app.put("/jobs/{job_id}", response_model=DiscoveryJobResponse)
+async def update_job_alias(job_id: int, job_data: DiscoveryJobUpdate, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Update discovery job (frontend compatibility endpoint)"""
+    return await update_discovery_job(job_id, job_data, current_user)
+
+@app.delete("/jobs/{job_id}")
+async def delete_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Delete discovery job (frontend compatibility endpoint)"""
+    return await delete_discovery_job(job_id, current_user)
+
+@app.post("/jobs/{job_id}/cancel")
+async def cancel_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+    """Cancel discovery job (frontend compatibility endpoint)"""
+    return await cancel_discovery_job_new(job_id, current_user)
 
 if __name__ == "__main__":
     import uvicorn
