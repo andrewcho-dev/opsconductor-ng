@@ -201,8 +201,14 @@ async def get_targets(
     try:
         cursor = conn.cursor()
         
-        # Get total count - simplified approach
-        total = 0  # We'll calculate this from the results
+        # Get total count first
+        cursor.execute("""
+            SELECT COUNT(*) as total
+            FROM targets
+            WHERE deleted_at IS NULL
+        """)
+        total_result = cursor.fetchone()
+        total = total_result['total'] if total_result else 0
         
         # Get targets with pagination
         cursor.execute("""
@@ -236,9 +242,6 @@ async def get_targets(
                 created_at=row['created_at'],
                 updated_at=row['updated_at']
             ))
-        
-        # Calculate total from results for now
-        total = len(targets)
         
         return TargetListResponse(
             targets=targets,
