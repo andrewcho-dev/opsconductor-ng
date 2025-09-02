@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { targetApi, credentialApi } from '../services/api';
+import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
-import EnhancedTargetManagement from '../components/EnhancedTargetManagement';
-
-type ViewMode = 'legacy' | 'enhanced';
+import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
 
 const Targets: React.FC = () => {
-  const [targets, setTargets] = useState<Target[]>([]);
+  const navigate = useNavigate();
+  const { action, id } = useParams<{ action?: string; id?: string }>();
+  const [targets, setTargets] = useState<EnhancedTarget[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [testingTarget, setTestingTarget] = useState<number | null>(null);
-  const [editingTarget, setEditingTarget] = useState<Target | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('enhanced');
+  const [selectedTarget, setSelectedTarget] = useState<EnhancedTarget | null>(null);
+  const [showDetailPanel, setShowDetailPanel] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [testingService, setTestingService] = useState<number | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [formData, setFormData] = useState<TargetCreate>({
     name: '',
     hostname: '',
@@ -26,44 +31,48 @@ const Targets: React.FC = () => {
     depends_on: []
   });
 
+  const isEditing = action === 'edit' && id;
+  const isCreating = action === 'create';
+  const showForm = isEditing || isCreating;
+
   useEffect(() => {
-    // Remove auth dependency - just fetch data immediately like working pages
     fetchTargets();
     fetchCredentials();
   }, []);
 
-  const fetchTargets = async () => {
-    try {
-      const response = await targetApi.list();
-      setTargets(response.targets || []);
-    } catch (error) {
-      console.error('Failed to fetch targets:', error);
-      setTargets([]); // Set empty array on error
-    } finally {
-      setLoading(false);
+  // Add a retry mechanism for initial load
+  useEffect(() => {
+    if (!loading && targets.length === 0 && retryCount < 2) {
+      // If we finished loading but have no targets, retry up to 2 times with increasing delay
+      const delay = (retryCount + 1) * 1000; // 1s, 2s
+      const timer = setTimeout(() => {
+        console.log(`Retrying targets fetch (attempt ${retryCount + 1}) after initial empty result`);
+        setRetryCount(prev => prev + 1);
+        fetchTargets();
+      }, delay);
+      
+      return () => clearTimeout(timer);
     }
-  };
+  }, [loading, targets.length, retryCount]);
 
-  const fetchCredentials = async () => {
-    try {
-      const response = await credentialApi.list();
-      setCredentials(response.credentials || []);
-    } catch (error) {
-      console.error('Failed to fetch credentials:', error);
-      setCredentials([]); // Set empty array on error
-    }
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingTarget) {
-        await targetApi.update(editingTarget.id, formData);
-      } else {
-        await targetApi.create(formData);
+  useEffect(() => {
+    if (isEditing && id) {
+      const target = targets.find(t => t.id === parseInt(id));
+      if (target) {
+        setFormData({
+          name: target.name,
+          hostname: target.hostname,
+          ip_address: target.ip_address || '',
+          protocol: target.protocol,
+          port: target.port,
+          os_type: target.os_type,
+          credential_ref: target.credential_ref,
+          tags: target.tags || [],
+          metadata: target.metadata || {},
+          depends_on: target.depends_on || []
+        });
       }
-      setShowCreateModal(false);
-      setEditingTarget(null);
+    } else if (isCreating) {
       setFormData({
         name: '',
         hostname: '',
@@ -76,49 +85,67 @@ const Targets: React.FC = () => {
         metadata: {},
         depends_on: []
       });
-      fetchTargets();
+    }
+  }, [isEditing, isCreating, id, targets]);
+
+  const fetchTargets = async () => {
+    try {
+      console.log('Fetching targets...');
+      const response = await enhancedTargetApi.list();
+      console.log('Targets response:', response);
+      const targetsList = response.targets || [];
+      setTargets(targetsList);
+      
+      // Reset retry count on successful fetch
+      if (targetsList.length > 0) {
+        setRetryCount(0);
+      }
     } catch (error) {
-      console.error(`Failed to ${editingTarget ? 'update' : 'create'} target:`, error);
+      console.error('Failed to fetch targets:', error);
+      // Check if it's an authentication error
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        console.log('Authentication error, targets will be empty until token refresh');
+      }
+      setTargets([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      hostname: '',
-      ip_address: '',
-      protocol: 'winrm',
-      port: 5985,
-      os_type: 'windows',
-      credential_ref: 0,
-      tags: [],
-      metadata: {},
-      depends_on: []
-    });
-    setEditingTarget(null);
+  const fetchCredentials = async () => {
+    try {
+      const response = await credentialApi.list();
+      setCredentials(response.credentials || []);
+    } catch (error) {
+      console.error('Failed to fetch credentials:', error);
+      setCredentials([]);
+    }
   };
 
-  const handleEdit = (target: Target) => {
-    setEditingTarget(target);
-    setFormData({
-      name: target.name,
-      hostname: target.hostname,
-      ip_address: target.ip_address || '',
-      protocol: target.protocol,
-      port: target.port,
-      os_type: target.os_type,
-      credential_ref: target.credential_ref,
-      tags: target.tags,
-      metadata: target.metadata,
-      depends_on: target.depends_on
-    });
-    setShowCreateModal(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      if (isEditing && id) {
+        await targetApi.update(parseInt(id), formData);
+      } else {
+        await targetApi.create(formData);
+      }
+      
+      await fetchTargets();
+      navigate('/targets-management');
+    } catch (error) {
+      console.error(`Failed to ${isEditing ? 'update' : 'create'} target:`, error);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm('Are you sure you want to delete this target?')) {
+  const handleDelete = async (targetId: number) => {
+    if (window.confirm('Delete this target? This action cannot be undone.')) {
       try {
-        await targetApi.delete(id);
+        await targetApi.delete(targetId);
         fetchTargets();
       } catch (error) {
         console.error('Failed to delete target:', error);
@@ -126,193 +153,150 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleTestConnection = async (id: number, protocol: string) => {
-    setTestingTarget(id);
+  const handleTest = async (targetId: number) => {
+    setTestingTarget(targetId);
     try {
-      let result;
-      if (protocol === 'winrm') {
-        result = await targetApi.testWinRM(id);
-      } else if (protocol === 'ssh') {
-        result = await targetApi.testSSH(id);
-      } else {
-        throw new Error(`Unsupported protocol: ${protocol}`);
-      }
-
-      if (result.test?.status === 'success') {
-        alert(`Connection Test Successful!\n\nDetails:\n${JSON.stringify(result.test.details, null, 2)}\n\nNote: ${result.note || 'Test completed'}`);
-      } else {
-        alert(`Connection Test Failed:\n${result.test?.details?.message || 'Unknown error'}\n\nNote: ${result.note || 'Test completed'}`);
-      }
-    } catch (error: any) {
-      console.error('Test connection error:', error);
-      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error occurred';
-      alert(`Test failed: ${errorMessage}`);
+      await targetApi.test(targetId);
+      alert('Connection test successful!');
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      alert('Connection test failed. Check the logs for details.');
     } finally {
       setTestingTarget(null);
     }
   };
 
-  const getCredentialName = (credId: number) => {
-    const cred = (credentials || []).find(c => c.id === credId);
-    return cred ? cred.name : `ID: ${credId}`;
+  const handleTargetClick = async (targetId: number) => {
+    setLoadingDetails(true);
+    try {
+      const enhancedTarget = await enhancedTargetApi.get(targetId);
+      setSelectedTarget(enhancedTarget);
+      setShowDetailPanel(true);
+    } catch (error) {
+      console.error('Failed to fetch target details:', error);
+    } finally {
+      setLoadingDetails(false);
+    }
   };
 
-  // Show loading while data is being fetched
-  if (loading) return <div>Loading targets...</div>;
+  const handleCloseDetailPanel = () => {
+    setShowDetailPanel(false);
+    setSelectedTarget(null);
+  };
 
-  // If enhanced view is selected, render the enhanced component
-  if (viewMode === 'enhanced') {
-    return <EnhancedTargetManagement />;
+  const handleServiceTest = async (serviceId: number) => {
+    if (!selectedTarget) return;
+    
+    setTestingService(serviceId);
+    try {
+      await targetServiceApi.testConnection(selectedTarget.id, serviceId);
+      alert('Service connection test successful!');
+    } catch (error) {
+      console.error('Service connection test failed:', error);
+      alert('Service connection test failed. Check the logs for details.');
+    } finally {
+      setTestingService(null);
+    }
+  };
+
+  const handleProtocolChange = (protocol: string) => {
+    const defaultPorts: Record<string, number> = {
+      'winrm': 5985,
+      'ssh': 22,
+      'https': 443,
+      'http': 80
+    };
+    
+    setFormData({
+      ...formData,
+      protocol,
+      port: defaultPorts[protocol] || 5985
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'online':
+      case 'connected':
+        return 'status-badge-success';
+      case 'offline':
+      case 'disconnected':
+        return 'status-badge-danger';
+      case 'partial':
+        return 'status-badge-warning';
+      case 'unknown':
+      default:
+        return 'status-badge-neutral';
+    }
+  };
+
+  const getCredentialName = (credentialRef: number) => {
+    const credential = credentials.find(c => c.id === credentialRef);
+    return credential ? credential.name : `ID: ${credentialRef}`;
+  };
+
+  const getTargetStatus = (target: EnhancedTarget) => {
+    // Compute status based on services if available
+    if (target.services && target.services.length > 0) {
+      const connectedServices = target.services.filter(s => s.connection_status === 'connected');
+      const failedServices = target.services.filter(s => s.connection_status === 'failed');
+      
+      if (connectedServices.length === target.services.length) {
+        return 'Online';
+      } else if (failedServices.length === target.services.length) {
+        return 'Offline';
+      } else if (connectedServices.length > 0) {
+        return 'Partial';
+      }
+    }
+    return 'Unknown';
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-overlay">
+        <div className="loading-spinner"></div>
+      </div>
+    );
   }
 
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1>Targets</h1>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '5px' }}>
+  if (showForm) {
+    return (
+      <div className="main-content">
+        <div className="page-header">
+          <h1 className="page-title">
+            {isEditing ? 'Edit Target' : 'Create Target'}
+          </h1>
+          <div className="page-actions">
             <button 
-              className={`btn ${(viewMode as string) === 'enhanced' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('enhanced')}
-              style={{ fontSize: '12px' }}
+              type="button" 
+              className="btn btn-ghost"
+              onClick={() => navigate('/targets-management')}
             >
-              Enhanced View
-            </button>
-            <button 
-              className={`btn ${(viewMode as string) === 'legacy' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setViewMode('legacy')}
-              style={{ fontSize: '12px' }}
-            >
-              Legacy View
+              Cancel
             </button>
           </div>
-          <button 
-            className="btn btn-primary"
-            onClick={() => {
-              resetForm();
-              setShowCreateModal(true);
-            }}
-          >
-            Add Target
-          </button>
         </div>
-      </div>
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Hostname</th>
-              <th>IP Address</th>
-              <th>Protocol</th>
-              <th>OS Type</th>
-              <th>Port</th>
-              <th>Credential</th>
-              <th>Tags</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(targets || []).map(target => (
-              <tr key={target.id}>
-                <td>{target.id}</td>
-                <td>{target.name}</td>
-                <td>{target.hostname}</td>
-                <td>{target.ip_address || '-'}</td>
-                <td>
-                  <span className="status" style={{ 
-                    backgroundColor: target.protocol === 'winrm' ? '#d4edda' : '#d1ecf1',
-                    color: target.protocol === 'winrm' ? '#155724' : '#0c5460'
-                  }}>
-                    {target.protocol}
-                  </span>
-                </td>
-                <td>
-                  <span className="status" style={{ 
-                    backgroundColor: 
-                      target.os_type === 'windows' ? '#e2e3e5' : 
-                      target.os_type === 'linux' ? '#d1ecf1' :
-                      target.os_type === 'unix' ? '#fff3cd' :
-                      '#f8d7da',
-                    color: 
-                      target.os_type === 'windows' ? '#383d41' : 
-                      target.os_type === 'linux' ? '#0c5460' :
-                      target.os_type === 'unix' ? '#856404' :
-                      '#721c24'
-                  }}>
-                    {target.os_type}
-                  </span>
-                </td>
-                <td>{target.port}</td>
-                <td>{getCredentialName(target.credential_ref)}</td>
-                <td>{target.tags.join(', ') || '-'}</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    {(target.protocol === 'winrm' || target.protocol === 'ssh') && (
-                      <button 
-                        className="btn btn-secondary"
-                        onClick={() => handleTestConnection(target.id, target.protocol)}
-                        disabled={testingTarget === target.id}
-                        style={{ fontSize: '12px' }}
-                      >
-                        {testingTarget === target.id ? 'Testing...' : 'Test'}
-                      </button>
-                    )}
-                    <button 
-                      className="btn btn-primary"
-                      onClick={() => handleEdit(target)}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Edit
-                    </button>
-                    <button 
-                      className="btn btn-danger"
-                      onClick={() => handleDelete(target.id)}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Create Target Modal */}
-      {showCreateModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div className="card" style={{ width: '500px', margin: '20px' }}>
-            <h3>{editingTarget ? 'Edit Target' : 'Add New Target'}</h3>
-            <form onSubmit={handleCreate}>
+        <div className="form-container">
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid">
               <div className="form-group">
-                <label>Name:</label>
+                <label className="form-label">Name</label>
                 <input
                   type="text"
+                  className="form-input"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   required
                 />
               </div>
-              
+
               <div className="form-group">
-                <label>Hostname:</label>
+                <label className="form-label">Hostname</label>
                 <input
                   type="text"
+                  className="form-input"
                   value={formData.hostname}
                   onChange={(e) => setFormData({...formData, hostname: e.target.value})}
                   required
@@ -320,53 +304,48 @@ const Targets: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label>IP Address:</label>
+                <label className="form-label">IP Address</label>
                 <input
                   type="text"
+                  className="form-input"
                   value={formData.ip_address}
                   onChange={(e) => setFormData({...formData, ip_address: e.target.value})}
-                  placeholder="Optional - e.g., 192.168.1.100"
+                  placeholder="Optional"
                 />
               </div>
 
               <div className="form-group">
-                <label>Protocol:</label>
+                <label className="form-label">OS Type</label>
                 <select 
-                  value={formData.protocol}
-                  onChange={(e) => {
-                    const protocol = e.target.value;
-                    setFormData({
-                      ...formData, 
-                      protocol,
-                      port: protocol === 'winrm' ? 5985 : protocol === 'ssh' ? 22 : 80,
-                      os_type: protocol === 'winrm' ? 'windows' : protocol === 'ssh' ? 'linux' : formData.os_type
-                    });
-                  }}
-                >
-                  <option value="winrm">WinRM</option>
-                  <option value="ssh">SSH</option>
-                  <option value="http">HTTP</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>OS Type:</label>
-                <select 
+                  className="form-select"
                   value={formData.os_type}
                   onChange={(e) => setFormData({...formData, os_type: e.target.value})}
                 >
                   <option value="windows">Windows</option>
                   <option value="linux">Linux</option>
-                  <option value="unix">Unix</option>
-                  <option value="network">Network Device</option>
-                  <option value="other">Other</option>
+                  <option value="macos">macOS</option>
                 </select>
               </div>
 
               <div className="form-group">
-                <label>Port:</label>
+                <label className="form-label">Protocol</label>
+                <select 
+                  className="form-select"
+                  value={formData.protocol}
+                  onChange={(e) => handleProtocolChange(e.target.value)}
+                >
+                  <option value="winrm">WinRM</option>
+                  <option value="ssh">SSH</option>
+                  <option value="https">HTTPS</option>
+                  <option value="http">HTTP</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Port</label>
                 <input
                   type="number"
+                  className="form-input"
                   value={formData.port}
                   onChange={(e) => setFormData({...formData, port: parseInt(e.target.value)})}
                   required
@@ -374,49 +353,330 @@ const Targets: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label>Credential:</label>
+                <label className="form-label">Credential</label>
                 <select 
+                  className="form-select"
                   value={formData.credential_ref}
                   onChange={(e) => setFormData({...formData, credential_ref: parseInt(e.target.value)})}
                   required
                 >
-                  <option value={0}>Select credential...</option>
-                  {(credentials || []).map(cred => (
-                    <option key={cred.id} value={cred.id}>
-                      {cred.name} ({cred.credential_type})
+                  <option value={0}>Select a credential</option>
+                  {credentials.map(credential => (
+                    <option key={credential.id} value={credential.id}>
+                      {credential.name} ({credential.credential_type.toUpperCase()})
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="form-group">
-                <label>Tags (comma-separated):</label>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="form-label">Tags (comma-separated)</label>
                 <input
                   type="text"
+                  className="form-input"
                   value={formData.tags?.join(', ') || ''}
-                  onChange={(e) => setFormData({...formData, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)})}
+                  onChange={(e) => setFormData({
+                    ...formData, 
+                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag)
+                  })}
+                  placeholder="production, web-server, critical"
                 />
               </div>
+            </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button type="submit" className="btn btn-primary">
-                  {editingTarget ? 'Update Target' : 'Create Target'}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    resetForm();
-                  }}
+            <div className="form-actions">
+              <button 
+                type="button" 
+                className="btn btn-ghost"
+                onClick={() => navigate('/targets-management')}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <span className="loading-spinner"></span>
+                    {isEditing ? 'Updating...' : 'Creating...'}
+                  </>
+                ) : (
+                  isEditing ? 'Update Target' : 'Create Target'
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="main-content">
+      <style>
+        {`
+          .targets-table {
+            table-layout: auto;
+            width: auto;
+          }
+          .targets-table th:nth-child(1), .targets-table td:nth-child(1) { min-width: 160px; max-width: 200px; } /* Name */
+          .targets-table th:nth-child(2), .targets-table td:nth-child(2) { min-width: 120px; max-width: 140px; } /* IP */
+          .targets-table th:nth-child(3), .targets-table td:nth-child(3) { min-width: 180px; max-width: 250px; } /* Hostname */
+          .targets-table th:nth-child(4), .targets-table td:nth-child(4) { min-width: 80px; max-width: 120px; } /* OS */
+          .targets-table th:nth-child(5), .targets-table td:nth-child(5) { min-width: 80px; max-width: 100px; } /* Status */
+          .targets-table th:nth-child(6), .targets-table td:nth-child(6) { min-width: 150px; max-width: 250px; } /* Tags */
+          .targets-table th:nth-child(7), .targets-table td:nth-child(7) { min-width: 80px; max-width: 100px; } /* Actions */
+          .targets-table td {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 8px 12px;
+          }
+          .targets-table th {
+            padding: 8px 12px;
+          }
+          .targets-table td.tags-cell {
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.4;
+          }
+        `}
+      </style>
+      <div className="page-header">
+        <h1 className="page-title">Targets</h1>
+        <div className="page-actions">
+          <button 
+            className="btn btn-primary"
+            onClick={() => navigate('/targets-management/create')}
+          >
+            <span className="icon-add"></span>
+            Add Target
+          </button>
+        </div>
+      </div>
+
+      {targets.length === 0 ? (
+        <div className="empty-state">
+          <h3 className="empty-state-title">No targets found</h3>
+          <p className="empty-state-description">
+            Create your first target to start managing remote systems.
+          </p>
+          <button 
+            className="btn btn-primary"
+            onClick={() => navigate('/targets-management/create')}
+          >
+            <span className="icon-add"></span>
+            Create Target
+          </button>
+        </div>
+      ) : (
+        <div className={`data-table-container ${showDetailPanel ? 'with-detail-panel' : ''}`}>
+          <table className="data-table targets-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>IP</th>
+                <th>Hostname</th>
+                <th>OS</th>
+                <th>Status</th>
+                <th>Tags</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {targets.map(target => (
+                <tr 
+                  key={target.id}
+                  className={`clickable-row ${selectedTarget?.id === target.id ? 'selected' : ''}`}
+                  onClick={() => handleTargetClick(target.id)}
                 >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+                  <td className="font-medium">{target.name}</td>
+                  <td className="text-neutral-600">{target.ip_address || '-'}</td>
+                  <td>{target.hostname}</td>
+                  <td className="text-neutral-600">{target.os_type}</td>
+                  <td>
+                    <span className={`status-badge ${getStatusBadge(getTargetStatus(target))}`}>
+                      {getTargetStatus(target)}
+                    </span>
+                  </td>
+                  <td className="text-neutral-500 tags-cell">
+                    {target.tags?.length ? target.tags.join(', ') : '-'}
+                  </td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div className="table-actions">
+                      <button 
+                        className="btn-icon btn-danger"
+                        onClick={() => handleDelete(target.id)}
+                        title="Delete target"
+                      >
+                        <span className="icon-delete"></span>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {showDetailPanel && (
+          <div className="detail-panel-overlay">
+            <div className="detail-panel">
+              <div className="detail-panel-header">
+                <h2 className="detail-panel-title">
+                  {selectedTarget?.name || 'Target Details'}
+                </h2>
+                <button 
+                  className="btn-icon btn-ghost"
+                  onClick={handleCloseDetailPanel}
+                  title="Close details"
+                >
+                  <span className="icon-close">×</span>
+                </button>
+              </div>
+
+              {loadingDetails ? (
+                <div className="detail-panel-loading">
+                  <div className="loading-spinner"></div>
+                  <p>Loading target details...</p>
+                </div>
+              ) : selectedTarget ? (
+                <div className="detail-panel-content">
+                  {/* Target Information Section */}
+                  <div className="detail-section">
+                    <h3 className="detail-section-title">Target Information</h3>
+                    <div className="detail-grid">
+                      <div className="detail-item">
+                        <label>Name</label>
+                        <div className="detail-value">{selectedTarget.name}</div>
+                      </div>
+                      <div className="detail-item">
+                        <label>Hostname</label>
+                        <div className="detail-value">{selectedTarget.hostname}</div>
+                      </div>
+                      <div className="detail-item">
+                        <label>IP Address</label>
+                        <div className="detail-value">{selectedTarget.ip_address || '-'}</div>
+                      </div>
+                      <div className="detail-item">
+                        <label>OS Type</label>
+                        <div className="detail-value">{selectedTarget.os_type || '-'}</div>
+                      </div>
+                      <div className="detail-item">
+                        <label>OS Version</label>
+                        <div className="detail-value">{selectedTarget.os_version || '-'}</div>
+                      </div>
+                      <div className="detail-item">
+                        <label>Description</label>
+                        <div className="detail-value">{selectedTarget.description || '-'}</div>
+                      </div>
+                      <div className="detail-item detail-item-full">
+                        <label>Tags</label>
+                        <div className="detail-value">
+                          {selectedTarget.tags?.length ? (
+                            <div className="tag-list">
+                              {selectedTarget.tags.map((tag, index) => (
+                                <span key={index} className="tag">{tag}</span>
+                              ))}
+                            </div>
+                          ) : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Services Section */}
+                  <div className="detail-section">
+                    <h3 className="detail-section-title">
+                      Services ({selectedTarget.services?.length || 0})
+                    </h3>
+                    {selectedTarget.services?.length ? (
+                      <div className="services-list">
+                        {selectedTarget.services.map(service => (
+                          <div key={service.id} className="service-item">
+                            <div className="service-info">
+                              <div className="service-header">
+                                <span className="service-name">{service.display_name}</span>
+                                <span className={`status-badge ${service.connection_status === 'connected' ? 'status-badge-success' : 
+                                  service.connection_status === 'failed' ? 'status-badge-danger' : 'status-badge-neutral'}`}>
+                                  {service.connection_status}
+                                </span>
+                              </div>
+                              <div className="service-details">
+                                <span className="service-type">{service.service_type}</span>
+                                <span className="service-port">Port: {service.port}</span>
+                                <span className="service-category">{service.category}</span>
+                              </div>
+                              {service.notes && (
+                                <div className="service-notes">{service.notes}</div>
+                              )}
+                            </div>
+                            <div className="service-actions">
+                              <button 
+                                className="btn-icon btn-ghost"
+                                onClick={() => handleServiceTest(service.id)}
+                                disabled={testingService === service.id}
+                                title="Test service connection"
+                              >
+                                {testingService === service.id ? (
+                                  <span className="loading-spinner"></span>
+                                ) : (
+                                  <span className="icon-test">🔍</span>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state-small">
+                        <p>No services configured for this target.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Credentials Section */}
+                  <div className="detail-section">
+                    <h3 className="detail-section-title">
+                      Credentials ({selectedTarget.credentials?.length || 0})
+                    </h3>
+                    {selectedTarget.credentials?.length ? (
+                      <div className="credentials-list">
+                        {selectedTarget.credentials.map(credential => (
+                          <div key={credential.id} className="credential-item">
+                            <div className="credential-info">
+                              <div className="credential-header">
+                                <span className="credential-name">{credential.credential_name}</span>
+                                {credential.is_primary && (
+                                  <span className="status-badge status-badge-success">Primary</span>
+                                )}
+                              </div>
+                              <div className="credential-details">
+                                <span className="credential-type">{credential.credential_type}</span>
+                                {credential.service_types?.length && (
+                                  <span className="credential-services">
+                                    Services: {credential.service_types.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state-small">
+                        <p>No credentials configured for this target.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
     </div>
   );
 };

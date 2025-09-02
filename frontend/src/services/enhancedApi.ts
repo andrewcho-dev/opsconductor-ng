@@ -37,39 +37,63 @@ const enhancedApi = axios.create({
   },
 });
 
-// Token management (reuse from existing api.ts)
-let accessToken: string | null = localStorage.getItem('access_token');
-
-// Request interceptor to add auth token
+// Request interceptor to add auth token (same as main api.ts)
 enhancedApi.interceptors.request.use(
   (config) => {
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
+    // Always get fresh token from localStorage
+    const currentToken = localStorage.getItem('access_token');
+    if (currentToken) {
+      config.headers.Authorization = `Bearer ${currentToken}`;
     }
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for error handling
+// Response interceptor for error handling (same as main api.ts)
 enhancedApi.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Handle both 401 (Unauthorized) and 403 (Forbidden) errors
+    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      const currentRefreshToken = localStorage.getItem('refresh_token');
+      if (currentRefreshToken) {
+        try {
+          const response = await axios.post(`${API_BASE_URL}/api/v1/refresh`, {
+            refresh_token: currentRefreshToken
+          });
+
+          const { access_token, refresh_token: newRefreshToken } = response.data;
+          
+          // Update tokens in localStorage
+          localStorage.setItem('access_token', access_token);
+          localStorage.setItem('refresh_token', newRefreshToken);
+          
+          // Retry the original request
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          return enhancedApi(originalRequest);
+        } catch (refreshError) {
+          // Refresh failed, redirect to login
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+          return Promise.reject(refreshError);
+        }
+      } else {
+        // No refresh token, redirect to login
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+      }
     }
+
     return Promise.reject(error);
   }
 );
-
-// Update token function
-export const setAuthToken = (token: string) => {
-  accessToken = token;
-  localStorage.setItem('access_token', token);
-};
 
 // Service Definitions API
 export const serviceDefinitionApi = {
