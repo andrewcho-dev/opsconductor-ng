@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Job, JobStep } from '../types';
 import { stepLibraryService, StepDefinition } from '../services/stepLibraryService';
-import LibraryManager from './LibraryManager';
 import StepConfigModal from './StepConfigModal';
 
 interface VisualJobBuilderProps {
@@ -64,7 +63,6 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [configNode, setConfigNode] = useState<FlowNode | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showLibraryManager, setShowLibraryManager] = useState(false);
   
   // Dynamic step loading state
   const [nodeTemplates, setNodeTemplates] = useState<NodeTemplate[]>([]);
@@ -361,21 +359,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '16px' }}>📚 Step Library</h3>
-            <button
-              onClick={() => setShowLibraryManager(true)}
-              style={{
-                padding: '4px 8px',
-                fontSize: '12px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-              title="Manage Libraries"
-            >
-              ⚙️ Manage
-            </button>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              Manage libraries in Settings
+            </div>
           </div>
           
           {/* Search */}
@@ -729,11 +715,6 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         onSave={handleConfigSave}
         stepNode={configNode}
       />
-
-      {/* Library Manager Modal */}
-      {showLibraryManager && (
-        <LibraryManager onClose={() => setShowLibraryManager(false)} />
-      )}
     </div>
   );
 };
