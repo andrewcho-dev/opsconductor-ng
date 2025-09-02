@@ -890,9 +890,11 @@ const EnhancedTargetManagement: React.FC = () => {
 
       {/* Add Credential Modal */}
       {showCredentialModal && (
-        <div className="modal show d-block" tabIndex={-1}>
-          <div className="modal-dialog">
-            <div className="modal-content">
+        <>
+          <div className="modal-backdrop fade show"></div>
+          <div className="modal show d-block" tabIndex={-1}>
+            <div className="modal-dialog">
+              <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Add Credential to {selectedTarget?.name}</h5>
                 <button 
@@ -965,15 +967,13 @@ const EnhancedTargetManagement: React.FC = () => {
                   </button>
                 </div>
               </form>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Modal backdrop */}
-      {(showCreateModal || showServiceModal || showCredentialModal) && (
-        <div className="modal-backdrop fade show"></div>
-      )}
+
     </div>
   );
 };

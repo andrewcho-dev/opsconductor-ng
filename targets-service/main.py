@@ -130,7 +130,8 @@ def get_target_credentials(conn, target_id: int) -> List[TargetCredential]:
     """Get all credentials for a target"""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT tc.id, c.credential_type, c.credential_data, c.description, tc.created_at
+        SELECT tc.id, tc.credential_id, c.name as credential_name, 
+               c.credential_type, tc.service_types, tc.is_primary, tc.created_at
         FROM target_credentials tc
         JOIN credentials c ON tc.credential_id = c.id
         WHERE tc.target_id = %s AND c.deleted_at IS NULL
@@ -139,15 +140,13 @@ def get_target_credentials(conn, target_id: int) -> List[TargetCredential]:
     
     credentials = []
     for row in cursor.fetchall():
-        # Extract username from credential_data JSONB
-        credential_data = row['credential_data'] or {}
-        username = credential_data.get('username', 'N/A')
-        
         credentials.append(TargetCredential(
             id=row['id'],
+            credential_id=row['credential_id'],
+            credential_name=row['credential_name'],
             credential_type=row['credential_type'],
-            username=username,
-            description=row['description'],
+            service_types=row['service_types'] or [],
+            is_primary=row['is_primary'] or False,
             created_at=row['created_at']
         ))
     
@@ -482,6 +481,161 @@ async def delete_target(
     except Exception as e:
         conn.rollback()
         logger.error(f"Error deleting target: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
+
+# CREDENTIAL MANAGEMENT ENDPOINTS
+
+@app.post("/targets/{target_id}/credentials", response_model=TargetCredential)
+async def add_credential_to_target(
+    target_id: int,
+    credential: TargetCredentialCreate,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Add a credential to a target"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Verify target exists
+        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Target not found")
+        
+        # Verify credential exists
+        cursor.execute("SELECT id, name, credential_type FROM credentials WHERE id = %s", (credential.credential_id,))
+        cred_data = cursor.fetchone()
+        if not cred_data:
+            raise HTTPException(status_code=404, detail="Credential not found")
+        
+        # Create target credential association
+        cursor.execute("""
+            INSERT INTO target_credentials 
+            (target_id, credential_id, service_types, is_primary, created_at)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            target_id, credential.credential_id, credential.service_types,
+            credential.is_primary, datetime.utcnow()
+        ))
+        
+        tc_id = cursor.fetchone()['id']
+        conn.commit()
+        
+        return TargetCredential(
+            id=tc_id,
+            credential_id=credential.credential_id,
+            credential_name=cred_data['name'],
+            credential_type=cred_data['credential_type'],
+            service_types=credential.service_types,
+            is_primary=credential.is_primary,
+            created_at=datetime.utcnow()
+        )
+        
+    except psycopg2.IntegrityError as e:
+        conn.rollback()
+        if "unique constraint" in str(e).lower():
+            raise HTTPException(status_code=400, detail="Credential already associated with this target")
+        raise HTTPException(status_code=400, detail="Database constraint violation")
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error adding credential to target: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
+
+@app.put("/targets/{target_id}/credentials/{credential_id}", response_model=TargetCredential)
+async def update_target_credential(
+    target_id: int,
+    credential_id: int,
+    credential: TargetCredentialCreate,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Update a credential association on a target"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Verify target credential exists
+        cursor.execute("""
+            SELECT tc.id, c.name, c.credential_type
+            FROM target_credentials tc
+            JOIN credentials c ON tc.credential_id = c.id
+            WHERE tc.target_id = %s AND tc.credential_id = %s
+        """, (target_id, credential_id))
+        
+        tc_data = cursor.fetchone()
+        if not tc_data:
+            raise HTTPException(status_code=404, detail="Target credential association not found")
+        
+        # Update target credential
+        cursor.execute("""
+            UPDATE target_credentials 
+            SET service_types = %s, is_primary = %s
+            WHERE target_id = %s AND credential_id = %s
+        """, (
+            credential.service_types, credential.is_primary, target_id, credential_id
+        ))
+        
+        conn.commit()
+        
+        return TargetCredential(
+            id=tc_data['id'],
+            credential_id=credential_id,
+            credential_name=tc_data['name'],
+            credential_type=tc_data['credential_type'],
+            service_types=credential.service_types,
+            is_primary=credential.is_primary,
+            created_at=datetime.utcnow()
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error updating target credential: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
+
+@app.delete("/targets/{target_id}/credentials/{credential_id}")
+async def delete_target_credential(
+    target_id: int,
+    credential_id: int,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Remove a credential association from a target"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Verify target credential exists
+        cursor.execute("""
+            SELECT id FROM target_credentials 
+            WHERE target_id = %s AND credential_id = %s
+        """, (target_id, credential_id))
+        
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Target credential association not found")
+        
+        # Delete target credential
+        cursor.execute("""
+            DELETE FROM target_credentials 
+            WHERE target_id = %s AND credential_id = %s
+        """, (target_id, credential_id))
+        
+        conn.commit()
+        
+        return {"message": "Credential association deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error deleting target credential: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         conn.close()
