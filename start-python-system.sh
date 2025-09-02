@@ -45,7 +45,7 @@ sleep 30
 # Check service health
 echo "🩺 Checking service health..."
 
-SERVICES=("auth-service:3001" "user-service:3002" "credentials-service:3004" "targets-service:3005" "jobs-service:3006" "executor-service:3007")
+SERVICES=("auth-service:3001" "user-service:3002" "credentials-service:3004" "targets-service:3005" "jobs-service:3006" "executor-service:3007" "scheduler-service:3008" "notification-service:3009" "discovery-service:3010" "step-libraries-service:3011")
 
 for service in "${SERVICES[@]}"; do
     IFS=':' read -ra ADDR <<< "$service"
@@ -76,6 +76,10 @@ echo "   Credentials Service: http://localhost:3004"
 echo "   Targets Service: http://localhost:3005"
 echo "   Jobs Service: http://localhost:3006"
 echo "   Executor Service: http://localhost:3007"
+echo "   Scheduler Service: http://localhost:3008"
+echo "   Notification Service: http://localhost:3009"
+echo "   Discovery Service: http://localhost:3010"
+echo "   Step Libraries Service: http://localhost:3011"
 echo ""
 echo "📋 Default login credentials:"
 echo "   Admin: admin / admin123"

@@ -1,0 +1,71 @@
+{
+  "name": "file.delete",
+  "display_name": "Delete File",
+  "category": "file",
+  "description": "Delete a file or directory",
+  "icon": "🗑️",
+  "color": "#dc3545",
+  
+  "inputs": 1,
+  "outputs": 1,
+  
+  "parameters": {
+    "path": {
+      "type": "string",
+      "required": true,
+      "description": "File or directory path to delete",
+      "default": "/path/to/file.txt"
+    },
+    "recursive": {
+      "type": "boolean",
+      "required": false,
+      "description": "Delete directories recursively",
+      "default": false
+    },
+    "force": {
+      "type": "boolean",
+      "required": false,
+      "description": "Force deletion (ignore missing files)",
+      "default": false
+    },
+    "backup": {
+      "type": "boolean",
+      "required": false,
+      "description": "Create backup before deletion",
+      "default": false
+    },
+    "backup_suffix": {
+      "type": "string",
+      "required": false,
+      "description": "Backup file suffix",
+      "default": ".bak"
+    }
+  },
+  
+  "platform_support": ["windows", "linux", "macos"],
+  "required_permissions": ["file_delete"],
+  
+  "examples": [
+    {
+      "name": "Delete single file",
+      "description": "Delete a single file",
+      "parameters": {
+        "path": "/tmp/temp_file.txt",
+        "force": false,
+        "backup": false
+      }
+    },
+    {
+      "name": "Delete directory recursively",
+      "description": "Delete a directory and all its contents",
+      "parameters": {
+        "path": "/tmp/temp_directory",
+        "recursive": true,
+        "force": true,
+        "backup": true
+      }
+    }
+  ],
+  
+  "tags": ["file", "delete", "remove", "cleanup"]
+}

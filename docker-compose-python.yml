@@ -225,10 +225,35 @@ services:
       - ./discovery-service/shared:/app/shared
     restart: unless-stopped
 
+  # Step Libraries Service (Python FastAPI)
+  step-libraries-service:
+    build: ./step-libraries-service
+    container_name: opsconductor-step-libraries
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+    ports:
+      - "3011:3011"
+    networks:
+      - opsconductor-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - step_libraries_data:/app/libraries
+      - step_libraries_cache:/app/cache
+    restart: unless-stopped
+
   # Frontend (React)
   frontend:
     build: ./frontend
     container_name: opsconductor-frontend
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
     networks:
       - opsconductor-net
     depends_on:
@@ -241,6 +266,7 @@ services:
       - scheduler-service
       - notification-service
       - discovery-service
+      - step-libraries-service
     restart: unless-stopped
 
   # Nginx Reverse Proxy
@@ -270,3 +296,5 @@ networks:
 
 volumes:
   postgres_data:
+  step_libraries_data:
+  step_libraries_cache:

@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "name": "test-library",
+    "version": "1.0.0",
+    "display_name": "Test Library",
+    "description": "Simple test library",
+    "author": "Test Author",
+    "license": "MIT"
+  },
+  "steps": [
+    {
+      "name": "test_step",
+      "display_name": "Test Step",
+      "category": "Test",
+      "description": "A simple test step",
+      "parameters": {
+        "message": {
+          "type": "string",
+          "required": true,
+          "description": "Test message"
+        }
+      }
+    }
+  ]
+}

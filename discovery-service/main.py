@@ -1260,6 +1260,29 @@ async def import_discovered_targets(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Import discovered targets into the main targets system"""
+    return await _import_discovered_targets_impl(import_request, current_user)
+
+@app.post("/discovery/import-targets")
+async def import_discovered_targets_alt(
+    import_request: TargetImportRequest,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Import discovered targets into the main targets system (alternative endpoint)"""
+    return await _import_discovered_targets_impl(import_request, current_user)
+
+@app.post("/import-targets")
+async def import_discovered_targets_root(
+    import_request: TargetImportRequest,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Import discovered targets into the main targets system (root level endpoint)"""
+    return await _import_discovered_targets_impl(import_request, current_user)
+
+async def _import_discovered_targets_impl(
+    import_request: TargetImportRequest,
+    current_user: dict
+):
+    """Import discovered targets into the main targets system"""
     try:
         conn = get_db_connection()
         imported_count = 0
@@ -1345,25 +1368,74 @@ async def import_discovered_targets(
                         'os_version': discovered_target['os_version']
                     }
                     
-                    # Insert new target (exactly like manual creation)
+                    # Insert new target (using current database schema)
                     cursor.execute("""
                         INSERT INTO targets (
-                            name, hostname, ip_address, protocol, port, 
-                            credential_ref, os_type, metadata, created_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                            name, hostname, ip_address, os_type, description, created_at
+                        ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                         RETURNING id
                     """, (
                         target_name,
                         hostname,
                         ip_address,
-                        protocol,
-                        port,
-                        credential_id,
                         os_type,
-                        json.dumps(metadata)
+                        f"Imported from discovery - {discovered_target['os_type']} system"
                     ))
                     
                     new_target = cursor.fetchone()
+                    target_id_new = new_target['id']
+                    
+                    # Add services to the target
+                    if discovered_target['services']:
+                        for service in discovered_target['services']:
+                            try:
+                                # Map service types to known service definitions
+                                service_type_mapping = {
+                                    'ssh': 'ssh',
+                                    'winrm': 'winrm',
+                                    'winrm_https': 'winrm_https', 
+                                    'http': 'http',
+                                    'https': 'https',
+                                    'rdp': 'rdp',
+                                    'ftp': 'ftp',
+                                    'smb': 'smb'
+                                }
+                                
+                                service_type = service_type_mapping.get(service['type'], service['type'])
+                                
+                                # Insert target service
+                                cursor.execute("""
+                                    INSERT INTO target_services (
+                                        target_id, service_type, port, is_enabled, 
+                                        discovery_method, created_at
+                                    ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                                    ON CONFLICT (target_id, service_type, port) DO NOTHING
+                                """, (
+                                    target_id_new,
+                                    service_type,
+                                    service['port'],
+                                    True,
+                                    'import'
+                                ))
+                            except Exception as service_error:
+                                logger.warning(f"Failed to add service {service} to target {target_id_new}: {service_error}")
+                    
+                    # Add credential association if provided
+                    if credential_id:
+                        try:
+                            cursor.execute("""
+                                INSERT INTO target_credentials (
+                                    target_id, credential_id, service_types, is_primary, created_at
+                                ) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                                ON CONFLICT (target_id, credential_id) DO NOTHING
+                            """, (
+                                target_id_new,
+                                credential_id,
+                                [protocol] if protocol else ['ssh', 'winrm'],  # Default service types
+                                True
+                            ))
+                        except Exception as cred_error:
+                            logger.warning(f"Failed to add credential to target {target_id_new}: {cred_error}")
                     
                     # Delete discovered target after successful import
                     cursor.execute("""

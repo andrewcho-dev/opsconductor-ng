@@ -1,0 +1,368 @@
+{
+  "metadata": {
+    "name": "windows-core",
+    "version": "1.0.0",
+    "display_name": "Windows Core Operations",
+    "description": "Essential Windows system operations including file management, registry, services, and process control",
+    "author": "OpsConductor Team",
+    "author_email": "support@opsconductor.com",
+    "homepage": "https://opsconductor.com/libraries/windows-core",
+    "repository": "https://github.com/opsconductor/windows-core-library",
+    "license": "MIT",
+    "categories": [
+      "system",
+      "windows",
+      "core"
+    ],
+    "tags": [
+      "windows",
+      "file",
+      "registry",
+      "service",
+      "process",
+      "powershell"
+    ],
+    "dependencies": [],
+    "min_opsconductor_version": "1.0.0",
+    "is_premium": false
+  },
+  "steps": [
+    {
+      "name": "run_powershell",
+      "display_name": "Run PowerShell Command",
+      "category": "System",
+      "description": "Execute PowerShell commands on Windows targets",
+      "icon": "\ud83d\udcbb",
+      "color": "#0078d4",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "command": {
+          "type": "string",
+          "required": true,
+          "description": "PowerShell command or script to execute",
+          "validation": {
+            "placeholder": "Get-Process | Where-Object {$_.CPU -gt 100}",
+            "label": "PowerShell Command"
+          }
+        },
+        "execution_policy": {
+          "type": "string",
+          "default": "Bypass",
+          "description": "PowerShell execution policy for this command",
+          "options": [
+            "Bypass",
+            "RemoteSigned",
+            "Unrestricted",
+            "Restricted"
+          ],
+          "validation": {
+            "label": "Execution Policy"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 300,
+          "description": "Maximum execution time",
+          "validation": {
+            "min": 1,
+            "max": 3600,
+            "label": "Timeout (seconds)"
+          }
+        }
+      },
+      "platform_support": [
+        "windows"
+      ],
+      "required_permissions": [
+        "execute"
+      ],
+      "examples": [
+        {
+          "name": "Get System Info",
+          "description": "Retrieve basic system information",
+          "parameters": {
+            "command": "Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, TotalPhysicalMemory"
+          }
+        },
+        {
+          "name": "List Running Services",
+          "description": "Show all running Windows services",
+          "parameters": {
+            "command": "Get-Service | Where-Object {$_.Status -eq 'Running'} | Sort-Object Name"
+          }
+        }
+      ]
+    },
+    {
+      "name": "file_copy",
+      "display_name": "Copy File/Folder",
+      "category": "File System",
+      "description": "Copy files or folders on Windows systems",
+      "icon": "\ud83d\udcc1",
+      "color": "#28a745",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "source_path": {
+          "type": "string",
+          "required": true,
+          "description": "Path to source file or folder",
+          "validation": {
+            "placeholder": "C:\\Source\\file.txt",
+            "label": "Source Path"
+          }
+        },
+        "destination_path": {
+          "type": "string",
+          "required": true,
+          "description": "Path to destination",
+          "validation": {
+            "placeholder": "C:\\Destination\\file.txt",
+            "label": "Destination Path"
+          }
+        },
+        "overwrite": {
+          "type": "boolean",
+          "default": false,
+          "description": "Overwrite files if they already exist",
+          "validation": {
+            "label": "Overwrite Existing"
+          }
+        },
+        "recursive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Copy folders and all contents recursively",
+          "validation": {
+            "label": "Recursive Copy"
+          }
+        }
+      },
+      "platform_support": [
+        "windows"
+      ],
+      "required_permissions": [
+        "file_read",
+        "file_write"
+      ],
+      "examples": [
+        {
+          "name": "Copy Configuration File",
+          "description": "Copy a configuration file to backup location",
+          "parameters": {
+            "source_path": "C:\\App\\config.xml",
+            "destination_path": "C:\\Backup\\config.xml",
+            "overwrite": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "service_control",
+      "display_name": "Control Windows Service",
+      "category": "System",
+      "description": "Start, stop, restart, or check status of Windows services",
+      "icon": "\u2699\ufe0f",
+      "color": "#6f42c1",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "service_name": {
+          "type": "string",
+          "required": true,
+          "description": "Name of the Windows service",
+          "validation": {
+            "placeholder": "Spooler",
+            "label": "Service Name"
+          }
+        },
+        "action": {
+          "type": "string",
+          "required": true,
+          "default": "status",
+          "description": "Action to perform on the service",
+          "options": [
+            "start",
+            "stop",
+            "restart",
+            "status"
+          ],
+          "validation": {
+            "label": "Action"
+          }
+        },
+        "wait_for_status": {
+          "type": "boolean",
+          "default": true,
+          "description": "Wait for the service to reach the desired state",
+          "validation": {
+            "label": "Wait for Status Change"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 60,
+          "description": "Maximum time to wait for status change",
+          "validation": {
+            "min": 5,
+            "max": 300,
+            "label": "Timeout (seconds)"
+          }
+        }
+      },
+      "platform_support": [
+        "windows"
+      ],
+      "required_permissions": [
+        "service_control"
+      ],
+      "examples": [
+        {
+          "name": "Restart Print Spooler",
+          "description": "Restart the Windows Print Spooler service",
+          "parameters": {
+            "service_name": "Spooler",
+            "action": "restart",
+            "wait_for_status": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "registry_read",
+      "display_name": "Read Registry Value",
+      "category": "Registry",
+      "description": "Read values from Windows Registry",
+      "icon": "\ud83d\uddc2\ufe0f",
+      "color": "#dc3545",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "key_path": {
+          "type": "string",
+          "required": true,
+          "description": "Full path to the registry key",
+          "validation": {
+            "placeholder": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
+            "label": "Registry Key Path"
+          }
+        },
+        "value_name": {
+          "type": "string",
+          "required": true,
+          "description": "Name of the registry value to read",
+          "validation": {
+            "placeholder": "ProductName",
+            "label": "Value Name"
+          }
+        },
+        "default_value": {
+          "type": "string",
+          "required": false,
+          "description": "Value to return if registry key/value doesn't exist",
+          "validation": {
+            "placeholder": "Not Found",
+            "label": "Default Value"
+          }
+        }
+      },
+      "platform_support": [
+        "windows"
+      ],
+      "required_permissions": [
+        "registry_read"
+      ],
+      "examples": [
+        {
+          "name": "Get Windows Version",
+          "description": "Read Windows product name from registry",
+          "parameters": {
+            "key_path": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+            "value_name": "ProductName",
+            "default_value": "Unknown Windows Version"
+          }
+        }
+      ]
+    },
+    {
+      "name": "process_control",
+      "display_name": "Control Process",
+      "category": "System",
+      "description": "Start, stop, or monitor Windows processes",
+      "icon": "\ud83d\udd04",
+      "color": "#fd7e14",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "action": {
+          "type": "string",
+          "required": true,
+          "default": "list",
+          "description": "Action to perform",
+          "options": [
+            "start",
+            "stop",
+            "kill",
+            "list",
+            "check"
+          ],
+          "validation": {
+            "label": "Action"
+          }
+        },
+        "process_name": {
+          "type": "string",
+          "required": false,
+          "description": "Process name or executable path",
+          "validation": {
+            "placeholder": "notepad.exe or C:\\Program Files\\App\\app.exe",
+            "label": "Process Name/Path"
+          }
+        },
+        "arguments": {
+          "type": "string",
+          "required": false,
+          "description": "Command line arguments (for start action)",
+          "validation": {
+            "placeholder": "--config config.xml",
+            "label": "Arguments"
+          }
+        },
+        "working_directory": {
+          "type": "string",
+          "required": false,
+          "description": "Working directory for the process",
+          "validation": {
+            "placeholder": "C:\\App",
+            "label": "Working Directory"
+          }
+        }
+      },
+      "platform_support": [
+        "windows"
+      ],
+      "required_permissions": [
+        "process_control"
+      ],
+      "examples": [
+        {
+          "name": "Start Notepad",
+          "description": "Launch Windows Notepad",
+          "parameters": {
+            "action": "start",
+            "process_name": "notepad.exe"
+          }
+        },
+        {
+          "name": "List Chrome Processes",
+          "description": "Find all Chrome browser processes",
+          "parameters": {
+            "action": "list",
+            "process_name": "chrome"
+          }
+        }
+      ]
+    }
+  ]
+}

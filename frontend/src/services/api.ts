@@ -533,7 +533,7 @@ export const discoveryApi = {
   },
 
   importTargets: async (importRequest: TargetImportRequest): Promise<{ imported: number; failed: number; details: any[] }> => {
-    const response = await api.post('/api/v1/discovery/targets/import', importRequest);
+    const response = await api.post('/api/v1/discovery/import-targets', importRequest);
     return response.data;
   },
 
