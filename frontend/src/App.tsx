@@ -36,7 +36,7 @@ const App: React.FC = () => {
   return (
     <AuthProvider>
       <Router>
-        <div className="App">
+        <div className="app-container">
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route
@@ -44,24 +44,30 @@ const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <Navbar />
-                  <div className="container">
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/user-management" element={<Users />} />
-                      <Route path="/credential-management" element={<Credentials />} />
-                      <Route path="/targets-management" element={<Targets />} />
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/user-management" element={<Users />} />
+                    <Route path="/user-management/:action" element={<Users />} />
+                    <Route path="/user-management/:action/:id" element={<Users />} />
+                    <Route path="/credential-management" element={<Credentials />} />
+                    <Route path="/credential-management/:action" element={<Credentials />} />
+                    <Route path="/credential-management/:action/:id" element={<Credentials />} />
+                    <Route path="/targets-management" element={<Targets />} />
+                    <Route path="/targets-management/:action" element={<Targets />} />
+                    <Route path="/targets-management/:action/:id" element={<Targets />} />
 
-                      <Route path="/discovery" element={<Discovery />} />
-                      <Route path="/job-management" element={<Jobs />} />
-                      <Route path="/schedule-management" element={<Schedules />} />
+                    <Route path="/discovery" element={<Discovery />} />
+                    <Route path="/job-management" element={<Jobs />} />
+                    <Route path="/job-management/:action" element={<Jobs />} />
+                    <Route path="/job-management/:action/:id" element={<Jobs />} />
+                    <Route path="/schedule-management" element={<Schedules />} />
 
-                      <Route path="/job-runs" element={<JobRuns />} />
-                      <Route path="/job-runs/:id" element={<JobRunDetail />} />
-                      <Route path="/notifications" element={<Notifications />} />
-                      <Route path="/settings" element={<EnhancedSettings />} />
-                      <Route path="*" element={<Navigate to="/" />} />
-                    </Routes>
-                  </div>
+                    <Route path="/job-runs" element={<JobRuns />} />
+                    <Route path="/job-runs/:id" element={<JobRunDetail />} />
+                    <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/settings" element={<EnhancedSettings />} />
+                    <Route path="*" element={<Navigate to="/" />} />
+                  </Routes>
                 </ProtectedRoute>
               }
             />

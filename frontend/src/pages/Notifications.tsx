@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationPreferences from '../components/NotificationPreferences';
 import NotificationHistory from '../components/NotificationHistory';
+import { Bell, ClipboardList } from 'lucide-react';
 
 const Notifications: React.FC = () => {
   const { user } = useAuth();
@@ -11,13 +12,13 @@ const Notifications: React.FC = () => {
     {
       id: 'preferences' as const,
       name: 'My Preferences',
-      icon: '🔔',
+      icon: <Bell size={16} />,
       description: 'Configure your personal notification settings'
     },
     {
       id: 'history' as const,
       name: 'Notification History',
-      icon: '📋',
+      icon: <ClipboardList size={16} />,
       description: 'View and manage notification history and worker status',
       adminOnly: true
     }

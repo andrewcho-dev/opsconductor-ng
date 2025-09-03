@@ -31,7 +31,6 @@ const SystemMetrics: React.FC = () => {
       }
     } catch (err) {
       setError('Failed to fetch system metrics');
-      console.error('System metrics error:', err);
     } finally {
       setLoading(false);
     }
@@ -39,128 +38,125 @@ const SystemMetrics: React.FC = () => {
 
   useEffect(() => {
     fetchStats();
-    
-    // Auto-refresh every 15 seconds
     const interval = setInterval(fetchStats, 15000);
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="card">
-        <h3>System Metrics</h3>
-        <div>Loading system metrics...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="card">
-        <h3>System Metrics</h3>
-        <div style={{ color: '#dc3545' }}>
-          {error}
-          <button 
-            className="btn btn-secondary" 
-            onClick={fetchStats}
-            style={{ marginLeft: '10px', fontSize: '12px' }}
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!stats) {
-    return (
-      <div className="card">
-        <h3>System Metrics</h3>
-        <div>No data available</div>
-      </div>
-    );
-  }
-
-  const totalSteps = stats.queue_stats.queued_steps + stats.queue_stats.running_steps + 
-                   stats.queue_stats.succeeded_steps + stats.queue_stats.failed_steps;
+  if (loading) return <div style={{ fontSize: '12px', color: '#666' }}>Loading...</div>;
+  if (error) return <div style={{ fontSize: '12px', color: '#dc2626' }}>{error}</div>;
+  if (!stats) return <div style={{ fontSize: '12px', color: '#666' }}>No data</div>;
 
   return (
-    <div className="card">
-      <h3>System Metrics</h3>
-      
-      {/* Worker Status */}
-      <div style={{ marginBottom: '20px' }}>
-        <h4 style={{ fontSize: '16px', marginBottom: '10px' }}>Executor Status</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-            <div style={{ fontSize: '12px', color: '#666' }}>Worker</div>
+    <div style={{ fontSize: '12px' }}>
+      {/* Executor Status - Ultra Compact */}
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '13px' }}>Executor</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px', 
+            background: stats.worker_running ? '#dcfce7' : '#fef2f2',
+            borderRadius: '3px',
+            border: '1px solid ' + (stats.worker_running ? '#bbf7d0' : '#fecaca')
+          }}>
+            <div style={{ fontSize: '11px', color: '#666' }}>Worker</div>
             <div style={{ 
-              fontSize: '14px', 
-              fontWeight: 'bold',
-              color: stats.worker_running ? '#28a745' : '#dc3545'
+              fontSize: '12px', 
+              fontWeight: '600',
+              color: stats.worker_running ? '#059669' : '#dc2626'
             }}>
-              {stats.worker_running ? 'Running' : 'Stopped'}
+              {stats.worker_running ? 'Run' : 'Stop'}
             </div>
           </div>
           
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-            <div style={{ fontSize: '12px', color: '#666' }}>Enabled</div>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px', 
+            background: stats.worker_enabled ? '#dcfce7' : '#fef3c7',
+            borderRadius: '3px',
+            border: '1px solid ' + (stats.worker_enabled ? '#bbf7d0' : '#fde68a')
+          }}>
+            <div style={{ fontSize: '11px', color: '#666' }}>Enabled</div>
             <div style={{ 
-              fontSize: '14px', 
-              fontWeight: 'bold',
-              color: stats.worker_enabled ? '#28a745' : '#ffc107'
+              fontSize: '12px', 
+              fontWeight: '600',
+              color: stats.worker_enabled ? '#059669' : '#d97706'
             }}>
               {stats.worker_enabled ? 'Yes' : 'No'}
             </div>
           </div>
           
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-            <div style={{ fontSize: '12px', color: '#666' }}>Poll Interval</div>
-            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px', 
+            background: '#f1f5f9',
+            borderRadius: '3px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '11px', color: '#666' }}>Poll</div>
+            <div style={{ fontSize: '12px', fontWeight: '600' }}>
               {stats.poll_interval}s
             </div>
           </div>
         </div>
       </div>
 
-      {/* Queue Statistics */}
+      {/* Queue Stats - Ultra Compact */}
       <div>
-        <h4 style={{ fontSize: '16px', marginBottom: '10px' }}>Queue Statistics (24h)</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px' }}>
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#fff3cd', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#856404' }}>
+        <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '13px' }}>Queue (24h)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '3px' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px 2px', 
+            background: '#fef3c7',
+            borderRadius: '3px',
+            border: '1px solid #fde68a'
+          }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#d97706' }}>
               {stats.queue_stats.queued_steps}
             </div>
-            <div style={{ fontSize: '12px', color: '#856404' }}>Queued</div>
+            <div style={{ fontSize: '10px', color: '#92400e' }}>Queue</div>
           </div>
           
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#cce5ff', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#004085' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px 2px', 
+            background: '#dbeafe',
+            borderRadius: '3px',
+            border: '1px solid #bfdbfe'
+          }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#1d4ed8' }}>
               {stats.queue_stats.running_steps}
             </div>
-            <div style={{ fontSize: '12px', color: '#004085' }}>Running</div>
+            <div style={{ fontSize: '10px', color: '#1e40af' }}>Run</div>
           </div>
           
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#d4edda', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#155724' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px 2px', 
+            background: '#dcfce7',
+            borderRadius: '3px',
+            border: '1px solid #bbf7d0'
+          }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#059669' }}>
               {stats.queue_stats.succeeded_steps}
             </div>
-            <div style={{ fontSize: '12px', color: '#155724' }}>Succeeded</div>
+            <div style={{ fontSize: '10px', color: '#047857' }}>OK</div>
           </div>
           
-          <div style={{ textAlign: 'center', padding: '10px', backgroundColor: '#f8d7da', borderRadius: '4px' }}>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#721c24' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px 2px', 
+            background: '#fef2f2',
+            borderRadius: '3px',
+            border: '1px solid #fecaca'
+          }}>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: '#dc2626' }}>
               {stats.queue_stats.failed_steps}
             </div>
-            <div style={{ fontSize: '12px', color: '#721c24' }}>Failed</div>
+            <div style={{ fontSize: '10px', color: '#b91c1c' }}>Fail</div>
           </div>
         </div>
-        
-        {totalSteps > 0 && (
-          <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
-            Total steps processed: {totalSteps}
-          </div>
-        )}
       </div>
     </div>
   );

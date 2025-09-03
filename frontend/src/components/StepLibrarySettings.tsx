@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import LibraryManager from './LibraryManager';
+import { BookOpen, Package, Settings, Cog, Trash2 } from 'lucide-react';
 
 const StepLibrarySettings: React.FC = () => {
   const [showLibraryManager, setShowLibraryManager] = useState(false);
@@ -9,8 +10,8 @@ const StepLibrarySettings: React.FC = () => {
       <div className="px-4 py-5 sm:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              📚 Step Library Management
+            <h3 className="text-lg leading-6 font-medium text-gray-900 flex items-center gap-2">
+              <BookOpen size={20} /> Step Library Management
             </h3>
             <p className="mt-1 text-sm text-gray-500">
               Install, manage, and configure job step libraries for the system.
@@ -20,10 +21,7 @@ const StepLibrarySettings: React.FC = () => {
             onClick={() => setShowLibraryManager(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <Settings size={16} className="mr-2" />
             Manage Libraries
           </button>
         </div>
@@ -34,7 +32,7 @@ const StepLibrarySettings: React.FC = () => {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="text-blue-600 text-sm font-medium">📦</span>
+                    <Package size={16} className="text-blue-600" />
                   </div>
                 </div>
                 <div className="ml-3">
@@ -48,7 +46,7 @@ const StepLibrarySettings: React.FC = () => {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <span className="text-green-600 text-sm font-medium">⚙️</span>
+                    <Cog size={16} className="text-green-600" />
                   </div>
                 </div>
                 <div className="ml-3">
@@ -62,7 +60,7 @@ const StepLibrarySettings: React.FC = () => {
               <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
-                    <span className="text-red-600 text-sm font-medium">🗑️</span>
+                    <Trash2 size={16} className="text-red-600" />
                   </div>
                 </div>
                 <div className="ml-3">

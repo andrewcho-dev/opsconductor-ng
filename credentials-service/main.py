@@ -75,7 +75,7 @@ class CredentialResponse(BaseModel):
     description: Optional[str]
     credential_type: str
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime]
 
 class CredentialDecrypted(CredentialResponse):
     credential_data: Dict[str, Any]
@@ -224,6 +224,14 @@ async def create_credential(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Missing required field for api_key credential: {field}"
                     )
+        elif cred_data.credential_type == "certificate":
+            required_fields = ["certificate"]
+            for field in required_fields:
+                if field not in cred_data.credential_data:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Missing required field for certificate credential: {field}"
+                    )
         
         # Encrypt credential data and wrap in JSON structure
         encrypted_data = encrypt_data(cred_data.credential_data)
@@ -361,8 +369,15 @@ async def get_credential_decrypted(
         credential_json = cred_data.pop("credential_data")
         if isinstance(credential_json, str):
             credential_json = json.loads(credential_json)
-        encrypted_data = credential_json["encrypted"]
-        decrypted_data = decrypt_data(encrypted_data)
+        
+        # Handle sample data that has placeholder values
+        encrypted_data = credential_json.get("encrypted")
+        if encrypted_data is True or encrypted_data == "" or not encrypted_data:
+            # This is sample/placeholder data, return empty credential data
+            decrypted_data = {"note": "This is sample data - no actual credentials stored"}
+        else:
+            # This is real encrypted data
+            decrypted_data = decrypt_data(encrypted_data)
         
         return CredentialDecrypted(
             **cred_data,

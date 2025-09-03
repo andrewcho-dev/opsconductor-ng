@@ -396,7 +396,10 @@ export const healthApi = {
         'targets': '/api/v1/targets/health',
         'jobs': '/api/v1/jobs/health',
         'executor': '/api/v1/executor/health',
-        'scheduler': '/api/v1/scheduler/health'
+        'scheduler': '/api/v1/scheduler/health',
+        'notification': '/api/v1/notification/health',
+        'discovery': '/api/v1/discovery/health',
+        'step-libraries': '/api/v1/step-libraries/health'
       };
       
       const endpoint = serviceMap[service] || `/api/v1/${service}/health`;
@@ -417,7 +420,7 @@ export const healthApi = {
   },
 
   checkAllServices: async (): Promise<Record<string, any>> => {
-    const services = ['auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'scheduler'];
+    const services = ['auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'scheduler', 'notification', 'discovery', 'step-libraries'];
     const results: Record<string, any> = {};
     
     const checks = services.map(async (service) => {

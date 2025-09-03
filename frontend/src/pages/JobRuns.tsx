@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { jobRunApi, jobApi } from '../services/api';
 import { JobRun, Job } from '../types';
+import { Plus } from 'lucide-react';
 
 const JobRuns: React.FC = () => {
   const [runs, setRuns] = useState<JobRun[]>([]);
@@ -100,7 +101,7 @@ const JobRuns: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h1>Job Runs</h1>
         <Link to="/jobs" className="btn btn-primary">
-          Create New Job
+          <Plus size={16} className="me-2" />Create New Job
         </Link>
       </div>
 

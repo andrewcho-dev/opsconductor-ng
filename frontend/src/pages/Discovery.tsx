@@ -7,6 +7,7 @@ import {
   DiscoveryConfig,
   DiscoveryService
 } from '../types';
+import { Check, X, Plus } from 'lucide-react';
 
 // Default services organized by categories
 const DEFAULT_SERVICES: DiscoveryService[] = [
@@ -529,7 +530,7 @@ const Discovery: React.FC = () => {
               className="btn btn-primary"
               onClick={() => setActiveTab('create')}
             >
-              New Discovery Job
+              <Plus size={16} className="me-2" />New Discovery Job
             </button>
           </div>
 
@@ -935,8 +936,8 @@ const Discovery: React.FC = () => {
                     {validation && (
                       <div className={`invalid-feedback d-block ${validation.valid ? 'text-success' : ''}`}>
                         {validation.valid 
-                          ? `✓ Valid - ${validation.parsed_count} target(s)`
-                          : `✗ ${validation.error}`
+                          ? <span><Check size={14} className="inline mr-1" />Valid - {validation.parsed_count} target(s)</span>
+                          : <span><X size={14} className="inline mr-1" />{validation.error}</span>
                         }
                       </div>
                     )}

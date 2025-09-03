@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { stepLibraryService, LibraryInfo, LibraryInstallResult } from '../services/stepLibraryService';
+import { X, BookOpen, Package, Calendar, Clock, Clipboard } from 'lucide-react';
 
 interface LibraryManagerProps {
   onClose: () => void;
@@ -159,7 +160,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <h2 style={{ margin: 0, color: '#333' }}>📚 Step Library Manager</h2>
+          <h2 style={{ margin: 0, color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}><BookOpen size={24} /> Step Library Manager</h2>
           <button
             onClick={onClose}
             style={{
@@ -170,7 +171,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
               color: '#666'
             }}
           >
-            ×
+            <X size={20} />
           </button>
         </div>
 
@@ -230,7 +231,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                   cursor: 'pointer'
                 }}
               >
-                ×
+                <X size={20} />
               </button>
             </div>
           )}
@@ -255,7 +256,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                   cursor: 'pointer'
                 }}
               >
-                ×
+                <X size={20} />
               </button>
             </div>
           )}
@@ -269,7 +270,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                 </div>
               ) : libraries.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>📚</div>
+                  <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}><BookOpen size={48} /></div>
                   <div>No libraries installed</div>
                   <div style={{ fontSize: '14px', marginTop: '8px' }}>
                     Switch to the "Install New Library" tab to add libraries
@@ -327,10 +328,10 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                           </div>
                           
                           <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#666' }}>
-                            <span>📦 {library.step_count} steps</span>
-                            <span>📅 Installed {formatDate(library.installation_date)}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Package size={14} /> {library.step_count} steps</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={14} /> Installed {formatDate(library.installation_date)}</span>
                             {library.last_used && (
-                              <span>🕒 Last used {formatDate(library.last_used)}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={14} /> Last used {formatDate(library.last_used)}</span>
                             )}
                           </div>
                         </div>
@@ -386,7 +387,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                 textAlign: 'center',
                 marginBottom: '24px'
               }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>📦</div>
+                <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'center' }}><Package size={48} /></div>
                 <h3 style={{ marginBottom: '16px' }}>Install Step Library</h3>
                 <p style={{ color: '#666', marginBottom: '24px' }}>
                   Upload a ZIP file containing a step library package
@@ -453,7 +454,7 @@ const LibraryManager: React.FC<LibraryManagerProps> = ({ onClose }) => {
                 fontSize: '14px',
                 color: '#666'
               }}>
-                <h4 style={{ marginTop: 0, color: '#333' }}>📋 Installation Requirements</h4>
+                <h4 style={{ marginTop: 0, color: '#333', display: 'flex', alignItems: 'center', gap: '6px' }}><Clipboard size={16} /> Installation Requirements</h4>
                 <ul style={{ marginBottom: 0, paddingLeft: '20px' }}>
                   <li>Library must be packaged as a ZIP file</li>
                   <li>Must contain a valid manifest.json file</li>

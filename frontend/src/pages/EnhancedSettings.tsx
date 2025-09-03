@@ -2,6 +2,7 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SMTPSettingsComponent from '../components/SMTPSettings';
 import StepLibrarySettings from '../components/StepLibrarySettings';
+import { Lightbulb } from 'lucide-react';
 
 const EnhancedSettings: React.FC = () => {
   const { user } = useAuth();
@@ -39,7 +40,7 @@ const EnhancedSettings: React.FC = () => {
         {user?.role === 'admin' && (
           <div className="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h3 className="text-lg font-medium text-blue-900 mb-4">
-              💡 Administrator Help
+              <Lightbulb size={20} className="inline mr-2" />Administrator Help
             </h3>
             <div className="space-y-3 text-sm text-blue-700">
               <div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { jobRunApi, jobApi } from '../services/api';
 import { JobRun, JobRunStep, Job } from '../types';
+import { ArrowLeft } from 'lucide-react';
 
 const JobRunDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -99,7 +100,7 @@ const JobRunDetail: React.FC = () => {
   return (
     <div>
       <div style={{ marginBottom: '20px' }}>
-        <Link to="/runs" className="btn btn-secondary">← Back to Job Runs</Link>
+        <Link to="/runs" className="btn btn-secondary"><ArrowLeft size={16} className="mr-2" />Back to Job Runs</Link>
       </div>
 
       <h1>Job Run #{run.id}</h1>

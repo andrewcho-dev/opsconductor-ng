@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { X, Mail, Link } from 'lucide-react';
 
 interface Notification {
   id: number;
@@ -178,7 +179,7 @@ const Notifications: React.FC = () => {
             onClick={() => setError(null)}
             style={{ float: 'right', background: 'none', border: 'none', fontSize: '18px' }}
           >
-            ×
+            <X size={16} />
           </button>
         </div>
       )}
@@ -338,7 +339,7 @@ const Notifications: React.FC = () => {
                         <td>{notification.id}</td>
                         <td>
                           <span style={{ display: 'flex', alignItems: 'center' }}>
-                            {notification.channel === 'email' ? '📧' : '🔗'} {notification.channel}
+                            {notification.channel === 'email' ? <Mail size={14} className="inline mr-1" /> : <Link size={14} className="inline mr-1" />} {notification.channel}
                           </span>
                         </td>
                         <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>

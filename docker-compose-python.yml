@@ -33,6 +33,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres123
       JWT_SECRET_KEY: your-jwt-secret-change-in-production
+    volumes:
+      - ./auth-service:/app
     ports:
       - "3001:3001"
     networks:
@@ -53,6 +55,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres123
       AUTH_SERVICE_URL: http://auth-service:3001
+    volumes:
+      - ./user-service:/app
     ports:
       - "3002:3002"
     networks:
@@ -74,6 +78,8 @@ services:
       DB_PASSWORD: postgres123
       AUTH_SERVICE_URL: http://auth-service:3001
       MASTER_KEY: your-master-key-change-in-production-must-be-32-chars-long
+    volumes:
+      - ./credentials-service:/app
     ports:
       - "3004:3004"
     networks:
@@ -118,6 +124,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres123
       AUTH_SERVICE_URL: http://auth-service:3001
+    volumes:
+      - ./jobs-service:/app
     ports:
       - "3006:3006"
     networks:
@@ -142,6 +150,8 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:3009
       WORKER_ENABLED: "true"
       WORKER_POLL_INTERVAL: "5"
+    volumes:
+      - ./executor-service:/app
     ports:
       - "3007:3007"
     networks:
@@ -164,6 +174,8 @@ services:
       DB_PASSWORD: postgres123
       AUTH_SERVICE_URL: http://auth-service:3001
       JOBS_SERVICE_URL: http://jobs-service:3006
+    volumes:
+      - ./scheduler-service:/app
     ports:
       - "3008:3008"
     networks:
@@ -193,6 +205,8 @@ services:
       SMTP_USE_TLS: "true"
       SMTP_FROM_EMAIL: noreply@opsconductor.local
       SMTP_FROM_NAME: OpsConductor
+    volumes:
+      - ./notification-service:/app
     ports:
       - "3009:3009"
     networks:
@@ -213,6 +227,8 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres123
       JWT_SECRET_KEY: your-jwt-secret-change-in-production
+    volumes:
+      - ./discovery-service:/app
     ports:
       - "3010:3010"
     networks:
@@ -220,9 +236,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./discovery-service/main.py:/app/main.py
-      - ./discovery-service/shared:/app/shared
     restart: unless-stopped
 
   # Step Libraries Service (Python FastAPI)
@@ -235,6 +248,10 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+    volumes:
+      - ./step-libraries-service:/app
+      - step_libraries_data:/app/libraries
+      - step_libraries_cache:/app/cache
     ports:
       - "3011:3011"
     networks:
@@ -242,9 +259,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - step_libraries_data:/app/libraries
-      - step_libraries_cache:/app/cache
     restart: unless-stopped
 
   # Frontend (React)

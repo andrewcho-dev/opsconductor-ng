@@ -3,8 +3,7 @@ import {
   enhancedTargetApi, 
   serviceDefinitionApi, 
   targetServiceApi, 
-  targetCredentialApi,
-  setAuthToken 
+  targetCredentialApi
 } from '../services/enhancedApi';
 import { credentialApi } from '../services/api';
 import {
@@ -18,6 +17,7 @@ import {
   SERVICE_CATEGORIES
 } from '../types/enhanced';
 import { Credential } from '../types';
+import { Plus } from 'lucide-react';
 
 const EnhancedTargetManagement: React.FC = () => {
   // State management
@@ -71,10 +71,6 @@ const EnhancedTargetManagement: React.FC = () => {
 
   // Load data on component mount
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      setAuthToken(token);
-    }
     loadData();
   }, []);
 
@@ -312,7 +308,7 @@ const EnhancedTargetManagement: React.FC = () => {
             setShowCreateModal(true);
           }}
         >
-          <i className="fas fa-plus me-2"></i>Add Target
+          <Plus size={16} className="me-2" />Add Target
         </button>
       </div>
 

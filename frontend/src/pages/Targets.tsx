@@ -4,6 +4,7 @@ import { targetApi, credentialApi } from '../services/api';
 import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
+import { Plus, Trash2, X, Search } from 'lucide-react';
 
 const Targets: React.FC = () => {
   const navigate = useNavigate();
@@ -63,13 +64,11 @@ const Targets: React.FC = () => {
           name: target.name,
           hostname: target.hostname,
           ip_address: target.ip_address || '',
-          protocol: target.protocol,
-          port: target.port,
-          os_type: target.os_type,
-          credential_ref: target.credential_ref,
-          tags: target.tags || [],
-          metadata: target.metadata || {},
-          depends_on: target.depends_on || []
+          protocol: 'winrm',
+          port: 5985,
+          os_type: target.os_type || 'windows',
+          credential_ref: 0,
+          tags: target.tags || []
         });
       }
     } else if (isCreating) {
@@ -81,9 +80,7 @@ const Targets: React.FC = () => {
         port: 5985,
         os_type: 'windows',
         credential_ref: 0,
-        tags: [],
-        metadata: {},
-        depends_on: []
+        tags: []
       });
     }
   }, [isEditing, isCreating, id, targets]);
@@ -100,7 +97,7 @@ const Targets: React.FC = () => {
       if (targetsList.length > 0) {
         setRetryCount(0);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch targets:', error);
       // Check if it's an authentication error
       if (error.response?.status === 401 || error.response?.status === 403) {
@@ -156,7 +153,7 @@ const Targets: React.FC = () => {
   const handleTest = async (targetId: number) => {
     setTestingTarget(targetId);
     try {
-      await targetApi.test(targetId);
+      await targetApi.testWinRM(targetId);
       alert('Connection test successful!');
     } catch (error) {
       console.error('Connection test failed:', error);
@@ -451,7 +448,7 @@ const Targets: React.FC = () => {
             className="btn btn-primary"
             onClick={() => navigate('/targets-management/create')}
           >
-            <span className="icon-add"></span>
+            <Plus size={16} />
             Add Target
           </button>
         </div>
@@ -467,7 +464,7 @@ const Targets: React.FC = () => {
             className="btn btn-primary"
             onClick={() => navigate('/targets-management/create')}
           >
-            <span className="icon-add"></span>
+            <Plus size={16} />
             Create Target
           </button>
         </div>
@@ -511,7 +508,7 @@ const Targets: React.FC = () => {
                         onClick={() => handleDelete(target.id)}
                         title="Delete target"
                       >
-                        <span className="icon-delete"></span>
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -534,7 +531,7 @@ const Targets: React.FC = () => {
                   onClick={handleCloseDetailPanel}
                   title="Close details"
                 >
-                  <span className="icon-close">×</span>
+                  <X size={16} />
                 </button>
               </div>
 
@@ -624,7 +621,7 @@ const Targets: React.FC = () => {
                                 {testingService === service.id ? (
                                   <span className="loading-spinner"></span>
                                 ) : (
-                                  <span className="icon-test">🔍</span>
+                                  <Search size={14} />
                                 )}
                               </button>
                             </div>

@@ -145,7 +145,7 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, email, username, password_hash, role, created_at, token_version FROM users WHERE username = %s AND deleted_at IS NULL",
+            "SELECT id, email, username, pwd_hash, role, created_at, token_version FROM users WHERE username = %s",
             (username,)
         )
         user_data = cursor.fetchone()
@@ -153,7 +153,7 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
         if not user_data:
             return None
             
-        if not verify_password(password, user_data['password_hash']):
+        if not verify_password(password, user_data['pwd_hash']):
             return None
             
         return User(**user_data)
@@ -184,7 +184,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
             )
             user_data = cursor.fetchone()
@@ -271,7 +271,7 @@ async def refresh_token(refresh_request: RefreshRequest):
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
+                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
             )
             user_data = cursor.fetchone()

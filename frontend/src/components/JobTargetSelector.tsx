@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { targetApi } from '../services/api';
 import { Target } from '../types';
+import { Check } from 'lucide-react';
 
 interface JobTargetSelectorProps {
   selectedTargets: string[];
@@ -216,7 +217,7 @@ const JobTargetSelector: React.FC<JobTargetSelectorProps> = ({
                   color: '#4caf50',
                   marginTop: '2px'
                 }}>
-                  ✓ Active
+                  <Check size={12} className="inline mr-1" />Active
                 </div>
               </div>
             </div>

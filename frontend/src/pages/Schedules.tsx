@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { schedulerApi, jobApi } from '../services/api';
 import { Schedule, ScheduleCreate, Job, SchedulerStatus } from '../types';
+import { X, Plus } from 'lucide-react';
 
 const Schedules: React.FC = () => {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -167,7 +168,7 @@ const Schedules: React.FC = () => {
             }}
             className="btn btn-primary"
           >
-            Create Schedule
+            <Plus size={16} className="me-2" />Create Schedule
           </button>
         </div>
       </div>
@@ -175,7 +176,7 @@ const Schedules: React.FC = () => {
       {error && (
         <div className="alert alert-error">
           {error}
-          <button onClick={() => setError(null)} className="alert-close">×</button>
+          <button onClick={() => setError(null)} className="alert-close"><X size={16} /></button>
         </div>
       )}
 
@@ -206,7 +207,7 @@ const Schedules: React.FC = () => {
           <div className="modal">
             <div className="modal-header">
               <h2>{editingSchedule ? 'Edit Schedule' : 'Create Schedule'}</h2>
-              <button onClick={resetForm} className="modal-close">×</button>
+              <button onClick={resetForm} className="modal-close"><X size={16} /></button>
             </div>
             <form onSubmit={handleSubmit} className="modal-body">
               <div className="form-group">

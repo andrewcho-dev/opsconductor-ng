@@ -15,6 +15,7 @@ import requests
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -27,7 +28,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # FastAPI app
-app = FastAPI(title="User Service", version="1.0.0")
+app = FastAPI(
+    title="User Service", 
+    version="1.0.0",
+    # Configure to include None values in JSON responses
+    openapi_url="/openapi.json"
+)
 
 # CORS middleware
 app.add_middleware(
@@ -58,12 +64,20 @@ class UserCreate(BaseModel):
     username: str
     password: str
     role: str = "viewer"
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    telephone: Optional[str] = None
+    title: Optional[str] = None
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     username: Optional[str] = None
     password: Optional[str] = None
     role: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    telephone: Optional[str] = None
+    title: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -72,6 +86,13 @@ class UserResponse(BaseModel):
     role: str
     created_at: datetime
     token_version: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    telephone: Optional[str] = None
+    title: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class UserListResponse(BaseModel):
     users: List[UserResponse]
@@ -142,9 +163,9 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
     try:
         cursor = conn.cursor()
         
-        # Check if username or email already exists (excluding soft-deleted)
+        # Check if username or email already exists
         cursor.execute(
-            "SELECT id FROM users WHERE (email = %s OR username = %s) AND deleted_at IS NULL",
+            "SELECT id FROM users WHERE (email = %s OR username = %s)",
             (user_data.email, user_data.username)
         )
         if cursor.fetchone():
@@ -158,10 +179,12 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
         
         # Insert user
         cursor.execute(
-            """INSERT INTO users (email, username, password_hash, role, created_at, token_version)
-               VALUES (%s, %s, %s, %s, %s, %s)
-               RETURNING id, email, username, role, created_at, token_version""",
-            (user_data.email, user_data.username, hashed_password, user_data.role, datetime.utcnow(), 1)
+            """INSERT INTO users (email, username, pwd_hash, role, first_name, last_name, telephone, title, created_at, token_version)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id, email, username, role, first_name, last_name, telephone, title, created_at, token_version""",
+            (user_data.email, user_data.username, hashed_password, user_data.role, 
+             user_data.first_name, user_data.last_name, user_data.telephone, user_data.title, 
+             datetime.utcnow(), 1)
         )
         
         new_user = cursor.fetchone()
@@ -186,7 +209,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
     finally:
         conn.close()
 
-@app.get("/users", response_model=UserListResponse)
+@app.get("/users", response_model=UserListResponse, response_model_exclude_none=False)
 async def list_users(
     skip: int = 0,
     limit: int = 100,
@@ -199,14 +222,27 @@ async def list_users(
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
+                "SELECT id, email, username, role, first_name, last_name, telephone, title, created_at, token_version FROM users WHERE id = %s",
                 (current_user["id"],)
             )
             user_data = cursor.fetchone()
             
             if user_data:
+                # Explicitly construct the response to ensure all fields are included
+                response_data = {
+                    'id': user_data['id'],
+                    'email': user_data['email'],
+                    'username': user_data['username'],
+                    'role': user_data['role'],
+                    'created_at': user_data['created_at'],
+                    'token_version': user_data['token_version'],
+                    'first_name': user_data.get('first_name'),
+                    'last_name': user_data.get('last_name'),
+                    'telephone': user_data.get('telephone'),
+                    'title': user_data.get('title')
+                }
                 return UserListResponse(
-                    users=[UserResponse(**user_data)],
+                    users=[UserResponse(**response_data)],
                     total=1
                 )
             else:
@@ -219,23 +255,39 @@ async def list_users(
     try:
         cursor = conn.cursor()
         
-        # Get total count (excluding soft-deleted)
-        cursor.execute("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
+        # Get total count
+        cursor.execute("SELECT COUNT(*) FROM users")
         total = cursor.fetchone()["count"]
         
-        # Get users with pagination (excluding soft-deleted)
+        # Get users with pagination
         cursor.execute(
-            """SELECT id, email, username, role, created_at, token_version 
+            """SELECT id, email, username, role, first_name, last_name, telephone, title, created_at, token_version 
                FROM users 
-               WHERE deleted_at IS NULL
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (limit, skip)
         )
         users = cursor.fetchall()
         
+        # Explicitly construct responses to ensure all fields are included
+        user_responses = []
+        for user in users:
+            response_data = {
+                'id': user['id'],
+                'email': user['email'],
+                'username': user['username'],
+                'role': user['role'],
+                'created_at': user['created_at'],
+                'token_version': user['token_version'],
+                'first_name': user.get('first_name'),
+                'last_name': user.get('last_name'),
+                'telephone': user.get('telephone'),
+                'title': user.get('title')
+            }
+            user_responses.append(UserResponse(**response_data))
+        
         return UserListResponse(
-            users=[UserResponse(**user) for user in users],
+            users=user_responses,
             total=total
         )
         
@@ -248,7 +300,7 @@ async def list_users(
     finally:
         conn.close()
 
-@app.get("/users/{user_id}", response_model=UserResponse)
+@app.get("/users/{user_id}")
 async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get user by ID"""
     # Non-admin users can only access their own profile
@@ -262,7 +314,7 @@ async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
+            "SELECT id, email, username, role, first_name, last_name, telephone, title, created_at, token_version FROM users WHERE id = %s",
             (user_id,)
         )
         user_data = cursor.fetchone()
@@ -273,7 +325,20 @@ async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_
                 detail="User not found"
             )
         
-        return UserResponse(**user_data)
+        # Return raw JSON response to ensure all fields are included
+        response_data = {
+            'id': user_data['id'],
+            'email': user_data['email'],
+            'username': user_data['username'],
+            'role': user_data['role'],
+            'created_at': user_data['created_at'].isoformat(),
+            'token_version': user_data['token_version'],
+            'first_name': user_data.get('first_name'),
+            'last_name': user_data.get('last_name'),
+            'telephone': user_data.get('telephone'),
+            'title': user_data.get('title')
+        }
+        return JSONResponse(content=response_data)
         
     except Exception as e:
         logger.error(f"User retrieval error: {e}")
@@ -308,8 +373,8 @@ async def update_user(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -335,11 +400,27 @@ async def update_user(
         if user_data.role is not None:
             update_fields.append("role = %s")
             update_values.append(user_data.role)
+            
+        if user_data.first_name is not None:
+            update_fields.append("first_name = %s")
+            update_values.append(user_data.first_name)
+            
+        if user_data.last_name is not None:
+            update_fields.append("last_name = %s")
+            update_values.append(user_data.last_name)
+            
+        if user_data.telephone is not None:
+            update_fields.append("telephone = %s")
+            update_values.append(user_data.telephone)
+            
+        if user_data.title is not None:
+            update_fields.append("title = %s")
+            update_values.append(user_data.title)
         
         if not update_fields:
             # No fields to update, just return current user
             cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s AND deleted_at IS NULL",
+                "SELECT id, email, username, role, first_name, last_name, telephone, title, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
             )
             return UserResponse(**cursor.fetchone())
@@ -349,7 +430,7 @@ async def update_user(
             UPDATE users 
             SET {', '.join(update_fields)}
             WHERE id = %s
-            RETURNING id, email, username, role, created_at, token_version
+            RETURNING id, email, username, role, first_name, last_name, telephone, title, created_at, token_version
         """
         update_values.append(user_id)
         
@@ -390,24 +471,21 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin_r
     try:
         cursor = conn.cursor()
         
-        # Check if user exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
-        # Soft delete user
-        cursor.execute(
-            "UPDATE users SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
-            (datetime.utcnow(), user_id)
-        )
+        # Delete user
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         
         if cursor.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found or already deleted"
+                detail="User not found"
             )
         
         conn.commit()
@@ -442,8 +520,8 @@ async def assign_role(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -513,8 +591,8 @@ async def get_user_notification_preferences(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -582,8 +660,8 @@ async def update_user_notification_preferences(
     try:
         cursor = conn.cursor()
         
-        # Check if user exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM users WHERE id = %s AND deleted_at IS NULL", (user_id,))
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
         if not cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

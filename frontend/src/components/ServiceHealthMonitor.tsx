@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { healthApi } from '../services/api';
+import { CheckCircle, Circle } from 'lucide-react';
 
 interface ServiceStatus {
   status: string;
@@ -27,98 +28,65 @@ const ServiceHealthMonitor: React.FC = () => {
 
   useEffect(() => {
     fetchServiceHealth();
-    
-    // Auto-refresh every 30 seconds
     const interval = setInterval(fetchServiceHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'healthy': return '#28a745';
-      case 'unhealthy': return '#dc3545';
-      default: return '#ffc107';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'healthy': return '✓';
-      case 'unhealthy': return '✗';
-      default: return '?';
-    }
-  };
-
   if (loading) {
-    return (
-      <div className="card">
-        <h3>Service Health</h3>
-        <div>Loading service status...</div>
-      </div>
-    );
+    return <div style={{ fontSize: '11px', color: '#666' }}>Loading...</div>;
   }
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <h3>Service Health</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button 
-            className="btn btn-secondary" 
-            onClick={fetchServiceHealth}
-            style={{ fontSize: '12px', padding: '5px 10px' }}
-          >
-            Refresh
-          </button>
-          {lastUpdate && (
-            <small style={{ color: '#666' }}>
-              Last updated: {lastUpdate.toLocaleTimeString()}
-            </small>
-          )}
-        </div>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <button 
+          onClick={fetchServiceHealth}
+          style={{ 
+            background: 'none', 
+            border: '1px solid #ddd', 
+            padding: '2px 6px', 
+            fontSize: '10px',
+            borderRadius: '3px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+        {lastUpdate && (
+          <span style={{ fontSize: '10px', color: '#666' }}>
+            {lastUpdate.toLocaleTimeString()}
+          </span>
+        )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '12px' }}>
         {Object.entries(services).map(([serviceName, status]) => (
           <div 
             key={serviceName}
             style={{
-              padding: '10px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              backgroundColor: status.status === 'healthy' ? '#f8f9fa' : '#fff5f5'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '4px 8px',
+              background: status.status === 'healthy' ? '#f0f9ff' : '#fef2f2',
+              borderRadius: '3px',
+              border: '1px solid ' + (status.status === 'healthy' ? '#e0f2fe' : '#fecaca')
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong style={{ textTransform: 'capitalize' }}>{serviceName}</strong>
-              <span 
-                style={{ 
-                  color: getStatusColor(status.status),
-                  fontSize: '18px',
-                  fontWeight: 'bold'
-                }}
-              >
-                {getStatusIcon(status.status)}
+            <span style={{ fontWeight: '500', fontSize: '12px' }}>{serviceName}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ 
+                color: status.status === 'healthy' ? '#059669' : '#dc2626',
+                fontSize: '14px'
+              }}>
+                {status.status === 'healthy' ? <CheckCircle size={10} /> : <Circle size={10} />}
               </span>
+              {status.responseTime && (
+                <span style={{ fontSize: '11px', color: '#666' }}>
+                  {status.responseTime}ms
+                </span>
+              )}
             </div>
-            
-            <div style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-              Status: <span style={{ color: getStatusColor(status.status) }}>
-                {status.status}
-              </span>
-            </div>
-            
-            {status.responseTime && (
-              <div style={{ fontSize: '12px', color: '#666' }}>
-                Response: {status.responseTime}ms
-              </div>
-            )}
-            
-            {status.error && (
-              <div style={{ fontSize: '11px', color: '#dc3545', marginTop: '5px' }}>
-                {status.error}
-              </div>
-            )}
           </div>
         ))}
       </div>

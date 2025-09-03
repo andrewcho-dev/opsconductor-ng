@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Job, JobStep } from '../types';
 import { stepLibraryService, StepDefinition } from '../services/stepLibraryService';
 import StepConfigModal from './StepConfigModal';
+import { FileText, X, Play, Square, Target, BookOpen, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface VisualJobBuilderProps {
   onJobCreate: (jobData: any) => void;
@@ -46,6 +47,15 @@ interface NodeTemplate {
   color: string;
   parameters?: any[];
 }
+
+const getIconComponent = (iconName: string, size: number = 12) => {
+  switch (iconName) {
+    case 'play': return <Play size={size} />;
+    case 'square': return <Square size={size} />;
+    case 'target': return <Target size={size} />;
+    default: return <FileText size={size} />;
+  }
+};
 
 const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCancel, editingJob }) => {
   const [jobName, setJobName] = useState('');
@@ -358,7 +368,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
           backgroundColor: '#f8f9fa'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '16px' }}>📚 Step Library</h3>
+            <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}><BookOpen size={16} /> Step Library</h3>
             <div style={{ fontSize: '12px', color: '#666' }}>
               Manage libraries in Settings
             </div>
@@ -423,7 +433,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
               fontSize: '12px',
               marginBottom: '8px'
             }}>
-              ⚠️ {stepLoadError}
+              <AlertTriangle size={14} className="inline mr-1" />{stepLoadError}
             </div>
           ) : null}
           
@@ -445,7 +455,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
               title={template.description}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>{template.icon}</span>
+                <span>{getIconComponent(template.icon, 12)}</span>
                 <div>
                   <div style={{ fontWeight: 'bold' }}>{template.name}</div>
                   <div style={{ fontSize: '10px', opacity: 0.8 }}>
@@ -503,7 +513,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
             }}
             disabled={loadingSteps}
           >
-            🔄 Refresh Steps
+            <RefreshCw size={14} className="mr-1" />Refresh Steps
           </button>
           
           <button
@@ -634,7 +644,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                 onDoubleClick={() => handleNodeDoubleClick(node)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                  <span>{template?.icon || '📄'}</span>
+                  <span>{template?.icon ? getIconComponent(template.icon, 12) : <FileText size={12} />}</span>
                   <span style={{ fontWeight: 'bold', fontSize: '11px' }}>{node.name}</span>
                   <button
                     onClick={(e) => {
@@ -654,7 +664,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                       padding: '2px 4px'
                     }}
                   >
-                    ×
+                    <X size={10} />
                   </button>
                 </div>
                 

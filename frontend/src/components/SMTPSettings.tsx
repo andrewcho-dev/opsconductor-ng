@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { notificationApi } from '../services/api';
 import { SMTPSettings, SMTPSettingsResponse, SMTPTestRequest } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 const SMTPSettingsComponent: React.FC = () => {
   const { user } = useAuth();
@@ -23,6 +24,7 @@ const SMTPSettingsComponent: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [testEmail, setTestEmail] = useState('');
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [testSuccess, setTestSuccess] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -100,13 +102,16 @@ const SMTPSettingsComponent: React.FC = () => {
       const response = await notificationApi.testSMTPSettings(testRequest);
       
       if (response.success) {
-        setTestResult(`✅ ${response.message}`);
+        setTestResult(response.message);
+        setTestSuccess(true);
       } else {
-        setTestResult(`❌ ${response.message}`);
+        setTestResult(response.message);
+        setTestSuccess(false);
       }
     } catch (err: any) {
       console.error('SMTP test failed:', err);
-      setTestResult(`❌ Test failed: ${err.response?.data?.detail || err.message}`);
+      setTestResult(`Test failed: ${err.response?.data?.detail || err.message}`);
+      setTestSuccess(false);
     } finally {
       setTesting(false);
     }
@@ -138,7 +143,7 @@ const SMTPSettingsComponent: React.FC = () => {
         </p>
         {currentSettings?.is_configured && (
           <div className="mt-2 text-sm text-green-600">
-            ✅ SMTP is currently configured and active
+            <CheckCircle size={16} className="inline mr-2" />SMTP is currently configured and active
           </div>
         )}
       </div>
@@ -323,11 +328,12 @@ const SMTPSettingsComponent: React.FC = () => {
             </div>
 
             {testResult && (
-              <div className={`p-3 rounded-md text-sm ${
-                testResult.startsWith('✅') 
+              <div className={`p-3 rounded-md text-sm flex items-center gap-2 ${
+                testSuccess 
                   ? 'bg-green-50 text-green-700 border border-green-200' 
                   : 'bg-red-50 text-red-700 border border-red-200'
               }`}>
+                {testSuccess ? <CheckCircle size={16} /> : <XCircle size={16} />}
                 {testResult}
               </div>
             )}

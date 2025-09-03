@@ -13,6 +13,10 @@ export interface User {
   role: 'admin' | 'operator' | 'viewer';
   created_at: string;
   token_version: number;
+  first_name?: string;
+  last_name?: string;
+  telephone?: string;
+  title?: string;
 }
 
 export interface UserCreate {
@@ -20,6 +24,10 @@ export interface UserCreate {
   username: string;
   password: string;
   role: 'admin' | 'operator' | 'viewer';
+  first_name?: string;
+  last_name?: string;
+  telephone?: string;
+  title?: string;
 }
 
 export interface UserUpdate {
@@ -27,6 +35,10 @@ export interface UserUpdate {
   username?: string;
   password?: string;
   role?: 'admin' | 'operator' | 'viewer';
+  first_name?: string;
+  last_name?: string;
+  telephone?: string;
+  title?: string;
 }
 
 // Auth Types

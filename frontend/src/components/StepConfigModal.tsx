@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import JobTargetSelector from './JobTargetSelector';
+import { X, Info } from 'lucide-react';
 
 interface StepConfigModalProps {
   isOpen: boolean;
@@ -93,7 +94,7 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
               justifyContent: 'center'
             }}
           >
-            ×
+            <X size={20} />
           </button>
         </div>
 
@@ -165,7 +166,7 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
               <JobTargetSelector
                 selectedTargets={
                   typeof config.target_names === 'string' && config.target_names
-                    ? config.target_names.split(',').map(t => t.trim()).filter(t => t)
+                    ? config.target_names.split(',').map((t: string) => t.trim()).filter((t: string) => t)
                     : []
                 }
                 onTargetChange={(targets) => {
@@ -212,7 +213,7 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
                 fontSize: '13px',
                 color: '#1976d2'
               }}>
-                ℹ️ This step will run on all available targets
+                <Info size={14} className="inline mr-1" />This step will run on all available targets
               </div>
             )}
           </div>
