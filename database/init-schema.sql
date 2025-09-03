@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS users (
   pwd_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('admin', 'operator', 'viewer')),
   token_version INT NOT NULL DEFAULT 0,
+  first_name TEXT,
+  last_name TEXT,
+  telephone TEXT,
+  title TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -764,6 +768,98 @@ INSERT INTO step_libraries (
     'Built-in core steps for flow control and basic operations',
     'OpsConductor Team', '/app/core', 'builtin', true, 'installed'
 ) ON CONFLICT (name, version) DO NOTHING;
+
+-- =============================================================================
+-- DISCOVERY SERVICE TABLES
+-- =============================================================================
+
+-- Discovery Jobs table for tracking discovery operations
+CREATE TABLE IF NOT EXISTS discovery_jobs (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  discovery_type TEXT NOT NULL CHECK (discovery_type IN ('network_scan', 'import', 'manual')),
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+  created_by BIGINT REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  results_summary JSONB
+);
+
+-- Create indexes for discovery_jobs table
+CREATE INDEX IF NOT EXISTS idx_discovery_jobs_status ON discovery_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_discovery_jobs_created_by ON discovery_jobs(created_by);
+CREATE INDEX IF NOT EXISTS idx_discovery_jobs_created_at ON discovery_jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_discovery_jobs_discovery_type ON discovery_jobs(discovery_type);
+
+-- Discovered Targets table for storing discovery results
+CREATE TABLE IF NOT EXISTS discovered_targets (
+  id BIGSERIAL PRIMARY KEY,
+  discovery_job_id BIGINT NOT NULL REFERENCES discovery_jobs(id) ON DELETE CASCADE,
+  hostname TEXT,
+  ip_address INET NOT NULL,
+  os_type TEXT CHECK (os_type IN ('windows', 'linux', 'unix', 'macos', 'other')),
+  os_version TEXT,
+  services JSONB NOT NULL DEFAULT '[]'::jsonb,
+  preferred_service JSONB,
+  connection_test_results JSONB,
+  system_info JSONB,
+  duplicate_status TEXT NOT NULL DEFAULT 'none' CHECK (duplicate_status IN ('none', 'potential_duplicate', 'confirmed_duplicate')),
+  existing_target_id BIGINT REFERENCES targets(id),
+  import_status TEXT NOT NULL DEFAULT 'pending' CHECK (import_status IN ('pending', 'imported', 'ignored', 'duplicate_skipped')),
+  discovered_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Create indexes for discovered_targets table
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_discovery_job_id ON discovered_targets(discovery_job_id);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_ip_address ON discovered_targets(ip_address);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_hostname ON discovered_targets(hostname);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_os_type ON discovered_targets(os_type);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_import_status ON discovered_targets(import_status);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_duplicate_status ON discovered_targets(duplicate_status);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_existing_target_id ON discovered_targets(existing_target_id);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_discovered_at ON discovered_targets(discovered_at);
+CREATE INDEX IF NOT EXISTS idx_discovered_targets_services_gin ON discovered_targets USING GIN(services);
+
+-- =============================================================================
+-- USER NOTIFICATION PREFERENCES TABLE
+-- =============================================================================
+
+-- User notification preferences table
+CREATE TABLE IF NOT EXISTS user_notification_preferences (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email_enabled BOOLEAN NOT NULL DEFAULT true,
+  email_address TEXT,
+  webhook_enabled BOOLEAN NOT NULL DEFAULT false,
+  webhook_url TEXT,
+  slack_enabled BOOLEAN NOT NULL DEFAULT false,
+  slack_webhook_url TEXT,
+  slack_channel TEXT,
+  teams_enabled BOOLEAN NOT NULL DEFAULT false,
+  teams_webhook_url TEXT,
+  notify_on_success BOOLEAN NOT NULL DEFAULT true,
+  notify_on_failure BOOLEAN NOT NULL DEFAULT true,
+  notify_on_start BOOLEAN NOT NULL DEFAULT false,
+  quiet_hours_enabled BOOLEAN NOT NULL DEFAULT false,
+  quiet_hours_start TIME,
+  quiet_hours_end TIME,
+  quiet_hours_timezone TEXT NOT NULL DEFAULT 'America/Los_Angeles',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Create unique constraint on user_id (one preference record per user)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_notification_preferences_user_id ON user_notification_preferences(user_id);
+
+-- Create indexes for user_notification_preferences table
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_email_enabled ON user_notification_preferences(email_enabled);
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_webhook_enabled ON user_notification_preferences(webhook_enabled);
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_slack_enabled ON user_notification_preferences(slack_enabled);
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_teams_enabled ON user_notification_preferences(teams_enabled);
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_created_at ON user_notification_preferences(created_at);
+CREATE INDEX IF NOT EXISTS idx_user_notification_preferences_updated_at ON user_notification_preferences(updated_at);
 
 -- Performance optimization: Analyze tables after initial data load
 ANALYZE;
