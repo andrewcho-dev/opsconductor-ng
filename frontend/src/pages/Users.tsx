@@ -31,6 +31,7 @@ const Users: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [addingNew, setAddingNew] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newUser, setNewUser] = useState<NewUserState>({
     email: '',
     username: '',
@@ -42,7 +43,6 @@ const Users: React.FC = () => {
     telephone: '',
     title: ''
   });
-
 
   useEffect(() => {
     fetchUsers();
@@ -62,7 +62,7 @@ const Users: React.FC = () => {
 
   const startAddingNew = () => {
     setAddingNew(true);
-    setEditing(null); // Cancel any existing edits
+    setEditing(null);
   };
 
   const cancelAddingNew = () => {
@@ -81,7 +81,6 @@ const Users: React.FC = () => {
   };
 
   const saveNewUser = async () => {
-    // Validation
     if (!newUser.email.trim()) {
       alert('Email is required');
       return;
@@ -132,6 +131,9 @@ const Users: React.FC = () => {
       try {
         await userApi.delete(userId);
         fetchUsers();
+        if (selectedUser?.id === userId) {
+          setSelectedUser(null);
+        }
       } catch (error) {
         console.error('Failed to delete user:', error);
       }
@@ -142,6 +144,9 @@ const Users: React.FC = () => {
     try {
       await userApi.assignRole(userId, role);
       fetchUsers();
+      if (selectedUser?.id === userId) {
+        setSelectedUser({...selectedUser, role: role as any});
+      }
     } catch (error) {
       console.error('Failed to update role:', error);
     }
@@ -163,7 +168,6 @@ const Users: React.FC = () => {
   const saveEdit = async () => {
     if (!editing) return;
 
-    // Password validation
     if (editing.field === 'password') {
       if (!editing.value) {
         alert('Password cannot be empty');
@@ -179,7 +183,6 @@ const Users: React.FC = () => {
       }
     }
 
-    // Other field validation
     if (editing.field !== 'password' && !editing.value.trim()) {
       alert(`${editing.field} cannot be empty`);
       return;
@@ -192,6 +195,12 @@ const Users: React.FC = () => {
       
       await userApi.update(editing.userId, updateData);
       await fetchUsers();
+      
+      // Update selected user if it's the one being edited
+      if (selectedUser?.id === editing.userId) {
+        setSelectedUser({...selectedUser, [editing.field]: editing.value});
+      }
+      
       setEditing(null);
     } catch (error) {
       console.error(`Failed to update ${editing.field}:`, error);
@@ -225,51 +234,166 @@ const Users: React.FC = () => {
     );
   }
 
-
-
   return (
-    <div className="main-content">
+    <div className="dense-dashboard">
       <style>
         {`
-          .new-user-row {
-            background-color: #f8fafc;
-            border: 2px solid #10b981;
-          }
-          .new-user-row .table-input {
-            border: none;
-            background: transparent;
-            padding: 4px 2px;
+          /* Dashboard-style layout - EXACT MATCH */
+          .dense-dashboard {
+            padding: 8px 12px;
+            max-width: 100%;
             font-size: 13px;
-            width: 100%;
-            min-width: 80px;
-            outline: none;
           }
-          .new-user-row .table-input:focus {
+          .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .header-left h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--neutral-800);
+          }
+          .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: stretch;
+            height: calc(100vh - 110px);
+          }
+          .dashboard-section {
             background: white;
-            border: 1px solid #10b981;
-            border-radius: 2px;
-            box-shadow: none;
-          }
-          .password-inputs {
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            height: 100%;
           }
-          .password-inputs .table-input {
-            margin: 0;
+          .section-header {
+            background: var(--neutral-50);
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
           }
+          .compact-content {
+            padding: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+          }
+          .table-container {
+            flex: 1;
+            overflow: auto;
+          }
+          
+          /* Users table styles */
+          .users-table-section {
+            grid-column: 1 / 3;
+          }
+          .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+          .users-table th {
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            font-size: 11px;
+          }
+          .users-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--neutral-100);
+            vertical-align: middle;
+            font-size: 12px;
+          }
+          .users-table tr:hover {
+            background: var(--neutral-50);
+          }
+          .users-table tr.selected {
+            background: var(--primary-blue-light);
+            border-left: 3px solid var(--primary-blue);
+          }
+          .users-table tr {
+            cursor: pointer;
+          }
+          
+          /* User details panel */
+          .user-details {
+            padding: 8px;
+          }
+          .user-details h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .detail-group {
+            margin-bottom: 12px;
+          }
+          .detail-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--neutral-500);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .detail-value {
+            font-size: 12px;
+            color: var(--neutral-800);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-100);
+          }
+          .detail-value.editable {
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .detail-value.editable:hover {
+            background: var(--neutral-50);
+            padding: 6px;
+            margin: 0 -6px;
+            border-radius: 3px;
+          }
+          
+          /* Form styles */
+          .detail-input {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 3px;
+            font-size: 12px;
+          }
+          .detail-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          
+          /* Button styles */
           .btn-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             border: none;
             background: none;
             cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-            padding: 4px;
+            transition: all 0.15s;
+            margin: 0 1px;
+            padding: 2px;
           }
           .btn-icon:hover {
             opacity: 0.7;
@@ -279,28 +403,59 @@ const Users: React.FC = () => {
             cursor: not-allowed;
           }
           .btn-success {
-            color: #10b981;
+            color: var(--success-green);
           }
           .btn-success:hover:not(:disabled) {
-            color: #059669;
+            color: var(--success-green-dark);
           }
           .btn-danger {
-            color: #ef4444;
+            color: var(--danger-red);
           }
           .btn-danger:hover:not(:disabled) {
-            color: #dc2626;
+            color: var(--danger-red);
           }
           .btn-ghost {
-            color: #6b7280;
+            color: var(--neutral-500);
           }
           .btn-ghost:hover:not(:disabled) {
-            color: #374151;
+            color: var(--neutral-700);
+          }
+          
+          .action-buttons {
+            display: flex;
+            gap: 4px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--neutral-200);
+          }
+          
+          .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: var(--neutral-500);
+            text-align: center;
+          }
+          .empty-state h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
+            font-weight: 600;
+          }
+          .empty-state p {
+            margin: 0 0 12px 0;
+            font-size: 12px;
           }
         `}
       </style>
-      <div className="page-header">
-        <h1 className="page-title">Users</h1>
-        <div className="page-actions">
+      
+      {/* Dashboard-style header */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>User Management</h1>
+        </div>
+        <div className="header-actions">
           <button 
             className="btn-icon btn-success"
             onClick={startAddingNew}
@@ -312,227 +467,181 @@ const Users: React.FC = () => {
         </div>
       </div>
 
-      {users.length === 0 && !addingNew ? (
-        <div className="empty-state">
-          <h3 className="empty-state-title">No users found</h3>
-          <p className="empty-state-description">
-            Get started by creating your first user account.
-          </p>
-          <button 
-            className="btn-icon btn-success"
-            onClick={startAddingNew}
-            title="Create first user"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-      ) : (
-        <div className="data-table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>First Name</th>
-                <th>Last Name</th>
-                <th>Telephone</th>
-                <th>Title</th>
-                <th>Password</th>
-                <th>Role</th>
-                <th>Created</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* New User Row */}
-              {addingNew && (
-                <tr className="new-user-row">
-                  <td className="text-neutral-500">New</td>
-                  
-                  {/* Username */}
-                  <td>
-                    <input
-                      type="text"
-                      value={newUser.username}
-                      onChange={(e) => setNewUser({...newUser, username: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="Username"
-                      autoFocus
-                    />
-                  </td>
-
-                  {/* Email */}
-                  <td>
-                    <input
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="Email"
-                    />
-                  </td>
-
-                  {/* First Name */}
-                  <td>
-                    <input
-                      type="text"
-                      value={newUser.first_name}
-                      onChange={(e) => setNewUser({...newUser, first_name: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="First Name"
-                    />
-                  </td>
-
-                  {/* Last Name */}
-                  <td>
-                    <input
-                      type="text"
-                      value={newUser.last_name}
-                      onChange={(e) => setNewUser({...newUser, last_name: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="Last Name"
-                    />
-                  </td>
-
-                  {/* Telephone */}
-                  <td>
-                    <input
-                      type="tel"
-                      value={newUser.telephone}
-                      onChange={(e) => setNewUser({...newUser, telephone: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="Phone"
-                    />
-                  </td>
-
-                  {/* Title */}
-                  <td>
-                    <input
-                      type="text"
-                      value={newUser.title}
-                      onChange={(e) => setNewUser({...newUser, title: e.target.value})}
-                      onKeyDown={handleNewUserKeyPress}
-                      className="table-input"
-                      placeholder="Title"
-                    />
-                  </td>
-
-                  {/* Password */}
-                  <td>
-                    <div className="password-inputs">
-                      <input
-                        type="password"
-                        value={newUser.password}
-                        onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                        onKeyDown={handleNewUserKeyPress}
-                        className="table-input"
-                        placeholder="Password"
-                      />
-                      <input
-                        type="password"
-                        value={newUser.confirmPassword}
-                        onChange={(e) => setNewUser({...newUser, confirmPassword: e.target.value})}
-                        onKeyDown={handleNewUserKeyPress}
-                        className="table-input"
-                        placeholder="Confirm"
-                        style={{ marginTop: '4px' }}
-                      />
-                    </div>
-                  </td>
-
-                  {/* Role */}
-                  <td>
-                    <select 
-                      value={newUser.role} 
-                      onChange={(e) => setNewUser({...newUser, role: e.target.value})}
-                      className="table-select"
-                    >
-                      <option value="viewer">Viewer</option>
-                      <option value="operator">Operator</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-
-                  <td className="text-neutral-500">-</td>
-
-                  {/* Actions */}
-                  <td>
-                    <div className="table-actions">
-                      <button 
-                        className="btn-icon btn-success"
-                        onClick={saveNewUser}
-                        title="Save new user"
-                        disabled={saving}
-                      >
-                        {saving ? <span className="loading-spinner"></span> : <Check size={16} />}
-                      </button>
-                      <button 
-                        className="btn-icon btn-ghost"
-                        onClick={cancelAddingNew}
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {users.map(user => (
-                <tr key={user.id}>
-                  <td className="text-neutral-500">{user.id}</td>
-                  
-                  {/* Username - Inline Editable */}
-                  <td className="font-medium">
-                    {editing?.userId === user.id && editing?.field === 'username' ? (
-                      <div className="inline-edit">
+      {/* 3-column dashboard grid */}
+      <div className="dashboard-grid">
+        {/* Columns 1-2: Users Table */}
+        <div className="dashboard-section users-table-section">
+          <div className="section-header">
+            Users ({users.length})
+          </div>
+          <div className="compact-content">
+            {users.length === 0 && !addingNew ? (
+              <div className="empty-state">
+                <h3>No users found</h3>
+                <p>Get started by creating your first user account.</p>
+                <button 
+                  className="btn-icon btn-success"
+                  onClick={startAddingNew}
+                  title="Create first user"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="users-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* New User Row */}
+                  {addingNew && (
+                    <tr style={{ background: '#f0f9ff', border: '2px solid #10b981' }}>
+                      <td>
                         <input
                           type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="table-input"
+                          value={newUser.username}
+                          onChange={(e) => setNewUser({...newUser, username: e.target.value})}
+                          onKeyDown={handleNewUserKeyPress}
+                          placeholder="Username"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
+                      </td>
+                      <td>
+                        <input
+                          type="email"
+                          value={newUser.email}
+                          onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                          onKeyDown={handleNewUserKeyPress}
+                          placeholder="Email"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        />
+                      </td>
+                      <td>
+                        {newUser.first_name} {newUser.last_name}
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          <input
+                            type="text"
+                            value={newUser.first_name}
+                            onChange={(e) => setNewUser({...newUser, first_name: e.target.value})}
+                            placeholder="First"
+                            style={{ width: '45%', border: 'none', background: 'transparent', padding: '2px' }}
+                          />
+                          <input
+                            type="text"
+                            value={newUser.last_name}
+                            onChange={(e) => setNewUser({...newUser, last_name: e.target.value})}
+                            placeholder="Last"
+                            style={{ width: '45%', border: 'none', background: 'transparent', padding: '2px' }}
+                          />
                         </div>
-                      </div>
-                    ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'username', user.username)}
-                        className="editable-field"
-                        title="Click to edit username"
-                      >
-                        {user.username}
-                      </span>
-                    )}
-                  </td>
+                      </td>
+                      <td>
+                        <select 
+                          value={newUser.role} 
+                          onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="operator">Operator</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td style={{ color: '#64748b', fontSize: '12px' }}>New</td>
+                      <td>
+                        <button onClick={saveNewUser} className="btn-icon btn-success" title="Save" disabled={saving}>
+                          <Check size={16} />
+                        </button>
+                        <button onClick={cancelAddingNew} className="btn-icon btn-ghost" title="Cancel">
+                          <X size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  )}
 
-                  {/* Email - Inline Editable */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'email' ? (
-                      <div className="inline-edit">
+                  {/* Existing Users */}
+                  {users.map((user) => (
+                    <tr 
+                      key={user.id} 
+                      className={selectedUser?.id === user.id ? 'selected' : ''}
+                      onClick={() => setSelectedUser(user)}
+                    >
+                      <td>{user.username}</td>
+                      <td>{user.email}</td>
+                      <td>{user.first_name} {user.last_name}</td>
+                      <td>
+                        <select 
+                          value={user.role} 
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleRoleChange(user.id, e.target.value);
+                          }}
+                          style={{ border: 'none', background: 'transparent', fontSize: '13px' }}
+                        >
+                          <option value="viewer">Viewer</option>
+                          <option value="operator">Operator</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td style={{ color: '#64748b', fontSize: '12px' }}>
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td>
+                        <button 
+                          className="btn-icon btn-danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(user.id);
+                          }}
+                          title="Delete user"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Column 3: User Details Panel */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            {selectedUser ? `User Details` : 'Select User'}
+          </div>
+          <div className="compact-content">
+            {selectedUser ? (
+              <div className="user-details">
+                <h3>{selectedUser.username}</h3>
+                
+                <div className="detail-group">
+                  <div className="detail-label">Email</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'email', selectedUser.email)}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'email' ? (
+                      <div>
                         <input
                           type="email"
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-input"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -542,29 +651,28 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'email', user.email)}
-                        className="editable-field"
-                        title="Click to edit email"
-                      >
-                        {user.email}
-                      </span>
+                      selectedUser.email
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* First Name - Inline Editable */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'first_name' ? (
-                      <div className="inline-edit">
+                <div className="detail-group">
+                  <div className="detail-label">First Name</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'first_name', selectedUser.first_name || '')}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'first_name' ? (
+                      <div>
                         <input
                           type="text"
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-input"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -574,29 +682,28 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'first_name', user.first_name || '')}
-                        className="editable-field"
-                        title="Click to edit first name"
-                      >
-                        {user.first_name || <span className="text-neutral-400">-</span>}
-                      </span>
+                      selectedUser.first_name || '-'
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Last Name - Inline Editable */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'last_name' ? (
-                      <div className="inline-edit">
+                <div className="detail-group">
+                  <div className="detail-label">Last Name</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'last_name', selectedUser.last_name || '')}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'last_name' ? (
+                      <div>
                         <input
                           type="text"
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-input"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -606,61 +713,28 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'last_name', user.last_name || '')}
-                        className="editable-field"
-                        title="Click to edit last name"
-                      >
-                        {user.last_name || <span className="text-neutral-400">-</span>}
-                      </span>
+                      selectedUser.last_name || '-'
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Telephone - Inline Editable */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'telephone' ? (
-                      <div className="inline-edit">
-                        <input
-                          type="tel"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="table-input"
-                          autoFocus
-                        />
-                        <div className="inline-edit-actions">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'telephone', user.telephone || '')}
-                        className="editable-field"
-                        title="Click to edit telephone"
-                      >
-                        {user.telephone || <span className="text-neutral-400">-</span>}
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Title - Inline Editable */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'title' ? (
-                      <div className="inline-edit">
+                <div className="detail-group">
+                  <div className="detail-label">Telephone</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'telephone', selectedUser.telephone || '')}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'telephone' ? (
+                      <div>
                         <input
                           type="text"
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-input"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -670,40 +744,28 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'title', user.title || '')}
-                        className="editable-field"
-                        title="Click to edit title"
-                      >
-                        {user.title || <span className="text-neutral-400">-</span>}
-                      </span>
+                      selectedUser.telephone || '-'
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Password - Inline Editable with Confirmation */}
-                  <td>
-                    {editing?.userId === user.id && editing?.field === 'password' ? (
-                      <div className="inline-edit password-edit">
-                        <div className="password-inputs">
-                          <input
-                            type="password"
-                            placeholder="New password"
-                            value={editing.value}
-                            onChange={(e) => setEditing({...editing, value: e.target.value})}
-                            onKeyDown={handleKeyPress}
-                            className="table-input"
-                            autoFocus
-                          />
-                          <input
-                            type="password"
-                            placeholder="Confirm password"
-                            value={editing.confirmPassword || ''}
-                            onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
-                            onKeyDown={handleKeyPress}
-                            className="table-input"
-                          />
-                        </div>
-                        <div className="inline-edit-actions">
+                <div className="detail-group">
+                  <div className="detail-label">Title</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'title', selectedUser.title || '')}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'title' ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -713,51 +775,92 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(user.id, 'password')}
-                        className="editable-field password-field"
-                        title="Click to change password"
-                      >
-                        ••••••••
-                      </span>
+                      selectedUser.title || '-'
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Role - Already Inline Editable */}
-                  <td>
+                <div className="detail-group">
+                  <div className="detail-label">Password</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedUser.id, 'password')}
+                  >
+                    {editing?.userId === selectedUser.id && editing?.field === 'password' ? (
+                      <div>
+                        <input
+                          type="password"
+                          placeholder="New password"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          autoFocus
+                        />
+                        <input
+                          type="password"
+                          placeholder="Confirm password"
+                          value={editing.confirmPassword || ''}
+                          onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          style={{ marginTop: '8px' }}
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      '••••••••'
+                    )}
+                  </div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Role</div>
+                  <div className="detail-value">
                     <select 
-                      value={user.role} 
-                      onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                      className="table-select"
+                      value={selectedUser.role} 
+                      onChange={(e) => handleRoleChange(selectedUser.id, e.target.value)}
+                      className="detail-input"
                     >
                       <option value="viewer">Viewer</option>
                       <option value="operator">Operator</option>
                       <option value="admin">Admin</option>
                     </select>
-                  </td>
+                  </div>
+                </div>
 
-                  <td className="text-neutral-500">
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </td>
+                <div className="detail-group">
+                  <div className="detail-label">Created</div>
+                  <div className="detail-value">
+                    {new Date(selectedUser.created_at).toLocaleString()}
+                  </div>
+                </div>
 
-                  {/* Actions - Only Delete Now */}
-                  <td>
-                    <div className="table-actions">
-                      <button 
-                        className="btn-icon btn-danger"
-                        onClick={() => handleDelete(user.id)}
-                        title="Delete user"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                <div className="action-buttons">
+                  <button 
+                    className="btn-icon btn-danger"
+                    onClick={() => handleDelete(selectedUser.id)}
+                    title="Delete user"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>Select a user from the table to view and edit details</p>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

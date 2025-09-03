@@ -1,10 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Plus, Trash2, Check, X, Search } from 'lucide-react';
 import { targetApi, credentialApi } from '../services/api';
 import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
-import { Plus, Trash2, X, Search } from 'lucide-react';
+
+interface NewTargetState {
+  name: string;
+  hostname: string;
+  ip_address: string;
+  protocol: string;
+  port: number;
+  os_type: string;
+  credential_ref: number;
+  tags: string[];
+  description: string;
+}
 
 const Targets: React.FC = () => {
   const navigate = useNavigate();
@@ -14,12 +26,11 @@ const Targets: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingTarget, setTestingTarget] = useState<number | null>(null);
-  const [selectedTarget, setSelectedTarget] = useState<EnhancedTarget | null>(null);
-  const [showDetailPanel, setShowDetailPanel] = useState(false);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [testingService, setTestingService] = useState<number | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<EnhancedTarget | null>(null);
+  const [addingNew, setAddingNew] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [formData, setFormData] = useState<TargetCreate>({
+  const [newTarget, setNewTarget] = useState<NewTargetState>({
     name: '',
     hostname: '',
     ip_address: '',
@@ -28,13 +39,8 @@ const Targets: React.FC = () => {
     os_type: 'windows',
     credential_ref: 0,
     tags: [],
-    metadata: {},
-    depends_on: []
+    description: ''
   });
-
-  const isEditing = action === 'edit' && id;
-  const isCreating = action === 'create';
-  const showForm = isEditing || isCreating;
 
   useEffect(() => {
     fetchTargets();
@@ -44,8 +50,7 @@ const Targets: React.FC = () => {
   // Add a retry mechanism for initial load
   useEffect(() => {
     if (!loading && targets.length === 0 && retryCount < 2) {
-      // If we finished loading but have no targets, retry up to 2 times with increasing delay
-      const delay = (retryCount + 1) * 1000; // 1s, 2s
+      const delay = (retryCount + 1) * 1000;
       const timer = setTimeout(() => {
         console.log(`Retrying targets fetch (attempt ${retryCount + 1}) after initial empty result`);
         setRetryCount(prev => prev + 1);
@@ -56,35 +61,6 @@ const Targets: React.FC = () => {
     }
   }, [loading, targets.length, retryCount]);
 
-  useEffect(() => {
-    if (isEditing && id) {
-      const target = targets.find(t => t.id === parseInt(id));
-      if (target) {
-        setFormData({
-          name: target.name,
-          hostname: target.hostname,
-          ip_address: target.ip_address || '',
-          protocol: 'winrm',
-          port: 5985,
-          os_type: target.os_type || 'windows',
-          credential_ref: 0,
-          tags: target.tags || []
-        });
-      }
-    } else if (isCreating) {
-      setFormData({
-        name: '',
-        hostname: '',
-        ip_address: '',
-        protocol: 'winrm',
-        port: 5985,
-        os_type: 'windows',
-        credential_ref: 0,
-        tags: []
-      });
-    }
-  }, [isEditing, isCreating, id, targets]);
-
   const fetchTargets = async () => {
     try {
       console.log('Fetching targets...');
@@ -93,13 +69,11 @@ const Targets: React.FC = () => {
       const targetsList = response.targets || [];
       setTargets(targetsList);
       
-      // Reset retry count on successful fetch
       if (targetsList.length > 0) {
         setRetryCount(0);
       }
     } catch (error: any) {
       console.error('Failed to fetch targets:', error);
-      // Check if it's an authentication error
       if (error.response?.status === 401 || error.response?.status === 403) {
         console.log('Authentication error, targets will be empty until token refresh');
       }
@@ -119,21 +93,60 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    
+  const startAddingNew = () => {
+    setAddingNew(true);
+  };
+
+  const cancelAddingNew = () => {
+    setAddingNew(false);
+    setNewTarget({
+      name: '',
+      hostname: '',
+      ip_address: '',
+      protocol: 'winrm',
+      port: 5985,
+      os_type: 'windows',
+      credential_ref: 0,
+      tags: [],
+      description: ''
+    });
+  };
+
+  const saveNewTarget = async () => {
+    if (!newTarget.name.trim()) {
+      alert('Name is required');
+      return;
+    }
+    if (!newTarget.hostname.trim()) {
+      alert('Hostname is required');
+      return;
+    }
+    if (newTarget.credential_ref === 0) {
+      alert('Please select a credential');
+      return;
+    }
+
     try {
-      if (isEditing && id) {
-        await targetApi.update(parseInt(id), formData);
-      } else {
-        await targetApi.create(formData);
-      }
+      setSaving(true);
+      const targetToCreate: TargetCreate = {
+        name: newTarget.name,
+        hostname: newTarget.hostname,
+        ip_address: newTarget.ip_address || '',
+        protocol: newTarget.protocol,
+        port: newTarget.port,
+        os_type: newTarget.os_type,
+        credential_ref: newTarget.credential_ref,
+        tags: newTarget.tags,
+        metadata: {},
+        depends_on: []
+      };
       
+      await targetApi.create(targetToCreate);
       await fetchTargets();
-      navigate('/targets-management');
+      cancelAddingNew();
     } catch (error) {
-      console.error(`Failed to ${isEditing ? 'update' : 'create'} target:`, error);
+      console.error('Failed to create target:', error);
+      alert('Failed to create target');
     } finally {
       setSaving(false);
     }
@@ -144,6 +157,9 @@ const Targets: React.FC = () => {
       try {
         await targetApi.delete(targetId);
         fetchTargets();
+        if (selectedTarget?.id === targetId) {
+          setSelectedTarget(null);
+        }
       } catch (error) {
         console.error('Failed to delete target:', error);
       }
@@ -163,22 +179,14 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleTargetClick = async (targetId: number) => {
-    setLoadingDetails(true);
+  const handleTargetClick = async (target: EnhancedTarget) => {
     try {
-      const enhancedTarget = await enhancedTargetApi.get(targetId);
+      const enhancedTarget = await enhancedTargetApi.get(target.id);
       setSelectedTarget(enhancedTarget);
-      setShowDetailPanel(true);
     } catch (error) {
       console.error('Failed to fetch target details:', error);
-    } finally {
-      setLoadingDetails(false);
+      setSelectedTarget(target); // Fallback to basic target data
     }
-  };
-
-  const handleCloseDetailPanel = () => {
-    setShowDetailPanel(false);
-    setSelectedTarget(null);
   };
 
   const handleServiceTest = async (serviceId: number) => {
@@ -204,8 +212,8 @@ const Targets: React.FC = () => {
       'http': 80
     };
     
-    setFormData({
-      ...formData,
+    setNewTarget({
+      ...newTarget,
       protocol,
       port: defaultPorts[protocol] || 5985
     });
@@ -233,7 +241,6 @@ const Targets: React.FC = () => {
   };
 
   const getTargetStatus = (target: EnhancedTarget) => {
-    // Compute status based on services if available
     if (target.services && target.services.length > 0) {
       const connectedServices = target.services.filter(s => s.connection_status === 'connected');
       const failedServices = target.services.filter(s => s.connection_status === 'failed');
@@ -249,6 +256,14 @@ const Targets: React.FC = () => {
     return 'Unknown';
   };
 
+  const handleNewTargetKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveNewTarget();
+    } else if (e.key === 'Escape') {
+      cancelAddingNew();
+    }
+  };
+
   if (loading) {
     return (
       <div className="loading-overlay">
@@ -257,200 +272,185 @@ const Targets: React.FC = () => {
     );
   }
 
-  if (showForm) {
-    return (
-      <div className="main-content">
-        <div className="page-header">
-          <h1 className="page-title">
-            {isEditing ? 'Edit Target' : 'Create Target'}
-          </h1>
-          <div className="page-actions">
-            <button 
-              type="button" 
-              className="btn btn-ghost"
-              onClick={() => navigate('/targets-management')}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-
-        <div className="form-container">
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Hostname</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.hostname}
-                  onChange={(e) => setFormData({...formData, hostname: e.target.value})}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">IP Address</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.ip_address}
-                  onChange={(e) => setFormData({...formData, ip_address: e.target.value})}
-                  placeholder="Optional"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">OS Type</label>
-                <select 
-                  className="form-select"
-                  value={formData.os_type}
-                  onChange={(e) => setFormData({...formData, os_type: e.target.value})}
-                >
-                  <option value="windows">Windows</option>
-                  <option value="linux">Linux</option>
-                  <option value="macos">macOS</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Protocol</label>
-                <select 
-                  className="form-select"
-                  value={formData.protocol}
-                  onChange={(e) => handleProtocolChange(e.target.value)}
-                >
-                  <option value="winrm">WinRM</option>
-                  <option value="ssh">SSH</option>
-                  <option value="https">HTTPS</option>
-                  <option value="http">HTTP</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Port</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={formData.port}
-                  onChange={(e) => setFormData({...formData, port: parseInt(e.target.value)})}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Credential</label>
-                <select 
-                  className="form-select"
-                  value={formData.credential_ref}
-                  onChange={(e) => setFormData({...formData, credential_ref: parseInt(e.target.value)})}
-                  required
-                >
-                  <option value={0}>Select a credential</option>
-                  {credentials.map(credential => (
-                    <option key={credential.id} value={credential.id}>
-                      {credential.name} ({credential.credential_type.toUpperCase()})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">Tags (comma-separated)</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.tags?.join(', ') || ''}
-                  onChange={(e) => setFormData({
-                    ...formData, 
-                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag)
-                  })}
-                  placeholder="production, web-server, critical"
-                />
-              </div>
-            </div>
-
-            <div className="form-actions">
-              <button 
-                type="button" 
-                className="btn btn-ghost"
-                onClick={() => navigate('/targets-management')}
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <span className="loading-spinner"></span>
-                    {isEditing ? 'Updating...' : 'Creating...'}
-                  </>
-                ) : (
-                  isEditing ? 'Update Target' : 'Create Target'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="main-content">
+    <div className="dense-dashboard">
       <style>
         {`
-          .targets-table {
-            table-layout: auto;
-            width: auto;
-          }
-          .targets-table th:nth-child(1), .targets-table td:nth-child(1) { min-width: 160px; max-width: 200px; } /* Name */
-          .targets-table th:nth-child(2), .targets-table td:nth-child(2) { min-width: 120px; max-width: 140px; } /* IP */
-          .targets-table th:nth-child(3), .targets-table td:nth-child(3) { min-width: 180px; max-width: 250px; } /* Hostname */
-          .targets-table th:nth-child(4), .targets-table td:nth-child(4) { min-width: 80px; max-width: 120px; } /* OS */
-          .targets-table th:nth-child(5), .targets-table td:nth-child(5) { min-width: 80px; max-width: 100px; } /* Status */
-          .targets-table th:nth-child(6), .targets-table td:nth-child(6) { min-width: 150px; max-width: 250px; } /* Tags */
-          .targets-table th:nth-child(7), .targets-table td:nth-child(7) { min-width: 80px; max-width: 100px; } /* Actions */
-          .targets-table td {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+          /* Dashboard-style layout - EXACT MATCH */
+          .dense-dashboard {
             padding: 8px 12px;
+            max-width: 100%;
+            font-size: 13px;
+          }
+          .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .header-left h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--neutral-800);
+          }
+          .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: stretch;
+            height: calc(100vh - 110px);
+          }
+          .dashboard-section {
+            background: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+          }
+          .section-header {
+            background: var(--neutral-50);
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .compact-content {
+            padding: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+          }
+          .table-container {
+            flex: 1;
+            overflow: auto;
+          }
+          
+          /* Targets table styles */
+          .targets-table-section {
+            grid-column: 1 / 3;
+          }
+          .targets-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
           }
           .targets-table th {
-            padding: 8px 12px;
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            font-size: 11px;
           }
-          .targets-table td.tags-cell {
-            white-space: normal;
-            word-wrap: break-word;
-            line-height: 1.4;
+          .targets-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--neutral-100);
+            vertical-align: middle;
+            font-size: 12px;
           }
+          .targets-table tr:hover {
+            background: var(--neutral-50);
+          }
+          .targets-table tr.selected {
+            background: var(--primary-blue-light);
+            border-left: 3px solid var(--primary-blue);
+          }
+          .targets-table tr {
+            cursor: pointer;
+          }
+          
+          /* Target details panel */
+          .target-details {
+            padding: 8px;
+          }
+          .target-details h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .detail-group {
+            margin-bottom: 12px;
+          }
+          .detail-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--neutral-500);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .detail-value {
+            font-size: 12px;
+            color: var(--neutral-800);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-100);
+          }
+          
+          /* Services and credentials sections */
+          .services-section, .credentials-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--neutral-200);
+          }
+          .section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--neutral-700);
+            margin-bottom: 8px;
+          }
+          .service-item, .credential-item {
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 6px;
+          }
+          .service-header, .credential-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+          }
+          .service-name, .credential-name {
+            font-weight: 500;
+            font-size: 12px;
+          }
+          .service-details, .credential-details {
+            font-size: 10px;
+            color: var(--neutral-600);
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .service-notes {
+            font-size: 10px;
+            color: var(--neutral-500);
+            margin-top: 4px;
+            font-style: italic;
+          }
+          
+          /* Button styles */
           .btn-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             border: none;
             background: none;
             cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-            padding: 4px;
+            transition: all 0.15s;
+            margin: 0 1px;
+            padding: 2px;
           }
           .btn-icon:hover {
             opacity: 0.7;
@@ -460,258 +460,520 @@ const Targets: React.FC = () => {
             cursor: not-allowed;
           }
           .btn-success {
-            color: #10b981;
+            color: var(--success-green);
           }
           .btn-success:hover:not(:disabled) {
-            color: #059669;
+            color: var(--success-green-dark);
           }
           .btn-danger {
-            color: #ef4444;
+            color: var(--danger-red);
           }
           .btn-danger:hover:not(:disabled) {
-            color: #dc2626;
+            color: var(--danger-red);
           }
           .btn-ghost {
-            color: #6b7280;
+            color: var(--neutral-500);
           }
           .btn-ghost:hover:not(:disabled) {
-            color: #374151;
+            color: var(--neutral-700);
+          }
+          
+          .action-buttons {
+            display: flex;
+            gap: 4px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--neutral-200);
+          }
+          
+          .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: var(--neutral-500);
+            text-align: center;
+          }
+          .empty-state h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
+            font-weight: 600;
+          }
+          .empty-state p {
+            margin: 0 0 12px 0;
+            font-size: 12px;
+          }
+          
+          .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .status-badge-success {
+            background: var(--success-green-light);
+            color: var(--success-green);
+          }
+          .status-badge-danger {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
+          .status-badge-warning {
+            background: var(--warning-yellow-light);
+            color: var(--warning-yellow);
+          }
+          .status-badge-neutral {
+            background: var(--neutral-200);
+            color: var(--neutral-600);
+          }
+          
+          .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+          }
+          .tag {
+            background: var(--primary-blue-light);
+            color: var(--primary-blue);
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 500;
           }
         `}
       </style>
-      <div className="page-header">
-        <h1 className="page-title">Targets</h1>
-        <div className="page-actions">
+      
+      {/* Dashboard-style header */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>Target Management</h1>
+        </div>
+        <div className="header-actions">
           <button 
             className="btn-icon btn-success"
-            onClick={() => navigate('/targets-management/create')}
-            title="Add Target"
+            onClick={startAddingNew}
+            title="Add new target"
+            disabled={addingNew}
           >
             <Plus size={16} />
           </button>
         </div>
       </div>
 
-      {targets.length === 0 ? (
-        <div className="empty-state">
-          <h3 className="empty-state-title">No targets found</h3>
-          <p className="empty-state-description">
-            Create your first target to start managing remote systems.
-          </p>
-          <button 
-            className="btn-icon btn-success"
-            onClick={() => navigate('/targets-management/create')}
-            title="Create Target"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-      ) : (
-        <div className={`data-table-container ${showDetailPanel ? 'with-detail-panel' : ''}`}>
-          <table className="data-table targets-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>IP</th>
-                <th>Hostname</th>
-                <th>OS</th>
-                <th>Status</th>
-                <th>Tags</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.map(target => (
-                <tr 
-                  key={target.id}
-                  className={`clickable-row ${selectedTarget?.id === target.id ? 'selected' : ''}`}
-                  onClick={() => handleTargetClick(target.id)}
+      {/* 3-column dashboard grid */}
+      <div className="dashboard-grid">
+        {/* Columns 1-2: Targets Table */}
+        <div className="dashboard-section targets-table-section">
+          <div className="section-header">
+            Targets ({targets.length})
+          </div>
+          <div className="compact-content">
+            {targets.length === 0 && !addingNew ? (
+              <div className="empty-state">
+                <h3>No targets found</h3>
+                <p>Create your first target to start managing remote systems.</p>
+                <button 
+                  className="btn-icon btn-success"
+                  onClick={startAddingNew}
+                  title="Create first target"
                 >
-                  <td className="font-medium">{target.name}</td>
-                  <td className="text-neutral-600">{target.ip_address || '-'}</td>
-                  <td>{target.hostname}</td>
-                  <td className="text-neutral-600">{target.os_type}</td>
-                  <td>
-                    <span className={`status-badge ${getStatusBadge(getTargetStatus(target))}`}>
-                      {getTargetStatus(target)}
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="targets-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Hostname</th>
+                    <th>IP Address</th>
+                    <th>OS</th>
+                    <th>Status</th>
+                    <th>Tags</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* New Target Row */}
+                  {addingNew && (
+                    <tr style={{ background: '#f0f9ff', border: '2px solid #10b981' }}>
+                      <td>
+                        <input
+                          type="text"
+                          value={newTarget.name}
+                          onChange={(e) => setNewTarget({...newTarget, name: e.target.value})}
+                          onKeyDown={handleNewTargetKeyPress}
+                          placeholder="Target name"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                          autoFocus
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={newTarget.hostname}
+                          onChange={(e) => setNewTarget({...newTarget, hostname: e.target.value})}
+                          onKeyDown={handleNewTargetKeyPress}
+                          placeholder="Hostname"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={newTarget.ip_address}
+                          onChange={(e) => setNewTarget({...newTarget, ip_address: e.target.value})}
+                          onKeyDown={handleNewTargetKeyPress}
+                          placeholder="IP (optional)"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        />
+                      </td>
+                      <td>
+                        <select 
+                          value={newTarget.os_type} 
+                          onChange={(e) => setNewTarget({...newTarget, os_type: e.target.value})}
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        >
+                          <option value="windows">Windows</option>
+                          <option value="linux">Linux</option>
+                          <option value="macos">macOS</option>
+                        </select>
+                      </td>
+                      <td style={{ color: '#64748b', fontSize: '12px' }}>New</td>
+                      <td>
+                        <input
+                          type="text"
+                          value={newTarget.tags.join(', ')}
+                          onChange={(e) => setNewTarget({...newTarget, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)})}
+                          onKeyDown={handleNewTargetKeyPress}
+                          placeholder="Tags"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        />
+                      </td>
+                      <td>
+                        <button onClick={saveNewTarget} className="btn-icon btn-success" title="Save" disabled={saving}>
+                          <Check size={16} />
+                        </button>
+                        <button onClick={cancelAddingNew} className="btn-icon btn-ghost" title="Cancel">
+                          <X size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Existing Targets */}
+                  {targets.map((target) => (
+                    <tr 
+                      key={target.id} 
+                      className={selectedTarget?.id === target.id ? 'selected' : ''}
+                      onClick={() => handleTargetClick(target)}
+                    >
+                      <td style={{ fontWeight: '500' }}>{target.name}</td>
+                      <td>{target.hostname}</td>
+                      <td>{target.ip_address || '-'}</td>
+                      <td>{target.os_type}</td>
+                      <td>
+                        <span className={`status-badge ${getStatusBadge(getTargetStatus(target))}`}>
+                          {getTargetStatus(target)}
+                        </span>
+                      </td>
+                      <td>{target.tags?.length ? target.tags.join(', ') : '-'}</td>
+                      <td>
+                        <button 
+                          className="btn-icon btn-ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleTest(target.id);
+                          }}
+                          disabled={testingTarget === target.id}
+                          title="Test connection"
+                        >
+                          {testingTarget === target.id ? (
+                            <span className="loading-spinner"></span>
+                          ) : (
+                            <Search size={16} />
+                          )}
+                        </button>
+                        <button 
+                          className="btn-icon btn-danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(target.id);
+                          }}
+                          title="Delete target"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Column 3: Target Details Panel */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            {selectedTarget ? `Target Details` : 'Select Target'}
+          </div>
+          <div className="compact-content">
+            {selectedTarget ? (
+              <div className="target-details">
+                <h3>{selectedTarget.name}</h3>
+                
+                <div className="detail-group">
+                  <div className="detail-label">Name</div>
+                  <div className="detail-value">{selectedTarget.name}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Hostname</div>
+                  <div className="detail-value">{selectedTarget.hostname}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">IP Address</div>
+                  <div className="detail-value">{selectedTarget.ip_address || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">OS Type</div>
+                  <div className="detail-value">{selectedTarget.os_type}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">OS Version</div>
+                  <div className="detail-value">{selectedTarget.os_version || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Description</div>
+                  <div className="detail-value">{selectedTarget.description || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Tags</div>
+                  <div className="detail-value">
+                    {selectedTarget.tags?.length ? (
+                      <div className="tag-list">
+                        {selectedTarget.tags.map((tag, index) => (
+                          <span key={index} className="tag">{tag}</span>
+                        ))}
+                      </div>
+                    ) : '-'}
+                  </div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Status</div>
+                  <div className="detail-value">
+                    <span className={`status-badge ${getStatusBadge(getTargetStatus(selectedTarget))}`}>
+                      {getTargetStatus(selectedTarget)}
                     </span>
-                  </td>
-                  <td className="text-neutral-500 tags-cell">
-                    {target.tags?.length ? target.tags.join(', ') : '-'}
-                  </td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <div className="table-actions">
-                      <button 
-                        className="btn-icon btn-danger"
-                        onClick={() => handleDelete(target.id)}
-                        title="Delete target"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
+
+                {/* Services Section */}
+                {selectedTarget.services && selectedTarget.services.length > 0 && (
+                  <div className="services-section">
+                    <div className="section-title">Services ({selectedTarget.services.length})</div>
+                    {selectedTarget.services.map(service => (
+                      <div key={service.id} className="service-item">
+                        <div className="service-header">
+                          <span className="service-name">{service.display_name}</span>
+                          <span className={`status-badge ${service.connection_status === 'connected' ? 'status-badge-success' : 
+                            service.connection_status === 'failed' ? 'status-badge-danger' : 'status-badge-neutral'}`}>
+                            {service.connection_status}
+                          </span>
+                        </div>
+                        <div className="service-details">
+                          <span>{service.service_type}</span>
+                          <span>Port: {service.port}</span>
+                          <span>{service.category}</span>
+                        </div>
+                        {service.notes && (
+                          <div className="service-notes">{service.notes}</div>
+                        )}
+                        <div style={{ marginTop: '6px' }}>
+                          <button 
+                            className="btn-icon btn-ghost"
+                            onClick={() => handleServiceTest(service.id)}
+                            disabled={testingService === service.id}
+                            title="Test service connection"
+                          >
+                            {testingService === service.id ? (
+                              <span className="loading-spinner"></span>
+                            ) : (
+                              <Search size={14} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Credentials Section */}
+                {selectedTarget.credentials && selectedTarget.credentials.length > 0 && (
+                  <div className="credentials-section">
+                    <div className="section-title">Credentials ({selectedTarget.credentials.length})</div>
+                    {selectedTarget.credentials.map(credential => (
+                      <div key={credential.id} className="credential-item">
+                        <div className="credential-header">
+                          <span className="credential-name">{credential.credential_name}</span>
+                          {credential.is_primary && (
+                            <span className="status-badge status-badge-success">Primary</span>
+                          )}
+                        </div>
+                        <div className="credential-details">
+                          <span>{credential.credential_type}</span>
+                          {credential.service_types?.length && (
+                            <span>Services: {credential.service_types.join(', ')}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="action-buttons">
+                  <button 
+                    className="btn-icon btn-ghost"
+                    onClick={() => handleTest(selectedTarget.id)}
+                    disabled={testingTarget === selectedTarget.id}
+                    title="Test connection"
+                  >
+                    {testingTarget === selectedTarget.id ? (
+                      <span className="loading-spinner"></span>
+                    ) : (
+                      <Search size={16} />
+                    )}
+                  </button>
+                  <button 
+                    className="btn-icon btn-danger"
+                    onClick={() => handleDelete(selectedTarget.id)}
+                    title="Delete target"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>Select a target from the table to view details and manage services</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Additional form for new target details */}
+      {addingNew && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'white',
+          border: '1px solid var(--neutral-300)',
+          borderRadius: '8px',
+          padding: '16px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 1000,
+          minWidth: '400px'
+        }}>
+          <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Complete Target Details</h3>
+          
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Protocol</label>
+            <select 
+              value={newTarget.protocol} 
+              onChange={(e) => handleProtocolChange(e.target.value)}
+              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
+            >
+              <option value="winrm">WinRM</option>
+              <option value="ssh">SSH</option>
+              <option value="https">HTTPS</option>
+              <option value="http">HTTP</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Port</label>
+            <input
+              type="number"
+              value={newTarget.port}
+              onChange={(e) => setNewTarget({...newTarget, port: parseInt(e.target.value) || 5985})}
+              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Credential</label>
+            <select 
+              value={newTarget.credential_ref} 
+              onChange={(e) => setNewTarget({...newTarget, credential_ref: parseInt(e.target.value)})}
+              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
+            >
+              <option value={0}>Select a credential</option>
+              {credentials.map(credential => (
+                <option key={credential.id} value={credential.id}>
+                  {credential.name} ({credential.credential_type.toUpperCase()})
+                </option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Description</label>
+            <textarea
+              value={newTarget.description}
+              onChange={(e) => setNewTarget({...newTarget, description: e.target.value})}
+              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }}
+              placeholder="Optional description"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button 
+              onClick={cancelAddingNew}
+              style={{ padding: '6px 12px', border: '1px solid var(--neutral-300)', background: 'white', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={saveNewTarget}
+              disabled={saving}
+              style={{ padding: '6px 12px', border: 'none', background: 'var(--success-green)', color: 'white', borderRadius: '4px', cursor: 'pointer' }}
+            >
+              {saving ? 'Creating...' : 'Create Target'}
+            </button>
+          </div>
         </div>
       )}
 
-      {showDetailPanel && (
-          <div className="detail-panel-overlay">
-            <div className="detail-panel">
-              <div className="detail-panel-header">
-                <h2 className="detail-panel-title">
-                  {selectedTarget?.name || 'Target Details'}
-                </h2>
-                <button 
-                  className="btn-icon btn-ghost"
-                  onClick={handleCloseDetailPanel}
-                  title="Close details"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              {loadingDetails ? (
-                <div className="detail-panel-loading">
-                  <div className="loading-spinner"></div>
-                  <p>Loading target details...</p>
-                </div>
-              ) : selectedTarget ? (
-                <div className="detail-panel-content">
-                  {/* Target Information Section */}
-                  <div className="detail-section">
-                    <h3 className="detail-section-title">Target Information</h3>
-                    <div className="detail-grid">
-                      <div className="detail-item">
-                        <label>Name</label>
-                        <div className="detail-value">{selectedTarget.name}</div>
-                      </div>
-                      <div className="detail-item">
-                        <label>Hostname</label>
-                        <div className="detail-value">{selectedTarget.hostname}</div>
-                      </div>
-                      <div className="detail-item">
-                        <label>IP Address</label>
-                        <div className="detail-value">{selectedTarget.ip_address || '-'}</div>
-                      </div>
-                      <div className="detail-item">
-                        <label>OS Type</label>
-                        <div className="detail-value">{selectedTarget.os_type || '-'}</div>
-                      </div>
-                      <div className="detail-item">
-                        <label>OS Version</label>
-                        <div className="detail-value">{selectedTarget.os_version || '-'}</div>
-                      </div>
-                      <div className="detail-item">
-                        <label>Description</label>
-                        <div className="detail-value">{selectedTarget.description || '-'}</div>
-                      </div>
-                      <div className="detail-item detail-item-full">
-                        <label>Tags</label>
-                        <div className="detail-value">
-                          {selectedTarget.tags?.length ? (
-                            <div className="tag-list">
-                              {selectedTarget.tags.map((tag, index) => (
-                                <span key={index} className="tag">{tag}</span>
-                              ))}
-                            </div>
-                          ) : '-'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Services Section */}
-                  <div className="detail-section">
-                    <h3 className="detail-section-title">
-                      Services ({selectedTarget.services?.length || 0})
-                    </h3>
-                    {selectedTarget.services?.length ? (
-                      <div className="services-list">
-                        {selectedTarget.services.map(service => (
-                          <div key={service.id} className="service-item">
-                            <div className="service-info">
-                              <div className="service-header">
-                                <span className="service-name">{service.display_name}</span>
-                                <span className={`status-badge ${service.connection_status === 'connected' ? 'status-badge-success' : 
-                                  service.connection_status === 'failed' ? 'status-badge-danger' : 'status-badge-neutral'}`}>
-                                  {service.connection_status}
-                                </span>
-                              </div>
-                              <div className="service-details">
-                                <span className="service-type">{service.service_type}</span>
-                                <span className="service-port">Port: {service.port}</span>
-                                <span className="service-category">{service.category}</span>
-                              </div>
-                              {service.notes && (
-                                <div className="service-notes">{service.notes}</div>
-                              )}
-                            </div>
-                            <div className="service-actions">
-                              <button 
-                                className="btn-icon btn-ghost"
-                                onClick={() => handleServiceTest(service.id)}
-                                disabled={testingService === service.id}
-                                title="Test service connection"
-                              >
-                                {testingService === service.id ? (
-                                  <span className="loading-spinner"></span>
-                                ) : (
-                                  <Search size={14} />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-state-small">
-                        <p>No services configured for this target.</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Credentials Section */}
-                  <div className="detail-section">
-                    <h3 className="detail-section-title">
-                      Credentials ({selectedTarget.credentials?.length || 0})
-                    </h3>
-                    {selectedTarget.credentials?.length ? (
-                      <div className="credentials-list">
-                        {selectedTarget.credentials.map(credential => (
-                          <div key={credential.id} className="credential-item">
-                            <div className="credential-info">
-                              <div className="credential-header">
-                                <span className="credential-name">{credential.credential_name}</span>
-                                {credential.is_primary && (
-                                  <span className="status-badge status-badge-success">Primary</span>
-                                )}
-                              </div>
-                              <div className="credential-details">
-                                <span className="credential-type">{credential.credential_type}</span>
-                                {credential.service_types?.length && (
-                                  <span className="credential-services">
-                                    Services: {credential.service_types.join(', ')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-state-small">
-                        <p>No credentials configured for this target.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
+      {addingNew && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 999
+          }}
+          onClick={cancelAddingNew}
+        />
+      )}
     </div>
   );
 };

@@ -16,6 +16,8 @@ import JobRuns from './pages/JobRuns';
 import JobRunDetail from './pages/JobRunDetail';
 import Notifications from './pages/Notifications';
 import EnhancedSettings from './pages/EnhancedSettings';
+import SystemSettings from './pages/SystemSettings';
+import LegacySettings from './pages/LegacySettings';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -65,7 +67,9 @@ const App: React.FC = () => {
                     <Route path="/job-runs" element={<JobRuns />} />
                     <Route path="/job-runs/:id" element={<JobRunDetail />} />
                     <Route path="/notifications" element={<Notifications />} />
-                    <Route path="/settings" element={<EnhancedSettings />} />
+                    <Route path="/settings" element={<Navigate to="/settings/step-library" />} />
+                    <Route path="/settings/:section" element={<SystemSettings />} />
+                    <Route path="/legacy-settings" element={<LegacySettings />} />
                     <Route path="*" element={<Navigate to="/" />} />
                   </Routes>
                 </ProtectedRoute>

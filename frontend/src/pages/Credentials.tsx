@@ -1,14 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Plus, Trash2, Check, X } from 'lucide-react';
 import { credentialApi } from '../services/api';
 import { Credential, CredentialCreate, CredentialDecrypted } from '../types';
-import { Plus, Trash2, Check, X } from 'lucide-react';
 
 interface EditingState {
   credentialId: number;
   field: 'name' | 'description' | 'username' | 'password' | 'domain' | 'private_key' | 'passphrase';
   value: string;
   confirmPassword?: string;
+}
+
+interface NewCredentialState {
+  name: string;
+  description: string;
+  credential_type: 'winrm' | 'ssh' | 'certificate';
+  username: string;
+  password: string;
+  domain: string;
+  private_key: string;
+  passphrase: string;
+  certificate: string;
+  certificate_password: string;
 }
 
 const Credentials: React.FC = () => {
@@ -18,16 +31,12 @@ const Credentials: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [showSlideOut, setShowSlideOut] = useState(false);
-  const [slideOutMode, setSlideOutMode] = useState<'create' | 'edit'>('create');
+  const [addingNew, setAddingNew] = useState(false);
   const [selectedCredential, setSelectedCredential] = useState<CredentialDecrypted | null>(null);
-  const [formData, setFormData] = useState<CredentialCreate>({
+  const [newCredential, setNewCredential] = useState<NewCredentialState>({
     name: '',
     description: '',
     credential_type: 'winrm',
-    credential_data: {}
-  });
-  const [credentialFields, setCredentialFields] = useState<Record<string, string>>({
     username: '',
     password: '',
     domain: '',
@@ -37,30 +46,9 @@ const Credentials: React.FC = () => {
     certificate_password: ''
   });
 
-  const isCreating = action === 'create';
-  const showForm = isCreating;
-
   useEffect(() => {
     fetchCredentials();
   }, []);
-
-  useEffect(() => {
-    if (isCreating) {
-      setFormData({
-        name: '',
-        description: '',
-        credential_type: 'winrm',
-        credential_data: {}
-      });
-      setCredentialFields({
-        username: '',
-        password: '',
-        domain: '',
-        private_key: '',
-        passphrase: ''
-      });
-    }
-  }, [isCreating]);
 
   const fetchCredentials = async () => {
     try {
@@ -89,46 +77,89 @@ const Credentials: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    
+  const startAddingNew = () => {
+    setAddingNew(true);
+    setEditing(null);
+  };
+
+  const cancelAddingNew = () => {
+    setAddingNew(false);
+    setNewCredential({
+      name: '',
+      description: '',
+      credential_type: 'winrm',
+      username: '',
+      password: '',
+      domain: '',
+      private_key: '',
+      passphrase: '',
+      certificate: '',
+      certificate_password: ''
+    });
+  };
+
+  const saveNewCredential = async () => {
+    if (!newCredential.name.trim()) {
+      alert('Name is required');
+      return;
+    }
+    if (!newCredential.username.trim() && newCredential.credential_type !== 'certificate') {
+      alert('Username is required');
+      return;
+    }
+    if (!newCredential.password && newCredential.credential_type === 'winrm') {
+      alert('Password is required for WinRM credentials');
+      return;
+    }
+    if (!newCredential.private_key && newCredential.credential_type === 'ssh') {
+      alert('Private key is required for SSH credentials');
+      return;
+    }
+    if (!newCredential.certificate && newCredential.credential_type === 'certificate') {
+      alert('Certificate is required');
+      return;
+    }
+
     try {
+      setSaving(true);
       let credentialData: any = {};
       
-      if (formData.credential_type === 'winrm') {
+      if (newCredential.credential_type === 'winrm') {
         credentialData = {
-          username: credentialFields.username,
-          domain: credentialFields.domain || ''
+          username: newCredential.username,
+          password: newCredential.password,
+          domain: newCredential.domain || ''
         };
-        if (credentialFields.password) {
-          credentialData.password = credentialFields.password;
-        }
-      } else if (formData.credential_type === 'ssh') {
+      } else if (newCredential.credential_type === 'ssh') {
         credentialData = {
-          username: credentialFields.username
+          username: newCredential.username,
+          private_key: newCredential.private_key
         };
-        if (credentialFields.password) {
-          credentialData.password = credentialFields.password;
+        if (newCredential.passphrase) {
+          credentialData.passphrase = newCredential.passphrase;
         }
-        if (credentialFields.private_key) {
-          credentialData.private_key = credentialFields.private_key;
-        }
-        if (credentialFields.passphrase) {
-          credentialData.passphrase = credentialFields.passphrase;
+      } else if (newCredential.credential_type === 'certificate') {
+        credentialData = {
+          certificate: newCredential.certificate
+        };
+        if (newCredential.certificate_password) {
+          credentialData.certificate_password = newCredential.certificate_password;
         }
       }
-
-      const submitData = {
-        ...formData,
+      
+      const credentialToCreate: CredentialCreate = {
+        name: newCredential.name,
+        description: newCredential.description,
+        credential_type: newCredential.credential_type,
         credential_data: credentialData
       };
-
-      await credentialApi.create(submitData);
+      
+      await credentialApi.create(credentialToCreate);
       await fetchCredentials();
-      navigate('/credential-management');
+      cancelAddingNew();
     } catch (error) {
       console.error('Failed to create credential:', error);
+      alert('Failed to create credential');
     } finally {
       setSaving(false);
     }
@@ -139,29 +170,12 @@ const Credentials: React.FC = () => {
       try {
         await credentialApi.delete(credentialId);
         fetchCredentials();
+        if (selectedCredential?.id === credentialId) {
+          setSelectedCredential(null);
+        }
       } catch (error) {
         console.error('Failed to delete credential:', error);
       }
-    }
-  };
-
-  const handleTypeChange = (type: string) => {
-    setFormData({ ...formData, credential_type: type });
-    // Reset credential fields when type changes
-    setCredentialFields({
-      username: '',
-      password: '',
-      domain: '',
-      private_key: '',
-      passphrase: ''
-    });
-  };
-
-  const getCredentialTypeLabel = (type: string) => {
-    switch (type) {
-      case 'winrm': return 'WinRM';
-      case 'ssh': return 'SSH';
-      default: return type.toUpperCase();
     }
   };
 
@@ -181,7 +195,6 @@ const Credentials: React.FC = () => {
   const saveEdit = async () => {
     if (!editing) return;
 
-    // Password validation
     if (editing.field === 'password' || editing.field === 'passphrase') {
       if (!editing.value) {
         alert(`${editing.field} cannot be empty`);
@@ -197,7 +210,6 @@ const Credentials: React.FC = () => {
       }
     }
 
-    // Other field validation
     if ((editing.field === 'name' || editing.field === 'username') && !editing.value.trim()) {
       alert(`${editing.field} cannot be empty`);
       return;
@@ -211,10 +223,8 @@ const Credentials: React.FC = () => {
       let updateData: any = {};
       
       if (editing.field === 'name' || editing.field === 'description') {
-        // Update basic credential fields
         updateData[editing.field] = editing.value;
       } else {
-        // Update credential_data fields
         const newCredentialData = { ...credential.credential_data };
         newCredentialData[editing.field] = editing.value;
         updateData.credential_data = newCredentialData;
@@ -222,6 +232,17 @@ const Credentials: React.FC = () => {
       
       await credentialApi.update(editing.credentialId, updateData);
       await fetchCredentials();
+      
+      if (selectedCredential?.id === editing.credentialId) {
+        if (editing.field === 'name' || editing.field === 'description') {
+          setSelectedCredential({...selectedCredential, [editing.field]: editing.value});
+        } else {
+          const newCredData = { ...selectedCredential.credential_data };
+          newCredData[editing.field] = editing.value;
+          setSelectedCredential({...selectedCredential, credential_data: newCredData});
+        }
+      }
+      
       setEditing(null);
     } catch (error) {
       console.error(`Failed to update ${editing.field}:`, error);
@@ -239,145 +260,20 @@ const Credentials: React.FC = () => {
     }
   };
 
-  const openCreateSlideOut = () => {
-    setSlideOutMode('create');
-    setSelectedCredential(null);
-    setFormData({
-      name: '',
-      description: '',
-      credential_type: 'winrm',
-      credential_data: {}
-    });
-    setCredentialFields({
-      username: '',
-      password: '',
-      domain: '',
-      private_key: '',
-      passphrase: ''
-    });
-    setShowSlideOut(true);
-  };
-
-  const openEditSlideOut = (credential: CredentialDecrypted) => {
-    setSlideOutMode('edit');
-    setSelectedCredential(credential);
-    setFormData({
-      name: credential.name,
-      description: credential.description || '',
-      credential_type: credential.credential_type,
-      credential_data: credential.credential_data
-    });
-    setCredentialFields({
-      username: credential.credential_data.username || '',
-      password: '',
-      domain: credential.credential_data.domain || '',
-      private_key: credential.credential_data.private_key || '',
-      passphrase: '',
-      certificate: credential.credential_data.certificate || '',
-      certificate_password: ''
-    });
-    setShowSlideOut(true);
-  };
-
-  const closeSlideOut = () => {
-    setShowSlideOut(false);
-    setSelectedCredential(null);
-  };
-
-  const handleCertificateFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      setCredentialFields({...credentialFields, certificate: text});
-    } catch (error) {
-      console.error('Error reading certificate file:', error);
-      alert('Error reading certificate file. Please try again.');
+  const handleNewCredentialKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveNewCredential();
+    } else if (e.key === 'Escape') {
+      cancelAddingNew();
     }
   };
 
-  const handleSlideOutSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      alert('Name is required');
-      return;
-    }
-    
-    // Validate based on credential type
-    if (formData.credential_type === 'winrm') {
-      if (!credentialFields.username.trim()) {
-        alert('Username is required');
-        return;
-      }
-      if (slideOutMode === 'create' && !credentialFields.password.trim()) {
-        alert('Password is required');
-        return;
-      }
-    } else if (formData.credential_type === 'ssh') {
-      if (!credentialFields.username.trim()) {
-        alert('Username is required');
-        return;
-      }
-      if (slideOutMode === 'create' && !credentialFields.private_key.trim()) {
-        alert('Private key is required');
-        return;
-      }
-    } else if (formData.credential_type === 'certificate') {
-      if (slideOutMode === 'create' && !credentialFields.certificate.trim()) {
-        alert('Certificate is required');
-        return;
-      }
-    }
-
-    setSaving(true);
-    try {
-      let credentialData: any = {};
-      
-      if (formData.credential_type === 'winrm') {
-        credentialData.username = credentialFields.username;
-        if (credentialFields.password.trim()) {
-          credentialData.password = credentialFields.password;
-        }
-        if (credentialFields.domain.trim()) {
-          credentialData.domain = credentialFields.domain;
-        }
-      } else if (formData.credential_type === 'ssh') {
-        credentialData.username = credentialFields.username;
-        if (credentialFields.private_key.trim()) {
-          credentialData.private_key = credentialFields.private_key;
-        }
-        if (credentialFields.passphrase.trim()) {
-          credentialData.passphrase = credentialFields.passphrase;
-        }
-      } else if (formData.credential_type === 'certificate') {
-        credentialData.certificate = credentialFields.certificate;
-        if (credentialFields.certificate_password.trim()) {
-          credentialData.certificate_password = credentialFields.certificate_password;
-        }
-      }
-
-      const credentialToSave: CredentialCreate = {
-        name: formData.name,
-        description: formData.description || '',
-        credential_type: formData.credential_type,
-        credential_data: credentialData
-      };
-
-      if (slideOutMode === 'create') {
-        await credentialApi.create(credentialToSave);
-      } else if (selectedCredential) {
-        await credentialApi.update(selectedCredential.id, credentialToSave);
-      }
-      
-      await fetchCredentials();
-      closeSlideOut();
-    } catch (error) {
-      console.error('Failed to save credential:', error);
-      alert('Failed to save credential');
-    } finally {
-      setSaving(false);
+  const getCredentialTypeLabel = (type: string) => {
+    switch (type) {
+      case 'winrm': return 'WinRM';
+      case 'ssh': return 'SSH';
+      case 'certificate': return 'Certificate';
+      default: return type.toUpperCase();
     }
   };
 
@@ -389,165 +285,180 @@ const Credentials: React.FC = () => {
     );
   }
 
-  if (showForm) {
-    return (
-      <div className="main-content">
-        <div className="page-header">
-          <h1 className="page-title">Create Credential</h1>
-          <div className="page-actions">
-            <button 
-              type="button" 
-              className="btn btn-ghost"
-              onClick={() => navigate('/credential-management')}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-
-        <div className="form-container">
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label className="form-label">Name</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Type</label>
-                <select 
-                  className="form-select"
-                  value={formData.credential_type}
-                  onChange={(e) => handleTypeChange(e.target.value)}
-                >
-                  <option value="winrm">WinRM</option>
-                  <option value="ssh">SSH</option>
-                </select>
-              </div>
-
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">Description</label>
-                <textarea
-                  className="form-textarea"
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  rows={2}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Username</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  value={credentialFields.username}
-                  onChange={(e) => setCredentialFields({...credentialFields, username: e.target.value})}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Password</label>
-                <input
-                  type="password"
-                  className="form-input"
-                  value={credentialFields.password}
-                  onChange={(e) => setCredentialFields({...credentialFields, password: e.target.value})}
-                  required
-                />
-              </div>
-
-              {formData.credential_type === 'winrm' && (
-                <div className="form-group">
-                  <label className="form-label">Domain</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={credentialFields.domain}
-                    onChange={(e) => setCredentialFields({...credentialFields, domain: e.target.value})}
-                    placeholder="Optional"
-                  />
-                </div>
-              )}
-
-              {formData.credential_type === 'ssh' && (
-                <>
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label className="form-label">Private Key (Optional)</label>
-                    <textarea
-                      className="form-textarea"
-                      value={credentialFields.private_key}
-                      onChange={(e) => setCredentialFields({...credentialFields, private_key: e.target.value})}
-                      rows={4}
-                      placeholder="-----BEGIN PRIVATE KEY-----"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Passphrase (Optional)</label>
-                    <input
-                      type="password"
-                      className="form-input"
-                      value={credentialFields.passphrase}
-                      onChange={(e) => setCredentialFields({...credentialFields, passphrase: e.target.value})}
-                      placeholder="For encrypted private keys"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="form-actions">
-              <button 
-                type="button" 
-                className="btn btn-ghost"
-                onClick={() => navigate('/credential-management')}
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <span className="loading-spinner"></span>
-                    Creating...
-                  </>
-                ) : (
-                  'Create Credential'
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="main-content">
+    <div className="dense-dashboard">
       <style>
         {`
+          /* Dashboard-style layout - EXACT MATCH */
+          .dense-dashboard {
+            padding: 8px 12px;
+            max-width: 100%;
+            font-size: 13px;
+          }
+          .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .header-left h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--neutral-800);
+          }
+          .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: stretch;
+            height: calc(100vh - 110px);
+          }
+          .dashboard-section {
+            background: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+          }
+          .section-header {
+            background: var(--neutral-50);
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .compact-content {
+            padding: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+          }
+          .table-container {
+            flex: 1;
+            overflow: auto;
+          }
+          
+          /* Credentials table styles */
+          .credentials-table-section {
+            grid-column: 1 / 3;
+          }
+          .credentials-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+          .credentials-table th {
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            font-size: 11px;
+          }
+          .credentials-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--neutral-100);
+            vertical-align: middle;
+            font-size: 12px;
+          }
+          .credentials-table tr:hover {
+            background: var(--neutral-50);
+          }
+          .credentials-table tr.selected {
+            background: var(--primary-blue-light);
+            border-left: 3px solid var(--primary-blue);
+          }
+          .credentials-table tr {
+            cursor: pointer;
+          }
+          
+          /* Credential details panel */
+          .credential-details {
+            padding: 8px;
+          }
+          .credential-details h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .detail-group {
+            margin-bottom: 12px;
+          }
+          .detail-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--neutral-500);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .detail-value {
+            font-size: 12px;
+            color: var(--neutral-800);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-100);
+          }
+          .detail-value.editable {
+            cursor: pointer;
+            transition: background 0.2s;
+          }
+          .detail-value.editable:hover {
+            background: var(--neutral-50);
+            padding: 6px;
+            margin: 0 -6px;
+            border-radius: 3px;
+          }
+          
+          /* Form styles */
+          .detail-input {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 3px;
+            font-size: 12px;
+          }
+          .detail-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          .detail-textarea {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 3px;
+            font-size: 12px;
+            resize: vertical;
+            min-height: 60px;
+          }
+          .detail-textarea:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          
+          /* Button styles */
           .btn-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             border: none;
             background: none;
             cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-            padding: 4px;
+            transition: all 0.15s;
+            margin: 0 1px;
+            padding: 2px;
           }
           .btn-icon:hover {
             opacity: 0.7;
@@ -557,201 +468,257 @@ const Credentials: React.FC = () => {
             cursor: not-allowed;
           }
           .btn-success {
-            color: #10b981;
+            color: var(--success-green);
           }
           .btn-success:hover:not(:disabled) {
-            color: #059669;
+            color: var(--success-green-dark);
           }
           .btn-danger {
-            color: #ef4444;
+            color: var(--danger-red);
           }
           .btn-danger:hover:not(:disabled) {
-            color: #dc2626;
+            color: var(--danger-red);
           }
           .btn-ghost {
-            color: #6b7280;
+            color: var(--neutral-500);
           }
           .btn-ghost:hover:not(:disabled) {
-            color: #374151;
+            color: var(--neutral-700);
           }
-          .new-credential-row .table-input {
-            border: none;
-            background: transparent;
-            padding: 4px 2px;
-            font-size: 13px;
-            width: 100%;
-            min-width: 80px;
-            outline: none;
-          }
-          .new-credential-row .table-input:focus {
-            background: white;
-            border: 1px solid #10b981;
-            border-radius: 2px;
-            box-shadow: none;
-          }
-          .new-credential-row .table-input::placeholder {
-            color: #9ca3af;
-            font-size: 12px;
-          }
-          .slide-out-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
+          
+          .action-buttons {
             display: flex;
-            justify-content: flex-end;
+            gap: 4px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--neutral-200);
           }
-          .slide-out-panel {
-            background: white;
-            width: 500px;
-            height: 100vh;
-            box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+          
+          .empty-state {
             display: flex;
             flex-direction: column;
-            animation: slideIn 0.3s ease-out;
-          }
-          @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
-          }
-          .slide-out-header {
-            padding: 20px;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: var(--neutral-500);
+            text-align: center;
           }
-          .slide-out-header h2 {
-            margin: 0;
-            font-size: 18px;
+          .empty-state h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
             font-weight: 600;
           }
-          .slide-out-content {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-          }
-          .slide-out-actions {
-            padding: 20px;
-            border-top: 1px solid #e5e7eb;
-            display: flex;
-            gap: 12px;
-            justify-content: flex-end;
-          }
-          .certificate-input-container {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-          }
-          .certificate-upload-section {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            padding: 16px;
-            border: 2px dashed #d1d5db;
-            border-radius: 8px;
-            background: #f9fafb;
-          }
-          .upload-divider {
-            position: relative;
-            text-align: center;
-            color: #6b7280;
+          .empty-state p {
+            margin: 0 0 12px 0;
             font-size: 12px;
+          }
+          
+          .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
             font-weight: 500;
-            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
           }
-          .upload-divider::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: -20px;
-            right: -20px;
-            height: 1px;
-            background: #d1d5db;
-            z-index: 1;
-          }
-          .upload-divider span {
-            background: #f9fafb;
-            padding: 0 8px;
-            position: relative;
-            z-index: 2;
-          }
-          .file-input {
-            display: none;
-          }
-          .form-help {
-            color: #6b7280;
-            font-size: 12px;
-            text-align: center;
-            margin: 0;
+          .status-badge-info {
+            background: var(--primary-blue-light);
+            color: var(--primary-blue);
           }
         `}
       </style>
-      <div className="page-header">
-        <h1 className="page-title">Credentials</h1>
-        <div className="page-actions">
+      
+      {/* Dashboard-style header */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>Credential Management</h1>
+        </div>
+        <div className="header-actions">
           <button 
             className="btn-icon btn-success"
-            onClick={openCreateSlideOut}
+            onClick={startAddingNew}
             title="Add new credential"
+            disabled={addingNew}
           >
             <Plus size={16} />
           </button>
         </div>
       </div>
 
-      {credentials.length === 0 ? (
-        <div className="empty-state">
-          <h3 className="empty-state-title">No credentials found</h3>
-          <p className="empty-state-description">
-            Create your first credential to connect to targets.
-          </p>
-          <button 
-            className="btn-icon btn-success"
-            onClick={openCreateSlideOut}
-            title="Create first credential"
-          >
-            <Plus size={16} />
-          </button>
+      {/* 3-column dashboard grid */}
+      <div className="dashboard-grid">
+        {/* Columns 1-2: Credentials Table */}
+        <div className="dashboard-section credentials-table-section">
+          <div className="section-header">
+            Credentials ({credentials.length})
+          </div>
+          <div className="compact-content">
+            {credentials.length === 0 && !addingNew ? (
+              <div className="empty-state">
+                <h3>No credentials found</h3>
+                <p>Create your first credential to connect to targets.</p>
+                <button 
+                  className="btn-icon btn-success"
+                  onClick={startAddingNew}
+                  title="Create first credential"
+                >
+                  <Plus size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="credentials-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Username</th>
+                    <th>Domain</th>
+                    <th>Description</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* New Credential Row */}
+                  {addingNew && (
+                    <tr style={{ background: '#f0f9ff', border: '2px solid #10b981' }}>
+                      <td>
+                        <input
+                          type="text"
+                          value={newCredential.name}
+                          onChange={(e) => setNewCredential({...newCredential, name: e.target.value})}
+                          onKeyDown={handleNewCredentialKeyPress}
+                          placeholder="Credential name"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                          autoFocus
+                        />
+                      </td>
+                      <td>
+                        <select 
+                          value={newCredential.credential_type} 
+                          onChange={(e) => setNewCredential({...newCredential, credential_type: e.target.value as any})}
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        >
+                          <option value="winrm">WinRM</option>
+                          <option value="ssh">SSH</option>
+                          <option value="certificate">Certificate</option>
+                        </select>
+                      </td>
+                      <td>
+                        {newCredential.credential_type !== 'certificate' && (
+                          <input
+                            type="text"
+                            value={newCredential.username}
+                            onChange={(e) => setNewCredential({...newCredential, username: e.target.value})}
+                            onKeyDown={handleNewCredentialKeyPress}
+                            placeholder="Username"
+                            style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        {newCredential.credential_type === 'winrm' && (
+                          <input
+                            type="text"
+                            value={newCredential.domain}
+                            onChange={(e) => setNewCredential({...newCredential, domain: e.target.value})}
+                            onKeyDown={handleNewCredentialKeyPress}
+                            placeholder="Domain (optional)"
+                            style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                          />
+                        )}
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          value={newCredential.description}
+                          onChange={(e) => setNewCredential({...newCredential, description: e.target.value})}
+                          onKeyDown={handleNewCredentialKeyPress}
+                          placeholder="Description"
+                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
+                        />
+                      </td>
+                      <td style={{ color: '#64748b', fontSize: '12px' }}>New</td>
+                      <td>
+                        <button onClick={saveNewCredential} className="btn-icon btn-success" title="Save" disabled={saving}>
+                          <Check size={16} />
+                        </button>
+                        <button onClick={cancelAddingNew} className="btn-icon btn-ghost" title="Cancel">
+                          <X size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+
+                  {/* Existing Credentials */}
+                  {credentials.map((credential) => (
+                    <tr 
+                      key={credential.id} 
+                      className={selectedCredential?.id === credential.id ? 'selected' : ''}
+                      onClick={() => setSelectedCredential(credential)}
+                    >
+                      <td style={{ fontWeight: '500' }}>{credential.name}</td>
+                      <td>
+                        <span className="status-badge status-badge-info">
+                          {getCredentialTypeLabel(credential.credential_type)}
+                        </span>
+                      </td>
+                      <td>{credential.credential_data?.username || '-'}</td>
+                      <td>{credential.credential_data?.domain || (credential.credential_type === 'winrm' ? '-' : 'N/A')}</td>
+                      <td>{credential.description || '-'}</td>
+                      <td style={{ color: '#64748b', fontSize: '12px' }}>
+                        {new Date(credential.created_at).toLocaleDateString()}
+                      </td>
+                      <td>
+                        <button 
+                          className="btn-icon btn-danger"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(credential.id);
+                          }}
+                          title="Delete credential"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-      ) : (
-        <div className="data-table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Username</th>
-                <th>Domain</th>
-                <th>Password</th>
-                <th>Description</th>
-                <th>Created</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {credentials.map(credential => (
-                <tr key={credential.id}>
-                  <td className="text-neutral-500">{credential.id}</td>
-                  
-                  {/* Name - Inline Editable */}
-                  <td className="font-medium">
-                    {editing?.credentialId === credential.id && editing?.field === 'name' ? (
-                      <div className="inline-edit">
+
+        {/* Column 3: Credential Details Panel */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            {selectedCredential ? `Credential Details` : 'Select Credential'}
+          </div>
+          <div className="compact-content">
+            {selectedCredential ? (
+              <div className="credential-details">
+                <h3>{selectedCredential.name}</h3>
+                
+                <div className="detail-group">
+                  <div className="detail-label">Name</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedCredential.id, 'name', selectedCredential.name)}
+                  >
+                    {editing?.credentialId === selectedCredential.id && editing?.field === 'name' ? (
+                      <div>
                         <input
                           type="text"
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-input"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -761,36 +728,36 @@ const Credentials: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(credential.id, 'name', credential.name)}
-                        className="editable-field"
-                        title="Click to edit name"
-                      >
-                        {credential.name}
-                      </span>
+                      selectedCredential.name
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Type - Not editable for security reasons */}
-                  <td>
+                <div className="detail-group">
+                  <div className="detail-label">Type</div>
+                  <div className="detail-value">
                     <span className="status-badge status-badge-info">
-                      {getCredentialTypeLabel(credential.credential_type)}
+                      {getCredentialTypeLabel(selectedCredential.credential_type)}
                     </span>
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Username - Inline Editable */}
-                  <td>
-                    {editing?.credentialId === credential.id && editing?.field === 'username' ? (
-                      <div className="inline-edit">
-                        <input
-                          type="text"
+                <div className="detail-group">
+                  <div className="detail-label">Description</div>
+                  <div 
+                    className="detail-value editable"
+                    onClick={() => startEditing(selectedCredential.id, 'description', selectedCredential.description || '')}
+                  >
+                    {editing?.credentialId === selectedCredential.id && editing?.field === 'description' ? (
+                      <div>
+                        <textarea
                           value={editing.value}
                           onChange={(e) => setEditing({...editing, value: e.target.value})}
                           onKeyDown={handleKeyPress}
-                          className="table-input"
+                          className="detail-textarea"
                           autoFocus
                         />
-                        <div className="inline-edit-actions">
+                        <div className="action-buttons">
                           <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
                             <Check size={16} />
                           </button>
@@ -800,340 +767,221 @@ const Credentials: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <span 
-                        onClick={() => startEditing(credential.id, 'username', credential.credential_data?.username || '')}
-                        className="editable-field"
-                        title="Click to edit username"
-                      >
-                        {credential.credential_data?.username || <span className="text-neutral-400">-</span>}
-                      </span>
+                      selectedCredential.description || '-'
                     )}
-                  </td>
+                  </div>
+                </div>
 
-                  {/* Domain - Inline Editable (WinRM only) */}
-                  <td>
-                    {credential.credential_type === 'winrm' ? (
-                      editing?.credentialId === credential.id && editing?.field === 'domain' ? (
-                        <div className="inline-edit">
+                {selectedCredential.credential_type !== 'certificate' && (
+                  <div className="detail-group">
+                    <div className="detail-label">Username</div>
+                    <div 
+                      className="detail-value editable"
+                      onClick={() => startEditing(selectedCredential.id, 'username', selectedCredential.credential_data?.username || '')}
+                    >
+                      {editing?.credentialId === selectedCredential.id && editing?.field === 'username' ? (
+                        <div>
                           <input
                             type="text"
                             value={editing.value}
                             onChange={(e) => setEditing({...editing, value: e.target.value})}
                             onKeyDown={handleKeyPress}
-                            className="table-input"
+                            className="detail-input"
                             autoFocus
                           />
-                          <div className="inline-edit-actions">
+                          <div className="action-buttons">
                             <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                              <Check size={14} />
+                              <Check size={16} />
                             </button>
                             <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                              <X size={14} />
+                              <X size={16} />
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <span 
-                          onClick={() => startEditing(credential.id, 'domain', credential.credential_data?.domain || '')}
-                          className="editable-field"
-                          title="Click to edit domain"
-                        >
-                          {credential.credential_data?.domain || <span className="text-neutral-400">-</span>}
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-neutral-400">N/A</span>
-                    )}
-                  </td>
-
-                  {/* Password - Inline Editable with Confirmation */}
-                  <td>
-                    {editing?.credentialId === credential.id && editing?.field === 'password' ? (
-                      <div className="inline-edit password-edit">
-                        <div className="password-inputs">
-                          <input
-                            type="password"
-                            placeholder="New password"
-                            value={editing.value}
-                            onChange={(e) => setEditing({...editing, value: e.target.value})}
-                            onKeyDown={handleKeyPress}
-                            className="table-input"
-                            autoFocus
-                          />
-                          <input
-                            type="password"
-                            placeholder="Confirm password"
-                            value={editing.confirmPassword || ''}
-                            onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
-                            onKeyDown={handleKeyPress}
-                            className="table-input"
-                          />
-                        </div>
-                        <div className="inline-edit-actions">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <span 
-                        onClick={() => startEditing(credential.id, 'password')}
-                        className="editable-field password-field"
-                        title="Click to change password"
-                      >
-                        ••••••••
-                      </span>
-                    )}
-                  </td>
-
-                  {/* Description - Inline Editable */}
-                  <td>
-                    {editing?.credentialId === credential.id && editing?.field === 'description' ? (
-                      <div className="inline-edit">
-                        <input
-                          type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="table-input"
-                          autoFocus
-                        />
-                        <div className="inline-edit-actions">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <span 
-                        onClick={() => startEditing(credential.id, 'description', credential.description || '')}
-                        className="editable-field"
-                        title="Click to edit description"
-                      >
-                        {credential.description || <span className="text-neutral-400">-</span>}
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="text-neutral-500">
-                    {new Date(credential.created_at).toLocaleDateString()}
-                  </td>
-
-                  {/* Actions - Only Delete Now */}
-                  <td>
-                    <div className="table-actions">
-                      <button 
-                        className="btn-icon btn-danger"
-                        onClick={() => handleDelete(credential.id)}
-                        title="Delete credential"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        selectedCredential.credential_data?.username || '-'
+                      )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Slide-out Panel */}
-      {showSlideOut && (
-        <div className="slide-out-overlay" onClick={closeSlideOut}>
-          <div className="slide-out-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="slide-out-header">
-              <h2>{slideOutMode === 'create' ? 'Create Credential' : 'Edit Credential'}</h2>
-              <button onClick={closeSlideOut} className="btn-icon btn-ghost">
-                <X size={20} />
-              </button>
-            </div>
-            
-            <div className="slide-out-content">
-              <form onSubmit={handleSlideOutSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Name</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="form-input"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Type</label>
-                  <select
-                    value={formData.credential_type}
-                    onChange={(e) => setFormData({...formData, credential_type: e.target.value as 'winrm' | 'ssh' | 'certificate'})}
-                    className="form-select"
-                  >
-                    <option value="winrm">Username/Password</option>
-                    <option value="ssh">SSH Key</option>
-                    <option value="certificate">Certificate</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    className="form-textarea"
-                    rows={3}
-                  />
-                </div>
-
-                {/* Username/Password Fields */}
-                {formData.credential_type === 'winrm' && (
-                  <>
-                    <div className="form-group">
-                      <label className="form-label">Username</label>
-                      <input
-                        type="text"
-                        value={credentialFields.username}
-                        onChange={(e) => setCredentialFields({...credentialFields, username: e.target.value})}
-                        className="form-input"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Password</label>
-                      <input
-                        type="password"
-                        value={credentialFields.password}
-                        onChange={(e) => setCredentialFields({...credentialFields, password: e.target.value})}
-                        className="form-input"
-                        required={slideOutMode === 'create'}
-                        placeholder={slideOutMode === 'edit' ? 'Leave blank to keep current password' : ''}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Domain (Optional)</label>
-                      <input
-                        type="text"
-                        value={credentialFields.domain}
-                        onChange={(e) => setCredentialFields({...credentialFields, domain: e.target.value})}
-                        className="form-input"
-                      />
-                    </div>
-                  </>
+                  </div>
                 )}
 
-                {/* SSH Key Fields */}
-                {formData.credential_type === 'ssh' && (
+                {selectedCredential.credential_type === 'winrm' && (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">Username</label>
-                      <input
-                        type="text"
-                        value={credentialFields.username}
-                        onChange={(e) => setCredentialFields({...credentialFields, username: e.target.value})}
-                        className="form-input"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Private Key</label>
-                      <textarea
-                        value={credentialFields.private_key}
-                        onChange={(e) => setCredentialFields({...credentialFields, private_key: e.target.value})}
-                        className="form-textarea"
-                        rows={8}
-                        placeholder="-----BEGIN PRIVATE KEY-----"
-                        required={slideOutMode === 'create'}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Passphrase (Optional)</label>
-                      <input
-                        type="password"
-                        value={credentialFields.passphrase}
-                        onChange={(e) => setCredentialFields({...credentialFields, passphrase: e.target.value})}
-                        className="form-input"
-                        placeholder="Leave blank if key has no passphrase"
-                      />
-                    </div>
-                  </>
-                )}
-
-                {/* Certificate Fields */}
-                {formData.credential_type === 'certificate' && (
-                  <>
-                    <div className="form-group">
-                      <label className="form-label">Certificate</label>
-                      <div className="certificate-input-container">
-                        <textarea
-                          value={credentialFields.certificate}
-                          onChange={(e) => setCredentialFields({...credentialFields, certificate: e.target.value})}
-                          className="form-textarea"
-                          rows={8}
-                          placeholder="-----BEGIN CERTIFICATE-----&#10;Paste your certificate here...&#10;-----END CERTIFICATE-----"
-                          required={slideOutMode === 'create'}
-                        />
-                        <div className="certificate-upload-section">
-                          <div className="upload-divider">
-                            <span>OR</span>
+                    <div className="detail-group">
+                      <div className="detail-label">Domain</div>
+                      <div 
+                        className="detail-value editable"
+                        onClick={() => startEditing(selectedCredential.id, 'domain', selectedCredential.credential_data?.domain || '')}
+                      >
+                        {editing?.credentialId === selectedCredential.id && editing?.field === 'domain' ? (
+                          <div>
+                            <input
+                              type="text"
+                              value={editing.value}
+                              onChange={(e) => setEditing({...editing, value: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-input"
+                              autoFocus
+                            />
+                            <div className="action-buttons">
+                              <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                                <Check size={16} />
+                              </button>
+                              <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                                <X size={16} />
+                              </button>
+                            </div>
                           </div>
-                          <input
-                            type="file"
-                            id="certificate-file"
-                            accept=".crt,.cer,.pem,.p12,.pfx"
-                            onChange={handleCertificateFileUpload}
-                            className="file-input"
-                            style={{ display: 'none' }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => document.getElementById('certificate-file')?.click()}
-                            className="btn btn-outline"
-                          >
-                            Upload Certificate File
-                          </button>
-                          <small className="form-help">
-                            Supported formats: .crt, .cer, .pem, .p12, .pfx
-                          </small>
-                        </div>
+                        ) : (
+                          selectedCredential.credential_data?.domain || '-'
+                        )}
                       </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Certificate Password (Optional)</label>
-                      <input
-                        type="password"
-                        value={credentialFields.certificate_password}
-                        onChange={(e) => setCredentialFields({...credentialFields, certificate_password: e.target.value})}
-                        className="form-input"
-                        placeholder="Required for password-protected certificates (e.g., .p12, .pfx)"
-                      />
+                    <div className="detail-group">
+                      <div className="detail-label">Password</div>
+                      <div 
+                        className="detail-value editable"
+                        onClick={() => startEditing(selectedCredential.id, 'password')}
+                      >
+                        {editing?.credentialId === selectedCredential.id && editing?.field === 'password' ? (
+                          <div>
+                            <input
+                              type="password"
+                              placeholder="New password"
+                              value={editing.value}
+                              onChange={(e) => setEditing({...editing, value: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-input"
+                              autoFocus
+                            />
+                            <input
+                              type="password"
+                              placeholder="Confirm password"
+                              value={editing.confirmPassword || ''}
+                              onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                            <div className="action-buttons">
+                              <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                                <Check size={16} />
+                              </button>
+                              <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          '••••••••'
+                        )}
+                      </div>
                     </div>
                   </>
                 )}
 
-                <div className="slide-out-actions">
-                  <button type="button" onClick={closeSlideOut} className="btn btn-ghost">
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? 'Saving...' : slideOutMode === 'create' ? 'Create Credential' : 'Update Credential'}
+                {selectedCredential.credential_type === 'ssh' && (
+                  <>
+                    <div className="detail-group">
+                      <div className="detail-label">Private Key</div>
+                      <div 
+                        className="detail-value editable"
+                        onClick={() => startEditing(selectedCredential.id, 'private_key', selectedCredential.credential_data?.private_key || '')}
+                      >
+                        {editing?.credentialId === selectedCredential.id && editing?.field === 'private_key' ? (
+                          <div>
+                            <textarea
+                              value={editing.value}
+                              onChange={(e) => setEditing({...editing, value: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-textarea"
+                              placeholder="-----BEGIN PRIVATE KEY-----"
+                              autoFocus
+                            />
+                            <div className="action-buttons">
+                              <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                                <Check size={16} />
+                              </button>
+                              <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          selectedCredential.credential_data?.private_key ? '••••••••' : '-'
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="detail-group">
+                      <div className="detail-label">Passphrase</div>
+                      <div 
+                        className="detail-value editable"
+                        onClick={() => startEditing(selectedCredential.id, 'passphrase')}
+                      >
+                        {editing?.credentialId === selectedCredential.id && editing?.field === 'passphrase' ? (
+                          <div>
+                            <input
+                              type="password"
+                              placeholder="New passphrase"
+                              value={editing.value}
+                              onChange={(e) => setEditing({...editing, value: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-input"
+                              autoFocus
+                            />
+                            <input
+                              type="password"
+                              placeholder="Confirm passphrase"
+                              value={editing.confirmPassword || ''}
+                              onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
+                              onKeyDown={handleKeyPress}
+                              className="detail-input"
+                              style={{ marginTop: '6px' }}
+                            />
+                            <div className="action-buttons">
+                              <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                                <Check size={16} />
+                              </button>
+                              <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          selectedCredential.credential_data?.passphrase ? '••••••••' : '-'
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div className="detail-group">
+                  <div className="detail-label">Created</div>
+                  <div className="detail-value">
+                    {new Date(selectedCredential.created_at).toLocaleString()}
+                  </div>
+                </div>
+
+                <div className="action-buttons">
+                  <button 
+                    className="btn-icon btn-danger"
+                    onClick={() => handleDelete(selectedCredential.id)}
+                    title="Delete credential"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </div>
-              </form>
-            </div>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <p>Select a credential from the table to view and edit details</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };

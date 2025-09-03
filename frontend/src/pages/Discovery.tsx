@@ -7,7 +7,7 @@ import {
   DiscoveryConfig,
   DiscoveryService
 } from '../types';
-import { Check, X, Plus } from 'lucide-react';
+import { Check, X, Plus, Trash2, Play, Square, Edit3 } from 'lucide-react';
 
 // Default services organized by categories
 const DEFAULT_SERVICES: DiscoveryService[] = [
@@ -62,49 +62,40 @@ const DEFAULT_SERVICES: DiscoveryService[] = [
 ];
 
 const Discovery: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'jobs' | 'targets' | 'create'>('jobs');
   const [jobs, setJobs] = useState<DiscoveryJob[]>([]);
   const [targets, setTargets] = useState<DiscoveredTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTargets, setSelectedTargets] = useState<number[]>([]);
+  const [selectedJob, setSelectedJob] = useState<DiscoveryJob | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<DiscoveredTarget | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [saving, setSaving] = useState(false);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalTargets, setTotalTargets] = useState(0);
-  const [pageSize] = useState(50); // Show 50 targets per page
-  
-  // Edit states
-  const [editingJob, setEditingJob] = useState<DiscoveryJob | null>(null);
-  const [editingTarget, setEditingTarget] = useState<DiscoveredTarget | null>(null);
-  const [showEditJobModal, setShowEditJobModal] = useState(false);
-  const [showEditTargetModal, setShowEditTargetModal] = useState(false);
+  const [pageSize] = useState(50);
   
   // Network range validation states
   const [validationResults, setValidationResults] = useState<{[key: number]: any}>({});
-  const [showValidationModal, setShowValidationModal] = useState(false);
-  const [currentValidationResult, setCurrentValidationResult] = useState<any>(null);
-
+  
   // Form state for creating new discovery job
   const [newJob, setNewJob] = useState<DiscoveryJobCreate>({
     name: '',
     discovery_type: 'network_scan',
     config: {
       cidr_ranges: [''],
-      services: [...DEFAULT_SERVICES], // Copy default services
+      services: [...DEFAULT_SERVICES],
       os_detection: true,
       timeout: 300
     }
   });
 
   useEffect(() => {
-    if (activeTab === 'jobs') {
-      loadJobs();
-    } else if (activeTab === 'targets') {
-      setCurrentPage(1); // Reset to first page when switching to targets tab
-      loadTargets(1);
-    }
-  }, [activeTab]);
+    loadJobs();
+    loadTargets(1);
+  }, []);
 
   const loadJobs = async () => {
     try {
@@ -136,18 +127,16 @@ const Discovery: React.FC = () => {
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      setLoading(true);
+      setSaving(true);
       setError(null);
       
-      // Validate that at least one service is selected
       const enabledServices = newJob.config.services?.filter(s => s.enabled) || [];
       if (enabledServices.length === 0) {
         setError('Please select at least one service to scan for.');
-        setLoading(false);
+        setSaving(false);
         return;
       }
       
-      // Filter out empty CIDR ranges and only include enabled services
       const config: DiscoveryConfig = {
         ...newJob.config,
         cidr_ranges: newJob.config.cidr_ranges?.filter(range => range.trim() !== '') || [],
@@ -165,19 +154,18 @@ const Discovery: React.FC = () => {
         discovery_type: 'network_scan',
         config: {
           cidr_ranges: [''],
-          services: [...DEFAULT_SERVICES], // Reset to default services (all disabled)
+          services: [...DEFAULT_SERVICES],
           os_detection: true,
           timeout: 300
         }
       });
 
-      // Switch to jobs tab and reload
-      setActiveTab('jobs');
+      setShowCreateForm(false);
       await loadJobs();
     } catch (err: any) {
       setError(err.message || 'Failed to create discovery job');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -215,7 +203,7 @@ const Discovery: React.FC = () => {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to ignore ${selectedTargets.length} targets? This will permanently remove them from the discovered targets list.`)) {
+    if (!window.confirm(`Are you sure you want to ignore ${selectedTargets.length} targets?`)) {
       return;
     }
 
@@ -234,26 +222,36 @@ const Discovery: React.FC = () => {
     }
   };
 
-  const handleDeleteTargets = async () => {
-    if (selectedTargets.length === 0) {
-      setError('Please select targets to delete');
-      return;
-    }
-
-    if (!window.confirm(`Are you sure you want to permanently delete ${selectedTargets.length} targets? This action cannot be undone.`)) {
+  const handleDeleteJob = async (jobId: number) => {
+    if (!window.confirm('Are you sure you want to delete this discovery job?')) {
       return;
     }
 
     try {
       setLoading(true);
-      setError(null);
-      
-      const result = await discoveryApi.bulkDeleteTargets(selectedTargets);
-      alert(`Successfully deleted ${result.deleted} targets.`);
-      setSelectedTargets([]);
-      await loadTargets();
+      await discoveryApi.deleteJob(jobId);
+      await loadJobs();
+      if (selectedJob?.id === jobId) {
+        setSelectedJob(null);
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to delete targets');
+      setError(err.message || 'Failed to delete discovery job');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelJob = async (jobId: number) => {
+    if (!window.confirm('Are you sure you want to cancel this running job?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await discoveryApi.cancelJob(jobId);
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel discovery job');
     } finally {
       setLoading(false);
     }
@@ -287,13 +285,6 @@ const Discovery: React.FC = () => {
         cidr_ranges: prev.config.cidr_ranges?.filter((_, i) => i !== index) || []
       }
     }));
-    
-    // Remove validation result for this index
-    setValidationResults(prev => {
-      const newResults = { ...prev };
-      delete newResults[index];
-      return newResults;
-    });
   };
 
   const validateNetworkRange = async (range: string, index: number) => {
@@ -310,9 +301,6 @@ const Discovery: React.FC = () => {
         [index]: response.results[0]
       }));
       
-      setCurrentValidationResult(response.results[0]);
-      setShowValidationModal(true);
-      
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to validate network range');
     } finally {
@@ -320,7 +308,6 @@ const Discovery: React.FC = () => {
     }
   };
 
-  // Service management functions
   const updateServiceEnabled = (serviceName: string, enabled: boolean) => {
     setNewJob(prev => ({
       ...prev,
@@ -357,7 +344,6 @@ const Discovery: React.FC = () => {
     }));
   };
 
-  // Group services by category
   const getServicesByCategory = () => {
     const categories: { [key: string]: DiscoveryService[] } = {};
     newJob.config.services?.forEach(service => {
@@ -370,133 +356,246 @@ const Discovery: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusColors = {
-      pending: 'badge-warning',
-      running: 'badge-info',
-      completed: 'badge-success',
-      failed: 'badge-danger'
-    };
-    return statusColors[status as keyof typeof statusColors] || 'badge-secondary';
+    switch (status?.toLowerCase()) {
+      case 'pending':
+        return 'status-badge-warning';
+      case 'running':
+        return 'status-badge-info';
+      case 'completed':
+        return 'status-badge-success';
+      case 'failed':
+        return 'status-badge-danger';
+      default:
+        return 'status-badge-neutral';
+    }
   };
 
   const getDuplicateStatusBadge = (status: string) => {
-    const statusColors = {
-      unique: 'badge-success',
-      duplicate: 'badge-warning',
-      similar: 'badge-info'
-    };
-    return statusColors[status as keyof typeof statusColors] || 'badge-secondary';
-  };
-
-  // CRUD Handlers
-  const handleEditJob = (job: DiscoveryJob) => {
-    setEditingJob(job);
-    setShowEditJobModal(true);
-  };
-
-  const handleCancelJob = async (jobId: number) => {
-    if (!window.confirm('Are you sure you want to cancel this running discovery job?')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await discoveryApi.cancelJob(jobId);
-      await loadJobs();
-      alert('Discovery job cancelled successfully');
-    } catch (err: any) {
-      setError(err.message || 'Failed to cancel discovery job');
-    } finally {
-      setLoading(false);
+    switch (status?.toLowerCase()) {
+      case 'unique':
+        return 'status-badge-success';
+      case 'duplicate':
+        return 'status-badge-warning';
+      case 'similar':
+        return 'status-badge-info';
+      default:
+        return 'status-badge-neutral';
     }
   };
 
-  const handleDeleteJob = async (jobId: number) => {
-    if (!window.confirm('Are you sure you want to delete this discovery job? This will also delete all discovered targets from this job.')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await discoveryApi.deleteJob(jobId);
-      await loadJobs();
-      alert('Discovery job deleted successfully');
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete discovery job');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateJob = async (jobData: Partial<DiscoveryJobCreate>) => {
-    if (!editingJob) return;
-
-    try {
-      setLoading(true);
-      await discoveryApi.updateJob(editingJob.id, jobData);
-      setShowEditJobModal(false);
-      setEditingJob(null);
-      await loadJobs();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update discovery job');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditTarget = (target: DiscoveredTarget) => {
-    setEditingTarget(target);
-    setShowEditTargetModal(true);
-  };
-
-  const handleDeleteTarget = async (targetId: number) => {
-    if (!window.confirm('Are you sure you want to delete this discovered target?')) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await discoveryApi.deleteTarget(targetId);
-      await loadTargets();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete discovered target');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateTarget = async (targetData: Partial<DiscoveredTarget>) => {
-    if (!editingTarget) return;
-
-    try {
-      setLoading(true);
-      await discoveryApi.updateTarget(editingTarget.id, targetData);
-      setShowEditTargetModal(false);
-      setEditingTarget(null);
-      await loadTargets();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update discovered target');
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (loading && jobs.length === 0 && targets.length === 0) {
+    return (
+      <div className="loading-overlay">
+        <div className="loading-spinner"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="discovery-page">
+    <div className="dense-dashboard">
       <style>
         {`
+          /* Dashboard-style layout - EXACT MATCH */
+          .dense-dashboard {
+            padding: 8px 12px;
+            max-width: 100%;
+            font-size: 13px;
+          }
+          .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .header-left h1 {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--neutral-800);
+          }
+          .header-subtitle {
+            font-size: 12px;
+            color: var(--neutral-600);
+            margin: 2px 0 0 0;
+          }
+          .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            align-items: stretch;
+            height: calc(100vh - 110px);
+          }
+          .dashboard-section {
+            background: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+          }
+          .section-header {
+            background: var(--neutral-50);
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .compact-content {
+            padding: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: auto;
+          }
+          .table-container {
+            flex: 1;
+            overflow: auto;
+          }
+          
+          /* Jobs table styles */
+          .jobs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+          .jobs-table th {
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            font-size: 11px;
+          }
+          .jobs-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--neutral-100);
+            vertical-align: middle;
+            font-size: 12px;
+          }
+          .jobs-table tr:hover {
+            background: var(--neutral-50);
+          }
+          .jobs-table tr.selected {
+            background: var(--primary-blue-light);
+            border-left: 3px solid var(--primary-blue);
+          }
+          .jobs-table tr {
+            cursor: pointer;
+          }
+          
+          /* Targets table styles */
+          .targets-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+          }
+          .targets-table th {
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            font-size: 11px;
+          }
+          .targets-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--neutral-100);
+            vertical-align: middle;
+            font-size: 12px;
+          }
+          .targets-table tr:hover {
+            background: var(--neutral-50);
+          }
+          .targets-table tr.selected {
+            background: var(--primary-blue-light);
+            border-left: 3px solid var(--primary-blue);
+          }
+          .targets-table tr {
+            cursor: pointer;
+          }
+          
+          /* Details panel */
+          .details-panel {
+            padding: 8px;
+          }
+          .details-panel h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .detail-group {
+            margin-bottom: 12px;
+          }
+          .detail-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--neutral-500);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .detail-value {
+            font-size: 12px;
+            color: var(--neutral-800);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-100);
+          }
+          
+          /* Create form styles */
+          .create-form {
+            padding: 8px;
+          }
+          .form-group {
+            margin-bottom: 12px;
+          }
+          .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--neutral-700);
+            margin-bottom: 4px;
+            display: block;
+          }
+          .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+          }
+          .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          .form-textarea {
+            min-height: 60px;
+            resize: vertical;
+          }
+          
+          /* Button styles */
           .btn-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             border: none;
             background: none;
             cursor: pointer;
-            transition: all 0.2s;
-            margin: 0 2px;
-            padding: 4px;
+            transition: all 0.15s;
+            margin: 0 1px;
+            padding: 2px;
           }
           .btn-icon:hover {
             opacity: 0.7;
@@ -506,261 +605,406 @@ const Discovery: React.FC = () => {
             cursor: not-allowed;
           }
           .btn-success {
-            color: #10b981;
+            color: var(--success-green);
           }
           .btn-success:hover:not(:disabled) {
-            color: #059669;
+            color: var(--success-green-dark);
           }
           .btn-danger {
-            color: #ef4444;
+            color: var(--danger-red);
           }
           .btn-danger:hover:not(:disabled) {
-            color: #dc2626;
+            color: var(--danger-red);
           }
           .btn-ghost {
-            color: #6b7280;
+            color: var(--neutral-500);
           }
           .btn-ghost:hover:not(:disabled) {
-            color: #374151;
+            color: var(--neutral-700);
+          }
+          .btn-primary {
+            background: var(--primary-blue);
+            color: white;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+          }
+          .btn-primary:hover:not(:disabled) {
+            background: var(--primary-blue-dark);
+          }
+          .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          
+          .action-buttons {
+            display: flex;
+            gap: 4px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--neutral-200);
+          }
+          
+          .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 150px;
+            color: var(--neutral-500);
+            text-align: center;
+          }
+          .empty-state h3 {
+            margin: 0 0 6px 0;
+            font-size: 14px;
+            font-weight: 600;
+          }
+          .empty-state p {
+            margin: 0 0 12px 0;
+            font-size: 12px;
+          }
+          
+          .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .status-badge-success {
+            background: var(--success-green-light);
+            color: var(--success-green);
+          }
+          .status-badge-danger {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
+          .status-badge-warning {
+            background: var(--warning-yellow-light);
+            color: var(--warning-yellow);
+          }
+          .status-badge-info {
+            background: var(--primary-blue-light);
+            color: var(--primary-blue);
+          }
+          .status-badge-neutral {
+            background: var(--neutral-200);
+            color: var(--neutral-600);
+          }
+          
+          .service-badge {
+            display: inline-block;
+            background: var(--neutral-100);
+            color: var(--neutral-700);
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            margin: 1px;
+          }
+          
+          .checkbox-input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+          }
+          
+          .network-range-item {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 6px;
+            align-items: center;
+          }
+          .network-range-item input {
+            flex: 1;
+          }
+          .network-range-item button {
+            padding: 4px 8px;
+            font-size: 10px;
+            border: 1px solid var(--neutral-300);
+            background: white;
+            border-radius: 3px;
+            cursor: pointer;
+          }
+          .network-range-item button:hover {
+            background: var(--neutral-50);
+          }
+          
+          .service-category {
+            margin-bottom: 12px;
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+          }
+          .service-category-header {
+            background: var(--neutral-50);
+            padding: 6px 8px;
+            font-weight: 600;
+            font-size: 11px;
+            border-bottom: 1px solid var(--neutral-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .service-category-content {
+            padding: 6px 8px;
+          }
+          .service-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 11px;
+          }
+          .service-item input[type="checkbox"] {
+            width: 12px;
+            height: 12px;
+          }
+          .service-item input[type="number"] {
+            width: 60px;
+            padding: 2px 4px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 3px;
+            font-size: 11px;
+          }
+          
+          .alert {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            font-size: 12px;
+          }
+          
+          .bulk-actions {
+            padding: 8px;
+            background: var(--neutral-50);
+            border-bottom: 1px solid var(--neutral-200);
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+          }
+          .bulk-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            border: 1px solid var(--neutral-300);
+            background: white;
+            border-radius: 3px;
+            cursor: pointer;
+          }
+          .bulk-actions button:hover {
+            background: var(--neutral-100);
+          }
+          .bulk-actions button.btn-success {
+            background: var(--success-green);
+            color: white;
+            border-color: var(--success-green);
+          }
+          .bulk-actions button.btn-danger {
+            background: var(--danger-red);
+            color: white;
+            border-color: var(--danger-red);
           }
         `}
       </style>
-      <div className="page-header">
-        <h1>Target Discovery</h1>
-        <p>Automatically discover Windows machines and other targets on your network</p>
+      
+      {/* Dashboard-style header */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>Target Discovery</h1>
+          <p className="header-subtitle">Automatically discover Windows machines and other targets on your network</p>
+        </div>
+        <div className="header-actions">
+          <button 
+            className="btn-icon btn-success"
+            onClick={() => setShowCreateForm(true)}
+            title="Create new discovery job"
+            disabled={showCreateForm}
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div className="alert alert-danger" role="alert">
+        <div className="alert">
           {error}
           <button 
-            type="button" 
-            className="btn-close" 
+            style={{ float: 'right', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}
             onClick={() => setError(null)}
-          ></button>
+          >
+            ×
+          </button>
         </div>
       )}
 
-      {/* Tab Navigation */}
-      <div className="nav nav-tabs mb-4">
-        <button
-          className={`nav-link ${activeTab === 'jobs' ? 'active' : ''}`}
-          onClick={() => setActiveTab('jobs')}
-        >
-          Discovery Jobs
-        </button>
-        <button
-          className={`nav-link ${activeTab === 'targets' ? 'active' : ''}`}
-          onClick={() => setActiveTab('targets')}
-        >
-          Discovered Targets
-        </button>
-        <button
-          className={`nav-link ${activeTab === 'create' ? 'active' : ''}`}
-          onClick={() => setActiveTab('create')}
-        >
-          Create Discovery Job
-        </button>
-      </div>
-
-      {/* Discovery Jobs Tab */}
-      {activeTab === 'jobs' && (
-        <div className="tab-content">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h3>Discovery Jobs</h3>
+      {/* 3-column dashboard grid */}
+      <div className="dashboard-grid">
+        {/* Column 1: Discovery Jobs */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            Discovery Jobs ({jobs.length})
             <button 
               className="btn-icon btn-success"
-              onClick={() => setActiveTab('create')}
-              title="New Discovery Job"
+              onClick={() => setShowCreateForm(true)}
+              title="Create new job"
+              disabled={showCreateForm}
             >
-              <Plus size={16} />
+              <Plus size={14} />
             </button>
           </div>
-
-          {loading ? (
-            <div className="text-center">
-              <div className="spinner-border" role="status">
-                <span className="visually-hidden">Loading...</span>
+          <div className="compact-content">
+            {jobs.length === 0 ? (
+              <div className="empty-state">
+                <h3>No discovery jobs</h3>
+                <p>Create your first discovery job to get started.</p>
+                <button 
+                  className="btn-icon btn-success"
+                  onClick={() => setShowCreateForm(true)}
+                  title="Create first job"
+                >
+                  <Plus size={16} />
+                </button>
               </div>
-            </div>
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-striped">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Duration</th>
-                    <th>Results</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.length === 0 ? (
+            ) : (
+              <div className="table-container">
+                <table className="jobs-table">
+                  <thead>
                     <tr>
-                      <td colSpan={6} className="text-center text-muted">
-                        No discovery jobs found. Create your first discovery job to get started.
-                      </td>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th>Results</th>
+                      <th>Actions</th>
                     </tr>
-                  ) : (
-                    jobs.map(job => (
-                      <tr key={job.id}>
+                  </thead>
+                  <tbody>
+                    {jobs.map((job) => (
+                      <tr 
+                        key={job.id} 
+                        className={selectedJob?.id === job.id ? 'selected' : ''}
+                        onClick={() => setSelectedJob(job)}
+                      >
+                        <td style={{ fontWeight: '500' }}>{job.name}</td>
                         <td>
-                          <strong>{job.name}</strong>
-                        </td>
-                        <td>
-                          <span className={`badge ${getStatusBadge(job.status)}`}>
+                          <span className={`status-badge ${getStatusBadge(job.status)}`}>
                             {job.status}
                           </span>
                         </td>
-                        <td>{new Date(job.created_at).toLocaleString()}</td>
-                        <td>
-                          {job.started_at && job.completed_at ? (
-                            `${Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)}s`
-                          ) : job.started_at ? (
-                            'Running...'
-                          ) : (
-                            '-'
-                          )}
-                        </td>
                         <td>
                           {job.results_summary ? (
-                            <div className="small">
+                            <div style={{ fontSize: '10px' }}>
                               <div>Hosts: {job.results_summary.total_hosts || 0}</div>
-                              <div>Windows: {job.results_summary.windows_hosts || 0}</div>
-                              <div>Linux: {job.results_summary.linux_hosts || 0}</div>
+                              <div>Win: {job.results_summary.windows_hosts || 0}</div>
                             </div>
                           ) : (
                             '-'
                           )}
                         </td>
                         <td>
-                          <div className="btn-group btn-group-sm">
-                            {(job.status === 'pending' || job.status === 'failed') && (
-                              <button
-                                className="btn btn-outline-primary"
-                                onClick={() => handleEditJob(job)}
-                                title="Edit Job"
-                              >
-                                Edit
-                              </button>
-                            )}
-                            {job.status === 'running' ? (
-                              <button
-                                className="btn btn-outline-warning"
-                                onClick={() => handleCancelJob(job.id)}
-                                title="Cancel Running Job"
-                              >
-                                Cancel
-                              </button>
-                            ) : (
-                              <button
-                                className="btn btn-outline-danger"
-                                onClick={() => handleDeleteJob(job.id)}
-                                title="Delete Job"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
+                          {job.status === 'running' ? (
+                            <button
+                              className="btn-icon btn-ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelJob(job.id);
+                              }}
+                              title="Cancel job"
+                            >
+                              <Square size={14} />
+                            </button>
+                          ) : (
+                            <button
+                              className="btn-icon btn-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteJob(job.id);
+                              }}
+                              title="Delete job"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Column 2: Discovered Targets */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            Discovered Targets ({targets.length})
+          </div>
+          {selectedTargets.length > 0 && (
+            <div className="bulk-actions">
+              <button 
+                className="btn-success"
+                onClick={handleImportTargets}
+                disabled={loading}
+              >
+                Import ({selectedTargets.length})
+              </button>
+              <button 
+                onClick={handleIgnoreTargets}
+                disabled={loading}
+              >
+                Ignore ({selectedTargets.length})
+              </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Discovered Targets Tab */}
-      {activeTab === 'targets' && (
-        <div className="tab-content">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h3>Discovered Targets</h3>
-            <div>
-              {selectedTargets.length > 0 && (
-                <div className="btn-group">
-                  <button 
-                    className="btn btn-success"
-                    onClick={handleImportTargets}
-                    disabled={loading}
-                    title="Import selected targets to registered targets and remove from this list"
-                  >
-                    Import ({selectedTargets.length})
-                  </button>
-                  <button 
-                    className="btn btn-secondary"
-                    onClick={handleIgnoreTargets}
-                    disabled={loading}
-                    title="Remove selected targets from this list permanently"
-                  >
-                    Ignore ({selectedTargets.length})
-                  </button>
-                  <button 
-                    className="btn btn-danger"
-                    onClick={handleDeleteTargets}
-                    disabled={loading}
-                    title="Permanently delete selected targets"
-                  >
-                    Delete ({selectedTargets.length})
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="text-center">
-              <div className="spinner-border" role="status">
-                <span className="visually-hidden">Loading...</span>
+          <div className="compact-content">
+            {targets.length === 0 ? (
+              <div className="empty-state">
+                <h3>No discovered targets</h3>
+                <p>Run a discovery job to find targets.</p>
               </div>
-            </div>
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-striped">
-                <thead>
-                  <tr>
-                    <th>
-                      <input
-                        type="checkbox"
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedTargets(targets.filter(t => t.import_status === 'pending').map(t => t.id));
-                          } else {
-                            setSelectedTargets([]);
-                          }
-                        }}
-                        checked={selectedTargets.length > 0 && selectedTargets.length === targets.filter(t => t.import_status === 'pending').length}
-                      />
-                    </th>
-                    <th>IP Address</th>
-                    <th>Hostname</th>
-                    <th>OS</th>
-                    <th>Services</th>
-                    <th>Status</th>
-                    <th>Discovered</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {targets.length === 0 ? (
+            ) : (
+              <div className="table-container">
+                <table className="targets-table">
+                  <thead>
                     <tr>
-                      <td colSpan={8} className="text-center text-muted">
-                        No discovered targets found. Run a discovery job to find targets.
-                      </td>
+                      <th>
+                        <input
+                          type="checkbox"
+                          className="checkbox-input"
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTargets(targets.filter(t => t.import_status === 'pending').map(t => t.id));
+                            } else {
+                              setSelectedTargets([]);
+                            }
+                          }}
+                          checked={selectedTargets.length > 0 && selectedTargets.length === targets.filter(t => t.import_status === 'pending').length}
+                        />
+                      </th>
+                      <th>IP Address</th>
+                      <th>Hostname</th>
+                      <th>OS</th>
+                      <th>Services</th>
                     </tr>
-                  ) : (
-                    targets.map(target => (
-                      <tr key={target.id}>
+                  </thead>
+                  <tbody>
+                    {targets.map((target) => (
+                      <tr 
+                        key={target.id} 
+                        className={selectedTarget?.id === target.id ? 'selected' : ''}
+                        onClick={() => setSelectedTarget(target)}
+                      >
                         <td>
                           {target.import_status === 'pending' && (
                             <input
                               type="checkbox"
+                              className="checkbox-input"
                               checked={selectedTargets.includes(target.id)}
                               onChange={(e) => {
+                                e.stopPropagation();
                                 if (e.target.checked) {
                                   setSelectedTargets(prev => [...prev, target.id]);
                                 } else {
@@ -770,593 +1014,341 @@ const Discovery: React.FC = () => {
                             />
                           )}
                         </td>
-                        <td>
-                          <strong>{target.ip_address}</strong>
-                        </td>
+                        <td style={{ fontWeight: '500' }}>{target.ip_address}</td>
                         <td>{target.hostname || '-'}</td>
                         <td>
                           {target.os_type && (
                             <div>
                               <div>{target.os_type}</div>
                               {target.os_version && (
-                                <small className="text-muted">{target.os_version}</small>
+                                <div style={{ fontSize: '10px', color: 'var(--neutral-500)' }}>{target.os_version}</div>
                               )}
                             </div>
                           )}
                         </td>
                         <td>
                           {target.services.length > 0 ? (
-                            <div className="small">
-                              {target.services.map((service, idx) => (
-                                <span key={idx} className="badge badge-info me-1 mb-1">
+                            <div>
+                              {target.services.slice(0, 3).map((service, idx) => (
+                                <span key={idx} className="service-badge">
                                   {service.protocol}:{service.port}
-                                  {service.is_secure && ' (SSL)'}
                                 </span>
                               ))}
+                              {target.services.length > 3 && (
+                                <span className="service-badge">+{target.services.length - 3}</span>
+                              )}
                             </div>
                           ) : (
                             '-'
                           )}
                         </td>
-                        <td>
-                          <div>
-                            <span className={`badge ${getDuplicateStatusBadge(target.duplicate_status)} me-1`}>
-                              {target.duplicate_status}
-                            </span>
-                            <span className={`badge ${target.import_status === 'pending' ? 'badge-warning' : target.import_status === 'imported' ? 'badge-success' : 'badge-secondary'}`}>
-                              {target.import_status}
-                            </span>
-                          </div>
-                        </td>
-                        <td>{new Date(target.discovered_at).toLocaleString()}</td>
-                        <td>
-                          <div className="btn-group btn-group-sm">
-                            <button
-                              className="btn btn-outline-primary"
-                              onClick={() => handleEditTarget(target)}
-                              title="Edit Target"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="btn btn-outline-danger"
-                              onClick={() => handleDeleteTarget(target.id)}
-                              title="Delete Target"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-          
-          {/* Pagination Controls */}
-          {totalTargets > pageSize && (
-            <div className="d-flex justify-content-between align-items-center mt-3">
-              <div className="text-muted">
-                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalTargets)} of {totalTargets} targets
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <nav>
-                <ul className="pagination pagination-sm mb-0">
-                  <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                    <button 
-                      className="page-link" 
-                      onClick={() => loadTargets(currentPage - 1)}
-                      disabled={currentPage === 1 || loading}
-                    >
-                      Previous
-                    </button>
-                  </li>
-                  
-                  {/* Page numbers */}
-                  {Array.from({ length: Math.ceil(totalTargets / pageSize) }, (_, i) => i + 1)
-                    .filter(page => {
-                      // Show first page, last page, current page, and 2 pages around current
-                      const totalPages = Math.ceil(totalTargets / pageSize);
-                      return page === 1 || page === totalPages || 
-                             (page >= currentPage - 2 && page <= currentPage + 2);
-                    })
-                    .map((page, index, array) => {
-                      // Add ellipsis if there's a gap
-                      const showEllipsis = index > 0 && page - array[index - 1] > 1;
-                      return (
-                        <React.Fragment key={page}>
-                          {showEllipsis && (
-                            <li className="page-item disabled">
-                              <span className="page-link">...</span>
-                            </li>
-                          )}
-                          <li className={`page-item ${currentPage === page ? 'active' : ''}`}>
-                            <button 
-                              className="page-link" 
-                              onClick={() => loadTargets(page)}
-                              disabled={loading}
-                            >
-                              {page}
-                            </button>
-                          </li>
-                        </React.Fragment>
-                      );
-                    })}
-                  
-                  <li className={`page-item ${currentPage === Math.ceil(totalTargets / pageSize) ? 'disabled' : ''}`}>
-                    <button 
-                      className="page-link" 
-                      onClick={() => loadTargets(currentPage + 1)}
-                      disabled={currentPage === Math.ceil(totalTargets / pageSize) || loading}
-                    >
-                      Next
-                    </button>
-                  </li>
-                </ul>
-              </nav>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      )}
 
-      {/* Create Discovery Job Tab */}
-      {activeTab === 'create' && (
-        <div className="tab-content">
-          <h3>Create Discovery Job</h3>
-          <form onSubmit={handleCreateJob} className="row g-3">
-            <div className="col-md-6">
-              <label htmlFor="jobName" className="form-label">Job Name</label>
-              <input
-                type="text"
-                className="form-control"
-                id="jobName"
-                value={newJob.name}
-                onChange={(e) => setNewJob(prev => ({ ...prev, name: e.target.value }))}
-                required
-              />
-            </div>
-
-
-
-            <div className="col-12">
-              <label className="form-label">Network Ranges</label>
-              <div className="mb-2">
-                <small className="text-muted">
-                  Supports multiple formats:
-                  <ul className="mb-0 mt-1">
-                    <li><strong>CIDR:</strong> 192.168.1.0/24</li>
-                    <li><strong>IP Range:</strong> 192.168.1.100-120 or 192.168.1.100-192.168.1.120</li>
-                    <li><strong>Individual IPs:</strong> 192.168.1.20, 192.168.1.22, 192.168.1.25</li>
-                    <li><strong>Mixed:</strong> 192.168.1.23, 192.168.1.26-32, 10.0.0.0/24</li>
-                  </ul>
-                </small>
-              </div>
-              {newJob.config.cidr_ranges?.map((range, index) => {
-                const validation = validationResults[index];
-                const inputClass = validation 
-                  ? validation.valid 
-                    ? "form-control is-valid" 
-                    : "form-control is-invalid"
-                  : "form-control";
-                
-                return (
-                  <div key={index} className="input-group mb-2">
+        {/* Column 3: Details/Create Panel */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            {showCreateForm ? 'Create Discovery Job' : selectedJob ? 'Job Details' : selectedTarget ? 'Target Details' : 'Select Item'}
+            {showCreateForm && (
+              <button 
+                className="btn-icon btn-ghost"
+                onClick={() => setShowCreateForm(false)}
+                title="Cancel"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="compact-content">
+            {showCreateForm ? (
+              <div className="create-form">
+                <form onSubmit={handleCreateJob}>
+                  <div className="form-group">
+                    <label className="form-label">Job Name</label>
                     <input
                       type="text"
-                      className={inputClass}
-                      placeholder="e.g., 192.168.1.0/24, 192.168.1.100-120, 10.0.0.1,10.0.0.5"
-                      value={range}
-                      onChange={(e) => {
-                        updateCidrRange(index, e.target.value);
-                        // Clear validation when user changes input
-                        if (validationResults[index]) {
-                          setValidationResults(prev => {
-                            const newResults = { ...prev };
-                            delete newResults[index];
-                            return newResults;
-                          });
-                        }
-                      }}
+                      className="form-input"
+                      value={newJob.name}
+                      onChange={(e) => setNewJob(prev => ({ ...prev, name: e.target.value }))}
+                      required
+                      placeholder="Enter job name"
                     />
-                    <button
-                      type="button"
-                      className="btn btn-outline-info"
-                      onClick={() => validateNetworkRange(range, index)}
-                      title="Validate and preview targets"
-                      disabled={!range.trim()}
-                    >
-                      Validate
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-danger"
-                      onClick={() => removeCidrRange(index)}
-                      disabled={newJob.config.cidr_ranges?.length === 1}
-                    >
-                      Remove
-                    </button>
-                    {validation && (
-                      <div className={`invalid-feedback d-block ${validation.valid ? 'text-success' : ''}`}>
-                        {validation.valid 
-                          ? <span><Check size={14} className="inline mr-1" />Valid - {validation.parsed_count} target(s)</span>
-                          : <span><X size={14} className="inline mr-1" />{validation.error}</span>
-                        }
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-              <button
-                type="button"
-                className="btn btn-outline-primary btn-sm"
-                onClick={addCidrRange}
-              >
-                Add Network Range
-              </button>
-            </div>
 
-            <div className="col-12">
-              <label className="form-label">Services to Scan</label>
-              <div className="card">
-                <div className="card-body">
-                  <div className="row">
-                    {Object.entries(getServicesByCategory()).map(([category, services]) => {
-                      const enabledCount = services.filter(s => s.enabled).length;
-                      const totalCount = services.length;
-                      
+                  <div className="form-group">
+                    <label className="form-label">Network Ranges</label>
+                    <div style={{ fontSize: '10px', color: 'var(--neutral-600)', marginBottom: '6px' }}>
+                      CIDR: 192.168.1.0/24, Range: 192.168.1.100-120, IPs: 192.168.1.20,192.168.1.22
+                    </div>
+                    {newJob.config.cidr_ranges?.map((range, index) => {
+                      const validation = validationResults[index];
                       return (
-                        <div key={category} className="col-md-6 col-lg-4 mb-3">
-                          <div className="card h-100">
-                            <div className="card-header d-flex justify-content-between align-items-center py-2">
-                              <h6 className="mb-0">{category}</h6>
-                              <div className="form-check">
+                        <div key={index} className="network-range-item">
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g., 192.168.1.0/24"
+                            value={range}
+                            onChange={(e) => {
+                              updateCidrRange(index, e.target.value);
+                              if (validationResults[index]) {
+                                setValidationResults(prev => {
+                                  const newResults = { ...prev };
+                                  delete newResults[index];
+                                  return newResults;
+                                });
+                              }
+                            }}
+                            style={{
+                              borderColor: validation ? (validation.valid ? 'var(--success-green)' : 'var(--danger-red)') : 'var(--neutral-300)'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => validateNetworkRange(range, index)}
+                            disabled={!range.trim()}
+                            title="Validate"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeCidrRange(index)}
+                            disabled={newJob.config.cidr_ranges?.length === 1}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={addCidrRange}
+                      style={{ fontSize: '11px', padding: '4px 8px', border: '1px solid var(--neutral-300)', background: 'white', borderRadius: '3px', cursor: 'pointer' }}
+                    >
+                      Add Range
+                    </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Services to Scan</label>
+                    <div style={{ maxHeight: '300px', overflow: 'auto' }}>
+                      {Object.entries(getServicesByCategory()).map(([category, services]) => {
+                        const enabledCount = services.filter(s => s.enabled).length;
+                        const totalCount = services.length;
+                        
+                        return (
+                          <div key={category} className="service-category">
+                            <div className="service-category-header">
+                              <span>{category}</span>
+                              <label style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <input
-                                  className="form-check-input"
                                   type="checkbox"
-                                  id={`category-${category}`}
                                   checked={enabledCount === totalCount}
                                   onChange={(e) => toggleCategoryServices(category, e.target.checked)}
                                 />
-                                <label className="form-check-label small" htmlFor={`category-${category}`}>
-                                  All ({enabledCount}/{totalCount})
-                                </label>
-                              </div>
+                                All ({enabledCount}/{totalCount})
+                              </label>
                             </div>
-                            <div className="card-body py-2">
+                            <div className="service-category-content">
                               {services.map(service => (
-                                <div key={service.name} className="row align-items-center mb-2">
-                                  <div className="col-1">
-                                    <input
-                                      className="form-check-input"
-                                      type="checkbox"
-                                      id={`service-${service.name}`}
-                                      checked={service.enabled}
-                                      onChange={(e) => updateServiceEnabled(service.name, e.target.checked)}
-                                    />
-                                  </div>
-                                  <div className="col-5">
-                                    <label className="form-check-label small" htmlFor={`service-${service.name}`}>
-                                      {service.name}
-                                    </label>
-                                  </div>
-                                  <div className="col-6">
-                                    <input
-                                      type="number"
-                                      className="form-control form-control-sm"
-                                      value={service.port}
-                                      onChange={(e) => updateServicePort(service.name, parseInt(e.target.value) || service.port)}
-                                      min="1"
-                                      max="65535"
-                                      disabled={!service.enabled}
-                                    />
-                                  </div>
+                                <div key={service.name} className="service-item">
+                                  <input
+                                    type="checkbox"
+                                    checked={service.enabled}
+                                    onChange={(e) => updateServiceEnabled(service.name, e.target.checked)}
+                                  />
+                                  <span style={{ flex: 1 }}>{service.name}</span>
+                                  <input
+                                    type="number"
+                                    value={service.port}
+                                    onChange={(e) => updateServicePort(service.name, parseInt(e.target.value) || service.port)}
+                                    min="1"
+                                    max="65535"
+                                  />
                                 </div>
                               ))}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="mt-2">
-                    <small className="text-muted">
-                      Select the services you want to scan for. Port numbers can be customized for each service.
-                      {newJob.config.services?.filter(s => s.enabled).length === 0 && (
-                        <span className="text-warning"> No services selected - please select at least one service to scan.</span>
-                      )}
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div className="col-md-4">
-              <label htmlFor="timeout" className="form-label">Timeout (seconds)</label>
-              <input
-                type="number"
-                className="form-control"
-                id="timeout"
-                min="60"
-                max="3600"
-                value={newJob.config.timeout}
-                onChange={(e) => setNewJob(prev => ({
-                  ...prev,
-                  config: { ...prev.config, timeout: parseInt(e.target.value) }
-                }))}
-              />
-            </div>
-
-            <div className="col-md-4">
-              <label className="form-label">Options</label>
-              <div className="form-check">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id="osDetection"
-                  checked={newJob.config.os_detection}
-                  onChange={(e) => setNewJob(prev => ({
-                    ...prev,
-                    config: { ...prev.config, os_detection: e.target.checked }
-                  }))}
-                />
-                <label className="form-check-label" htmlFor="osDetection">
-                  OS Detection
-                </label>
-              </div>
-
-            </div>
-
-            <div className="col-12">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-              >
-                {loading ? 'Creating...' : 'Create Discovery Job'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary ms-2"
-                onClick={() => setActiveTab('jobs')}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Edit Job Modal */}
-      {showEditJobModal && editingJob && (
-        <div className="modal show d-block" tabIndex={-1}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Edit Discovery Job</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowEditJobModal(false);
-                    setEditingJob(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.target as HTMLFormElement);
-                  const name = formData.get('name') as string;
-                  const config = editingJob.config;
-                  handleUpdateJob({ name, config });
-                }}>
-                  <div className="mb-3">
-                    <label htmlFor="editJobName" className="form-label">Job Name</label>
+                  <div className="form-group">
+                    <label className="form-label">Timeout (seconds)</label>
                     <input
-                      type="text"
-                      className="form-control"
-                      id="editJobName"
-                      name="name"
-                      defaultValue={editingJob.name}
-                      required
+                      type="number"
+                      className="form-input"
+                      value={newJob.config.timeout}
+                      onChange={(e) => setNewJob(prev => ({
+                        ...prev,
+                        config: { ...prev.config, timeout: parseInt(e.target.value) || 300 }
+                      }))}
+                      min="30"
+                      max="3600"
                     />
                   </div>
-                  <div className="modal-footer">
-                    <button
+
+                  <div className="action-buttons">
+                    <button 
                       type="button"
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        setShowEditJobModal(false);
-                        setEditingJob(null);
-                      }}
+                      onClick={() => setShowCreateForm(false)}
+                      style={{ padding: '6px 12px', border: '1px solid var(--neutral-300)', background: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                     >
                       Cancel
                     </button>
-                    <button
+                    <button 
                       type="submit"
-                      className="btn btn-primary"
-                      disabled={loading}
+                      className="btn-primary"
+                      disabled={saving}
                     >
-                      {loading ? 'Updating...' : 'Update Job'}
+                      {saving ? 'Creating...' : 'Create Job'}
                     </button>
                   </div>
                 </form>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Target Modal */}
-      {showEditTargetModal && editingTarget && (
-        <div className="modal show d-block" tabIndex={-1}>
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Edit Discovered Target</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => {
-                    setShowEditTargetModal(false);
-                    setEditingTarget(null);
-                  }}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.target as HTMLFormElement);
-                  const hostname = formData.get('hostname') as string;
-                  const os_type = formData.get('os_type') as string;
-                  const os_version = formData.get('os_version') as string;
-                  const import_status = formData.get('import_status') as 'pending' | 'imported' | 'ignored' | 'duplicate_skipped';
-                  handleUpdateTarget({ hostname, os_type, os_version, import_status });
-                }}>
-                  <div className="mb-3">
-                    <label htmlFor="editHostname" className="form-label">Hostname</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      id="editHostname"
-                      name="hostname"
-                      defaultValue={editingTarget.hostname || ''}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label htmlFor="editOsType" className="form-label">OS Type</label>
-                    <select
-                      className="form-select"
-                      id="editOsType"
-                      name="os_type"
-                      defaultValue={editingTarget.os_type || ''}
-                    >
-                      <option value="">Unknown</option>
-                      <option value="windows">Windows</option>
-                      <option value="linux">Linux</option>
-                      <option value="unix">Unix</option>
-                      <option value="macos">macOS</option>
-                    </select>
-                  </div>
-                  <div className="mb-3">
-                    <label htmlFor="editOsVersion" className="form-label">OS Version</label>
-                    <input
-                      type="text"
-                      className="form-control"
-                      id="editOsVersion"
-                      name="os_version"
-                      defaultValue={editingTarget.os_version || ''}
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <label htmlFor="editImportStatus" className="form-label">Import Status</label>
-                    <select
-                      className="form-select"
-                      id="editImportStatus"
-                      name="import_status"
-                      defaultValue={editingTarget.import_status}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="imported">Imported</option>
-                      <option value="ignored">Ignored</option>
-                      <option value="duplicate_skipped">Duplicate Skipped</option>
-                    </select>
-                  </div>
-                  <div className="modal-footer">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        setShowEditTargetModal(false);
-                        setEditingTarget(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={loading}
-                    >
-                      {loading ? 'Updating...' : 'Update Target'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Network Range Validation Modal */}
-      {showValidationModal && currentValidationResult && (
-        <div className="modal show d-block" tabIndex={-1}>
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Network Range Validation</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => setShowValidationModal(false)}
-                ></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <strong>Input:</strong> <code>{currentValidationResult.input}</code>
-                </div>
+            ) : selectedJob ? (
+              <div className="details-panel">
+                <h3>{selectedJob.name}</h3>
                 
-                {currentValidationResult.valid ? (
-                  <div>
-                    <div className="alert alert-success">
-                      <i className="bi bi-check-circle me-2"></i>
-                      Valid network range! Found {currentValidationResult.parsed_count} target(s).
-                    </div>
-                    
-                    <div className="mb-3">
-                      <strong>Sample Targets:</strong>
-                      <div className="mt-2">
-                        {currentValidationResult.sample_targets.map((target: string, idx: number) => (
-                          <span key={idx} className="badge bg-secondary me-1 mb-1">{target}</span>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="mb-3">
-                      <strong>Optimized for Scanning:</strong>
-                      <div className="mt-2">
-                        {currentValidationResult.optimized_ranges.map((range: string, idx: number) => (
-                          <span key={idx} className="badge bg-info me-1 mb-1">{range}</span>
-                        ))}
-                      </div>
-                    </div>
+                <div className="detail-group">
+                  <div className="detail-label">Status</div>
+                  <div className="detail-value">
+                    <span className={`status-badge ${getStatusBadge(selectedJob.status)}`}>
+                      {selectedJob.status}
+                    </span>
                   </div>
-                ) : (
-                  <div className="alert alert-danger">
-                    <i className="bi bi-exclamation-triangle me-2"></i>
-                    <strong>Invalid network range:</strong> {currentValidationResult.error}
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Created</div>
+                  <div className="detail-value">{new Date(selectedJob.created_at).toLocaleString()}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Duration</div>
+                  <div className="detail-value">
+                    {selectedJob.started_at && selectedJob.completed_at ? (
+                      `${Math.round((new Date(selectedJob.completed_at).getTime() - new Date(selectedJob.started_at).getTime()) / 1000)}s`
+                    ) : selectedJob.started_at ? (
+                      'Running...'
+                    ) : (
+                      '-'
+                    )}
                   </div>
+                </div>
+
+                {selectedJob.results_summary && (
+                  <>
+                    <div className="detail-group">
+                      <div className="detail-label">Total Hosts</div>
+                      <div className="detail-value">{selectedJob.results_summary.total_hosts || 0}</div>
+                    </div>
+
+                    <div className="detail-group">
+                      <div className="detail-label">Windows Hosts</div>
+                      <div className="detail-value">{selectedJob.results_summary.windows_hosts || 0}</div>
+                    </div>
+
+                    <div className="detail-group">
+                      <div className="detail-label">Linux Hosts</div>
+                      <div className="detail-value">{selectedJob.results_summary.linux_hosts || 0}</div>
+                    </div>
+                  </>
                 )}
+
+                <div className="action-buttons">
+                  {selectedJob.status === 'running' ? (
+                    <button 
+                      className="btn-icon btn-ghost"
+                      onClick={() => handleCancelJob(selectedJob.id)}
+                      title="Cancel job"
+                    >
+                      <Square size={16} />
+                    </button>
+                  ) : (
+                    <button 
+                      className="btn-icon btn-danger"
+                      onClick={() => handleDeleteJob(selectedJob.id)}
+                      title="Delete job"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowValidationModal(false)}
-                >
-                  Close
-                </button>
+            ) : selectedTarget ? (
+              <div className="details-panel">
+                <h3>{selectedTarget.ip_address}</h3>
+                
+                <div className="detail-group">
+                  <div className="detail-label">IP Address</div>
+                  <div className="detail-value">{selectedTarget.ip_address}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Hostname</div>
+                  <div className="detail-value">{selectedTarget.hostname || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">OS Type</div>
+                  <div className="detail-value">{selectedTarget.os_type || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">OS Version</div>
+                  <div className="detail-value">{selectedTarget.os_version || '-'}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Import Status</div>
+                  <div className="detail-value">
+                    <span className={`status-badge ${getDuplicateStatusBadge(selectedTarget.import_status)}`}>
+                      {selectedTarget.import_status}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Discovered</div>
+                  <div className="detail-value">{new Date(selectedTarget.discovered_at).toLocaleString()}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Services ({selectedTarget.services.length})</div>
+                  <div className="detail-value">
+                    {selectedTarget.services.length > 0 ? (
+                      <div>
+                        {selectedTarget.services.map((service, idx) => (
+                          <div key={idx} style={{ fontSize: '11px', marginBottom: '2px' }}>
+                            {service.protocol}:{service.port}
+                            {service.is_secure && ' (SSL)'}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      'None detected'
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="empty-state">
+                <p>Select a discovery job or target to view details</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
-
-      {/* Modal backdrop */}
-      {(showEditJobModal || showEditTargetModal || showValidationModal) && (
-        <div className="modal-backdrop show"></div>
-      )}
+      </div>
     </div>
   );
 };

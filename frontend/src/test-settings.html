@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings Structure Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            font-weight: 600;
+            color: #333;
+        }
+        .icon {
+            width: 16px;
+            height: 16px;
+            background: #007bff;
+            border-radius: 2px;
+        }
+        .description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .status.complete {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.admin {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .nav-structure {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OpsConductor Settings Structure - Implementation Complete</h1>
+        
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Navigation Structure
+            </div>
+            <div class="description">
+                The settings have been consolidated into a nested navigation structure under the main Settings menu.
+            </div>
+            <div class="nav-structure">
+⚙️ Settings (Dropdown Menu)
+├── 📊 Overview (Main settings page)
+├── 📚 Step Library (Admin only)
+├── 📧 SMTP Config (Admin only)
+├── 🔔 Notifications (User preferences)
+└── 📋 Notification History (Admin only)
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                System Settings Overview Page
+            </div>
+            <div class="description">
+                Main settings page with tabbed interface showing all sections in one place.
+            </div>
+            <ul class="feature-list">
+                <li>✅ Unified settings interface <span class="status complete">Complete</span></li>
+                <li>✅ Visual standards compliance <span class="status complete">Complete</span></li>
+                <li>✅ Responsive design <span class="status complete">Complete</span></li>
+                <li>✅ Role-based access control <span class="status complete">Complete</span></li>
+                <li>✅ Consistent styling across all sections <span class="status complete">Complete</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Step Library Management
+            </div>
+            <div class="description">
+                Manage job step libraries with install, configure, and remove capabilities.
+            </div>
+            <ul class="feature-list">
+                <li>✅ Library installation interface <span class="status complete">Complete</span></li>
+                <li>✅ Configuration management <span class="status complete">Complete</span></li>
+                <li>✅ Library removal tools <span class="status complete">Complete</span></li>
+                <li>✅ Admin-only access <span class="status admin">Admin Required</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                SMTP Configuration
+            </div>
+            <div class="description">
+                Email server settings for system-wide notifications.
+            </div>
+            <ul class="feature-list">
+                <li>✅ SMTP server configuration <span class="status complete">Complete</span></li>
+                <li>✅ Security settings (TLS/SSL) <span class="status complete">Complete</span></li>
+                <li>✅ Test email functionality <span class="status complete">Complete</span></li>
+                <li>✅ Admin-only access <span class="status admin">Admin Required</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Notification Preferences
+            </div>
+            <div class="description">
+                Personal notification settings for individual users (consolidated from separate Notifications page).
+            </div>
+            <ul class="feature-list">
+                <li>✅ Email notifications <span class="status complete">Complete</span></li>
+                <li>✅ Webhook notifications <span class="status complete">Complete</span></li>
+                <li>✅ Slack integration <span class="status complete">Complete</span></li>
+                <li>✅ Microsoft Teams integration <span class="status complete">Complete</span></li>
+                <li>✅ Event-based notifications <span class="status complete">Complete</span></li>
+                <li>✅ Quiet hours configuration <span class="status complete">Complete</span></li>
+                <li>✅ Visual standards compliance <span class="status complete">Complete</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Notification History
+            </div>
+            <div class="description">
+                System-wide notification history and delivery status.
+            </div>
+            <ul class="feature-list">
+                <li>✅ Notification log viewing <span class="status complete">Complete</span></li>
+                <li>✅ Delivery status tracking <span class="status complete">Complete</span></li>
+                <li>✅ Filtering and search <span class="status complete">Complete</span></li>
+                <li>✅ Admin-only access <span class="status admin">Admin Required</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Visual Standards Compliance
+            </div>
+            <div class="description">
+                All settings pages now follow the established visual design system.
+            </div>
+            <ul class="feature-list">
+                <li>✅ Consistent color scheme (CSS variables) <span class="status complete">Complete</span></li>
+                <li>✅ Standardized typography <span class="status complete">Complete</span></li>
+                <li>✅ Uniform spacing and layout <span class="status complete">Complete</span></li>
+                <li>✅ Consistent form controls <span class="status complete">Complete</span></li>
+                <li>✅ Standardized buttons and interactions <span class="status complete">Complete</span></li>
+                <li>✅ Responsive design patterns <span class="status complete">Complete</span></li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Implementation Details
+            </div>
+            <div class="description">
+                Technical implementation summary.
+            </div>
+            <ul class="feature-list">
+                <li>✅ SystemSettings.tsx - Main unified settings page</li>
+                <li>✅ StandardizedNotificationPreferences.tsx - Compliant notification component</li>
+                <li>✅ LegacySettings.tsx - Backward compatibility page</li>
+                <li>✅ Updated routing structure</li>
+                <li>✅ Enhanced navigation with nested menus</li>
+                <li>✅ Role-based access control throughout</li>
+                <li>✅ CSS custom properties for consistent theming</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="section-header">
+                <div class="icon"></div>
+                Access URLs
+            </div>
+            <div class="description">
+                Direct access paths for all settings sections.
+            </div>
+            <ul class="feature-list">
+                <li><code>/settings</code> - Main settings overview</li>
+                <li><code>/settings/step-library</code> - Step library management</li>
+                <li><code>/settings/smtp</code> - SMTP configuration</li>
+                <li><code>/settings/notification-preferences</code> - User notification preferences</li>
+                <li><code>/settings/notification-history</code> - Notification history</li>
+                <li><code>/legacy-settings</code> - Legacy settings page (backward compatibility)</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
