@@ -80,3 +80,21 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+
+# System and user files
+.Xauthority
+.bash_history
+.bash_logout
+.bashrc
+.cache/
+.docker/
+.dotnet/
+.git-credentials
+.gitconfig
+.npm/
+.profile
+.sudo_as_admin_successful
+.vscode-server/
+.wget-hsts
+.zencoder/
+.zenrules
