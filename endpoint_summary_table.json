@@ -1,0 +1,547 @@
+{
+  "comprehensive_endpoint_analysis": {
+    "summary": {
+      "total_endpoints": 38,
+      "accessible_endpoints": 19,
+      "failed_endpoints": 19,
+      "success_rate": "50.0%",
+      "analysis_date": "2025-01-31",
+      "system_status": "Partially Functional - Major Issues Identified"
+    },
+    "services": {
+      "users": {
+        "service_name": "User Service",
+        "port": 3002,
+        "nginx_routing": "Standard Pattern (/api/v1/users → /users)",
+        "success_rate": "20%",
+        "crud_completeness": "100%",
+        "endpoints": [
+          {
+            "operation": "CREATE",
+            "method": "POST",
+            "path": "/api/v1/users",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Create user form broken"
+          },
+          {
+            "operation": "READ_LIST",
+            "method": "GET",
+            "path": "/api/v1/users",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "User list page works"
+          },
+          {
+            "operation": "READ_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/users/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "User details page broken"
+          },
+          {
+            "operation": "UPDATE",
+            "method": "PUT",
+            "path": "/api/v1/users/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "User edit form broken"
+          },
+          {
+            "operation": "DELETE",
+            "method": "DELETE",
+            "path": "/api/v1/users/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "User deletion broken"
+          }
+        ]
+      },
+      "credentials": {
+        "service_name": "Credentials Service",
+        "port": 3004,
+        "nginx_routing": "Standard Pattern (/api/v1/credentials → /credentials)",
+        "success_rate": "20%",
+        "crud_completeness": "100%",
+        "endpoints": [
+          {
+            "operation": "CREATE",
+            "method": "POST",
+            "path": "/api/v1/credentials",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Create credential form broken"
+          },
+          {
+            "operation": "READ_LIST",
+            "method": "GET",
+            "path": "/api/v1/credentials",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Credentials list page works"
+          },
+          {
+            "operation": "READ_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/credentials/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Credential details page broken"
+          },
+          {
+            "operation": "UPDATE",
+            "method": "PUT",
+            "path": "/api/v1/credentials/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Credential edit form broken"
+          },
+          {
+            "operation": "DELETE",
+            "method": "DELETE",
+            "path": "/api/v1/credentials/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Credential deletion broken"
+          }
+        ]
+      },
+      "targets": {
+        "service_name": "Targets Service",
+        "port": 3005,
+        "nginx_routing": "Mixed Pattern (/api/v1/targets → /targets + special routes)",
+        "success_rate": "80%",
+        "crud_completeness": "100%",
+        "endpoints": [
+          {
+            "operation": "CREATE",
+            "method": "POST",
+            "path": "/api/v1/targets",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Create target form broken"
+          },
+          {
+            "operation": "READ_LIST",
+            "method": "GET",
+            "path": "/api/v1/targets",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Targets list page works"
+          },
+          {
+            "operation": "READ_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Target details page works (proper error handling)"
+          },
+          {
+            "operation": "UPDATE",
+            "method": "PUT",
+            "path": "/api/v1/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Target edit form works (proper error handling)"
+          },
+          {
+            "operation": "DELETE",
+            "method": "DELETE",
+            "path": "/api/v1/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Target deletion works (proper error handling)"
+          }
+        ]
+      },
+      "jobs": {
+        "service_name": "Jobs Service",
+        "port": 3006,
+        "nginx_routing": "Standard Pattern (/api/v1/jobs → /jobs + /api/v1/runs → /runs)",
+        "success_rate": "20%",
+        "crud_completeness": "100%",
+        "endpoints": [
+          {
+            "operation": "CREATE",
+            "method": "POST",
+            "path": "/api/v1/jobs",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Create job form broken"
+          },
+          {
+            "operation": "READ_LIST",
+            "method": "GET",
+            "path": "/api/v1/jobs",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Jobs list page works"
+          },
+          {
+            "operation": "READ_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/jobs/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Job details page broken"
+          },
+          {
+            "operation": "UPDATE",
+            "method": "PUT",
+            "path": "/api/v1/jobs/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Job edit form broken"
+          },
+          {
+            "operation": "DELETE",
+            "method": "DELETE",
+            "path": "/api/v1/jobs/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Job deletion broken"
+          }
+        ]
+      },
+      "scheduler": {
+        "service_name": "Scheduler Service",
+        "port": 3008,
+        "nginx_routing": "Direct Pattern (/api/v1/scheduler → /) + Standard Pattern (/api/v1/schedules → /schedules)",
+        "success_rate": "20%",
+        "crud_completeness": "100%",
+        "endpoints": [
+          {
+            "operation": "CREATE",
+            "method": "POST",
+            "path": "/api/v1/schedules",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Create schedule form broken"
+          },
+          {
+            "operation": "READ_LIST",
+            "method": "GET",
+            "path": "/api/v1/schedules",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Schedules list page works"
+          },
+          {
+            "operation": "READ_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/schedules/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Schedule details page broken"
+          },
+          {
+            "operation": "UPDATE",
+            "method": "PUT",
+            "path": "/api/v1/schedules/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Schedule edit form broken"
+          },
+          {
+            "operation": "DELETE",
+            "method": "DELETE",
+            "path": "/api/v1/schedules/{id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 500,
+            "issue": "Server error",
+            "frontend_impact": "Schedule deletion broken"
+          }
+        ]
+      },
+      "discovery": {
+        "service_name": "Discovery Service",
+        "port": 3010,
+        "nginx_routing": "Direct Pattern (/api/v1/discovery → /)",
+        "success_rate": "100%",
+        "crud_completeness": "80%",
+        "endpoints": [
+          {
+            "operation": "READ_JOBS_LIST",
+            "method": "GET",
+            "path": "/api/v1/discovery/discovery-jobs",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Discovery jobs list works"
+          },
+          {
+            "operation": "READ_JOB_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/discovery/discovery-jobs/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Discovery job details works"
+          },
+          {
+            "operation": "READ_TARGETS_LIST",
+            "method": "GET",
+            "path": "/api/v1/discovery/targets",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "No data available",
+            "frontend_impact": "Discovered targets list works"
+          },
+          {
+            "operation": "READ_TARGET_SINGLE",
+            "method": "GET",
+            "path": "/api/v1/discovery/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Discovered target details works"
+          },
+          {
+            "operation": "UPDATE_TARGET",
+            "method": "PUT",
+            "path": "/api/v1/discovery/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Target approval/import works"
+          },
+          {
+            "operation": "DELETE_TARGET",
+            "method": "DELETE",
+            "path": "/api/v1/discovery/targets/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Target rejection works"
+          }
+        ]
+      },
+      "notification": {
+        "service_name": "Notification Service",
+        "port": 3009,
+        "nginx_routing": "Direct Pattern (/api/v1/notification → /)",
+        "success_rate": "50%",
+        "crud_completeness": "80%",
+        "endpoints": [
+          {
+            "operation": "CREATE_NOTIFICATION",
+            "method": "POST",
+            "path": "/api/v1/notification/notifications/enhanced",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Send notification broken"
+          },
+          {
+            "operation": "READ_PREFERENCES",
+            "method": "GET",
+            "path": "/api/v1/notification/preferences/{user_id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "User notification preferences works"
+          },
+          {
+            "operation": "UPDATE_PREFERENCES",
+            "method": "PUT",
+            "path": "/api/v1/notification/preferences/{user_id}",
+            "nginx_exposed": true,
+            "status": "FAILED",
+            "status_code": 422,
+            "issue": "Validation errors",
+            "frontend_impact": "Update preferences broken"
+          },
+          {
+            "operation": "READ_SMTP",
+            "method": "GET",
+            "path": "/api/v1/notification/smtp/settings",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "SMTP settings page works"
+          }
+        ]
+      },
+      "executor": {
+        "service_name": "Executor Service",
+        "port": 3007,
+        "nginx_routing": "Direct Pattern (/api/v1/executor → /)",
+        "success_rate": "100%",
+        "crud_completeness": "40%",
+        "endpoints": [
+          {
+            "operation": "EXECUTE_JOB",
+            "method": "POST",
+            "path": "/api/v1/executor/execute",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper validation response",
+            "frontend_impact": "Job execution works"
+          },
+          {
+            "operation": "READ_EXECUTION",
+            "method": "GET",
+            "path": "/api/v1/executor/executions/{id}",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "Proper not found response",
+            "frontend_impact": "Execution details works"
+          },
+          {
+            "operation": "READ_EXECUTIONS_LIST",
+            "method": "GET",
+            "path": "/api/v1/executor/executions",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 404,
+            "issue": "No data available",
+            "frontend_impact": "Executions list works"
+          }
+        ]
+      },
+      "auth": {
+        "service_name": "Auth Service",
+        "port": 3001,
+        "nginx_routing": "Direct Pattern (/api/v1/auth → /)",
+        "success_rate": "100%",
+        "crud_completeness": "N/A",
+        "endpoints": [
+          {
+            "operation": "LOGIN",
+            "method": "POST",
+            "path": "/api/v1/auth/login",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Login works"
+          },
+          {
+            "operation": "VERIFY",
+            "method": "POST",
+            "path": "/api/v1/verify",
+            "nginx_exposed": true,
+            "status": "SUCCESS",
+            "status_code": 200,
+            "issue": null,
+            "frontend_impact": "Token verification works"
+          }
+        ]
+      }
+    },
+    "consistency_analysis": {
+      "routing_patterns": {
+        "standard_pattern": {
+          "description": "/api/v1/{service} → /{service}",
+          "services": ["users", "credentials", "targets", "jobs"],
+          "consistency_score": "Good"
+        },
+        "direct_pattern": {
+          "description": "/api/v1/{service} → /",
+          "services": ["auth", "executor", "scheduler", "notification", "discovery"],
+          "consistency_score": "Good"
+        },
+        "mixed_pattern": {
+          "description": "Combination of patterns",
+          "services": ["targets", "scheduler"],
+          "consistency_score": "Poor"
+        }
+      },
+      "error_handling": {
+        "proper_404": ["targets", "discovery", "executor"],
+        "improper_500": ["users", "credentials", "jobs", "scheduler"],
+        "validation_422": ["users", "credentials", "targets", "jobs", "scheduler", "notification"]
+      },
+      "crud_completeness": {
+        "complete_crud": ["users", "credentials", "targets", "jobs", "scheduler"],
+        "partial_crud": ["discovery", "notification", "executor"],
+        "no_crud": ["auth"]
+      }
+    },
+    "recommendations": {
+      "immediate_fixes": [
+        "Fix 500 errors in users, credentials, jobs, scheduler services",
+        "Standardize error responses across all services",
+        "Fix validation issues causing 422 errors"
+      ],
+      "consistency_improvements": [
+        "Choose one nginx routing pattern and apply consistently",
+        "Standardize endpoint naming conventions",
+        "Implement consistent response formats"
+      ],
+      "missing_functionality": [
+        "Add CREATE operation for discovery jobs",
+        "Add DELETE operations for notification service",
+        "Add UPDATE/DELETE operations for executor service"
+      ],
+      "frontend_impact": [
+        "Most list pages work correctly",
+        "Detail pages and edit forms are broken for users/credentials/jobs/scheduler",
+        "Create forms need proper validation handling",
+        "Discovery and executor services work well"
+      ]
+    }
+  }
+}

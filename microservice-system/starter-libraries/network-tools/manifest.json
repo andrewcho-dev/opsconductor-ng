@@ -1,0 +1,419 @@
+{
+  "metadata": {
+    "name": "network-tools",
+    "version": "1.0.0",
+    "display_name": "Network Tools",
+    "description": "Network connectivity testing, monitoring, and troubleshooting tools",
+    "author": "OpsConductor Team",
+    "author_email": "support@opsconductor.com",
+    "homepage": "https://opsconductor.com/libraries/network-tools",
+    "repository": "https://github.com/opsconductor/network-tools-library",
+    "license": "MIT",
+    "categories": [
+      "network",
+      "monitoring",
+      "connectivity"
+    ],
+    "tags": [
+      "ping",
+      "telnet",
+      "port",
+      "connectivity",
+      "network",
+      "dns"
+    ],
+    "dependencies": [],
+    "min_opsconductor_version": "1.0.0",
+    "is_premium": false
+  },
+  "steps": [
+    {
+      "name": "ping_test",
+      "display_name": "Ping Test",
+      "category": "Network",
+      "description": "Test network connectivity using ping",
+      "icon": "\ud83c\udfd3",
+      "color": "#17a2b8",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "target": {
+          "type": "string",
+          "required": true,
+          "description": "Hostname or IP address to ping",
+          "validation": {
+            "placeholder": "google.com or 8.8.8.8",
+            "label": "Target Host"
+          }
+        },
+        "count": {
+          "type": "number",
+          "default": 4,
+          "description": "Number of ping packets to send",
+          "validation": {
+            "min": 1,
+            "max": 100,
+            "label": "Ping Count"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 5000,
+          "description": "Timeout for each ping in milliseconds",
+          "validation": {
+            "min": 100,
+            "max": 30000,
+            "label": "Timeout (ms)"
+          }
+        },
+        "packet_size": {
+          "type": "number",
+          "default": 32,
+          "description": "Size of ping packets",
+          "validation": {
+            "min": 32,
+            "max": 65500,
+            "label": "Packet Size (bytes)"
+          }
+        }
+      },
+      "platform_support": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "required_permissions": [
+        "network"
+      ],
+      "examples": [
+        {
+          "name": "Test Google DNS",
+          "description": "Ping Google's public DNS server",
+          "parameters": {
+            "target": "8.8.8.8",
+            "count": 4
+          }
+        },
+        {
+          "name": "Large Packet Test",
+          "description": "Test with larger packets to check MTU",
+          "parameters": {
+            "target": "google.com",
+            "count": 3,
+            "packet_size": 1472
+          }
+        }
+      ]
+    },
+    {
+      "name": "port_test",
+      "display_name": "Port Connectivity Test",
+      "category": "Network",
+      "description": "Test if a specific port is open and accessible",
+      "icon": "\ud83d\udd0c",
+      "color": "#28a745",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "target": {
+          "type": "string",
+          "required": true,
+          "description": "Hostname or IP address",
+          "validation": {
+            "placeholder": "example.com",
+            "label": "Target Host"
+          }
+        },
+        "port": {
+          "type": "number",
+          "required": true,
+          "description": "Port number to test",
+          "validation": {
+            "min": 1,
+            "max": 65535,
+            "placeholder": "80",
+            "label": "Port Number"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 10,
+          "description": "Connection timeout",
+          "validation": {
+            "min": 1,
+            "max": 300,
+            "label": "Timeout (seconds)"
+          }
+        },
+        "protocol": {
+          "type": "string",
+          "default": "TCP",
+          "description": "Network protocol to use",
+          "options": [
+            "TCP",
+            "UDP"
+          ],
+          "validation": {
+            "label": "Protocol"
+          }
+        }
+      },
+      "platform_support": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "required_permissions": [
+        "network"
+      ],
+      "examples": [
+        {
+          "name": "Test Web Server",
+          "description": "Check if web server is accessible",
+          "parameters": {
+            "target": "example.com",
+            "port": 80,
+            "protocol": "TCP"
+          }
+        },
+        {
+          "name": "Test HTTPS",
+          "description": "Check HTTPS connectivity",
+          "parameters": {
+            "target": "google.com",
+            "port": 443,
+            "protocol": "TCP"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dns_lookup",
+      "display_name": "DNS Lookup",
+      "category": "Network",
+      "description": "Perform DNS resolution and lookup operations",
+      "icon": "\ud83d\udd0d",
+      "color": "#6f42c1",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "hostname": {
+          "type": "string",
+          "required": true,
+          "description": "Hostname to resolve",
+          "validation": {
+            "placeholder": "example.com",
+            "label": "Hostname"
+          }
+        },
+        "record_type": {
+          "type": "string",
+          "default": "A",
+          "description": "Type of DNS record to query",
+          "options": [
+            "A",
+            "AAAA",
+            "CNAME",
+            "MX",
+            "TXT",
+            "NS",
+            "PTR"
+          ],
+          "validation": {
+            "label": "Record Type"
+          }
+        },
+        "dns_server": {
+          "type": "string",
+          "required": false,
+          "description": "Specific DNS server to use (optional)",
+          "validation": {
+            "placeholder": "8.8.8.8",
+            "label": "DNS Server"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 5,
+          "description": "DNS query timeout",
+          "validation": {
+            "min": 1,
+            "max": 60,
+            "label": "Timeout (seconds)"
+          }
+        }
+      },
+      "platform_support": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "required_permissions": [
+        "network"
+      ],
+      "examples": [
+        {
+          "name": "Resolve Website",
+          "description": "Get IP address for a website",
+          "parameters": {
+            "hostname": "google.com",
+            "record_type": "A"
+          }
+        },
+        {
+          "name": "Check MX Records",
+          "description": "Find mail servers for a domain",
+          "parameters": {
+            "hostname": "gmail.com",
+            "record_type": "MX"
+          }
+        }
+      ]
+    },
+    {
+      "name": "network_scan",
+      "display_name": "Network Port Scan",
+      "category": "Network",
+      "description": "Scan for open ports on a target system",
+      "icon": "\ud83d\udd0e",
+      "color": "#dc3545",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "target": {
+          "type": "string",
+          "required": true,
+          "description": "Hostname or IP address to scan",
+          "validation": {
+            "placeholder": "192.168.1.1",
+            "label": "Target Host"
+          }
+        },
+        "port_range": {
+          "type": "string",
+          "required": true,
+          "default": "1-1000",
+          "description": "Port range to scan (e.g., 1-1000, 80,443,22)",
+          "validation": {
+            "placeholder": "1-1000 or 80,443,22,3389",
+            "label": "Port Range"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 1000,
+          "description": "Timeout for each port test",
+          "validation": {
+            "min": 100,
+            "max": 10000,
+            "label": "Timeout per Port (ms)"
+          }
+        },
+        "threads": {
+          "type": "number",
+          "default": 50,
+          "description": "Number of concurrent port tests",
+          "validation": {
+            "min": 1,
+            "max": 200,
+            "label": "Concurrent Threads"
+          }
+        }
+      },
+      "platform_support": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "required_permissions": [
+        "network"
+      ],
+      "examples": [
+        {
+          "name": "Common Ports Scan",
+          "description": "Scan common service ports",
+          "parameters": {
+            "target": "192.168.1.1",
+            "port_range": "21,22,23,25,53,80,110,143,443,993,995,3389"
+          }
+        },
+        {
+          "name": "Web Ports Scan",
+          "description": "Scan web-related ports",
+          "parameters": {
+            "target": "example.com",
+            "port_range": "80,443,8080,8443,8000,8888"
+          }
+        }
+      ]
+    },
+    {
+      "name": "traceroute",
+      "display_name": "Trace Route",
+      "category": "Network",
+      "description": "Trace the network path to a destination",
+      "icon": "\ud83d\udee4\ufe0f",
+      "color": "#fd7e14",
+      "inputs": 1,
+      "outputs": 1,
+      "parameters": {
+        "target": {
+          "type": "string",
+          "required": true,
+          "description": "Hostname or IP address to trace",
+          "validation": {
+            "placeholder": "google.com",
+            "label": "Target Host"
+          }
+        },
+        "max_hops": {
+          "type": "number",
+          "default": 30,
+          "description": "Maximum number of hops to trace",
+          "validation": {
+            "min": 1,
+            "max": 64,
+            "label": "Maximum Hops"
+          }
+        },
+        "timeout": {
+          "type": "number",
+          "default": 5,
+          "description": "Timeout for each hop",
+          "validation": {
+            "min": 1,
+            "max": 30,
+            "label": "Timeout (seconds)"
+          }
+        },
+        "resolve_hostnames": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attempt to resolve IP addresses to hostnames",
+          "validation": {
+            "label": "Resolve Hostnames"
+          }
+        }
+      },
+      "platform_support": [
+        "windows",
+        "linux",
+        "macos"
+      ],
+      "required_permissions": [
+        "network"
+      ],
+      "examples": [
+        {
+          "name": "Trace to Google",
+          "description": "Trace network path to Google",
+          "parameters": {
+            "target": "8.8.8.8",
+            "max_hops": 20,
+            "resolve_hostnames": true
+          }
+        }
+      ]
+    }
+  ]
+}

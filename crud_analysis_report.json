@@ -1,0 +1,954 @@
+{
+  "services": [
+    {
+      "service": "auth-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/login",
+          "function": "login",
+          "response_model": "TokenResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/refresh",
+          "function": "refresh_token",
+          "response_model": "TokenResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/revoke-all",
+          "function": "revoke_all_tokens",
+          "response_model": null
+        },
+        {
+          "method": "GET",
+          "path": "/verify",
+          "function": "verify_token_endpoint",
+          "response_model": null
+        },
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/login",
+            "function": "login",
+            "response_model": "TokenResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/refresh",
+            "function": "refresh_token",
+            "response_model": "TokenResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/revoke-all",
+            "function": "revoke_all_tokens",
+            "response_model": null
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/verify",
+            "function": "verify_token_endpoint",
+            "response_model": null
+          },
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [],
+        "DELETE": [],
+        "OTHER": []
+      },
+      "total_endpoints": 5
+    },
+    {
+      "service": "user-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/users",
+          "function": "create_user",
+          "response_model": "UserResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/users",
+          "function": "list_users",
+          "response_model": "UserListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/users/{user_id}",
+          "function": "get_user",
+          "response_model": "UserResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/users/{user_id}",
+          "function": "update_user",
+          "response_model": "UserResponse"
+        },
+        {
+          "method": "DELETE",
+          "path": "/users/{user_id}",
+          "function": "get_user_notification_preferences",
+          "response_model": "NotificationPreferencesResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/users/{user_id}/notification-preferences",
+          "function": "update_user_notification_preferences",
+          "response_model": "NotificationPreferencesResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/users",
+            "function": "create_user",
+            "response_model": "UserResponse"
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/users",
+            "function": "list_users",
+            "response_model": "UserListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/users/{user_id}",
+            "function": "get_user",
+            "response_model": "UserResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/users/{user_id}",
+            "function": "update_user",
+            "response_model": "UserResponse"
+          },
+          {
+            "method": "PUT",
+            "path": "/users/{user_id}/notification-preferences",
+            "function": "update_user_notification_preferences",
+            "response_model": "NotificationPreferencesResponse"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/users/{user_id}",
+            "function": "get_user_notification_preferences",
+            "response_model": "NotificationPreferencesResponse"
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 7
+    },
+    {
+      "service": "credentials-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/credentials",
+          "function": "create_credential",
+          "response_model": "CredentialResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/credentials",
+          "function": "list_credentials",
+          "response_model": "CredentialListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/credentials/{credential_id}",
+          "function": "get_credential",
+          "response_model": "CredentialResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/credentials/{credential_id}/decrypt",
+          "function": "get_credential_decrypted",
+          "response_model": "CredentialDecrypted"
+        },
+        {
+          "method": "PUT",
+          "path": "/credentials/{credential_id}",
+          "function": "update_credential",
+          "response_model": "CredentialResponse"
+        },
+        {
+          "method": "DELETE",
+          "path": "/credentials/{credential_id}",
+          "function": "delete_credential",
+          "response_model": null
+        },
+        {
+          "method": "POST",
+          "path": "/credentials/{credential_id}/rotate",
+          "function": "rotate_credential",
+          "response_model": null
+        },
+        {
+          "method": "DELETE",
+          "path": "/credentials/by-name/{credential_name}",
+          "function": "delete_credential_by_name",
+          "response_model": null
+        },
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/credentials",
+            "function": "create_credential",
+            "response_model": "CredentialResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/credentials/{credential_id}/rotate",
+            "function": "rotate_credential",
+            "response_model": null
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/credentials",
+            "function": "list_credentials",
+            "response_model": "CredentialListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/credentials/{credential_id}",
+            "function": "get_credential",
+            "response_model": "CredentialResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/credentials/{credential_id}/decrypt",
+            "function": "get_credential_decrypted",
+            "response_model": "CredentialDecrypted"
+          },
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/credentials/{credential_id}",
+            "function": "update_credential",
+            "response_model": "CredentialResponse"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/credentials/{credential_id}",
+            "function": "delete_credential",
+            "response_model": null
+          },
+          {
+            "method": "DELETE",
+            "path": "/credentials/by-name/{credential_name}",
+            "function": "delete_credential_by_name",
+            "response_model": null
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 9
+    },
+    {
+      "service": "targets-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/service-definitions",
+          "function": "get_service_definitions",
+          "response_model": "ServiceDefinitionResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/targets",
+          "function": "get_targets",
+          "response_model": "TargetListResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/targets",
+          "function": "create_target",
+          "response_model": "Target"
+        },
+        {
+          "method": "GET",
+          "path": "/targets/{target_id}",
+          "function": "get_target",
+          "response_model": "Target"
+        },
+        {
+          "method": "PUT",
+          "path": "/targets/{target_id}",
+          "function": "update_target",
+          "response_model": "Target"
+        },
+        {
+          "method": "DELETE",
+          "path": "/targets/{target_id}",
+          "function": "delete_target",
+          "response_model": null
+        },
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/targets",
+            "function": "create_target",
+            "response_model": "Target"
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/service-definitions",
+            "function": "get_service_definitions",
+            "response_model": "ServiceDefinitionResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/targets",
+            "function": "get_targets",
+            "response_model": "TargetListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/targets/{target_id}",
+            "function": "get_target",
+            "response_model": "Target"
+          },
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/targets/{target_id}",
+            "function": "update_target",
+            "response_model": "Target"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/targets/{target_id}",
+            "function": "delete_target",
+            "response_model": null
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 7
+    },
+    {
+      "service": "jobs-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "POST",
+          "path": "/jobs",
+          "function": "create_job",
+          "response_model": "JobResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/jobs",
+          "function": "list_jobs",
+          "response_model": "JobListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/jobs/{job_id}",
+          "function": "get_job",
+          "response_model": "JobResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/jobs/{job_id}",
+          "function": "update_job",
+          "response_model": "JobResponse"
+        },
+        {
+          "method": "DELETE",
+          "path": "/jobs/{job_id}",
+          "function": "run_job",
+          "response_model": "JobRunResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/runs",
+          "function": "list_runs",
+          "response_model": "JobRunListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/runs/{run_id}",
+          "function": "get_run",
+          "response_model": "JobRunResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/runs/{run_id}/steps",
+          "function": "get_run_steps",
+          "response_model": "List[JobRunStepResponse]"
+        },
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/jobs",
+            "function": "create_job",
+            "response_model": "JobResponse"
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/jobs",
+            "function": "list_jobs",
+            "response_model": "JobListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/jobs/{job_id}",
+            "function": "get_job",
+            "response_model": "JobResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/runs",
+            "function": "list_runs",
+            "response_model": "JobRunListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/runs/{run_id}",
+            "function": "get_run",
+            "response_model": "JobRunResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/runs/{run_id}/steps",
+            "function": "get_run_steps",
+            "response_model": "List[JobRunStepResponse]"
+          },
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/jobs/{job_id}",
+            "function": "update_job",
+            "response_model": "JobResponse"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/jobs/{job_id}",
+            "function": "run_job",
+            "response_model": "JobRunResponse"
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 9
+    },
+    {
+      "service": "executor-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "health_check",
+          "response_model": null
+        },
+        {
+          "method": "GET",
+          "path": "/status",
+          "function": "get_status",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "health_check",
+            "response_model": null
+          },
+          {
+            "method": "GET",
+            "path": "/status",
+            "function": "get_status",
+            "response_model": null
+          }
+        ],
+        "UPDATE": [],
+        "DELETE": [],
+        "OTHER": []
+      },
+      "total_endpoints": 2
+    },
+    {
+      "service": "scheduler-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "get_scheduler_status",
+          "response_model": "SchedulerStatusResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/schedules",
+          "function": "create_schedule",
+          "response_model": "ScheduleResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/schedules",
+          "function": "list_schedules",
+          "response_model": "ScheduleListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/schedules/{schedule_id}",
+          "function": "get_schedule",
+          "response_model": "ScheduleResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/schedules/{schedule_id}",
+          "function": "update_schedule",
+          "response_model": "ScheduleResponse"
+        },
+        {
+          "method": "DELETE",
+          "path": "/schedules/{schedule_id}",
+          "function": "delete_schedule",
+          "response_model": null
+        },
+        {
+          "method": "POST",
+          "path": "/scheduler/start",
+          "function": "start_scheduler",
+          "response_model": null
+        },
+        {
+          "method": "POST",
+          "path": "/scheduler/stop",
+          "function": "stop_scheduler",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/schedules",
+            "function": "create_schedule",
+            "response_model": "ScheduleResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/scheduler/start",
+            "function": "start_scheduler",
+            "response_model": null
+          },
+          {
+            "method": "POST",
+            "path": "/scheduler/stop",
+            "function": "stop_scheduler",
+            "response_model": null
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "get_scheduler_status",
+            "response_model": "SchedulerStatusResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/schedules",
+            "function": "list_schedules",
+            "response_model": "ScheduleListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/schedules/{schedule_id}",
+            "function": "get_schedule",
+            "response_model": "ScheduleResponse"
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/schedules/{schedule_id}",
+            "function": "update_schedule",
+            "response_model": "ScheduleResponse"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/schedules/{schedule_id}",
+            "function": "delete_schedule",
+            "response_model": null
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 8
+    },
+    {
+      "service": "notification-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "get_notification_status",
+          "response_model": "NotificationWorkerStatus"
+        },
+        {
+          "method": "GET",
+          "path": "/preferences/{user_id}",
+          "function": "get_user_preferences",
+          "response_model": "NotificationPreferencesResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/preferences/{user_id}",
+          "function": "update_user_preferences",
+          "response_model": "NotificationPreferencesResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/channels",
+          "function": "get_notification_channels",
+          "response_model": "List[NotificationChannelResponse]"
+        },
+        {
+          "method": "POST",
+          "path": "/notifications/enhanced",
+          "function": "create_enhanced_notification",
+          "response_model": "List[NotificationResponse]"
+        },
+        {
+          "method": "POST",
+          "path": "/internal/notifications/enhanced",
+          "function": "get_notifications",
+          "response_model": "NotificationListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/smtp/settings",
+          "function": "get_smtp_settings",
+          "response_model": "SMTPSettingsResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/smtp/settings",
+          "function": "update_smtp_settings",
+          "response_model": "SMTPSettingsResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/smtp/test",
+          "function": "test_smtp_settings",
+          "response_model": "SMTPTestResponse"
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/notifications/enhanced",
+            "function": "create_enhanced_notification",
+            "response_model": "List[NotificationResponse]"
+          },
+          {
+            "method": "POST",
+            "path": "/internal/notifications/enhanced",
+            "function": "get_notifications",
+            "response_model": "NotificationListResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/smtp/settings",
+            "function": "update_smtp_settings",
+            "response_model": "SMTPSettingsResponse"
+          },
+          {
+            "method": "POST",
+            "path": "/smtp/test",
+            "function": "test_smtp_settings",
+            "response_model": "SMTPTestResponse"
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "get_notification_status",
+            "response_model": "NotificationWorkerStatus"
+          },
+          {
+            "method": "GET",
+            "path": "/preferences/{user_id}",
+            "function": "get_user_preferences",
+            "response_model": "NotificationPreferencesResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/channels",
+            "function": "get_notification_channels",
+            "response_model": "List[NotificationChannelResponse]"
+          },
+          {
+            "method": "GET",
+            "path": "/smtp/settings",
+            "function": "get_smtp_settings",
+            "response_model": "SMTPSettingsResponse"
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/preferences/{user_id}",
+            "function": "update_user_preferences",
+            "response_model": "NotificationPreferencesResponse"
+          }
+        ],
+        "DELETE": [],
+        "OTHER": []
+      },
+      "total_endpoints": 9
+    },
+    {
+      "service": "discovery-service",
+      "status": "ANALYZED",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/health",
+          "function": "create_discovery_job",
+          "response_model": "DiscoveryJobResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/discovery-jobs",
+          "function": "get_discovery_jobs",
+          "response_model": "DiscoveryJobListResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/discovery-jobs/{job_id}",
+          "function": "get_discovery_job",
+          "response_model": "DiscoveryJobResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/discovery-jobs/{job_id}/summary",
+          "function": "get_discovered_targets",
+          "response_model": "DiscoveredTargetListResponse"
+        },
+        {
+          "method": "POST",
+          "path": "/discovery/targets/import",
+          "function": "update_discovery_job",
+          "response_model": "DiscoveryJobResponse"
+        },
+        {
+          "method": "GET",
+          "path": "/discovery/targets/{target_id}",
+          "function": "get_discovered_target",
+          "response_model": "DiscoveredTargetResponse"
+        },
+        {
+          "method": "PUT",
+          "path": "/discovery/targets/{target_id}",
+          "function": "update_discovered_target",
+          "response_model": "DiscoveredTargetResponse"
+        },
+        {
+          "method": "DELETE",
+          "path": "/discovery/targets/{target_id}",
+          "function": "delete_discovered_target",
+          "response_model": null
+        }
+      ],
+      "crud_operations": {
+        "CREATE": [
+          {
+            "method": "POST",
+            "path": "/discovery/targets/import",
+            "function": "update_discovery_job",
+            "response_model": "DiscoveryJobResponse"
+          }
+        ],
+        "READ": [
+          {
+            "method": "GET",
+            "path": "/health",
+            "function": "create_discovery_job",
+            "response_model": "DiscoveryJobResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/discovery-jobs",
+            "function": "get_discovery_jobs",
+            "response_model": "DiscoveryJobListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/discovery-jobs/{job_id}",
+            "function": "get_discovery_job",
+            "response_model": "DiscoveryJobResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/discovery-jobs/{job_id}/summary",
+            "function": "get_discovered_targets",
+            "response_model": "DiscoveredTargetListResponse"
+          },
+          {
+            "method": "GET",
+            "path": "/discovery/targets/{target_id}",
+            "function": "get_discovered_target",
+            "response_model": "DiscoveredTargetResponse"
+          }
+        ],
+        "UPDATE": [
+          {
+            "method": "PUT",
+            "path": "/discovery/targets/{target_id}",
+            "function": "update_discovered_target",
+            "response_model": "DiscoveredTargetResponse"
+          }
+        ],
+        "DELETE": [
+          {
+            "method": "DELETE",
+            "path": "/discovery/targets/{target_id}",
+            "function": "delete_discovered_target",
+            "response_model": null
+          }
+        ],
+        "OTHER": []
+      },
+      "total_endpoints": 8
+    }
+  ],
+  "nginx_routes": {
+    "/api/v1/auth/health": "auth-service/health",
+    "/api/v1/users/health": "user-service/health",
+    "/api/v1/credentials/health": "credentials-service/health",
+    "/api/v1/targets/health": "targets-service/health",
+    "/api/v1/jobs/health": "jobs-service/health",
+    "/api/v1/executor/health": "executor-service/health",
+    "/api/v1/scheduler/health": "scheduler-service/health",
+    "/api/v1/notification/health": "notification-service/health",
+    "/api/v1/discovery/health": "discovery-service/health",
+    "/api/v1/verify": "auth-service",
+    "/api/v1/auth": "auth-service",
+    "/api/v1/users": "user-service",
+    "/api/v1/credentials": "credentials-service",
+    "/api/v1/targets/service-definitions": "targets-service",
+    "/api/v1/targets": "targets-service",
+    "/api/v1/runs": "jobs-service",
+    "/api/v1/jobs": "jobs-service",
+    "/api/v1/executor": "executor-service",
+    "/api/v1/scheduler": "scheduler-service",
+    "/api/v1/schedules": "scheduler-service",
+    "/api/v1/notification": "notification-service",
+    "/api/v1/discovery": "discovery-service",
+    "/": "frontend"
+  },
+  "analysis_timestamp": "2024-01-01"
+}

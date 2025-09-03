@@ -1,0 +1,320 @@
+{
+  "summary": {
+    "total_endpoints": 34,
+    "successful_endpoints": 8,
+    "failed_endpoints": 26,
+    "success_rate": 23.52941176470588
+  },
+  "endpoints": [
+    {
+      "service": "users",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/users",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.367285
+    },
+    {
+      "service": "users",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/users",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.067666
+    },
+    {
+      "service": "users",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/users/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.054924
+    },
+    {
+      "service": "users",
+      "operation": "UPDATE",
+      "method": "PUT",
+      "path": "/api/v1/users/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.057057
+    },
+    {
+      "service": "users",
+      "operation": "DELETE",
+      "method": "DELETE",
+      "path": "/api/v1/users/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.057591
+    },
+    {
+      "service": "credentials",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/credentials",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.052521
+    },
+    {
+      "service": "credentials",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/credentials",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.055405
+    },
+    {
+      "service": "credentials",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/credentials/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.062611
+    },
+    {
+      "service": "credentials",
+      "operation": "UPDATE",
+      "method": "PUT",
+      "path": "/api/v1/credentials/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.056219
+    },
+    {
+      "service": "credentials",
+      "operation": "DELETE",
+      "method": "DELETE",
+      "path": "/api/v1/credentials/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.05601
+    },
+    {
+      "service": "targets",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/targets",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.043127
+    },
+    {
+      "service": "targets",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/targets",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.08627
+    },
+    {
+      "service": "targets",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.074208
+    },
+    {
+      "service": "targets",
+      "operation": "UPDATE",
+      "method": "PUT",
+      "path": "/api/v1/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.071123
+    },
+    {
+      "service": "targets",
+      "operation": "DELETE",
+      "method": "DELETE",
+      "path": "/api/v1/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.069174
+    },
+    {
+      "service": "jobs",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/jobs",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.061037
+    },
+    {
+      "service": "jobs",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/jobs",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.080614
+    },
+    {
+      "service": "jobs",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/jobs/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.058489
+    },
+    {
+      "service": "jobs",
+      "operation": "UPDATE",
+      "method": "PUT",
+      "path": "/api/v1/jobs/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.067194
+    },
+    {
+      "service": "jobs",
+      "operation": "DELETE",
+      "method": "DELETE",
+      "path": "/api/v1/jobs/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.076587
+    },
+    {
+      "service": "scheduler",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/schedules",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.063665
+    },
+    {
+      "service": "scheduler",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/schedules",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.075041
+    },
+    {
+      "service": "scheduler",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/schedules/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.074467
+    },
+    {
+      "service": "scheduler",
+      "operation": "UPDATE",
+      "method": "PUT",
+      "path": "/api/v1/schedules/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.067121
+    },
+    {
+      "service": "scheduler",
+      "operation": "DELETE",
+      "method": "DELETE",
+      "path": "/api/v1/schedules/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.059325
+    },
+    {
+      "service": "discovery",
+      "operation": "READ_LIST",
+      "method": "GET",
+      "path": "/api/v1/discovery/discovery-jobs",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.08794
+    },
+    {
+      "service": "discovery",
+      "operation": "READ_SINGLE",
+      "method": "GET",
+      "path": "/api/v1/discovery/discovery-jobs/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.067007
+    },
+    {
+      "service": "discovery",
+      "operation": "READ_TARGET",
+      "method": "GET",
+      "path": "/api/v1/discovery/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.005452
+    },
+    {
+      "service": "discovery",
+      "operation": "UPDATE_TARGET",
+      "method": "PUT",
+      "path": "/api/v1/discovery/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.005447
+    },
+    {
+      "service": "discovery",
+      "operation": "DELETE_TARGET",
+      "method": "DELETE",
+      "path": "/api/v1/discovery/targets/{id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.004385
+    },
+    {
+      "service": "notification",
+      "operation": "CREATE",
+      "method": "POST",
+      "path": "/api/v1/notification/notifications/enhanced",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.005925
+    },
+    {
+      "service": "notification",
+      "operation": "READ_PREFERENCES",
+      "method": "GET",
+      "path": "/api/v1/notification/preferences/{user_id}",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.082333
+    },
+    {
+      "service": "notification",
+      "operation": "UPDATE_PREFERENCES",
+      "method": "PUT",
+      "path": "/api/v1/notification/preferences/{user_id}",
+      "nginx_exposed": true,
+      "status": "FAILED",
+      "response_time": 0.004871
+    },
+    {
+      "service": "notification",
+      "operation": "READ_SMTP",
+      "method": "GET",
+      "path": "/api/v1/notification/smtp/settings",
+      "nginx_exposed": true,
+      "status": "SUCCESS",
+      "response_time": 0.081189
+    }
+  ],
+  "services": {
+    "users": {
+      "total": 5,
+      "success": 1,
+      "operations": 
