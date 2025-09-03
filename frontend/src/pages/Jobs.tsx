@@ -122,15 +122,57 @@ const Jobs: React.FC = () => {
 
   return (
     <div className="main-content">
+      <style>
+        {`
+          .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 2px;
+            padding: 4px;
+          }
+          .btn-icon:hover {
+            opacity: 0.7;
+          }
+          .btn-icon:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+          }
+          .btn-success {
+            color: #10b981;
+          }
+          .btn-success:hover:not(:disabled) {
+            color: #059669;
+          }
+          .btn-danger {
+            color: #ef4444;
+          }
+          .btn-danger:hover:not(:disabled) {
+            color: #dc2626;
+          }
+          .btn-ghost {
+            color: #6b7280;
+          }
+          .btn-ghost:hover:not(:disabled) {
+            color: #374151;
+          }
+        `}
+      </style>
       <div className="page-header">
         <h1 className="page-title">Jobs</h1>
         <div className="page-actions">
           <button 
-            className="btn btn-primary"
+            className="btn-icon btn-success"
             onClick={() => navigate('/job-management/create')}
+            title="Create Job"
           >
-            <Plus size={16} className="me-2" />
-            Create Job
+            <Plus size={16} />
           </button>
         </div>
       </div>
@@ -142,11 +184,11 @@ const Jobs: React.FC = () => {
             Create your first job to automate tasks on your targets.
           </p>
           <button 
-            className="btn btn-primary"
+            className="btn-icon btn-success"
             onClick={() => navigate('/job-management/create')}
+            title="Create Job"
           >
-            <Plus size={16} className="me-2" />
-            Create Job
+            <Plus size={16} />
           </button>
         </div>
       ) : (

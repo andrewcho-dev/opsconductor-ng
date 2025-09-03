@@ -439,17 +439,55 @@ const Targets: React.FC = () => {
             word-wrap: break-word;
             line-height: 1.4;
           }
+          .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 2px;
+            padding: 4px;
+          }
+          .btn-icon:hover {
+            opacity: 0.7;
+          }
+          .btn-icon:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+          }
+          .btn-success {
+            color: #10b981;
+          }
+          .btn-success:hover:not(:disabled) {
+            color: #059669;
+          }
+          .btn-danger {
+            color: #ef4444;
+          }
+          .btn-danger:hover:not(:disabled) {
+            color: #dc2626;
+          }
+          .btn-ghost {
+            color: #6b7280;
+          }
+          .btn-ghost:hover:not(:disabled) {
+            color: #374151;
+          }
         `}
       </style>
       <div className="page-header">
         <h1 className="page-title">Targets</h1>
         <div className="page-actions">
           <button 
-            className="btn btn-primary"
+            className="btn-icon btn-success"
             onClick={() => navigate('/targets-management/create')}
+            title="Add Target"
           >
             <Plus size={16} />
-            Add Target
           </button>
         </div>
       </div>
@@ -461,11 +499,11 @@ const Targets: React.FC = () => {
             Create your first target to start managing remote systems.
           </p>
           <button 
-            className="btn btn-primary"
+            className="btn-icon btn-success"
             onClick={() => navigate('/targets-management/create')}
+            title="Create Target"
           >
             <Plus size={16} />
-            Create Target
           </button>
         </div>
       ) : (

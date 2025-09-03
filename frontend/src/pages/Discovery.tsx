@@ -483,6 +483,48 @@ const Discovery: React.FC = () => {
 
   return (
     <div className="discovery-page">
+      <style>
+        {`
+          .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 0 2px;
+            padding: 4px;
+          }
+          .btn-icon:hover {
+            opacity: 0.7;
+          }
+          .btn-icon:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+          }
+          .btn-success {
+            color: #10b981;
+          }
+          .btn-success:hover:not(:disabled) {
+            color: #059669;
+          }
+          .btn-danger {
+            color: #ef4444;
+          }
+          .btn-danger:hover:not(:disabled) {
+            color: #dc2626;
+          }
+          .btn-ghost {
+            color: #6b7280;
+          }
+          .btn-ghost:hover:not(:disabled) {
+            color: #374151;
+          }
+        `}
+      </style>
       <div className="page-header">
         <h1>Target Discovery</h1>
         <p>Automatically discover Windows machines and other targets on your network</p>
@@ -527,10 +569,11 @@ const Discovery: React.FC = () => {
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h3>Discovery Jobs</h3>
             <button 
-              className="btn btn-primary"
+              className="btn-icon btn-success"
               onClick={() => setActiveTab('create')}
+              title="New Discovery Job"
             >
-              <Plus size={16} className="me-2" />New Discovery Job
+              <Plus size={16} />
             </button>
           </div>
 
