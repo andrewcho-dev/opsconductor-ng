@@ -133,240 +133,376 @@ const SMTPSettingsComponent: React.FC = () => {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <div className="mb-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
-          SMTP Configuration
-        </h3>
-        <p className="text-sm text-gray-600">
-          Configure SMTP settings for email notifications. These settings apply system-wide.
-        </p>
-        {currentSettings?.is_configured && (
-          <div className="mt-2 text-sm text-green-600">
-            <CheckCircle size={16} className="inline mr-2" />SMTP is currently configured and active
-          </div>
-        )}
-      </div>
+    <div className="space-y-6">
+      <style>
+        {`
+          .smtp-section {
+            background: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
+          }
+          .smtp-header {
+            background: var(--neutral-50);
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--neutral-200);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--neutral-700);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .smtp-content {
+            padding: 16px;
+          }
+          .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+          }
+          @media (max-width: 768px) {
+            .form-grid {
+              grid-template-columns: 1fr;
+            }
+          }
+          .form-group {
+            margin-bottom: 12px;
+          }
+          .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--neutral-700);
+            margin-bottom: 4px;
+          }
+          .form-input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            font-size: 12px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+          }
+          .form-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          .form-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 12px 0;
+          }
+          .checkbox-input {
+            width: 16px;
+            height: 16px;
+          }
+          .checkbox-label {
+            font-size: 12px;
+            color: var(--neutral-700);
+          }
+          .test-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+          }
+          .test-input {
+            flex: 1;
+          }
+          .test-button {
+            padding: 8px 12px;
+            background: var(--neutral-100);
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+          }
+          .test-button:hover:not(:disabled) {
+            background: var(--neutral-200);
+          }
+          .test-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .save-button {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .save-button:hover:not(:disabled) {
+            background: var(--primary-blue-hover);
+          }
+          .save-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .status-message {
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .status-success {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+            border: 1px solid var(--success-green);
+          }
+          .status-error {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+            border: 1px solid var(--danger-red);
+          }
+          .status-configured {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+          }
+          .test-result {
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .test-result.success {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+          }
+          .test-result.error {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
+          .help-section {
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--primary-blue-light);
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--primary-blue-dark);
+          }
+          .help-examples {
+            margin-top: 8px;
+            display: grid;
+            gap: 4px;
+          }
+          .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid transparent;
+            border-top: 2px solid currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="status-message status-error">
+          <XCircle size={14} />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+        <div className="status-message status-success">
+          <CheckCircle size={14} />
           {success}
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Server Settings */}
-        <div className="border-b border-gray-200 pb-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Server Settings</h4>
+      <div className="smtp-section">
+        <div className="smtp-header">
+          SMTP Configuration
+        </div>
+        <div className="smtp-content">
+          <p style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '12px' }}>
+            Configure SMTP settings for system-wide email notifications
+          </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="smtp_host" className="block text-sm font-medium text-gray-700">
-                SMTP Host *
-              </label>
+          {currentSettings?.is_configured && (
+            <div className="status-configured">
+              <CheckCircle size={12} />
+              SMTP configured and active
+            </div>
+          )}
+
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">SMTP Host *</label>
               <input
                 type="text"
-                id="smtp_host"
-                value={settings.host}
+                value={settings.host || ''}
                 onChange={(e) => handleInputChange('host', e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder="smtp.gmail.com"
-                required
               />
             </div>
-
-            <div>
-              <label htmlFor="smtp_port" className="block text-sm font-medium text-gray-700">
-                SMTP Port *
-              </label>
+            <div className="form-group">
+              <label className="form-label">SMTP Port *</label>
               <input
                 type="number"
-                id="smtp_port"
                 value={settings.port}
                 onChange={(e) => handleInputChange('port', parseInt(e.target.value))}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder="587"
                 min="1"
                 max="65535"
-                required
               />
             </div>
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center">
-              <input
-                id="use_tls"
-                type="checkbox"
-                checked={settings.use_tls}
-                onChange={(e) => handleInputChange('use_tls', e.target.checked)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="use_tls" className="ml-2 block text-sm text-gray-900">
-                Use TLS encryption (recommended)
-              </label>
-            </div>
+          <div className="form-checkbox">
+            <input
+              id="use_tls"
+              type="checkbox"
+              checked={settings.use_tls}
+              onChange={(e) => handleInputChange('use_tls', e.target.checked)}
+              className="checkbox-input"
+            />
+            <label htmlFor="use_tls" className="checkbox-label">
+              Use TLS encryption (recommended)
+            </label>
           </div>
-        </div>
 
-        {/* Authentication */}
-        <div className="border-b border-gray-200 pb-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Authentication</h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="smtp_username" className="block text-sm font-medium text-gray-700">
-                Username
-              </label>
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">Username</label>
               <input
                 type="text"
-                id="smtp_username"
-                value={settings.username}
+                value={settings.username || ''}
                 onChange={(e) => handleInputChange('username', e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder="your-email@gmail.com"
               />
             </div>
-
-            <div>
-              <label htmlFor="smtp_password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
+            <div className="form-group">
+              <label className="form-label">Password</label>
               <input
                 type="password"
-                id="smtp_password"
-                value={settings.password}
+                value={settings.password || ''}
                 onChange={(e) => handleInputChange('password', e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder={currentSettings?.password ? "••••••••" : "Enter password"}
               />
               {currentSettings?.password && (
-                <p className="mt-1 text-xs text-gray-500">
+                <div style={{ fontSize: '10px', color: 'var(--neutral-500)', marginTop: '4px' }}>
                   Leave blank to keep current password
-                </p>
+                </div>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Sender Information */}
-        <div className="border-b border-gray-200 pb-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Sender Information</h4>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="from_email" className="block text-sm font-medium text-gray-700">
-                From Email Address *
-              </label>
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">From Email Address *</label>
               <input
                 type="email"
-                id="from_email"
-                value={settings.from_email}
+                value={settings.from_email || ''}
                 onChange={(e) => handleInputChange('from_email', e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder="noreply@yourcompany.com"
-                required
               />
             </div>
-
-            <div>
-              <label htmlFor="from_name" className="block text-sm font-medium text-gray-700">
-                From Name
-              </label>
+            <div className="form-group">
+              <label className="form-label">From Name</label>
               <input
                 type="text"
-                id="from_name"
-                value={settings.from_name}
+                value={settings.from_name || ''}
                 onChange={(e) => handleInputChange('from_name', e.target.value)}
-                className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="form-input"
                 placeholder="OpsConductor"
               />
             </div>
           </div>
-        </div>
 
-        {/* Test Settings */}
-        <div className="pb-6">
-          <h4 className="text-md font-medium text-gray-900 mb-4">Test Configuration</h4>
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="test_email" className="block text-sm font-medium text-gray-700">
-                Test Email Address
-              </label>
-              <div className="mt-1 flex rounded-md shadow-sm">
-                <input
-                  type="email"
-                  id="test_email"
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  className="flex-1 block w-full border-gray-300 rounded-l-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="test@example.com"
-                />
-                <button
-                  type="button"
-                  onClick={handleTest}
-                  disabled={testing || !testEmail}
-                  className="inline-flex items-center px-3 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-gray-500 text-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {testing ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
-                      Testing...
-                    </>
-                  ) : (
-                    'Send Test'
-                  )}
-                </button>
-              </div>
+          <div className="form-group">
+            <label className="form-label">Test Email Configuration</label>
+            <div className="test-row">
+              <input
+                type="email"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+                className="form-input test-input"
+                placeholder="test@example.com"
+              />
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={testing || !testEmail}
+                className="test-button"
+              >
+                {testing ? (
+                  <>
+                    <div className="spinner"></div>
+                    Testing
+                  </>
+                ) : (
+                  'Send Test'
+                )}
+              </button>
             </div>
 
             {testResult && (
-              <div className={`p-3 rounded-md text-sm flex items-center gap-2 ${
-                testSuccess 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {testSuccess ? <CheckCircle size={16} /> : <XCircle size={16} />}
+              <div className={`test-result ${testSuccess ? 'success' : 'error'}`}>
+                {testSuccess ? <CheckCircle size={12} /> : <XCircle size={12} />}
                 {testResult}
               </div>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* Save Button */}
-      <div className="flex justify-end pt-6 border-t border-gray-200">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Saving...
-            </>
-          ) : (
-            'Save SMTP Settings'
-          )}
-        </button>
-      </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="save-button"
+            >
+              {saving ? (
+                <>
+                  <div className="spinner"></div>
+                  Saving
+                </>
+              ) : (
+                'Save Settings'
+              )}
+            </button>
+          </div>
 
-      {/* Help Text */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <h5 className="text-sm font-medium text-blue-900 mb-2">Common SMTP Settings:</h5>
-        <div className="text-xs text-blue-700 space-y-1">
-          <div><strong>Gmail:</strong> smtp.gmail.com:587 (TLS) - Use app password</div>
-          <div><strong>Outlook:</strong> smtp-mail.outlook.com:587 (TLS)</div>
-          <div><strong>Yahoo:</strong> smtp.mail.yahoo.com:587 (TLS)</div>
-          <div><strong>SendGrid:</strong> smtp.sendgrid.net:587 (TLS)</div>
+          <div className="help-section">
+            <strong>Common SMTP Settings:</strong>
+            <div className="help-examples">
+              <div><strong>Gmail:</strong> smtp.gmail.com:587 (TLS) - Use app password</div>
+              <div><strong>Outlook:</strong> smtp-mail.outlook.com:587 (TLS)</div>
+              <div><strong>Yahoo:</strong> smtp.mail.yahoo.com:587 (TLS)</div>
+              <div><strong>SendGrid:</strong> smtp.sendgrid.net:587 (TLS)</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
