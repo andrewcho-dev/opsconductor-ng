@@ -172,7 +172,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   margin-top: 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .nav-menu-item {
@@ -234,28 +234,33 @@ body {
 
 
 
+/* Settings submenu - slide-out on hover */
 .nav-submenu {
   position: absolute;
   top: 0;
-  right: 100%;
+  right: 100%; /* slide out to the left of parent group */
   background: white;
-  border: 1px solid #ccc;
+  border: 1px solid #e0e0e0;
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  margin-right: 4px;
-  overflow: hidden;
-  z-index: 99999;
-  display: none;
+  min-width: 220px;
+  margin-right: 0;
+  z-index: 1001;
+  pointer-events: none; /* prevent hover flicker before visible */
+  opacity: 0;
+  transform: translateX(8px); /* start slightly offset */
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+/* Show submenu on hover of the group OR submenu itself to keep it open while moving the mouse */
+.nav-menu-item-group:hover .nav-submenu,
+.nav-submenu:hover {
+  opacity: 1;
+  transform: translateX(0);
   pointer-events: auto;
 }
 
-/* KEY: This makes the submenu appear on hover */
-.nav-menu-item-group:hover .nav-submenu {
-  display: block;
-}
-
-/* KEY: This rotates the chevron on hover */
+/* Rotate chevron on hover */
 .nav-menu-item-group:hover .nav-chevron {
   transform: rotate(90deg);
 }

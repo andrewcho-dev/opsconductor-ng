@@ -144,54 +144,49 @@ const Navbar: React.FC = () => {
               </Link>
               <div className="nav-divider"></div>
               <div className="nav-menu-item-group">
-                <Link 
-                  to="/settings/step-library" 
-                  className={`nav-menu-item ${isActive('/settings') ? 'active' : ''}`}
-                  onClick={closeMenu}
-                >
+                <div className="nav-menu-item">
                   <span className="nav-icon"><Settings size={16} /></span>
                   Settings
                   <span className="nav-chevron">
                     <ChevronRight size={14} />
                   </span>
-                </Link>
+                </div>
                 <div className="nav-submenu">
-
-                    <Link 
-                      to="/settings/step-library" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/step-library' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Code size={14} /></span>
-                      Step Library
-                      {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
-                    </Link>
-                    <Link 
-                      to="/settings/smtp" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Mail size={14} /></span>
-                      SMTP Config
-                      {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
-                    </Link>
-                    <Link 
-                      to="/settings/notification-preferences" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/notification-preferences' ? 'active' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Bell size={14} /></span>
-                      Notifications
-                    </Link>
-                    <Link 
-                      to="/settings/notification-history" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/notification-history' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><ClipboardList size={14} /></span>
-                      Notification History
-                      {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
-                    </Link>
+                  <Link 
+                    to="/settings/step-library" 
+                    className={`nav-submenu-item ${location.pathname === '/settings/step-library' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Code size={14} /></span>
+                    Step Library
+                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                  </Link>
+                  <Link 
+                    to="/settings/smtp" 
+                    className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Mail size={14} /></span>
+                    SMTP Config
+                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                  </Link>
+                  <Link 
+                    to="/settings/notification-preferences" 
+                    className={`nav-submenu-item ${location.pathname === '/settings/notification-preferences' ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Bell size={14} /></span>
+                    Notifications
+                  </Link>
+                  <Link 
+                    to="/settings/notification-history" 
+                    className={`nav-submenu-item ${location.pathname === '/settings/notification-history' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><ClipboardList size={14} /></span>
+                    Notification History
+                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                  </Link>
                 </div>
               </div>
               <button onClick={handleLogout} className="nav-menu-item logout">
