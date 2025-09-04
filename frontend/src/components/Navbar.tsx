@@ -144,15 +144,17 @@ const Navbar: React.FC = () => {
               </Link>
               <div className="nav-divider"></div>
               <div className="nav-menu-item-group">
-                <div 
+                <Link 
+                  to="/settings/step-library" 
                   className={`nav-menu-item ${isActive('/settings') ? 'active' : ''}`}
+                  onClick={closeMenu}
                 >
                   <span className="nav-icon"><Settings size={16} /></span>
                   Settings
                   <span className="nav-chevron">
                     <ChevronRight size={14} />
                   </span>
-                </div>
+                </Link>
                 <div className="nav-submenu">
 
                     <Link 
