@@ -14,8 +14,8 @@ import Schedules from './pages/Schedules';
 
 import JobRuns from './pages/JobRuns';
 import JobRunDetail from './pages/JobRunDetail';
-import Notifications from './pages/Notifications';
-import EnhancedSettings from './pages/EnhancedSettings';
+
+import NotificationHistoryPage from './pages/NotificationHistory';
 import SystemSettings from './pages/SystemSettings';
 import LegacySettings from './pages/LegacySettings';
 
@@ -64,9 +64,11 @@ const App: React.FC = () => {
                     <Route path="/job-management/:action/:id" element={<Jobs />} />
                     <Route path="/schedule-management" element={<Schedules />} />
 
-                    <Route path="/job-runs" element={<JobRuns />} />
-                    <Route path="/job-runs/:id" element={<JobRunDetail />} />
-                    <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
+                    <Route path="/history/job-runs" element={<JobRuns />} />
+                    <Route path="/history/job-runs/:id" element={<JobRunDetail />} />
+                    <Route path="/history/notifications" element={<NotificationHistoryPage />} />
+                    <Route path="/notifications" element={<Navigate to="/settings/notification-preferences" />} />
                     <Route path="/settings" element={<Navigate to="/settings/step-library" />} />
                     <Route path="/settings/:section" element={<SystemSettings />} />
                     <Route path="/legacy-settings" element={<LegacySettings />} />

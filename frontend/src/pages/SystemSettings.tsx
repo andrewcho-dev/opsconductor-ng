@@ -1,17 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import SMTPSettingsComponent from '../components/SMTPSettings';
 import StepLibrarySettings from '../components/StepLibrarySettings';
-import StandardizedNotificationPreferences from '../components/StandardizedNotificationPreferences';
-import NotificationHistory from '../components/NotificationHistory';
+import NotificationSettings from '../components/NotificationSettings';
 import { 
   Settings, 
   Mail, 
   Code, 
   Bell, 
-  ClipboardList, 
-  Shield,
   ChevronRight,
   AlertCircle
 } from 'lucide-react';
@@ -51,19 +48,12 @@ const SystemSettings: React.FC = () => {
     },
     {
       id: 'notification-preferences',
-      name: 'Notification Preferences',
+      name: 'Notifications',
       icon: <Bell size={16} />,
-      description: 'Configure your personal notification settings',
-      component: StandardizedNotificationPreferences
+      description: 'Configure notification preferences and worker management',
+      component: NotificationSettings
     },
-    {
-      id: 'notification-history',
-      name: 'Notification History',
-      icon: <ClipboardList size={16} />,
-      description: 'View notification history and worker status',
-      component: NotificationHistory,
-      adminOnly: true
-    }
+
   ];
 
   const visibleSections = sections.filter(section => !section.adminOnly || user?.role === 'admin');
@@ -79,7 +69,7 @@ const SystemSettings: React.FC = () => {
     <div className="dense-dashboard">
       <style>
         {`
-          /* Dashboard-style layout - 1/3, 2/3 format for settings */
+          /* Dashboard-style layout - 2/3, 1/3 format for settings */
           .dense-dashboard {
             padding: 8px 12px;
             max-width: 100%;
@@ -106,7 +96,7 @@ const SystemSettings: React.FC = () => {
           }
           .dashboard-grid {
             display: grid;
-            grid-template-columns: 1fr 2fr;
+            grid-template-columns: 2fr 1fr;
             gap: 12px;
             align-items: stretch;
             height: calc(100vh - 110px);
@@ -351,45 +341,9 @@ const SystemSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 1/3, 2/3 dashboard grid */}
+      {/* 2/3, 1/3 dashboard grid */}
       <div className="dashboard-grid">
-        {/* Left 1/3: Settings Navigation */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            Settings Navigation
-          </div>
-          <div className="compact-content">
-            <div className="settings-nav">
-              {visibleSections.map((section) => (
-                <div
-                  key={section.id}
-                  className={`nav-item ${currentSection === section.id ? 'active' : ''} ${
-                    section.adminOnly && user?.role !== 'admin' ? 'disabled' : ''
-                  }`}
-                  onClick={() => {
-                    if (!section.adminOnly || user?.role === 'admin') {
-                      handleSectionChange(section.id);
-                    }
-                  }}
-                >
-                  <div className="nav-icon">{section.icon}</div>
-                  <div className="nav-content">
-                    <div className="nav-title">
-                      {section.name}
-                      {section.adminOnly && <span className="admin-badge">Admin</span>}
-                    </div>
-                    <div className="nav-description">{section.description}</div>
-                  </div>
-                  <div className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Right 2/3: Settings Content */}
+        {/* Left 2/3: Settings Content */}
         <div className="dashboard-section">
           <div className="section-header">
             {currentSectionData.name}
@@ -478,26 +432,7 @@ const SystemSettings: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="overview-card">
-                    <h3>
-                      <ClipboardList size={16} />
-                      Notification History
-                      <span className="admin-badge">Admin</span>
-                    </h3>
-                    <p>
-                      View notification history, monitor worker status, and manage notification delivery. 
-                      Track failed notifications and system notification health.
-                    </p>
-                    <div className="card-actions">
-                      <button 
-                        className="btn-card"
-                        onClick={() => handleSectionChange('notification-history')}
-                        disabled={user?.role !== 'admin'}
-                      >
-                        View History
-                      </button>
-                    </div>
-                  </div>
+
                 </div>
               ) : CurrentComponent ? (
                 /* Render the selected component */
@@ -510,6 +445,18 @@ const SystemSettings: React.FC = () => {
                   <div>Section not found or not available.</div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right 1/3: Navigation or Future Use */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            Additional Information
+          </div>
+          <div className="compact-content">
+            <div style={{ padding: '12px', color: 'var(--neutral-500)', fontSize: '12px', textAlign: 'center' }}>
+              <p>This space is reserved for field details or future enhancements.</p>
             </div>
           </div>
         </div>

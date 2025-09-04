@@ -74,7 +74,21 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
     try {
       setLoading(true);
       const response = await notificationApi.getUserPreferences(targetUserId);
-      setPreferences(response);
+      
+      // Ensure all string fields are not null to prevent React warnings
+      const sanitizedPreferences = {
+        ...response,
+        email_address: response.email_address || '',
+        webhook_url: response.webhook_url || '',
+        slack_webhook_url: response.slack_webhook_url || '',
+        slack_channel: response.slack_channel || '',
+        teams_webhook_url: response.teams_webhook_url || '',
+        quiet_hours_start: response.quiet_hours_start || '',
+        quiet_hours_end: response.quiet_hours_end || '',
+        quiet_hours_timezone: response.quiet_hours_timezone || 'America/Los_Angeles'
+      };
+      
+      setPreferences(sanitizedPreferences);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to load notification preferences');
@@ -341,7 +355,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                 <input
                   type="email"
                   className="form-input"
-                  value={preferences.email_address}
+                  value={preferences.email_address || ''}
                   onChange={(e) => updatePreference('email_address', e.target.value)}
                   placeholder="your@email.com"
                 />
@@ -381,7 +395,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                 <input
                   type="url"
                   className="form-input"
-                  value={preferences.webhook_url}
+                  value={preferences.webhook_url || ''}
                   onChange={(e) => updatePreference('webhook_url', e.target.value)}
                   placeholder="https://your-webhook.com/notify"
                 />
@@ -422,7 +436,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                   <input
                     type="url"
                     className="form-input"
-                    value={preferences.slack_webhook_url}
+                    value={preferences.slack_webhook_url || ''}
                     onChange={(e) => updatePreference('slack_webhook_url', e.target.value)}
                     placeholder="https://hooks.slack.com/..."
                   />
@@ -438,7 +452,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                   <input
                     type="text"
                     className="form-input"
-                    value={preferences.slack_channel}
+                    value={preferences.slack_channel || ''}
                     onChange={(e) => updatePreference('slack_channel', e.target.value)}
                     placeholder="#notifications"
                   />
@@ -479,7 +493,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                 <input
                   type="url"
                   className="form-input"
-                  value={preferences.teams_webhook_url}
+                  value={preferences.teams_webhook_url || ''}
                   onChange={(e) => updatePreference('teams_webhook_url', e.target.value)}
                   placeholder="https://outlook.office.com/webhook/..."
                 />
@@ -568,7 +582,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                   <input
                     type="time"
                     className="form-input"
-                    value={preferences.quiet_hours_start}
+                    value={preferences.quiet_hours_start || ''}
                     onChange={(e) => updatePreference('quiet_hours_start', e.target.value)}
                   />
                 </div>
@@ -583,7 +597,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                   <input
                     type="time"
                     className="form-input"
-                    value={preferences.quiet_hours_end}
+                    value={preferences.quiet_hours_end || ''}
                     onChange={(e) => updatePreference('quiet_hours_end', e.target.value)}
                   />
                 </div>
@@ -597,7 +611,7 @@ const StandardizedNotificationPreferences: React.FC<NotificationPreferencesProps
                 <div className="pref-control">
                   <select
                     className="form-select"
-                    value={preferences.quiet_hours_timezone}
+                    value={preferences.quiet_hours_timezone || 'America/Los_Angeles'}
                     onChange={(e) => updatePreference('quiet_hours_timezone', e.target.value)}
                   >
                     {timezones.map(tz => (

@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
+import { API_BASE_URL } from './api';
 import {
-  ServiceDefinition, ServiceDefinitionResponse,
+  ServiceDefinitionResponse,
   TargetServiceCreate, TargetServiceUpdate, TargetService,
   TargetCredentialCreate, TargetCredential,
   EnhancedTarget, EnhancedTargetCreate, EnhancedTargetUpdate, EnhancedTargetListResponse,
@@ -8,26 +9,6 @@ import {
   MigrationStatus,
   TargetFilters
 } from '../types/enhanced';
-
-// Base API configuration - reuse from existing api.ts
-const getApiBaseUrl = () => {
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-  
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  
-  if (window.location.port && 
-      !((protocol === 'https:' && window.location.port === '443') || 
-        (protocol === 'http:' && window.location.port === '80'))) {
-    return `${protocol}//${hostname}:${window.location.port}`;
-  }
-  
-  return `${protocol}//${hostname}`;
-};
-
-const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 const enhancedApi = axios.create({

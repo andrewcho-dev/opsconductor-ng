@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Code,
   Mail,
-  ClipboardList
+  ClipboardList,
+  History
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -141,14 +142,34 @@ const Navbar: React.FC = () => {
                 <span className="nav-icon"><Calendar size={16} /></span>
                 Schedules
               </Link>
-              <Link 
-                to="/job-runs" 
-                className={`nav-menu-item ${isActive('/job-runs') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Play size={16} /></span>
-                Job Runs
-              </Link>
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><History size={16} /></span>
+                  History
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/history/job-runs" 
+                    className={`nav-submenu-item ${location.pathname === '/history/job-runs' || location.pathname.startsWith('/history/job-runs/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Play size={14} /></span>
+                    Job Runs
+                  </Link>
+                  <Link 
+                    to="/history/notifications" 
+                    className={`nav-submenu-item ${location.pathname === '/history/notifications' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><ClipboardList size={14} /></span>
+                    Notifications
+                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                  </Link>
+                </div>
+              </div>
               <div className="nav-divider"></div>
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
@@ -184,15 +205,6 @@ const Navbar: React.FC = () => {
                   >
                     <span className="nav-icon"><Bell size={14} /></span>
                     Notifications
-                  </Link>
-                  <Link 
-                    to="/settings/notification-history" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/notification-history' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><ClipboardList size={14} /></span>
-                    Notification History
-                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
                   </Link>
                 </div>
               </div>

@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Job, JobRun } from '../types';
-import { jobApi, jobRunApi } from '../services/api';
+import { Job } from '../types';
+import { jobApi } from '../services/api';
 import VisualJobBuilder from '../components/VisualJobBuilder';
-import { Plus, Play, Edit, Trash2, Clock, CheckCircle, XCircle, AlertCircle, Pause } from 'lucide-react';
+import { Plus, Play, Edit, Trash2, History } from 'lucide-react';
 
 const Jobs: React.FC = () => {
   const navigate = useNavigate();
   const { action, id } = useParams<{ action?: string; id?: string }>();
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [jobRuns, setJobRuns] = useState<JobRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [selectedJobRun, setSelectedJobRun] = useState<JobRun | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +19,6 @@ const Jobs: React.FC = () => {
 
   useEffect(() => {
     fetchJobs();
-    fetchJobRuns();
   }, []);
 
   useEffect(() => {
@@ -51,15 +48,7 @@ const Jobs: React.FC = () => {
     }
   };
 
-  const fetchJobRuns = async (jobId?: number) => {
-    try {
-      const response = await jobRunApi.list(0, 100, jobId);
-      setJobRuns(response.runs || []);
-    } catch (error: any) {
-      console.error('Failed to fetch job runs:', error);
-      setJobRuns([]);
-    }
-  };
+
 
   const handleDelete = async (jobId: number) => {
     if (window.confirm('Delete this job? This action cannot be undone.')) {
@@ -80,7 +69,6 @@ const Jobs: React.FC = () => {
     try {
       await jobApi.run(jobId);
       alert('Job started successfully!');
-      fetchJobRuns(); // Refresh job runs
     } catch (error: any) {
       console.error('Failed to run job:', error);
       alert('Failed to start job. Check the logs for details.');
@@ -95,8 +83,6 @@ const Jobs: React.FC = () => {
 
   const handleJobSelect = (job: Job) => {
     setSelectedJob(job);
-    setSelectedJobRun(null);
-    fetchJobRuns(job.id); // Load runs for this specific job
   };
 
   const getJobStatusBadge = (status: string) => {
@@ -114,72 +100,7 @@ const Jobs: React.FC = () => {
     }
   };
 
-  const getRunStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'succeeded':
-      case 'completed':
-        return 'status-badge-success';
-      case 'failed':
-      case 'error':
-        return 'status-badge-danger';
-      case 'running':
-        return 'status-badge-info';
-      case 'queued':
-      case 'pending':
-        return 'status-badge-warning';
-      case 'canceled':
-      case 'cancelled':
-        return 'status-badge-neutral';
-      default:
-        return 'status-badge-neutral';
-    }
-  };
 
-  const getRunStatusIcon = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'succeeded':
-      case 'completed':
-        return <CheckCircle size={14} />;
-      case 'failed':
-      case 'error':
-        return <XCircle size={14} />;
-      case 'running':
-        return <Play size={14} />;
-      case 'queued':
-      case 'pending':
-        return <Clock size={14} />;
-      case 'canceled':
-      case 'cancelled':
-        return <Pause size={14} />;
-      default:
-        return <AlertCircle size={14} />;
-    }
-  };
-
-  const formatDuration = (started: string | undefined, finished?: string | undefined) => {
-    if (!started) return '-';
-    
-    const startTime = new Date(started);
-    const endTime = finished ? new Date(finished) : new Date();
-    const durationMs = endTime.getTime() - startTime.getTime();
-    
-    const seconds = Math.floor(durationMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s`;
-    } else {
-      return `${seconds}s`;
-    }
-  };
-
-  const getJobName = (jobId: number) => {
-    const job = jobs.find(j => j.id === jobId);
-    return job ? job.name : `Job ${jobId}`;
-  };
 
   if (loading && jobs.length === 0) {
     return (
@@ -256,7 +177,7 @@ const Jobs: React.FC = () => {
           }
           .dashboard-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 2fr 1fr;
             gap: 12px;
             align-items: stretch;
             height: calc(100vh - 110px);
@@ -325,37 +246,7 @@ const Jobs: React.FC = () => {
             cursor: pointer;
           }
           
-          /* Job runs table styles */
-          .runs-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-          }
-          .runs-table th {
-            background: var(--neutral-50);
-            padding: 6px 8px;
-            text-align: left;
-            font-weight: 600;
-            color: var(--neutral-700);
-            border-bottom: 1px solid var(--neutral-200);
-            font-size: 11px;
-          }
-          .runs-table td {
-            padding: 6px 8px;
-            border-bottom: 1px solid var(--neutral-100);
-            vertical-align: middle;
-            font-size: 12px;
-          }
-          .runs-table tr:hover {
-            background: var(--neutral-50);
-          }
-          .runs-table tr.selected {
-            background: var(--primary-blue-light);
-            border-left: 3px solid var(--primary-blue);
-          }
-          .runs-table tr {
-            cursor: pointer;
-          }
+
           
           /* Details panel */
           .details-panel {
@@ -411,6 +302,12 @@ const Jobs: React.FC = () => {
           }
           .btn-success:hover:not(:disabled) {
             color: var(--success-green-dark);
+          }
+          .btn-info {
+            color: var(--primary-blue);
+          }
+          .btn-info:hover:not(:disabled) {
+            color: var(--primary-blue-dark);
           }
           .btn-danger {
             color: var(--danger-red);
@@ -507,18 +404,7 @@ const Jobs: React.FC = () => {
             font-size: 12px;
           }
           
-          .run-status-icon {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-          }
-          
           .job-steps-count {
-            font-size: 10px;
-            color: var(--neutral-500);
-          }
-          
-          .run-targets-count {
             font-size: 10px;
             color: var(--neutral-500);
           }
@@ -557,7 +443,7 @@ const Jobs: React.FC = () => {
         </div>
       )}
 
-      {/* 3-column dashboard grid */}
+      {/* 2-column dashboard grid */}
       <div className="dashboard-grid">
         {/* Column 1: Jobs */}
         <div className="dashboard-section">
@@ -633,6 +519,16 @@ const Jobs: React.FC = () => {
                               <Play size={14} />
                             </button>
                             <button 
+                              className="btn-icon btn-info"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/history/job-runs?job_id=${job.id}`);
+                              }}
+                              title="View job history"
+                            >
+                              <History size={14} />
+                            </button>
+                            <button 
                               className="btn-icon btn-ghost"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -665,134 +561,13 @@ const Jobs: React.FC = () => {
           </div>
         </div>
 
-        {/* Column 2: Job Runs */}
+        {/* Column 2: Details Panel */}
         <div className="dashboard-section">
           <div className="section-header">
-            Job Runs ({jobRuns.length})
-            {selectedJob && (
-              <span style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                for {selectedJob.name}
-              </span>
-            )}
+            {selectedJob ? 'Job Details' : 'Select Job'}
           </div>
           <div className="compact-content">
-            {jobRuns.length === 0 ? (
-              <div className="empty-state">
-                <h3>No job runs</h3>
-                <p>{selectedJob ? `No runs found for ${selectedJob.name}` : 'Select a job to view its runs'}</p>
-              </div>
-            ) : (
-              <div className="table-container">
-                <table className="runs-table">
-                  <thead>
-                    <tr>
-                      <th>Job</th>
-                      <th>Status</th>
-                      <th>Started</th>
-                      <th>Duration</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jobRuns.map((run) => (
-                      <tr 
-                        key={run.id} 
-                        className={selectedJobRun?.id === run.id ? 'selected' : ''}
-                        onClick={() => setSelectedJobRun(run)}
-                      >
-                        <td>
-                          <div style={{ fontWeight: '500' }}>{getJobName(run.job_id)}</div>
-                          <div className="run-targets-count">Run #{run.id}</div>
-                        </td>
-                        <td>
-                          <div className="run-status-icon">
-                            {getRunStatusIcon(run.status)}
-                            <span className={`status-badge ${getRunStatusBadge(run.status)}`}>
-                              {run.status}
-                            </span>
-                          </div>
-                        </td>
-                        <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                          {run.started_at ? new Date(run.started_at).toLocaleString() : '-'}
-                        </td>
-                        <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                          {formatDuration(run.started_at, run.finished_at)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Column 3: Details Panel */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            {selectedJobRun ? 'Run Details' : selectedJob ? 'Job Details' : 'Select Item'}
-          </div>
-          <div className="compact-content">
-            {selectedJobRun ? (
-              <div className="details-panel">
-                <h3>Run #{selectedJobRun.id}</h3>
-                
-                <div className="detail-group">
-                  <div className="detail-label">Job</div>
-                  <div className="detail-value">{getJobName(selectedJobRun.job_id)}</div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Status</div>
-                  <div className="detail-value">
-                    <div className="run-status-icon">
-                      {getRunStatusIcon(selectedJobRun.status)}
-                      <span className={`status-badge ${getRunStatusBadge(selectedJobRun.status)}`}>
-                        {selectedJobRun.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Started</div>
-                  <div className="detail-value">
-                    {selectedJobRun.started_at ? new Date(selectedJobRun.started_at).toLocaleString() : '-'}
-                  </div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Finished</div>
-                  <div className="detail-value">
-                    {selectedJobRun.finished_at ? new Date(selectedJobRun.finished_at).toLocaleString() : '-'}
-                  </div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Duration</div>
-                  <div className="detail-value">
-                    {formatDuration(selectedJobRun.started_at, selectedJobRun.finished_at)}
-                  </div>
-                </div>
-
-                {selectedJobRun.status === 'failed' && (
-                  <div className="detail-group">
-                    <div className="detail-label">Status</div>
-                    <div className="detail-value" style={{ color: 'var(--danger-red)', fontSize: '11px' }}>
-                      Job execution failed
-                    </div>
-                  </div>
-                )}
-
-                <div className="action-buttons">
-                  <button 
-                    className="btn-primary"
-                    onClick={() => navigate(`/job-runs/${selectedJobRun.id}`)}
-                  >
-                    View Details
-                  </button>
-                </div>
-              </div>
-            ) : selectedJob ? (
+            {selectedJob ? (
               <div className="details-panel">
                 <h3>{selectedJob.name}</h3>
                 
@@ -820,20 +595,22 @@ const Jobs: React.FC = () => {
                   <div className="detail-value">v{selectedJob.version}</div>
                 </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Recent Runs</div>
-                  <div className="detail-value">
-                    {jobRuns.filter(run => run.job_id === selectedJob.id).length} total runs
-                  </div>
-                </div>
 
-                <div className="action-buttons">
+
+                <div className="action-buttons" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' }}>
                   <button 
                     className="btn-icon btn-success"
                     onClick={() => handleRunJob(selectedJob.id)}
                     title="Run job"
                   >
                     <Play size={16} />
+                  </button>
+                  <button 
+                    className="btn-icon btn-info"
+                    onClick={() => navigate(`/history/job-runs?job_id=${selectedJob.id}`)}
+                    title="View job history"
+                  >
+                    <History size={16} />
                   </button>
                   <button 
                     className="btn-icon btn-ghost"
@@ -856,7 +633,7 @@ const Jobs: React.FC = () => {
               </div>
             ) : (
               <div className="empty-state">
-                <p>Select a job or job run to view details</p>
+                <p>Select a job to view details</p>
               </div>
             )}
           </div>

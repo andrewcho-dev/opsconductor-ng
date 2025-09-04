@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { jobRunApi, jobApi } from '../services/api';
 import { JobRun, JobRunStep, Job } from '../types';
 import { Plus, Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, ExternalLink, Filter, X } from 'lucide-react';
 
 const JobRuns: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14,6 +15,18 @@ const JobRuns: React.FC = () => {
   const [runSteps, setRunSteps] = useState<JobRunStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Parse job_id from URL parameters on mount
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const jobIdParam = searchParams.get('job_id');
+    if (jobIdParam) {
+      const jobId = parseInt(jobIdParam, 10);
+      if (!isNaN(jobId)) {
+        setSelectedJobId(jobId);
+      }
+    }
+  }, [location.search]);
 
   useEffect(() => {
     fetchRuns();
