@@ -2,12 +2,249 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Job, JobStep } from '../types';
 import { stepLibraryService, StepDefinition } from '../services/stepLibraryService';
 import StepConfigModal from './StepConfigModal';
-import { FileText, X, Play, Square, Target, BookOpen, AlertTriangle, RefreshCw } from 'lucide-react';
+import { FileText, X, Play, Square, Target, BookOpen, AlertTriangle, RefreshCw, Save, RotateCcw, Settings } from 'lucide-react';
+
+// Inject CSS styles for the Visual Job Builder
+const visualJobBuilderStyles = `
+  .visual-job-builder {
+    display: grid;
+    grid-template-columns: 1fr 7fr 1fr;
+    gap: 12px;
+    height: calc(100vh - 110px);
+    align-items: stretch;
+  }
+
+  .dashboard-section {
+    background: white;
+    border: 1px solid var(--neutral-200);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .section-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--neutral-200);
+    background: var(--neutral-25);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--neutral-700);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .section-content {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .node-properties h4 {
+    margin: 0 0 var(--space-2) 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--neutral-900);
+  }
+
+  .node-description {
+    margin: 0 0 var(--space-1) 0;
+    font-size: 12px;
+    color: var(--neutral-600);
+  }
+
+  .no-selection {
+    text-align: center;
+    color: var(--neutral-500);
+    font-size: 12px;
+    margin-top: var(--space-4);
+  }
+
+  .no-selection p {
+    margin: 0;
+  }
+
+  /* Canvas area styles */
+  .job-canvas {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: var(--neutral-0);
+    background-image: radial-gradient(circle, var(--neutral-200) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Step library styles */}
+  .step-library-search {
+    width: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    margin-bottom: var(--space-2);
+  }
+
+  .step-library-filters {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+
+  .step-library-filters select {
+    flex: 1;
+    padding: var(--space-1);
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    background-color: var(--neutral-0);
+  }
+
+  .step-template {
+    padding: var(--space-2);
+    margin-bottom: var(--space-2);
+    border: 1px solid var(--neutral-200);
+    border-radius: var(--radius-sm);
+    cursor: grab;
+    transition: all 0.2s ease;
+    background-color: var(--neutral-0);
+  }
+
+  .step-template:hover {
+    border-color: var(--primary-blue-300);
+    background-color: var(--primary-blue-25);
+    transform: translateY(-1px);
+  }
+
+  .step-template:active {
+    cursor: grabbing;
+  }
+
+  .step-template-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+  }
+
+  .step-template-name {
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--neutral-900);
+  }
+
+  .step-template-meta {
+    font-size: 10px;
+    color: var(--neutral-600);
+  }
+
+  /* Job Controls in Right Panel */
+  .job-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--neutral-600);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .form-input {
+    padding: 6px 8px;
+    border: 1px solid var(--neutral-300);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    background-color: var(--neutral-0);
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: var(--primary-blue-400);
+    box-shadow: 0 0 0 2px var(--primary-blue-100);
+  }
+
+  .job-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  /* Standard button styles */
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    color: var(--neutral-600);
+    cursor: pointer;
+    margin: 0 1px;
+    padding: 2px;
+  }
+  .btn-icon:hover {
+    opacity: 0.7;
+  }
+  .btn-icon:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+
+
+  /* Loading and error states */}
+  .step-load-status {
+    padding: var(--space-3);
+    text-align: center;
+    font-size: 12px;
+  }
+
+  .step-load-error {
+    color: var(--semantic-error-600);
+    background-color: var(--semantic-error-50);
+    border: 1px solid var(--semantic-error-200);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .step-load-retry {
+    margin-top: var(--space-2);
+  }
+`;
+
+// Inject styles into head if not already present
+if (typeof document !== 'undefined' && !document.getElementById('visual-job-builder-styles')) {
+  const styleSheet = document.createElement('style');
+  styleSheet.id = 'visual-job-builder-styles';
+  styleSheet.textContent = visualJobBuilderStyles;
+  document.head.appendChild(styleSheet);
+}
 
 interface VisualJobBuilderProps {
   onJobCreate: (jobData: any) => void;
   onCancel: () => void;
   editingJob?: Job | null;
+  onRefreshSteps?: () => void;
+  onSaveJob?: () => void;
 }
 
 interface FlowNode {
@@ -57,7 +294,7 @@ const getIconComponent = (iconName: string, size: number = 12) => {
   }
 };
 
-const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCancel, editingJob }) => {
+const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCancel, editingJob, onRefreshSteps, onSaveJob }) => {
   const [jobName, setJobName] = useState('');
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -296,7 +533,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
     }
   };
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (!jobName.trim()) {
       alert('Please enter a job name');
       return;
@@ -333,7 +570,26 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
     };
 
     onJobCreate(jobData);
-  };
+  }, [jobName, nodes, connections, onJobCreate]);
+
+  // Listen for custom events from header buttons
+  useEffect(() => {
+    const handleRefreshSteps = () => {
+      loadStepDefinitions();
+    };
+
+    const handleSaveJob = () => {
+      handleSave();
+    };
+
+    window.addEventListener('refreshSteps', handleRefreshSteps);
+    window.addEventListener('saveJob', handleSaveJob);
+    
+    return () => {
+      window.removeEventListener('refreshSteps', handleRefreshSteps);
+      window.removeEventListener('saveJob', handleSaveJob);
+    };
+  }, [loadStepDefinitions, handleSave]);
 
   // Get unique categories and libraries
   const categories = ['all', ...Array.from(new Set(nodeTemplates.map(t => t.category)))];
@@ -352,27 +608,16 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   });
 
   return (
-    <div style={{ display: 'flex', height: '100vh', backgroundColor: '#f5f5f5' }}>
-      {/* Left Panel - Step Library */}
-      <div style={{ 
-        width: '300px', 
-        backgroundColor: 'white', 
-        borderRight: '1px solid #ddd',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        {/* Header */}
-        <div style={{ 
-          padding: '16px', 
-          borderBottom: '1px solid #ddd',
-          backgroundColor: '#f8f9fa'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}><BookOpen size={16} /> Step Library</h3>
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              Manage libraries in Settings
-            </div>
+    <div className="visual-job-builder dashboard-grid">
+      {/* Left Panel - Step Library (1/9 width) */}
+      <div className="dashboard-section">
+        <div className="section-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BookOpen size={14} />
+            Step Library
           </div>
+        </div>
+        <div className="section-content">
           
           {/* Search */}
           <input
@@ -380,22 +625,14 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
             placeholder="Search steps..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '14px',
-              marginBottom: '8px'
-            }}
+            className="step-library-search"
           />
           
           {/* Filters */}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="step-library-filters">
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              style={{ flex: 1, padding: '4px', fontSize: '12px' }}
             >
               {categories.map(cat => (
                 <option key={cat} value={cat}>
@@ -407,7 +644,6 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
             <select
               value={selectedLibrary}
               onChange={(e) => setSelectedLibrary(e.target.value)}
-              style={{ flex: 1, padding: '4px', fontSize: '12px' }}
             >
               {libraries.map(lib => (
                 <option key={lib} value={lib}>
@@ -416,146 +652,69 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
               ))}
             </select>
           </div>
-        </div>
-
-        {/* Step Templates */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+          
+          {/* Loading and Error States */}
           {loadingSteps ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
+            <div className="step-load-status">
               <div>Loading step libraries...</div>
             </div>
           ) : stepLoadError ? (
-            <div style={{ 
-              backgroundColor: '#fff3cd', 
-              color: '#856404', 
-              padding: '8px', 
-              borderRadius: '4px', 
-              fontSize: '12px',
-              marginBottom: '8px'
-            }}>
-              <AlertTriangle size={14} className="inline mr-1" />{stepLoadError}
+            <div className="step-load-error">
+              <AlertTriangle size={14} style={{ marginRight: 'var(--space-1)' }} />
+              {stepLoadError}
+              <button 
+                className="btn btn-ghost btn-sm step-load-retry"
+                onClick={loadStepDefinitions}
+              >
+                <RefreshCw size={12} />
+                Retry
+              </button>
             </div>
           ) : null}
+
+          {/* Step Templates */}
+          <div>
+            {!loadingSteps && !stepLoadError && filteredTemplates.length === 0 && (
+              <div className="no-selection">
+                <p>No steps found matching your filters</p>
+              </div>
+            )}
           
           {filteredTemplates.map(template => (
             <div
               key={template.id}
+              className="step-template"
               draggable
               onDragStart={(e) => handleTemplateDragStart(template, e)}
-              style={{
-                padding: '8px',
-                margin: '4px 0',
-                backgroundColor: template.color || '#007bff',
-                color: 'white',
-                borderRadius: '4px',
-                cursor: 'grab',
-                fontSize: '12px',
-                userSelect: 'none'
-              }}
               title={template.description}
+              style={{ 
+                borderLeftColor: template.color || 'var(--primary-blue-500)',
+                borderLeftWidth: '3px'
+              }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div className="step-template-header">
                 <span>{getIconComponent(template.icon, 12)}</span>
-                <div>
-                  <div style={{ fontWeight: 'bold' }}>{template.name}</div>
-                  <div style={{ fontSize: '10px', opacity: 0.8 }}>
-                    {template.library} • {template.category}
-                  </div>
-                </div>
+                <div className="step-template-name">{template.name}</div>
+              </div>
+              <div className="step-template-meta">
+                {template.library} • {template.category}
               </div>
             </div>
           ))}
-          
-          {filteredTemplates.length === 0 && !loadingSteps && (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-              No steps found matching your criteria
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Main Canvas Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {/* Top Toolbar */}
-        <div style={{ 
-          padding: '12px 16px', 
-          backgroundColor: 'white', 
-          borderBottom: '1px solid #ddd',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
-          <input
-            type="text"
-            placeholder="Job Name"
-            value={jobName}
-            onChange={(e) => setJobName(e.target.value)}
-            style={{
-              padding: '8px 12px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '14px',
-              width: '200px'
-            }}
-          />
-          
-          <div style={{ flex: 1 }} />
-          
-          <button
-            onClick={() => loadStepDefinitions()}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-            disabled={loadingSteps}
-          >
-            <RefreshCw size={14} className="mr-1" />Refresh Steps
-          </button>
-          
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Cancel
-          </button>
-          
-          <button
-            onClick={handleSave}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: '#28a745',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Save Job
-          </button>
+      {/* Main Canvas Area (7/9 width) */}
+      <div className="dashboard-section">
+        <div className="section-header">
+          Canvas
         </div>
 
         {/* Canvas */}
         <div
           ref={canvasRef}
-          style={{
-            flex: 1,
-            position: 'relative',
-            overflow: 'auto',
-            backgroundColor: '#fafafa',
-            backgroundImage: 'radial-gradient(circle, #ddd 1px, transparent 1px)',
-            backgroundSize: '20px 20px'
-          }}
+          className="job-canvas"
           onDrop={handleCanvasDrop}
           onDragOver={(e) => e.preventDefault()}
           onClick={() => {
@@ -712,6 +871,50 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Right Panel - Properties/Tools (1/9 width) */}
+      <div className="dashboard-section">
+        <div className="section-header">
+          Job Properties
+        </div>
+        <div className="section-content">
+          {/* Job Controls */}
+          <div className="job-controls">
+            <input
+              type="text"
+              placeholder="Enter job name"
+              value={jobName}
+              onChange={(e) => setJobName(e.target.value)}
+              className="form-input"
+            />
+          </div>
+
+          <hr style={{ margin: '16px 0', border: 'none', borderTop: '1px solid var(--neutral-200)' }} />
+
+          {selectedNode ? (
+            <div className="node-properties">
+              <h4>{selectedNode.name}</h4>
+              <p className="node-description">
+                Type: {selectedNode.type}
+              </p>
+              <p className="node-description">
+                Library: {selectedNode.library}
+              </p>
+              <button 
+                className="btn btn-primary btn-sm"
+                onClick={() => handleNodeDoubleClick(selectedNode)}
+                style={{ marginTop: 'var(--space-2)' }}
+              >
+                Configure Step
+              </button>
+            </div>
+          ) : (
+            <div className="no-selection">
+              <p>Select a step block to view properties</p>
+            </div>
+          )}
         </div>
       </div>
 

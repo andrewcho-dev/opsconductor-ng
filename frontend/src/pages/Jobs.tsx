@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Job } from '../types';
 import { jobApi } from '../services/api';
 import VisualJobBuilder from '../components/VisualJobBuilder';
-import { Plus, Play, Edit, Trash2, History } from 'lucide-react';
+import { Plus, Play, Edit, Trash2, History, X, RefreshCw, Save } from 'lucide-react';
 
 const Jobs: React.FC = () => {
   const navigate = useNavigate();
@@ -113,35 +113,92 @@ const Jobs: React.FC = () => {
   // If showing the form, render it full-screen
   if (showCreateForm) {
     return (
-      <div className="main-content">
-        <div className="page-header">
-          <h1 className="page-title">
-            {isEditing ? 'Edit Job' : 'Create Job'}
-          </h1>
-          <div className="page-actions">
+      <div className="dense-dashboard">
+        <style>
+          {`
+            .dense-dashboard {
+              padding: 8px 12px;
+              max-width: 100%;
+              font-size: 13px;
+            }
+            .dashboard-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 12px;
+              padding-bottom: 8px;
+              border-bottom: 1px solid var(--neutral-200);
+            }
+            .dashboard-header h1 {
+              font-size: 20px;
+              font-weight: 600;
+              margin: 0;
+              color: var(--neutral-800);
+            }
+            .header-subtitle {
+              font-size: 12px;
+              color: var(--neutral-600);
+              margin: 2px 0 0 0;
+            }
+          `}
+        </style>
+        
+        {/* Dashboard-style header */}
+        <div className="dashboard-header">
+          <div className="header-left">
+            <h1>{isEditing ? 'Edit Job' : 'Create Job'}</h1>
+            <p className="header-subtitle">Design and configure your job workflow using drag and drop</p>
+          </div>
+          <div className="header-actions">
+            <button
+              className="btn-icon btn-ghost"
+              onClick={() => {
+                // Trigger refresh steps in VisualJobBuilder
+                window.dispatchEvent(new CustomEvent('refreshSteps'));
+              }}
+              title="Refresh Steps"
+            >
+              <RefreshCw size={16} />
+            </button>
+            <button
+              className="btn-icon btn-success"
+              onClick={() => {
+                // Trigger save job in VisualJobBuilder
+                window.dispatchEvent(new CustomEvent('saveJob'));
+              }}
+              title="Save Job"
+            >
+              <Save size={16} />
+            </button>
             <button 
-              type="button" 
-              className="btn btn-ghost"
+              className="btn-icon btn-ghost"
               onClick={() => {
                 setShowCreateForm(false);
                 navigate('/job-management');
               }}
+              title="Cancel"
             >
-              Cancel
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <VisualJobBuilder
-            editingJob={selectedJob}
-            onJobCreate={handleJobSaved}
-            onCancel={() => {
-              setShowCreateForm(false);
-              navigate('/job-management');
-            }}
-          />
-        </div>
+        <VisualJobBuilder
+          editingJob={selectedJob}
+          onJobCreate={handleJobSaved}
+          onCancel={() => {
+            setShowCreateForm(false);
+            navigate('/job-management');
+          }}
+          onRefreshSteps={() => {
+            // Trigger refresh steps in VisualJobBuilder
+            window.dispatchEvent(new CustomEvent('refreshSteps'));
+          }}
+          onSaveJob={() => {
+            // Trigger save job in VisualJobBuilder
+            window.dispatchEvent(new CustomEvent('saveJob'));
+          }}
+        />
       </div>
     );
   }

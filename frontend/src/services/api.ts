@@ -83,7 +83,7 @@ api.interceptors.response.use(
       if (currentRefreshToken) {
         try {
           console.log('Refreshing token with refresh_token');
-          const response = await axios.post(`${API_BASE_URL}/api/v1/refresh`, {
+          const response = await axios.post(`${API_BASE_URL}/refresh`, {
             refresh_token: currentRefreshToken
           });
 
@@ -94,7 +94,7 @@ api.interceptors.response.use(
           
           // Update user data in AuthContext
           try {
-            const userResponse = await axios.get(`${API_BASE_URL}/api/v1/verify`, {
+            const userResponse = await axios.get(`${API_BASE_URL}/verify`, {
               headers: { Authorization: `Bearer ${access_token}` }
             });
             if (userResponse.data?.user) {
@@ -158,7 +158,7 @@ export const authApi = {
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/api/v1/auth/revoke-all');
+    await api.post('/api/v1/auth/logout');
     clearTokens();
   },
 

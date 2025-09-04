@@ -40,7 +40,7 @@ const Notifications: React.FC = () => {
   const fetchNotifications = async (pageNum: number = 1) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/notification/notifications?skip=${(pageNum - 1) * 10}&limit=10`, {
+      const response = await fetch(`/api/v1/notification/notifications?offset=${(pageNum - 1) * 10}&limit=10`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

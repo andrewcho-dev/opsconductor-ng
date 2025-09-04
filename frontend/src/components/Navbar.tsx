@@ -18,7 +18,9 @@ import {
   Code,
   Mail,
   ClipboardList,
-  History
+  History,
+  Plus,
+  List
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -126,14 +128,33 @@ const Navbar: React.FC = () => {
                 <span className="nav-icon"><Search size={16} /></span>
                 Discovery
               </Link>
-              <Link 
-                to="/job-management" 
-                className={`nav-menu-item ${isActive('/job-management') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Settings size={16} /></span>
-                Jobs
-              </Link>
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><Settings size={16} /></span>
+                  Jobs
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/job-management" 
+                    className={`nav-submenu-item ${location.pathname === '/job-management' ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><List size={14} /></span>
+                    Manage Jobs
+                  </Link>
+                  <Link 
+                    to="/job-management/create" 
+                    className={`nav-submenu-item ${location.pathname === '/job-management/create' ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Plus size={14} /></span>
+                    Create Job
+                  </Link>
+                </div>
+              </div>
               <Link 
                 to="/schedule-management" 
                 className={`nav-menu-item ${isActive('/schedule-management') ? 'active' : ''}`} 
