@@ -71,7 +71,14 @@ const Navbar: React.FC = () => {
   return (
     <nav className="nodered-nav">
       <div className="nav-header">
-        <Link to="/" className="nav-brand" onClick={closeMenu}>OpsConductor</Link>
+        <Link to="/" className="nav-brand" onClick={closeMenu}>
+          <img 
+            src="/OpsConductor hat light on dark.svg" 
+            alt="OpsConductor" 
+            className="nav-logo"
+          />
+          <span className="nav-brand-text">OpsConductor</span>
+        </Link>
         <div className="nav-menu-container" ref={menuRef}>
           <button className="nav-hamburger" onClick={toggleMenu}>
             <Menu size={20} />

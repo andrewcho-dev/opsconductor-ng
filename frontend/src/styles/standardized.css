@@ -115,7 +115,7 @@ body {
 
 /* Node-RED Style Navigation */
 .nodered-nav {
-  background-color: #8f0000;
+  background-color: #081d32;
   color: white;
   position: sticky;
   top: 0;
@@ -137,9 +137,25 @@ body {
   font-weight: 600;
   text-decoration: none;
   letter-spacing: -0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-logo {
+  height: 24px;
+  width: auto;
+}
+
+.nav-brand-text {
+  color: white;
 }
 
 .nav-brand:hover {
+  color: #f0f0f0;
+}
+
+.nav-brand:hover .nav-brand-text {
   color: #f0f0f0;
 }
 
