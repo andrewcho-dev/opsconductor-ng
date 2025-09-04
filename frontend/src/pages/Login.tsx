@@ -45,9 +45,9 @@ const Login: React.FC = () => {
     }}>
       <div className="container" style={{ maxWidth: '400px' }}>
         <div className="card">
-        <div style={{ textAlign: 'center', marginBottom: '0px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '-20px' }}>
           <img 
-            src="/OpsConductor dark on light 640.svg" 
+            src="/OpsConductor dark on light 480.svg" 
             alt="OpsConductor" 
             style={{ 
               height: '300px', 
@@ -71,7 +71,7 @@ const Login: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ marginTop: '10px' }}>
+        <form onSubmit={handleSubmit} style={{ marginTop: '0px' }}>
           <div className="form-group" style={{ marginTop: '0px' }}>
             <label>Username:</label>
             <input
@@ -135,7 +135,11 @@ const Login: React.FC = () => {
           <button 
             type="submit" 
             className="btn btn-primary" 
-            style={{ width: '100%' }}
+            style={{ 
+              width: '100%',
+              height: '45px',
+              fontSize: '16px'
+            }}
             disabled={loading}
           >
             {loading ? 'Signing In...' : 'Sign In'}
