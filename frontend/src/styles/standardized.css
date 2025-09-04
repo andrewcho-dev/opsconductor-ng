@@ -245,8 +245,9 @@ body {
   min-width: 200px;
   margin-right: 4px;
   overflow: hidden;
-  z-index: 1001;
+  z-index: 99999;
   display: none;
+  pointer-events: auto;
 }
 
 /* KEY: This makes the submenu appear on hover */
