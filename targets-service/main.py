@@ -58,7 +58,7 @@ security = HTTPBearer()
 # Database connection
 def get_db_connection():
     return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
+        host=os.getenv("DB_HOST", "postgres"),  # default to docker service name
         database=os.getenv("DB_NAME", "opsconductor"),
         user=os.getenv("DB_USER", "opsconductor"),
         password=os.getenv("DB_PASSWORD", "opsconductor123"),
@@ -69,18 +69,21 @@ def get_db_connection():
 async def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify JWT token with auth service"""
     try:
-        auth_service_url = os.getenv("AUTH_SERVICE_URL", "http://localhost:3001")
+        auth_service_url = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
+        # Log the URL used for verification to aid troubleshooting
+        logger.info(f"Verifying token via: {auth_service_url}/verify")
         response = requests.get(
             f"{auth_service_url}/verify",
             headers={"Authorization": f"Bearer {credentials.credentials}"},
-            timeout=5
+            timeout=10
         )
         
         if response.status_code == 200:
             return response.json()
         else:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except requests.RequestException:
+    except requests.RequestException as e:
+        logger.error(f"Auth verification request failed: {e}")
         raise HTTPException(status_code=503, detail="Auth service unavailable")
 
 async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):

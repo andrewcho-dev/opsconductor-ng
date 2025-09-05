@@ -25,7 +25,7 @@ fi
 
 # Stop any existing containers
 echo "🛑 Stopping existing containers..."
-$COMPOSE_CMD -f docker-compose-python.yml down --remove-orphans || true
+$COMPOSE_CMD -f docker-compose.yml down --remove-orphans || true
 
 # Run compliance check before building
 echo "🔍 Running compliance check..."
@@ -36,7 +36,7 @@ fi
 
 # Build and start services
 echo "🏗️  Building and starting services..."
-$COMPOSE_CMD -f docker-compose-python.yml up --build -d
+$COMPOSE_CMD -f docker-compose.yml up --build -d
 
 # Wait for services to be ready
 echo "⏳ Waiting for services to be ready..."
@@ -86,5 +86,5 @@ echo "   Admin: admin / admin123"
 echo "   Operator: operator / admin123"
 echo "   Viewer: viewer / admin123"
 echo ""
-echo "📊 To view logs: docker-compose -f docker-compose-python.yml logs -f [service-name]"
-echo "🛑 To stop system: docker-compose -f docker-compose-python.yml down"
+echo "📊 To view logs: docker compose -f docker-compose.yml logs -f [service-name]"
+echo "🛑 To stop system: docker compose -f docker-compose.yml down"

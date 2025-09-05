@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Job, JobStep } from '../types';
-import { stepLibraryService, StepDefinition } from '../services/stepLibraryService';
+import { Job } from '../types';
+import { stepLibraryService } from '../services/stepLibraryService';
 import StepConfigModal from './StepConfigModal';
-import { FileText, X, Play, Square, MousePointer, BookOpen, AlertTriangle, RefreshCw, Save, RotateCcw, Grid3X3, Package, Hand, ZoomIn, ZoomOut, Maximize2, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal } from 'lucide-react';
+import { FileText, X, Play, Square, Target, MousePointer, AlertTriangle, RefreshCw, RotateCcw, Grid3X3, Package, Hand, ZoomIn, ZoomOut, Maximize2, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal } from 'lucide-react';
 
 // Inject CSS styles for the Visual Job Builder
 const visualJobBuilderStyles = `

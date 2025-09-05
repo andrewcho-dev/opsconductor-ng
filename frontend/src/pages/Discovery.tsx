@@ -70,6 +70,8 @@ const Discovery: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<DiscoveryJob | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<DiscoveredTarget | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingJob, setEditingJob] = useState<DiscoveryJob | null>(null);
   const [saving, setSaving] = useState(false);
   
   // Pagination state
@@ -241,6 +243,19 @@ const Discovery: React.FC = () => {
     }
   };
 
+  const handleRunJob = async (jobId: number) => {
+    try {
+      setLoading(true);
+      setError(null);
+      await discoveryApi.runJob(jobId);
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || 'Failed to run discovery job');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCancelJob = async (jobId: number) => {
     if (!window.confirm('Are you sure you want to cancel this running job?')) {
       return;
@@ -254,6 +269,70 @@ const Discovery: React.FC = () => {
       setError(err.message || 'Failed to cancel discovery job');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditJob = (job: DiscoveryJob) => {
+    setEditingJob(job);
+    setNewJob({
+      name: job.name,
+      discovery_type: job.discovery_type,
+      config: {
+        cidr_ranges: job.config.cidr_ranges || [''],
+        services: job.config.services || [...DEFAULT_SERVICES],
+        os_detection: job.config.os_detection ?? true,
+        timeout: job.config.timeout || 300
+      }
+    });
+    setShowEditForm(true);
+    setShowCreateForm(false);
+  };
+
+  const handleUpdateJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingJob) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      
+      const enabledServices = newJob.config.services?.filter(s => s.enabled) || [];
+      if (enabledServices.length === 0) {
+        setError('Please select at least one service to scan for.');
+        setSaving(false);
+        return;
+      }
+      
+      const config: DiscoveryConfig = {
+        ...newJob.config,
+        cidr_ranges: newJob.config.cidr_ranges?.filter(range => range.trim() !== '') || [],
+        services: enabledServices
+      };
+
+      await discoveryApi.updateJob(editingJob.id, {
+        name: newJob.name,
+        config
+      });
+
+      // Reset form
+      setNewJob({
+        name: '',
+        discovery_type: 'network_scan',
+        config: {
+          cidr_ranges: [''],
+          services: [...DEFAULT_SERVICES],
+          os_detection: true,
+          timeout: 300
+        }
+      });
+
+      setShowEditForm(false);
+      setEditingJob(null);
+      await loadJobs();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update discovery job');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -820,9 +899,13 @@ const Discovery: React.FC = () => {
         <div className="header-actions">
           <button 
             className="btn-icon btn-success"
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => {
+              setShowCreateForm(true);
+              setShowEditForm(false);
+              setEditingJob(null);
+            }}
             title="Create new discovery job"
-            disabled={showCreateForm}
+            disabled={showCreateForm || showEditForm}
           >
             <Plus size={16} />
           </button>
@@ -849,9 +932,13 @@ const Discovery: React.FC = () => {
             Discovery Jobs ({jobs.length})
             <button 
               className="btn-icon btn-success"
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setShowCreateForm(true);
+                setShowEditForm(false);
+                setEditingJob(null);
+              }}
               title="Create new job"
-              disabled={showCreateForm}
+              disabled={showCreateForm || showEditForm}
             >
               <Plus size={14} />
             </button>
@@ -863,7 +950,11 @@ const Discovery: React.FC = () => {
                 <p>Create your first discovery job to get started.</p>
                 <button 
                   className="btn-icon btn-success"
-                  onClick={() => setShowCreateForm(true)}
+                  onClick={() => {
+                    setShowCreateForm(true);
+                    setShowEditForm(false);
+                    setEditingJob(null);
+                  }}
                   title="Create first job"
                 >
                   <Plus size={16} />
@@ -904,29 +995,64 @@ const Discovery: React.FC = () => {
                           )}
                         </td>
                         <td>
-                          {job.status === 'running' ? (
-                            <button
-                              className="btn-icon btn-ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCancelJob(job.id);
-                              }}
-                              title="Cancel job"
-                            >
-                              <Square size={14} />
-                            </button>
-                          ) : (
-                            <button
-                              className="btn-icon btn-danger"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteJob(job.id);
-                              }}
-                              title="Delete job"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            {job.status === 'running' ? (
+                              <button
+                                className="btn-icon btn-ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelJob(job.id);
+                                }}
+                                title="Cancel job"
+                              >
+                                <Square size={14} />
+                              </button>
+                            ) : job.status === 'pending' || job.status === 'failed' ? (
+                              <>
+                                <button
+                                  className="btn-icon btn-success"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRunJob(job.id);
+                                  }}
+                                  title="Run job"
+                                >
+                                  <Play size={14} />
+                                </button>
+                                <button
+                                  className="btn-icon btn-ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditJob(job);
+                                  }}
+                                  title="Edit job"
+                                >
+                                  <Edit3 size={14} />
+                                </button>
+                                <button
+                                  className="btn-icon btn-danger"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteJob(job.id);
+                                  }}
+                                  title="Delete job"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="btn-icon btn-danger"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteJob(job.id);
+                                }}
+                                title="Delete job"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1054,11 +1180,15 @@ const Discovery: React.FC = () => {
         {/* Column 3: Details/Create Panel */}
         <div className="dashboard-section">
           <div className="section-header">
-            {showCreateForm ? 'Create Discovery Job' : selectedJob ? 'Job Details' : selectedTarget ? 'Target Details' : 'Select Item'}
-            {showCreateForm && (
+            {showCreateForm ? 'Create Discovery Job' : showEditForm ? 'Edit Discovery Job' : selectedJob ? 'Job Details' : selectedTarget ? 'Target Details' : 'Select Item'}
+            {(showCreateForm || showEditForm) && (
               <button 
                 className="btn-icon btn-ghost"
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setShowEditForm(false);
+                  setEditingJob(null);
+                }}
                 title="Cancel"
               >
                 <X size={14} />
@@ -1066,9 +1196,9 @@ const Discovery: React.FC = () => {
             )}
           </div>
           <div className="compact-content">
-            {showCreateForm ? (
+            {showCreateForm || showEditForm ? (
               <div className="create-form">
-                <form onSubmit={handleCreateJob}>
+                <form onSubmit={showEditForm ? handleUpdateJob : handleCreateJob}>
                   <div className="form-group">
                     <label className="form-label">Job Name</label>
                     <input
@@ -1200,7 +1330,11 @@ const Discovery: React.FC = () => {
                   <div className="action-buttons">
                     <button 
                       type="button"
-                      onClick={() => setShowCreateForm(false)}
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setShowEditForm(false);
+                        setEditingJob(null);
+                      }}
                       style={{ padding: '6px 12px', border: '1px solid var(--neutral-300)', background: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
                     >
                       Cancel
@@ -1210,7 +1344,7 @@ const Discovery: React.FC = () => {
                       className="btn-primary"
                       disabled={saving}
                     >
-                      {saving ? 'Creating...' : 'Create Job'}
+                      {saving ? (showEditForm ? 'Updating...' : 'Creating...') : (showEditForm ? 'Update Job' : 'Create Job')}
                     </button>
                   </div>
                 </form>
@@ -1274,6 +1408,30 @@ const Discovery: React.FC = () => {
                     >
                       <Square size={16} />
                     </button>
+                  ) : selectedJob.status === 'pending' || selectedJob.status === 'failed' ? (
+                    <>
+                      <button 
+                        className="btn-icon btn-success"
+                        onClick={() => handleRunJob(selectedJob.id)}
+                        title="Run job"
+                      >
+                        <Play size={16} />
+                      </button>
+                      <button 
+                        className="btn-icon btn-ghost"
+                        onClick={() => handleEditJob(selectedJob)}
+                        title="Edit job"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        className="btn-icon btn-danger"
+                        onClick={() => handleDeleteJob(selectedJob.id)}
+                        title="Delete job"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </>
                   ) : (
                     <button 
                       className="btn-icon btn-danger"

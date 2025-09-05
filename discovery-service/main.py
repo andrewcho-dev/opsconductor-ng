@@ -1527,6 +1527,56 @@ async def bulk_delete_discovered_targets(
         logger.error(f"Error bulk deleting targets: {e}")
         raise HTTPException(status_code=500, detail="Failed to bulk delete targets")
 
+@app.post("/discovery-jobs/{job_id}/run")
+async def run_discovery_job(
+    job_id: int, 
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(verify_token_with_auth_service)
+):
+    """Run/start a discovery job"""
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT id, name, discovery_type, config, status, created_by
+                FROM discovery_jobs WHERE id = %s
+            """, (job_id,))
+            job = cursor.fetchone()
+            
+            if not job:
+                raise HTTPException(status_code=404, detail="Discovery job not found")
+            
+            if job['status'] not in [JobStatus.PENDING, JobStatus.FAILED]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot run job with status '{job['status']}'. Only pending or failed jobs can be run."
+                )
+            
+            # Reset job status to pending and clear previous results
+            cursor.execute("""
+                UPDATE discovery_jobs 
+                SET status = %s, started_at = NULL, completed_at = NULL, results_summary = NULL
+                WHERE id = %s
+            """, (JobStatus.PENDING, job_id))
+            conn.commit()
+        conn.close()
+        
+        # Start discovery job in background
+        background_tasks.add_task(
+            discovery_service.start_discovery_job,
+            job_id,
+            {'discovery_type': job['discovery_type'], 'config': job['config']},
+            job['created_by']
+        )
+        
+        logger.info(f"Started discovery job {job_id}")
+        return {"message": f"Discovery job {job_id} has been started"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting discovery job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start discovery job")
+
 @app.post("/discovery-jobs/{job_id}/cancel")
 async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Cancel a running discovery job"""

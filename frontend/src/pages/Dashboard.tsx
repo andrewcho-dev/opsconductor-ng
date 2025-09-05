@@ -22,7 +22,7 @@ const Dashboard: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const [users, credentials, targets, jobs, runs, schedules, schedulerStatus] = await Promise.all([
+      const requests = [
         userApi.list(0, 1),
         credentialApi.list(0, 1),
         targetApi.list(0, 1),
@@ -30,16 +30,38 @@ const Dashboard: React.FC = () => {
         jobRunApi.list(0, 1),
         schedulerApi.list(0, 1),
         schedulerApi.getStatus()
-      ]);
+      ];
+
+      const [
+        usersRes,
+        credentialsRes,
+        targetsRes,
+        jobsRes,
+        runsRes,
+        schedulesRes,
+        schedulerStatusRes
+      ] = await Promise.allSettled(requests);
+
+      const getTotal = (res: any) => (res.status === 'fulfilled' ? (res.value?.total ?? 0) : 0);
+      const getSchedulerRunning = (res: any) => (res.status === 'fulfilled' ? !!res.value?.scheduler_running : false);
+
+      // Log failures for debugging but keep dashboard rendering
+      if (usersRes.status === 'rejected') console.warn('Users stats failed:', usersRes.reason);
+      if (credentialsRes.status === 'rejected') console.warn('Credentials stats failed:', credentialsRes.reason);
+      if (targetsRes.status === 'rejected') console.warn('Targets stats failed:', targetsRes.reason);
+      if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
+      if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
+      if (schedulesRes.status === 'rejected') console.warn('Schedules stats failed:', schedulesRes.reason);
+      if (schedulerStatusRes.status === 'rejected') console.warn('Scheduler status failed:', schedulerStatusRes.reason);
 
       setStats({
-        users: users.total,
-        credentials: credentials.total,
-        targets: targets.total,
-        jobs: jobs.total,
-        recentRuns: runs.total,
-        schedules: schedules.total,
-        schedulerRunning: schedulerStatus.scheduler_running
+        users: getTotal(usersRes),
+        credentials: getTotal(credentialsRes),
+        targets: getTotal(targetsRes),
+        jobs: getTotal(jobsRes),
+        recentRuns: getTotal(runsRes),
+        schedules: getTotal(schedulesRes),
+        schedulerRunning: getSchedulerRunning(schedulerStatusRes)
       });
     } catch (error) {
       console.error('Failed to load dashboard stats:', error);

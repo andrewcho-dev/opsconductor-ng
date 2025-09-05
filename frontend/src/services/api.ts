@@ -16,6 +16,20 @@ import {
 
 // Base API configuration
 // Explicitly construct the API URL to ensure HTTPS and correct port
+// Service port mapping for development
+const SERVICE_PORTS = {
+  auth: 3001,
+  users: 3002,
+  credentials: 3004,
+  targets: 3005,
+  jobs: 3006,
+  executor: 3007,
+  scheduler: 3008,
+  notifications: 3009,
+  discovery: 3010,
+  stepLibraries: 3011
+};
+
 export const getApiBaseUrl = () => {
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL;
@@ -33,6 +47,14 @@ export const getApiBaseUrl = () => {
   }
   
   return `${protocol}//${hostname}`;
+};
+
+export const getServiceUrl = (service: string) => {
+  const port = SERVICE_PORTS[service as keyof typeof SERVICE_PORTS];
+  if (port) {
+    return `http://127.0.0.1:${port}`;
+  }
+  return 'http://127.0.0.1';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
@@ -146,7 +168,7 @@ export const isAuthenticated = (): boolean => {
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/api/v1/auth/login', credentials);
+    const response: AxiosResponse<AuthResponse> = await axios.post(`${getServiceUrl('auth')}/login`, credentials);
     return response.data;
   },
 
@@ -480,33 +502,38 @@ export const notificationApi = {
 export const discoveryApi = {
   // Discovery Jobs
   listJobs: async (skip = 0, limit = 100): Promise<DiscoveryJobListResponse> => {
-    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/jobs', {
+    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/discovery-jobs', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   getJob: async (id: number): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.get(`/api/v1/discovery/jobs/${id}`);
+    const response: AxiosResponse<DiscoveryJob> = await api.get(`/api/v1/discovery/discovery-jobs/${id}`);
     return response.data;
   },
 
   createJob: async (jobData: DiscoveryJobCreate): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.post('/api/v1/discovery/jobs', jobData);
+    const response: AxiosResponse<DiscoveryJob> = await api.post('/api/v1/discovery/discovery-jobs', jobData);
     return response.data;
   },
 
   updateJob: async (id: number, jobData: Partial<DiscoveryJobCreate>): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.put(`/api/v1/discovery/jobs/${id}`, jobData);
+    const response: AxiosResponse<DiscoveryJob> = await api.put(`/api/v1/discovery/discovery-jobs/${id}`, jobData);
     return response.data;
   },
 
   deleteJob: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/discovery/jobs/${id}`);
+    await api.delete(`/api/v1/discovery/discovery-jobs/${id}`);
+  },
+
+  runJob: async (id: number): Promise<{ message: string }> => {
+    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/run`);
+    return response.data;
   },
 
   cancelJob: async (id: number): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/jobs/${id}/cancel`);
+    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/cancel`);
     return response.data;
   },
 

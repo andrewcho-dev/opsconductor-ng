@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: opsconductor-postgres
@@ -20,7 +21,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    restart: unless-stopped
 
+  # Auth Service
   auth-service:
     build: ./auth-service
     container_name: opsconductor-auth
@@ -28,9 +31,10 @@ services:
       - "3001:3001"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
       JWT_SECRET_KEY: your-secret-key-here
     depends_on:
       postgres:
@@ -38,14 +42,15 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./auth-service/main.py:/app/main.py
-      - ./auth-service/shared:/app/shared
+      - ./auth-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # User Service
   user-service:
     build: ./user-service
     container_name: opsconductor-users
@@ -53,23 +58,25 @@ services:
       - "3002:3002"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./user-service/main.py:/app/main.py
-      - ./user-service/shared:/app/shared
+      - ./user-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Credentials Service
   credentials-service:
     build: ./credentials-service
     container_name: opsconductor-credentials
@@ -77,9 +84,10 @@ services:
       - "3004:3004"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
       ENCRYPTION_KEY: your-encryption-key-here
     depends_on:
       postgres:
@@ -87,14 +95,15 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./credentials-service/main.py:/app/main.py
-      - ./credentials-service/shared:/app/shared
+      - ./credentials-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Targets Service
   targets-service:
     build: ./targets-service
     container_name: opsconductor-targets
@@ -102,23 +111,26 @@ services:
       - "3005:3005"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./targets-service/main.py:/app/main.py
-      - ./targets-service/shared:/app/shared
+      - ./targets-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Jobs Service
   jobs-service:
     build: ./jobs-service
     container_name: opsconductor-jobs
@@ -126,23 +138,25 @@ services:
       - "3006:3006"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./jobs-service/main.py:/app/main.py
-      - ./jobs-service/shared:/app/shared
+      - ./jobs-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Executor Service
   executor-service:
     build: ./executor-service
     container_name: opsconductor-executor
@@ -150,24 +164,25 @@ services:
       - "3007:3007"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./executor-service/main.py:/app/main.py
-      - ./executor-service/ssh_executor.py:/app/ssh_executor.py
-      - ./executor-service/shared:/app/shared
+      - ./executor-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3007/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Scheduler Service
   scheduler-service:
     build: ./scheduler-service
     container_name: opsconductor-scheduler
@@ -175,23 +190,25 @@ services:
       - "3008:3008"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./scheduler-service/main.py:/app/main.py
-      - ./scheduler-service/shared:/app/shared
+      - ./scheduler-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Notification Service
   notification-service:
     build: ./notification-service
     container_name: opsconductor-notification
@@ -199,9 +216,10 @@ services:
       - "3009:3009"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USERNAME: your-email@gmail.com
@@ -212,14 +230,15 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./notification-service/main.py:/app/main.py
-      - ./notification-service/shared:/app/shared
+      - ./notification-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3009/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Discovery Service
   discovery-service:
     build: ./discovery-service
     container_name: opsconductor-discovery
@@ -227,9 +246,10 @@ services:
       - "3010:3010"
     environment:
       DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      DB_NAME: opsconductor
       JWT_SECRET_KEY: your-secret-key-here
     depends_on:
       postgres:
@@ -237,14 +257,43 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./discovery-service/main.py:/app/main.py
-      - ./discovery-service/shared:/app/shared
+      - ./discovery-service:/app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Step Libraries Service
+  step-libraries-service:
+    build: ./step-libraries-service
+    container_name: opsconductor-step-libraries
+    ports:
+      - "3011:3011"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./step-libraries-service:/app
+      - step_libraries_data:/app/libraries
+      - step_libraries_cache:/app/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Frontend (React)
   frontend:
     build: ./frontend
     container_name: opsconductor-frontend
@@ -261,18 +310,31 @@ services:
       - ./frontend/public:/app/public
       - ./frontend/package.json:/app/package.json
       - ./frontend/tsconfig.json:/app/tsconfig.json
+    depends_on:
+      - auth-service
+      - user-service
+      - credentials-service
+      - targets-service
+      - jobs-service
+      - executor-service
+      - scheduler-service
+      - notification-service
+      - discovery-service
+      - step-libraries-service
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
+  # Nginx Reverse Proxy
   nginx:
     build: ./nginx
     container_name: opsconductor-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "80:80"      # HTTP (redirects to HTTPS)
+      - "443:443"    # HTTPS
     depends_on:
       - frontend
       - auth-service
@@ -283,16 +345,20 @@ services:
       - executor-service
       - scheduler-service
       - notification-service
+      - discovery-service
+      - step-libraries-service
     networks:
       - opsconductor-net
     volumes:
-      - nginx_ssl:/etc/nginx/ssl
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_ssl:/etc/nginx/ssl  # Fallback for generated certs
     healthcheck:
       test: ["CMD", "curl", "-f", "-k", "https://localhost"]
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
 networks:
   opsconductor-net:
@@ -301,3 +367,5 @@ networks:
 volumes:
   postgres_data:
   nginx_ssl:
+  step_libraries_data:
+  step_libraries_cache:
