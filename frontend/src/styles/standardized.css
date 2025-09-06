@@ -905,6 +905,21 @@ body {
   cursor: not-allowed;
 }
 
+/* Readonly field styling for detail views */
+.readonly-field {
+  background-color: var(--neutral-50) !important;
+  color: var(--neutral-700) !important;
+  cursor: default !important;
+  border-color: var(--neutral-200) !important;
+  resize: none;
+}
+
+.readonly-field:focus {
+  outline: none !important;
+  border-color: var(--neutral-200) !important;
+  box-shadow: none !important;
+}
+
 .form-actions {
   display: flex;
   gap: var(--space-3);

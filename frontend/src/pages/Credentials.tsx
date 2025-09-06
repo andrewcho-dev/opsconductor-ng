@@ -261,7 +261,7 @@ const Credentials: React.FC = () => {
         .dashboard-grid {
           display: grid;
           grid-template-columns: 2fr 1fr;
-          gap: 8px;
+          gap: 12px;
           height: calc(100vh - 120px);
         }
         
@@ -699,7 +699,9 @@ const Credentials: React.FC = () => {
           </div>
           <div className="compact-content">
           
-          {credentials.length === 0 ? (
+          {loading ? (
+            <div>Loading credentials...</div>
+          ) : credentials.length === 0 ? (
             <div className="empty-state">
               <h3>No credentials found</h3>
               <p>Create your first credential to start managing authentication.</p>
@@ -1178,65 +1180,242 @@ const Credentials: React.FC = () => {
           ) : selectedCredential ? (
             <>
               <div className="section-header">
-                Credential Details
+                <span>Credential Details: {selectedCredential.name}</span>
               </div>
+              
+              {/* Credential Type Selection - EXACT same as edit form */}
+              <div className="credential-type-section">
+                <label className="form-label required">Credential Type</label>
+                <div className="radio-group">
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="credential_type_view"
+                      value="password"
+                      checked={selectedCredential.credential_type === 'password'}
+                      disabled
+                    />
+                    <span>Password</span>
+                  </label>
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="credential_type_view"
+                      value="key"
+                      checked={selectedCredential.credential_type === 'key'}
+                      disabled
+                    />
+                    <span>SSH Key</span>
+                  </label>
+                  <label className="radio-option">
+                    <input
+                      type="radio"
+                      name="credential_type_view"
+                      value="certificate"
+                      checked={selectedCredential.credential_type === 'certificate'}
+                      disabled
+                    />
+                    <span>Certificate</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Form Fields Section - EXACT same structure as edit forms */}
               <div className="compact-content credential-details">
-                <h3>{selectedCredential.name}</h3>
-                
-                <div className="detail-group">
-                  <div className="detail-label">Type</div>
-                  <div className="detail-value">
-                    <span className={`type-badge type-${selectedCredential.credential_type}`}>
-                      {selectedCredential.credential_type}
-                    </span>
-                  </div>
-                </div>
 
-                {selectedCredential.description && (
-                  <div className="detail-group">
-                    <div className="detail-label">Description</div>
-                    <div className="detail-value">{selectedCredential.description}</div>
+              {/* Password form - single column layout - EXACT SAME */}
+              {selectedCredential.credential_type === 'password' && (
+                <>
+                  <div className="form-field">
+                    <label className="form-label required">Name</label>
+                    <input
+                      type="text"
+                      className="form-input readonly-field"
+                      value={selectedCredential.name}
+                      readOnly
+                    />
                   </div>
-                )}
 
-                {selectedCredential.username && (
-                  <div className="detail-group">
-                    <div className="detail-label">Username</div>
-                    <div className="detail-value">{selectedCredential.username}</div>
+                  <div className="form-field">
+                    <label className="form-label">Description</label>
+                    <input
+                      type="text"
+                      className="form-input readonly-field"
+                      value={selectedCredential.description || ''}
+                      readOnly
+                    />
                   </div>
-                )}
 
-                {selectedCredential.domain && (
-                  <div className="detail-group">
-                    <div className="detail-label">Domain</div>
-                    <div className="detail-value">{selectedCredential.domain}</div>
+                  <div className="form-field">
+                    <label className="form-label required">Username</label>
+                    <input
+                      type="text"
+                      className="form-input readonly-field"
+                      value={selectedCredential.username || ''}
+                      readOnly
+                    />
                   </div>
-                )}
 
-                {selectedCredential.valid_until && (
-                  <div className="detail-group">
-                    <div className="detail-label">Valid Until</div>
-                    <div className={`detail-value ${isExpiringSoon(selectedCredential.valid_until) ? 'expiry-warning' : ''}`}>
-                      {isExpiringSoon(selectedCredential.valid_until) && <AlertTriangle size={14} />}
-                      {formatDate(selectedCredential.valid_until)}
+                  <div className="form-field">
+                    <label className="form-label required">Password</label>
+                    <input
+                      type="password"
+                      className="form-input readonly-field"
+                      value="••••••••••••"
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Domain</label>
+                    <input
+                      type="text"
+                      className="form-input readonly-field"
+                      value={selectedCredential.domain || ''}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Next Rotation Date</label>
+                    <input
+                      type="date"
+                      className="form-input readonly-field"
+                      value={selectedCredential.next_rotation_date || ''}
+                      readOnly
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* SSH Key form - grid layout - EXACT SAME */}
+              {selectedCredential.credential_type === 'key' && (
+                <div className="form-grid">
+                  <div className="form-grid-left">
+                    <div className="form-field">
+                      <label className="form-label required">Name</label>
+                      <input
+                        type="text"
+                        className="form-input readonly-field"
+                        value={selectedCredential.name}
+                        readOnly
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="form-label required">Username</label>
+                      <input
+                        type="text"
+                        className="form-input readonly-field"
+                        value={selectedCredential.username || ''}
+                        readOnly
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="form-label">Description</label>
+                      <input
+                        type="text"
+                        className="form-input readonly-field"
+                        value={selectedCredential.description || ''}
+                        readOnly
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="form-label">Next Rotation Date</label>
+                      <input
+                        type="date"
+                        className="form-input readonly-field"
+                        value={selectedCredential.next_rotation_date || ''}
+                        readOnly
+                      />
                     </div>
                   </div>
-                )}
 
-                {selectedCredential.next_rotation_date && (
-                  <div className="detail-group">
-                    <div className="detail-label">Next Rotation</div>
-                    <div className="detail-value">
-                      <Clock size={14} style={{ marginRight: '4px' }} />
-                      {formatDate(selectedCredential.next_rotation_date)}
+                  <div className="form-grid-right">
+                    <div className="form-field key-field">
+                      <label className="form-label required">Private Key</label>
+                      <textarea
+                        className="form-input form-textarea readonly-field"
+                        value={selectedCredential.private_key || ''}
+                        readOnly
+                        rows={8}
+                      />
+                    </div>
+
+                    <div className="form-field key-field">
+                      <label className="form-label">Public Key</label>
+                      <textarea
+                        className="form-input form-textarea readonly-field"
+                        value={selectedCredential.public_key || ''}
+                        readOnly
+                        rows={4}
+                      />
                     </div>
                   </div>
-                )}
-
-                <div className="detail-group">
-                  <div className="detail-label">Created</div>
-                  <div className="detail-value">{formatDate(selectedCredential.created_at)}</div>
                 </div>
+              )}
+
+              {/* Certificate form - grid layout - EXACT SAME */}
+              {selectedCredential.credential_type === 'certificate' && (
+                <div className="form-grid">
+                  <div className="form-grid-left">
+                    <div className="form-field">
+                      <label className="form-label required">Name</label>
+                      <input
+                        type="text"
+                        className="form-input readonly-field"
+                        value={selectedCredential.name}
+                        readOnly
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="form-label">Description</label>
+                      <input
+                        type="text"
+                        className="form-input readonly-field"
+                        value={selectedCredential.description || ''}
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-grid-right">
+                    <div className="form-field key-field">
+                      <label className="form-label required">Private Key</label>
+                      <textarea
+                        className="form-input form-textarea readonly-field"
+                        value={selectedCredential.private_key || ''}
+                        readOnly
+                        rows={6}
+                      />
+                    </div>
+
+                    <div className="form-field key-field">
+                      <label className="form-label required">Certificate</label>
+                      <textarea
+                        className="form-input form-textarea readonly-field"
+                        value={selectedCredential.certificate || ''}
+                        readOnly
+                        rows={6}
+                      />
+                    </div>
+
+                    <div className="form-field key-field">
+                      <label className="form-label">Certificate Chain</label>
+                      <textarea
+                        className="form-input form-textarea readonly-field"
+                        value={selectedCredential.certificate_chain || ''}
+                        readOnly
+                        rows={4}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               </div>
             </>
           ) : (

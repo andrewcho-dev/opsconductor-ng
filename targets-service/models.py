@@ -27,6 +27,7 @@ class ServiceDefinitionResponse(BaseModel):
 class TargetServiceCreate(BaseModel):
     service_type: str
     port: int
+    credential_id: Optional[int] = None
     is_secure: bool = False
     is_enabled: bool = True
     notes: Optional[str] = None
@@ -44,6 +45,8 @@ class TargetService(BaseModel):
     category: str
     port: int
     default_port: int
+    credential_id: Optional[int] = None
+    credential_name: Optional[str] = None
     is_secure: bool
     is_enabled: bool
     is_custom_port: bool
@@ -88,6 +91,7 @@ class TargetUpdate(BaseModel):
     os_version: Optional[str] = None
     description: Optional[str] = None
     tags: Optional[List[str]] = None
+    services: Optional[List[TargetServiceCreate]] = None
 
 class Target(BaseModel):
     id: int

@@ -22,6 +22,7 @@ export interface ServiceDefinitionResponse {
 export interface TargetServiceCreate {
   service_type: string;
   port: number;
+  credential_id?: number;
   is_secure?: boolean;
   is_enabled?: boolean;
   notes?: string;
@@ -41,6 +42,8 @@ export interface TargetService {
   category: string;
   port: number;
   default_port: number;
+  credential_id?: number;
+  credential_name?: string;
   is_secure: boolean;
   is_enabled: boolean;
   is_custom_port: boolean;

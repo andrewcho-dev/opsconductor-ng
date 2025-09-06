@@ -301,6 +301,7 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
       - FAST_REFRESH=true
+      - REACT_APP_API_URL=http://localhost
     ports:
       - "3000:3000"
     networks:

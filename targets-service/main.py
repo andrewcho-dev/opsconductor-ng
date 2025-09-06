@@ -101,9 +101,10 @@ def get_target_services(conn, target_id: int) -> List[TargetService]:
     """Get all services for a target"""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT ts.*, sd.display_name, sd.category, sd.default_port
+        SELECT ts.*, sd.display_name, sd.category, sd.default_port, c.name as credential_name
         FROM target_services ts
         JOIN service_definitions sd ON ts.service_type = sd.service_type
+        LEFT JOIN credentials c ON ts.credential_id = c.id
         WHERE ts.target_id = %s
         ORDER BY sd.category, sd.display_name
     """, (target_id,))
@@ -117,6 +118,8 @@ def get_target_services(conn, target_id: int) -> List[TargetService]:
             category=row['category'],
             port=row['port'],
             default_port=row['default_port'],
+            credential_id=row['credential_id'],
+            credential_name=row['credential_name'],
             is_secure=row['is_secure'],
             is_enabled=row['is_enabled'],
             is_custom_port=row['is_custom_port'],
@@ -279,7 +282,41 @@ async def create_target(
         ))
         
         result = cursor.fetchone()
+        target_id = result['id']
+        
+        # Handle services if provided
+        if target.services:
+            for service in target.services:
+                cursor.execute("""
+                    INSERT INTO target_services 
+                    (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    target_id, service.service_type, service.port, service.credential_id,
+                    service.is_secure, service.is_enabled, service.notes,
+                    datetime.utcnow()
+                ))
+                
+                # Create credential association if credential_id is provided
+                if service.credential_id:
+                    cursor.execute("""
+                        INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary, created_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (target_id, credential_id) DO UPDATE SET
+                        service_types = CASE 
+                            WHEN %s = ANY(target_credentials.service_types) THEN target_credentials.service_types
+                            ELSE array_append(target_credentials.service_types, %s)
+                        END
+                    """, (
+                        target_id, service.credential_id, [service.service_type], False, datetime.utcnow(),
+                        service.service_type, service.service_type
+                    ))
+        
         conn.commit()
+        
+        # Get services and credentials for the response
+        services = get_target_services(conn, target_id)
+        credentials = get_target_credentials(conn, target_id)
         
         return Target(
             id=result['id'],
@@ -290,8 +327,8 @@ async def create_target(
             os_version=target.os_version,
             description=target.description,
             tags=target.tags or [],
-            services=[],
-            credentials=[],
+            services=services,
+            credentials=credentials,
             created_at=result['created_at'],
             updated_at=result['updated_at']
         )
@@ -363,6 +400,7 @@ async def update_target(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Update an existing target"""
+    logger.info(f"Updating target {target_id} with data: {target.dict()}")
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -408,6 +446,42 @@ async def update_target(
         
         query = f"UPDATE targets SET {', '.join(update_fields)} WHERE id = %s"
         cursor.execute(query, update_values)
+        
+        # Handle services update if provided
+        if target.services is not None:
+            # Delete existing services for this target
+            cursor.execute("DELETE FROM target_services WHERE target_id = %s", (target_id,))
+            
+            # Clear existing credential associations (we'll recreate them)
+            cursor.execute("DELETE FROM target_credentials WHERE target_id = %s", (target_id,))
+            
+            # Add new services
+            for service in target.services:
+                cursor.execute("""
+                    INSERT INTO target_services 
+                    (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    target_id, service.service_type, service.port, service.credential_id,
+                    service.is_secure, service.is_enabled, service.notes,
+                    datetime.utcnow()
+                ))
+                
+                # Create credential association if credential_id is provided
+                if service.credential_id:
+                    cursor.execute("""
+                        INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary, created_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (target_id, credential_id) DO UPDATE SET
+                        service_types = CASE 
+                            WHEN %s = ANY(target_credentials.service_types) THEN target_credentials.service_types
+                            ELSE array_append(target_credentials.service_types, %s)
+                        END
+                    """, (
+                        target_id, service.credential_id, [service.service_type], False, datetime.utcnow(),
+                        service.service_type, service.service_type
+                    ))
+        
         conn.commit()
         
         # Get updated target data
@@ -639,6 +713,112 @@ async def delete_target_credential(
     except Exception as e:
         conn.rollback()
         logger.error(f"Error deleting target credential: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        conn.close()
+
+@app.post("/targets/services/{service_id}/test")
+async def test_service_connection(
+    service_id: int,
+    current_user: dict = Depends(require_admin_or_operator_role)
+):
+    """Test connection to a specific service"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor(psycopg2.extras.RealDictCursor)
+        
+        # Get service details with target info
+        cursor.execute("""
+            SELECT 
+                ts.id, ts.service_type, ts.port, ts.is_secure, ts.is_enabled,
+                t.hostname, t.ip_address,
+                c.username, c.password_hash, c.private_key, c.credential_type
+            FROM target_services ts
+            JOIN targets t ON ts.target_id = t.id
+            LEFT JOIN target_credentials tc ON ts.credential_id = tc.credential_id AND tc.target_id = t.id
+            LEFT JOIN credentials c ON tc.credential_id = c.id
+            WHERE ts.id = %s AND ts.is_enabled = true
+        """, (service_id,))
+        
+        service = cursor.fetchone()
+        if not service:
+            raise HTTPException(status_code=404, detail="Service not found or disabled")
+        
+        # Basic connection test based on service type
+        target_host = service['ip_address'] or service['hostname']
+        port = service['port']
+        service_type = service['service_type']
+        
+        logger.info(f"Testing connection to {service_type} on {target_host}:{port}")
+        
+        # Import socket for basic connectivity test
+        import socket
+        import time
+        
+        success = False
+        message = ""
+        
+        try:
+            # Basic TCP port connectivity test
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)  # 5 second timeout
+            result = sock.connect_ex((target_host, port))
+            sock.close()
+            
+            if result == 0:
+                success = True
+                message = f"Port {port} is open and accepting connections"
+                
+                # Update connection status in database
+                cursor.execute("""
+                    UPDATE target_services 
+                    SET connection_status = 'connected', last_tested = %s
+                    WHERE id = %s
+                """, (datetime.utcnow(), service_id))
+            else:
+                success = False
+                message = f"Port {port} is not accessible (connection refused)"
+                
+                # Update connection status in database
+                cursor.execute("""
+                    UPDATE target_services 
+                    SET connection_status = 'failed', last_tested = %s
+                    WHERE id = %s
+                """, (datetime.utcnow(), service_id))
+                
+        except socket.gaierror as e:
+            success = False
+            message = f"DNS resolution failed: {str(e)}"
+            cursor.execute("""
+                UPDATE target_services 
+                SET connection_status = 'failed', last_tested = %s
+                WHERE id = %s
+            """, (datetime.utcnow(), service_id))
+        except Exception as e:
+            success = False
+            message = f"Connection test failed: {str(e)}"
+            cursor.execute("""
+                UPDATE target_services 
+                SET connection_status = 'failed', last_tested = %s
+                WHERE id = %s
+            """, (datetime.utcnow(), service_id))
+        
+        conn.commit()
+        
+        return {
+            "success": success,
+            "message": message,
+            "service_type": service_type,
+            "target": target_host,
+            "port": port,
+            "tested_at": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Error testing service connection: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         conn.close()

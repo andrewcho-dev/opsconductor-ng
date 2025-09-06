@@ -4,15 +4,22 @@ import { Plus, Trash2, Check, X, Edit3 } from 'lucide-react';
 import { userApi } from '../services/api';
 import { User, UserCreate } from '../types';
 
-interface EditingState {
-  userId: number;
-  field: 'username' | 'email' | 'role' | 'first_name' | 'last_name' | 'telephone' | 'title' | 'password';
-  value: string;
-  confirmPassword?: string;
-}
+
 
 
 interface NewUserState {
+  email: string;
+  username: string;
+  password: string;
+  confirmPassword: string;
+  role: string;
+  first_name: string;
+  last_name: string;
+  telephone: string;
+  title: string;
+}
+
+interface EditUserState {
   email: string;
   username: string;
   password: string;
@@ -30,11 +37,23 @@ const Users: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState<EditingState | null>(null);
 
   const [addingNew, setAddingNew] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newUser, setNewUser] = useState<NewUserState>({
+    email: '',
+    username: '',
+    password: '',
+    confirmPassword: '',
+    role: 'viewer',
+    first_name: '',
+    last_name: '',
+    telephone: '',
+    title: ''
+  });
+
+  const [editUser, setEditUser] = useState<EditUserState>({
     email: '',
     username: '',
     password: '',
@@ -64,71 +83,92 @@ const Users: React.FC = () => {
 
   const startAddingNew = () => {
     setAddingNew(true);
-    setEditing(null);
+    setEditingUser(null);
+    setSelectedUser(null);
   };
 
-  const startEditing = (userId: number, field: 'username' | 'email' | 'role' | 'first_name' | 'last_name' | 'telephone' | 'title' | 'password', currentValue: string = '') => {
-    setEditing({
-      userId,
-      field,
-      value: field === 'password' ? '' : currentValue,
-      confirmPassword: field === 'password' ? '' : undefined
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setEditUser({
+      email: user.email,
+      username: user.username,
+      password: '',
+      confirmPassword: '',
+      role: user.role,
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      telephone: user.telephone || '',
+      title: user.title || ''
     });
     setAddingNew(false);
+    setSelectedUser(null);
   };
 
-  const cancelEditing = () => {
-    setEditing(null);
+  const handleCancelEdit = () => {
+    setEditingUser(null);
+    setEditUser({
+      email: '',
+      username: '',
+      password: '',
+      confirmPassword: '',
+      role: 'viewer',
+      first_name: '',
+      last_name: '',
+      telephone: '',
+      title: ''
+    });
   };
 
-  const saveEdit = async () => {
-    if (!editing) return;
+  const handleSaveEdit = async () => {
+    if (!editingUser) return;
 
-    if (editing.field === 'password') {
-      if (!editing.value) {
-        alert('Password cannot be empty');
-        return;
-      }
-      if (editing.value !== editing.confirmPassword) {
-        alert('Passwords do not match');
-        return;
-      }
-      if (editing.value.length < 6) {
-        alert('Password must be at least 6 characters long');
-        return;
-      }
+    // Validation
+    if (!editUser.email.trim()) {
+      alert('Email is required');
+      return;
     }
-
-    if ((editing.field === 'email' || editing.field === 'username') && !editing.value.trim()) {
-      alert(`${editing.field} cannot be empty`);
+    if (!editUser.username.trim()) {
+      alert('Username is required');
+      return;
+    }
+    if (editUser.password && editUser.password !== editUser.confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
+    if (editUser.password && editUser.password.length < 6) {
+      alert('Password must be at least 6 characters long');
       return;
     }
 
     try {
       setSaving(true);
-      await userApi.update(editing.userId, { [editing.field]: editing.value });
-      await fetchUsers();
+      const updateData: any = {
+        email: editUser.email,
+        username: editUser.username,
+        role: editUser.role,
+        first_name: editUser.first_name,
+        last_name: editUser.last_name,
+        telephone: editUser.telephone,
+        title: editUser.title
+      };
       
-      if (selectedUser?.id === editing.userId) {
-        setSelectedUser({...selectedUser, [editing.field]: editing.value});
+      // Only include password if it was changed
+      if (editUser.password) {
+        updateData.password = editUser.password;
       }
       
-      setEditing(null);
+      await userApi.update(editingUser.id, updateData);
+      await fetchUsers();
+      handleCancelEdit();
     } catch (error) {
-      console.error(`Failed to update ${editing.field}:`, error);
-      alert(`Failed to update ${editing.field}`);
+      console.error('Failed to update user:', error);
+      alert('Failed to update user');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      saveEdit();
-    } else if (e.key === 'Escape') {
-      cancelEditing();
-    }
-  };
+
 
   const cancelAddingNew = () => {
     setAddingNew(false);
@@ -219,13 +259,7 @@ const Users: React.FC = () => {
 
 
 
-  const handleNewUserKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      saveNewUser();
-    } else if (e.key === 'Escape') {
-      cancelAddingNew();
-    }
-  };
+
 
   if (loading) {
     return (
@@ -448,6 +482,109 @@ const Users: React.FC = () => {
             margin: 0 0 12px 0;
             font-size: 12px;
           }
+          
+          /* Form styles */
+          .form-field {
+            margin-bottom: 16px;
+          }
+          .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--neutral-700);
+            margin-bottom: 4px;
+          }
+          .form-label.required::after {
+            content: " *";
+            color: var(--danger-red);
+          }
+          .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            font-size: 13px;
+            transition: border-color 0.2s;
+          }
+          .form-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--primary-blue-light);
+          }
+          
+          /* Three-column layout */
+          .three-column-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+          }
+          
+          /* User details styling to match credentials */
+          .user-details {
+            padding: 8px;
+          }
+          .user-details h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .detail-group {
+            margin-bottom: 12px;
+          }
+          .detail-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--neutral-500);
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .detail-value {
+            font-size: 12px;
+            color: var(--neutral-800);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-100);
+          }
+          
+          /* Form styling to match credentials */
+          .form-field {
+            margin-bottom: 16px;
+          }
+          
+          .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--neutral-700);
+            margin-bottom: 4px;
+          }
+          
+          .form-label.required::after {
+            content: ' *';
+            color: var(--red-600);
+          }
+          
+          .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            font-size: 14px;
+            color: var(--neutral-900);
+          }
+          
+          .form-input:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--blue-100);
+          }
+          
+          .form-input[readonly], .form-input:disabled {
+            background-color: var(--neutral-50);
+            color: var(--neutral-700);
+            cursor: default;
+          }
         `}
       </style>
       
@@ -461,7 +598,7 @@ const Users: React.FC = () => {
             className="btn-icon btn-success"
             onClick={startAddingNew}
             title="Add new user"
-            disabled={addingNew}
+            disabled={addingNew || !!editingUser}
           >
             <Plus size={16} />
           </button>
@@ -502,73 +639,6 @@ const Users: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* New User Row */}
-                  {addingNew && (
-                    <tr style={{ background: '#f0f9ff', border: '2px solid #10b981' }}>
-                      <td>
-                        <input
-                          type="text"
-                          value={newUser.username}
-                          onChange={(e) => setNewUser({...newUser, username: e.target.value})}
-                          onKeyDown={handleNewUserKeyPress}
-                          placeholder="Username"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                          autoFocus
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="email"
-                          value={newUser.email}
-                          onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                          onKeyDown={handleNewUserKeyPress}
-                          placeholder="Email"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        />
-                      </td>
-                      <td>
-                        {newUser.first_name} {newUser.last_name}
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>
-                          <input
-                            type="text"
-                            value={newUser.first_name}
-                            onChange={(e) => setNewUser({...newUser, first_name: e.target.value})}
-                            placeholder="First"
-                            style={{ width: '45%', border: 'none', background: 'transparent', padding: '2px' }}
-                          />
-                          <input
-                            type="text"
-                            value={newUser.last_name}
-                            onChange={(e) => setNewUser({...newUser, last_name: e.target.value})}
-                            placeholder="Last"
-                            style={{ width: '45%', border: 'none', background: 'transparent', padding: '2px' }}
-                          />
-                        </div>
-                      </td>
-                      <td>
-                        <select 
-                          value={newUser.role} 
-                          onChange={(e) => setNewUser({...newUser, role: e.target.value})}
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        >
-                          <option value="viewer">Viewer</option>
-                          <option value="operator">Operator</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </td>
-                      <td style={{ color: '#64748b', fontSize: '12px' }}>New</td>
-                      <td>
-                        <button onClick={saveNewUser} className="btn-icon btn-success" title="Save" disabled={saving}>
-                          <Check size={16} />
-                        </button>
-                        <button onClick={cancelAddingNew} className="btn-icon btn-ghost" title="Cancel">
-                          <X size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  )}
-
-                  {/* Existing Users */}
                   {users.map((user) => (
                     <tr 
                       key={user.id} 
@@ -601,7 +671,7 @@ const Users: React.FC = () => {
                             className="btn-icon btn-ghost"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedUser(user);
+                              handleEdit(user);
                             }}
                             title="Edit user details"
                           >
@@ -628,286 +698,273 @@ const Users: React.FC = () => {
           </div>
         </div>
 
-        {/* Column 3: User Details Panel */}
+        {/* Column 3: User Details/Form Panel */}
         <div className="dashboard-section">
-          <div className="section-header">
-            {selectedUser ? `User Details` : 'Select User'}
-          </div>
-          <div className="compact-content">
-            {selectedUser ? (
-              <div className="user-details">
-                <h3>{selectedUser.username}</h3>
-                
-                <div className="detail-group">
-                  <div className="detail-label">Email</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'email' ? (
-                      <div>
-                        <input
-                          type="email"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{selectedUser.email}</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'email', selectedUser.email)}
-                          title="Edit email"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
+          {addingNew || editingUser ? (
+            <>
+              <div className="section-header">
+                <span>{editingUser ? `Edit User: ${editingUser.username}` : 'Create New User'}</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button 
+                    className="btn-icon btn-success"
+                    onClick={editingUser ? handleSaveEdit : saveNewUser}
+                    disabled={saving}
+                    title={editingUser ? "Update User" : "Create User"}
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button 
+                    className="btn-icon btn-ghost"
+                    onClick={editingUser ? handleCancelEdit : cancelAddingNew}
+                    disabled={saving}
+                    title="Cancel"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">First Name</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'first_name' ? (
-                      <div>
-                        <input
-                          type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{selectedUser.first_name || '-'}</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'first_name', selectedUser.first_name || '')}
-                          title="Edit first name"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
+              </div>
+              <div className="compact-content user-details">
+                <div className="three-column-grid">
+                  {/* Row 1: username, firstname, lastname */}
+                  <div className="form-field">
+                    <label className="form-label required">Username</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser ? editUser.username : newUser.username}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, username: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, username: e.target.value }))
+                      }
+                    />
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Last Name</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'last_name' ? (
-                      <div>
-                        <input
-                          type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{selectedUser.last_name || '-'}</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'last_name', selectedUser.last_name || '')}
-                          title="Edit last name"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
+                  <div className="form-field">
+                    <label className="form-label">First Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser ? editUser.first_name : newUser.first_name}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, first_name: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, first_name: e.target.value }))
+                      }
+                    />
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Telephone</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'telephone' ? (
-                      <div>
-                        <input
-                          type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{selectedUser.telephone || '-'}</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'telephone', selectedUser.telephone || '')}
-                          title="Edit telephone"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
+                  <div className="form-field">
+                    <label className="form-label">Last Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser ? editUser.last_name : newUser.last_name}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, last_name: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, last_name: e.target.value }))
+                      }
+                    />
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Title</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'title' ? (
-                      <div>
-                        <input
-                          type="text"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>{selectedUser.title || '-'}</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'title', selectedUser.title || '')}
-                          title="Edit title"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Password</div>
-                  <div className="detail-value">
-                    {editing?.userId === selectedUser.id && editing?.field === 'password' ? (
-                      <div>
-                        <input
-                          type="password"
-                          placeholder="New password"
-                          value={editing.value}
-                          onChange={(e) => setEditing({...editing, value: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          autoFocus
-                        />
-                        <input
-                          type="password"
-                          placeholder="Confirm password"
-                          value={editing.confirmPassword || ''}
-                          onChange={(e) => setEditing({...editing, confirmPassword: e.target.value})}
-                          onKeyDown={handleKeyPress}
-                          className="detail-input"
-                          style={{ marginTop: '8px' }}
-                        />
-                        <div className="action-buttons">
-                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
-                            <Check size={16} />
-                          </button>
-                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
-                            <X size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>••••••••</span>
-                        <button 
-                          className="btn-icon btn-ghost btn-sm"
-                          onClick={() => startEditing(selectedUser.id, 'password')}
-                          title="Change password"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Role</div>
-                  <div className="detail-value">
-                    <select 
-                      value={selectedUser.role} 
-                      onChange={(e) => handleRoleChange(selectedUser.id, e.target.value)}
-                      className="detail-input"
+                  {/* Row 2: role, title, telephone */}
+                  <div className="form-field">
+                    <label className="form-label">Role</label>
+                    <select
+                      className="form-input"
+                      value={editingUser ? editUser.role : newUser.role}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, role: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, role: e.target.value }))
+                      }
                     >
                       <option value="viewer">Viewer</option>
                       <option value="operator">Operator</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Created</div>
-                  <div className="detail-value">
-                    {new Date(selectedUser.created_at).toLocaleString()}
+                  <div className="form-field">
+                    <label className="form-label">Title</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser ? editUser.title : newUser.title}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, title: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, title: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Telephone</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser ? editUser.telephone : newUser.telephone}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, telephone: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, telephone: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  {/* Row 3: password, confirm password, email */}
+                  <div className="form-field">
+                    <label className="form-label required">Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder={editingUser ? "Leave blank to keep current password" : "Enter password"}
+                      value={editingUser ? editUser.password : newUser.password}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, password: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, password: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label required">Confirm Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Confirm password"
+                      value={editingUser ? editUser.confirmPassword : newUser.confirmPassword}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, confirmPassword: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, confirmPassword: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label required">Email</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={editingUser ? editUser.email : newUser.email}
+                      onChange={(e) => editingUser 
+                        ? setEditUser(prev => ({ ...prev, email: e.target.value }))
+                        : setNewUser(prev => ({ ...prev, email: e.target.value }))
+                      }
+                    />
                   </div>
                 </div>
+              </div>
+            </>
+          ) : selectedUser ? (
+            <>
+              <div className="section-header">
+                User Details
+              </div>
+              <div className="compact-content user-details">
+                <div className="three-column-grid">
+                  {/* Row 1: username, firstname, lastname */}
+                  <div className="form-field">
+                    <label className="form-label required">Username</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={selectedUser.username}
+                      readOnly
+                    />
+                  </div>
 
-                <div className="action-buttons">
-                  <button 
-                    className="btn-icon btn-danger"
-                    onClick={() => handleDelete(selectedUser.id)}
-                    title="Delete user"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="form-field">
+                    <label className="form-label">First Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={selectedUser.first_name || ''}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Last Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={selectedUser.last_name || ''}
+                      readOnly
+                    />
+                  </div>
+
+                  {/* Row 2: role, title, telephone */}
+                  <div className="form-field">
+                    <label className="form-label">Role</label>
+                    <select className="form-input" value={selectedUser.role} disabled>
+                      <option value="viewer">Viewer</option>
+                      <option value="operator">Operator</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Title</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={selectedUser.title || ''}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Telephone</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={selectedUser.telephone || ''}
+                      readOnly
+                    />
+                  </div>
+
+                  {/* Row 3: password, confirm password, email */}
+                  <div className="form-field">
+                    <label className="form-label required">Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value="••••••••"
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label">Created</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={new Date(selectedUser.created_at).toLocaleString()}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="form-label required">Email</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={selectedUser.email}
+                      readOnly
+                    />
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="empty-state">
-                <p>Select a user from the table to view and edit details</p>
+            </>
+          ) : (
+            <>
+              <div className="section-header">
+                Select User
               </div>
-            )}
-          </div>
+              <div className="compact-content">
+                <div className="empty-state">
+                  <p>Select a user from the table to view details</p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
