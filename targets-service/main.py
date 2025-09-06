@@ -723,9 +723,11 @@ async def test_service_connection(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Test connection to a specific service"""
+    logger.info(f"Starting test connection for service_id: {service_id}")
     conn = get_db_connection()
     try:
-        cursor = conn.cursor(psycopg2.extras.RealDictCursor)
+        logger.info("Database connection established, creating cursor")
+        cursor = conn.cursor()
         
         # Get service details with target info
         logger.info(f"Querying service details for service_id: {service_id}")
