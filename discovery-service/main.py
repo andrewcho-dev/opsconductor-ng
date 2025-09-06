@@ -1413,7 +1413,11 @@ async def _import_discovered_targets_impl(
                                         target_id, service_type, port, is_enabled, 
                                         discovery_method, created_at
                                     ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                                    ON CONFLICT (target_id, service_type, port) DO NOTHING
+                                    ON CONFLICT (target_id, service_type) DO UPDATE SET
+                                        port = EXCLUDED.port,
+                                        is_enabled = EXCLUDED.is_enabled,
+                                        discovery_method = EXCLUDED.discovery_method,
+                                        updated_at = CURRENT_TIMESTAMP
                                 """, (
                                     target_id_new,
                                     service_type,
