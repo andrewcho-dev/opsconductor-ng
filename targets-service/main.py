@@ -728,11 +728,12 @@ async def test_service_connection(
         cursor = conn.cursor(psycopg2.extras.RealDictCursor)
         
         # Get service details with target info
+        logger.info(f"Querying service details for service_id: {service_id}")
         cursor.execute("""
             SELECT 
                 ts.id, ts.service_type, ts.port, ts.is_secure, ts.is_enabled,
                 t.hostname, t.ip_address,
-                c.username, c.password_hash, c.private_key, c.credential_type
+                c.username, c.password, c.private_key, c.credential_type
             FROM target_services ts
             JOIN targets t ON ts.target_id = t.id
             LEFT JOIN credentials c ON ts.credential_id = c.id
@@ -740,6 +741,7 @@ async def test_service_connection(
         """, (service_id,))
         
         service = cursor.fetchone()
+        logger.info(f"Service query result: {service}")
         if not service:
             raise HTTPException(status_code=404, detail="Service not found or disabled")
         
@@ -769,6 +771,7 @@ async def test_service_connection(
                 message = f"Port {port} is open and accepting connections"
                 
                 # Update connection status in database
+                logger.info(f"Updating connection status to 'connected' for service_id: {service_id}")
                 cursor.execute("""
                     UPDATE target_services 
                     SET connection_status = 'connected', last_checked = %s
