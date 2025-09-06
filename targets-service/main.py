@@ -773,7 +773,7 @@ async def test_service_connection(
                     UPDATE target_services 
                     SET connection_status = 'connected', last_checked = %s
                     WHERE id = %s
-                """, (datetime.utcnow(), service_id))
+                """, (datetime.utcnow().isoformat(), service_id))
             else:
                 success = False
                 message = f"Port {port} is not accessible (connection refused)"
@@ -783,7 +783,7 @@ async def test_service_connection(
                     UPDATE target_services 
                     SET connection_status = 'failed', last_checked = %s
                     WHERE id = %s
-                """, (datetime.utcnow(), service_id))
+                """, (datetime.utcnow().isoformat(), service_id))
                 
         except socket.gaierror as e:
             success = False
@@ -792,7 +792,7 @@ async def test_service_connection(
                 UPDATE target_services 
                 SET connection_status = 'failed', last_checked = %s
                 WHERE id = %s
-            """, (datetime.utcnow(), service_id))
+            """, (datetime.utcnow().isoformat(), service_id))
         except Exception as e:
             success = False
             message = f"Connection test failed: {str(e)}"
@@ -800,7 +800,7 @@ async def test_service_connection(
                 UPDATE target_services 
                 SET connection_status = 'failed', last_checked = %s
                 WHERE id = %s
-            """, (datetime.utcnow(), service_id))
+            """, (datetime.utcnow().isoformat(), service_id))
         
         conn.commit()
         
