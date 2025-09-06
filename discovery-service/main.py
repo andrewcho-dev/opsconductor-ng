@@ -469,22 +469,26 @@ class NetworkScanner:
         # Windows indicators (only if ports are actually open)
         windows_ports = {135, 445, 3389, 5985, 5986}
         if any(port in open_ports for port in windows_ports):
-            return 'Windows'
+            return 'windows'  # lowercase to match database constraint
         
         # Linux indicators (SSH is typically Linux/Unix)
         if 22 in open_ports:
-            return 'Linux'
+            return 'linux'  # lowercase to match database constraint
         
         # Check OS fingerprinting results
         os_matches = host_data.get('osmatch', [])
         if os_matches:
             os_name = os_matches[0].get('name', '').lower()
             if 'windows' in os_name:
-                return 'Windows'
+                return 'windows'  # lowercase to match database constraint
             elif any(linux_dist in os_name for linux_dist in ['linux', 'ubuntu', 'centos', 'redhat']):
-                return 'Linux'
+                return 'linux'  # lowercase to match database constraint
+            elif 'macos' in os_name or 'mac os' in os_name:
+                return 'macos'  # lowercase to match database constraint
+            elif any(unix_type in os_name for unix_type in ['unix', 'solaris', 'aix', 'bsd']):
+                return 'unix'  # lowercase to match database constraint
         
-        return 'Unknown'
+        return 'other'  # use 'other' instead of 'Unknown' to match database constraint
     
     def detect_os_version(self, host_data: Dict) -> Optional[str]:
         """Detect OS version from fingerprinting"""
@@ -1126,9 +1130,9 @@ async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(ve
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total_targets,
-                    COUNT(CASE WHEN os_type = 'Windows' THEN 1 END) as windows_count,
-                    COUNT(CASE WHEN os_type = 'Linux' THEN 1 END) as linux_count,
-                    COUNT(CASE WHEN os_type IS NULL OR os_type = 'Unknown' THEN 1 END) as unknown_count,
+                    COUNT(CASE WHEN os_type = 'windows' THEN 1 END) as windows_count,
+                    COUNT(CASE WHEN os_type = 'linux' THEN 1 END) as linux_count,
+                    COUNT(CASE WHEN os_type IS NULL OR os_type = 'other' THEN 1 END) as unknown_count,
                     COUNT(CASE WHEN preferred_service = 'winrm' THEN 1 END) as winrm_preferred,
                     COUNT(CASE WHEN preferred_service = 'rdp' THEN 1 END) as rdp_preferred,
                     COUNT(CASE WHEN preferred_service = 'ssh' THEN 1 END) as ssh_preferred
