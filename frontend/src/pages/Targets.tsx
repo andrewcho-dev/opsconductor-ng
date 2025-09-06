@@ -403,28 +403,17 @@ const Targets: React.FC = () => {
     setTestingConnections(prev => new Set(prev).add(serviceId));
     
     try {
-      // Call the test connection API endpoint
-      const response = await fetch(`http://127.0.0.1:3005/targets/services/${serviceId}/test`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      // Call the test connection API endpoint using the proper API service
+      const result = await targetServiceApi.testConnection(serviceId);
       
-      if (response.ok) {
-        const result = await response.json();
-        // Refresh the target data to get updated connection status
-        await fetchTargets();
-        
-        // Show success/failure message
-        if (result.success) {
-          alert(`Connection test successful: ${result.message || 'Service is reachable'}`);
-        } else {
-          alert(`Connection test failed: ${result.message || 'Service is not reachable'}`);
-        }
+      // Refresh the target data to get updated connection status
+      await fetchTargets();
+      
+      // Show success/failure message
+      if (result.success) {
+        alert(`Connection test successful: ${result.message || 'Service is reachable'}`);
       } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        alert(`Connection test failed: ${result.message || 'Service is not reachable'}`);
       }
     } catch (error) {
       console.error('Failed to test service connection:', error);

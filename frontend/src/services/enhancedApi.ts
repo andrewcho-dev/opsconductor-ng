@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { getServiceUrl } from './api';
+import { getServiceUrl, getApiBaseUrl } from './api';
 import {
   ServiceDefinitionResponse,
   TargetServiceCreate, TargetServiceUpdate, TargetService,
@@ -44,7 +44,7 @@ enhancedApi.interceptors.response.use(
       const currentRefreshToken = localStorage.getItem('refresh_token');
       if (currentRefreshToken) {
         try {
-          const response = await axios.post(`${API_BASE_URL}/api/v1/refresh`, {
+          const response = await axios.post(`${getApiBaseUrl()}/refresh`, {
             refresh_token: currentRefreshToken
           });
 
@@ -155,8 +155,8 @@ export const targetServiceApi = {
     await enhancedApi.delete(`/targets/${targetId}/services/${serviceId}`);
   },
 
-  testConnection: async (targetId: number, serviceId: number): Promise<any> => {
-    const response = await enhancedApi.post(`/targets/${targetId}/services/${serviceId}/test`);
+  testConnection: async (serviceId: number): Promise<any> => {
+    const response = await enhancedApi.post(`/targets/services/${serviceId}/test`);
     return response.data;
   },
 
