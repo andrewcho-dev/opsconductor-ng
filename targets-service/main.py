@@ -735,8 +735,7 @@ async def test_service_connection(
                 c.username, c.password_hash, c.private_key, c.credential_type
             FROM target_services ts
             JOIN targets t ON ts.target_id = t.id
-            LEFT JOIN target_credentials tc ON ts.credential_id = tc.credential_id AND tc.target_id = t.id
-            LEFT JOIN credentials c ON tc.credential_id = c.id
+            LEFT JOIN credentials c ON ts.credential_id = c.id
             WHERE ts.id = %s AND ts.is_enabled = true
         """, (service_id,))
         
@@ -772,7 +771,7 @@ async def test_service_connection(
                 # Update connection status in database
                 cursor.execute("""
                     UPDATE target_services 
-                    SET connection_status = 'connected', last_tested = %s
+                    SET connection_status = 'connected', last_checked = %s
                     WHERE id = %s
                 """, (datetime.utcnow(), service_id))
             else:
@@ -782,7 +781,7 @@ async def test_service_connection(
                 # Update connection status in database
                 cursor.execute("""
                     UPDATE target_services 
-                    SET connection_status = 'failed', last_tested = %s
+                    SET connection_status = 'failed', last_checked = %s
                     WHERE id = %s
                 """, (datetime.utcnow(), service_id))
                 
@@ -791,7 +790,7 @@ async def test_service_connection(
             message = f"DNS resolution failed: {str(e)}"
             cursor.execute("""
                 UPDATE target_services 
-                SET connection_status = 'failed', last_tested = %s
+                SET connection_status = 'failed', last_checked = %s
                 WHERE id = %s
             """, (datetime.utcnow(), service_id))
         except Exception as e:
@@ -799,7 +798,7 @@ async def test_service_connection(
             message = f"Connection test failed: {str(e)}"
             cursor.execute("""
                 UPDATE target_services 
-                SET connection_status = 'failed', last_tested = %s
+                SET connection_status = 'failed', last_checked = %s
                 WHERE id = %s
             """, (datetime.utcnow(), service_id))
         
