@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Check, X, Edit3 } from 'lucide-react';
 import { userApi } from '../services/api';
 import { User, UserCreate } from '../types';
 
 interface EditingState {
   userId: number;
-  field: 'username' | 'email' | 'password' | 'first_name' | 'last_name' | 'telephone' | 'title';
+  field: 'username' | 'email' | 'role' | 'first_name' | 'last_name' | 'telephone' | 'title' | 'password';
   value: string;
   confirmPassword?: string;
 }
+
 
 interface NewUserState {
   email: string;
@@ -30,6 +31,7 @@ const Users: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<EditingState | null>(null);
+
   const [addingNew, setAddingNew] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newUser, setNewUser] = useState<NewUserState>({
@@ -63,6 +65,69 @@ const Users: React.FC = () => {
   const startAddingNew = () => {
     setAddingNew(true);
     setEditing(null);
+  };
+
+  const startEditing = (userId: number, field: 'username' | 'email' | 'role' | 'first_name' | 'last_name' | 'telephone' | 'title' | 'password', currentValue: string = '') => {
+    setEditing({
+      userId,
+      field,
+      value: field === 'password' ? '' : currentValue,
+      confirmPassword: field === 'password' ? '' : undefined
+    });
+    setAddingNew(false);
+  };
+
+  const cancelEditing = () => {
+    setEditing(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+
+    if (editing.field === 'password') {
+      if (!editing.value) {
+        alert('Password cannot be empty');
+        return;
+      }
+      if (editing.value !== editing.confirmPassword) {
+        alert('Passwords do not match');
+        return;
+      }
+      if (editing.value.length < 6) {
+        alert('Password must be at least 6 characters long');
+        return;
+      }
+    }
+
+    if ((editing.field === 'email' || editing.field === 'username') && !editing.value.trim()) {
+      alert(`${editing.field} cannot be empty`);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await userApi.update(editing.userId, { [editing.field]: editing.value });
+      await fetchUsers();
+      
+      if (selectedUser?.id === editing.userId) {
+        setSelectedUser({...selectedUser, [editing.field]: editing.value});
+      }
+      
+      setEditing(null);
+    } catch (error) {
+      console.error(`Failed to update ${editing.field}:`, error);
+      alert(`Failed to update ${editing.field}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      cancelEditing();
+    }
   };
 
   const cancelAddingNew = () => {
@@ -152,71 +217,7 @@ const Users: React.FC = () => {
     }
   };
 
-  const startEditing = (userId: number, field: 'username' | 'email' | 'password' | 'first_name' | 'last_name' | 'telephone' | 'title', currentValue: string = '') => {
-    setEditing({
-      userId,
-      field,
-      value: field === 'password' ? '' : currentValue,
-      confirmPassword: field === 'password' ? '' : undefined
-    });
-  };
 
-  const cancelEditing = () => {
-    setEditing(null);
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-
-    if (editing.field === 'password') {
-      if (!editing.value) {
-        alert('Password cannot be empty');
-        return;
-      }
-      if (editing.value !== editing.confirmPassword) {
-        alert('Passwords do not match');
-        return;
-      }
-      if (editing.value.length < 6) {
-        alert('Password must be at least 6 characters long');
-        return;
-      }
-    }
-
-    if (editing.field !== 'password' && !editing.value.trim()) {
-      alert(`${editing.field} cannot be empty`);
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const updateData: any = {};
-      updateData[editing.field] = editing.value;
-      
-      await userApi.update(editing.userId, updateData);
-      await fetchUsers();
-      
-      // Update selected user if it's the one being edited
-      if (selectedUser?.id === editing.userId) {
-        setSelectedUser({...selectedUser, [editing.field]: editing.value});
-      }
-      
-      setEditing(null);
-    } catch (error) {
-      console.error(`Failed to update ${editing.field}:`, error);
-      alert(`Failed to update ${editing.field}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      saveEdit();
-    } else if (e.key === 'Escape') {
-      cancelEditing();
-    }
-  };
 
   const handleNewUserKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -595,16 +596,28 @@ const Users: React.FC = () => {
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
                       <td>
-                        <button 
-                          className="btn-icon btn-danger"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(user.id);
-                          }}
-                          title="Delete user"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button 
+                            className="btn-icon btn-ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedUser(user);
+                            }}
+                            title="Edit user details"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button 
+                            className="btn-icon btn-danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(user.id);
+                            }}
+                            title="Delete user"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -627,10 +640,7 @@ const Users: React.FC = () => {
                 
                 <div className="detail-group">
                   <div className="detail-label">Email</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'email', selectedUser.email)}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'email' ? (
                       <div>
                         <input
@@ -651,17 +661,23 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      selectedUser.email
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedUser.email}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'email', selectedUser.email)}
+                          title="Edit email"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">First Name</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'first_name', selectedUser.first_name || '')}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'first_name' ? (
                       <div>
                         <input
@@ -682,17 +698,23 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      selectedUser.first_name || '-'
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedUser.first_name || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'first_name', selectedUser.first_name || '')}
+                          title="Edit first name"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Last Name</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'last_name', selectedUser.last_name || '')}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'last_name' ? (
                       <div>
                         <input
@@ -713,17 +735,23 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      selectedUser.last_name || '-'
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedUser.last_name || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'last_name', selectedUser.last_name || '')}
+                          title="Edit last name"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Telephone</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'telephone', selectedUser.telephone || '')}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'telephone' ? (
                       <div>
                         <input
@@ -744,17 +772,23 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      selectedUser.telephone || '-'
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedUser.telephone || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'telephone', selectedUser.telephone || '')}
+                          title="Edit telephone"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Title</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'title', selectedUser.title || '')}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'title' ? (
                       <div>
                         <input
@@ -775,17 +809,23 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      selectedUser.title || '-'
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedUser.title || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'title', selectedUser.title || '')}
+                          title="Edit title"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Password</div>
-                  <div 
-                    className="detail-value editable"
-                    onClick={() => startEditing(selectedUser.id, 'password')}
-                  >
+                  <div className="detail-value">
                     {editing?.userId === selectedUser.id && editing?.field === 'password' ? (
                       <div>
                         <input
@@ -816,7 +856,16 @@ const Users: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      '••••••••'
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>••••••••</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedUser.id, 'password')}
+                          title="Change password"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

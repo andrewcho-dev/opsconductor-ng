@@ -29,9 +29,22 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE TABLE IF NOT EXISTS credentials (
   id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
-  credential_type TEXT NOT NULL CHECK (credential_type IN ('winrm', 'ssh', 'api_key')),
-  description TEXT,
-  credential_data JSONB NOT NULL,    -- Encrypted credential data
+  credential_type TEXT NOT NULL CHECK (credential_type IN ('password', 'key', 'certificate')),
+  description TEXT CHECK (length(description) <= 20),
+  -- Authentication fields
+  username TEXT,
+  password TEXT,
+  domain TEXT,
+  private_key TEXT,
+  public_key TEXT,
+  certificate TEXT,
+  certificate_chain TEXT,
+  passphrase TEXT,
+  -- Validity/expiration fields
+  valid_from TIMESTAMPTZ,
+  valid_until TIMESTAMPTZ,
+  next_rotation_date TIMESTAMPTZ,
+  -- System fields
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ
 );

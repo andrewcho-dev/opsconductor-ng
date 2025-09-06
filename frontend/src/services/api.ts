@@ -225,6 +225,13 @@ export const userApi = {
 
 // Credential API
 export const credentialApi = {
+  getAll: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
+    const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
   list: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
     const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
       params: { skip, limit }

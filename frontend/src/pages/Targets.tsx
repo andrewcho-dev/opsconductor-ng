@@ -1,21 +1,77 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Check, X, Search } from 'lucide-react';
+import { Plus, Trash2, Check, X, Edit3, MonitorCheck } from 'lucide-react';
 import { targetApi, credentialApi } from '../services/api';
 import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
 
-interface NewTargetState {
-  name: string;
-  hostname: string;
-  ip_address: string;
-  protocol: string;
+// Service type definitions with default ports
+const SERVICE_TYPES = {
+  // Remote Access
+  'SSH': 22,
+  'RDP': 3389,
+  'VNC': 5900,
+  'Telnet': 23,
+  
+  // Windows Management  
+  'WinRM HTTP': 5985,
+  'WinRM HTTPS': 5986,
+  'WMI': 135,
+  'SMB': 445,
+  
+  // Web Services
+  'HTTP': 80,
+  'HTTPS': 443,
+  'HTTP Alt': 8080,
+  'HTTPS Alt': 8443,
+  
+  // Database Services
+  'MySQL': 3306,
+  'PostgreSQL': 5432,
+  'SQL Server': 1433,
+  'Oracle': 1521,
+  'MongoDB': 27017,
+  'Redis': 6379,
+  
+  // Email Services
+  'SMTP': 25,
+  'SMTP SSL': 465,
+  'SMTP TLS': 587,
+  'IMAP': 143,
+  'IMAPS': 993,
+  'POP3': 110,
+  'POP3S': 995,
+  
+  // File Transfer
+  'FTP': 21,
+  'FTPS': 990,
+  'SFTP': 22,
+  
+  // Network Services
+  'DNS': 53,
+  'SNMP': 161,
+  'NTP': 123,
+} as const;
+
+interface EditingState {
+  targetId: number;
+  field: 'name' | 'hostname' | 'ip_address' | 'description' | 'tags';
+  value: string;
+}
+
+interface NewTargetService {
+  service_type: string;
   port: number;
+  credential_id?: number;
+}
+
+interface NewTargetState {
+  ip_address: string;
   os_type: string;
-  credential_ref: number;
   tags: string[];
   description: string;
+  services: NewTargetService[];
 }
 
 const Targets: React.FC = () => {
@@ -25,21 +81,18 @@ const Targets: React.FC = () => {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testingTarget, setTestingTarget] = useState<number | null>(null);
+  const [editing, setEditing] = useState<EditingState | null>(null);
+
   const [testingService, setTestingService] = useState<number | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<EnhancedTarget | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [newTarget, setNewTarget] = useState<NewTargetState>({
-    name: '',
-    hostname: '',
     ip_address: '',
-    protocol: 'winrm',
-    port: 5985,
-    os_type: 'windows',
-    credential_ref: 0,
+    os_type: '',
     tags: [],
-    description: ''
+    description: '',
+    services: []
   });
 
   useEffect(() => {
@@ -95,49 +148,139 @@ const Targets: React.FC = () => {
 
   const startAddingNew = () => {
     setAddingNew(true);
+    setEditing(null);
+  };
+
+  const startEditing = (targetId: number, field: 'name' | 'hostname' | 'ip_address' | 'description' | 'tags', currentValue: string = '') => {
+    setEditing({
+      targetId,
+      field,
+      value: currentValue
+    });
+    setAddingNew(false);
+  };
+
+  const cancelEditing = () => {
+    setEditing(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+
+    if ((editing.field === 'name' || editing.field === 'hostname') && !editing.value.trim()) {
+      alert(`${editing.field} cannot be empty`);
+      return;
+    }
+
+
+
+    try {
+      setSaving(true);
+      const target = targets.find(t => t.id === editing.targetId);
+      if (!target) return;
+
+      let updateData: any = {};
+      
+      if (editing.field === 'tags') {
+        updateData.tags = editing.value ? editing.value.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+      } else {
+        updateData[editing.field] = editing.value;
+      }
+      
+      await enhancedTargetApi.update(editing.targetId, updateData);
+      await fetchTargets();
+      
+      if (selectedTarget?.id === editing.targetId) {
+        if (editing.field === 'tags') {
+          setSelectedTarget({...selectedTarget, tags: updateData.tags});
+        } else {
+          setSelectedTarget({...selectedTarget, [editing.field]: editing.value});
+        }
+      }
+      
+      setEditing(null);
+    } catch (error) {
+      console.error(`Failed to update ${editing.field}:`, error);
+      alert(`Failed to update ${editing.field}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveEdit();
+    } else if (e.key === 'Escape') {
+      cancelEditing();
+    }
   };
 
   const cancelAddingNew = () => {
     setAddingNew(false);
     setNewTarget({
-      name: '',
-      hostname: '',
       ip_address: '',
-      protocol: 'winrm',
-      port: 5985,
-      os_type: 'windows',
-      credential_ref: 0,
+      os_type: '',
       tags: [],
-      description: ''
+      description: '',
+      services: []
+    });
+  };
+
+  // Service management functions
+  const addService = () => {
+    setNewTarget({
+      ...newTarget,
+      services: [...newTarget.services, { service_type: '', port: 22, credential_id: undefined }]
+    });
+  };
+
+  const removeService = (index: number) => {
+    setNewTarget({
+      ...newTarget,
+      services: newTarget.services.filter((_, i) => i !== index)
+    });
+  };
+
+  const updateService = (index: number, field: keyof NewTargetService, value: any) => {
+    const updatedServices = [...newTarget.services];
+    if (field === 'service_type') {
+      // Auto-populate port when service type changes
+      const defaultPort = SERVICE_TYPES[value as keyof typeof SERVICE_TYPES];
+      updatedServices[index] = {
+        ...updatedServices[index],
+        service_type: value,
+        port: defaultPort || 22
+      };
+    } else {
+      updatedServices[index] = {
+        ...updatedServices[index],
+        [field]: value
+      };
+    }
+    setNewTarget({
+      ...newTarget,
+      services: updatedServices
     });
   };
 
   const saveNewTarget = async () => {
-    if (!newTarget.name.trim()) {
-      alert('Name is required');
-      return;
-    }
-    if (!newTarget.hostname.trim()) {
-      alert('Hostname is required');
-      return;
-    }
-    if (newTarget.credential_ref === 0) {
-      alert('Please select a credential');
+    if (!newTarget.ip_address.trim()) {
+      alert('IP Address or FQDN is required');
       return;
     }
 
     try {
       setSaving(true);
       const targetToCreate: TargetCreate = {
-        name: newTarget.name,
-        hostname: newTarget.hostname,
-        ip_address: newTarget.ip_address || '',
-        protocol: newTarget.protocol,
-        port: newTarget.port,
-        os_type: newTarget.os_type,
-        credential_ref: newTarget.credential_ref,
+        name: newTarget.ip_address, // Use IP/FQDN as the name for now
+        hostname: newTarget.ip_address, // Use IP/FQDN as hostname for now
+        ip_address: newTarget.ip_address,
+        protocol: 'ssh', // Default protocol - will be replaced by service-level configs
+        port: 22, // Default port - will be replaced by service-level configs  
+        os_type: newTarget.os_type || 'unknown',
+        credential_ref: 1, // Default credential - will be replaced by service-level configs
         tags: newTarget.tags,
-        metadata: {},
+        metadata: { description: newTarget.description },
         depends_on: []
       };
       
@@ -166,19 +309,6 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleTest = async (targetId: number) => {
-    setTestingTarget(targetId);
-    try {
-      await targetApi.testWinRM(targetId);
-      alert('Connection test successful!');
-    } catch (error) {
-      console.error('Connection test failed:', error);
-      alert('Connection test failed. Check the logs for details.');
-    } finally {
-      setTestingTarget(null);
-    }
-  };
-
   const handleTargetClick = async (target: EnhancedTarget) => {
     try {
       const enhancedTarget = await enhancedTargetApi.get(target.id);
@@ -204,20 +334,7 @@ const Targets: React.FC = () => {
     }
   };
 
-  const handleProtocolChange = (protocol: string) => {
-    const defaultPorts: Record<string, number> = {
-      'winrm': 5985,
-      'ssh': 22,
-      'https': 443,
-      'http': 80
-    };
-    
-    setNewTarget({
-      ...newTarget,
-      protocol,
-      port: defaultPorts[protocol] || 5985
-    });
-  };
+
 
   const getStatusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -254,14 +371,6 @@ const Targets: React.FC = () => {
       }
     }
     return 'Unknown';
-  };
-
-  const handleNewTargetKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      saveNewTarget();
-    } else if (e.key === 'Escape') {
-      cancelAddingNew();
-    }
   };
 
   if (loading) {
@@ -589,9 +698,7 @@ const Targets: React.FC = () => {
                 <table className="targets-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Hostname</th>
-                    <th>IP Address</th>
+                    <th>IP Address/FQDN</th>
                     <th>OS</th>
                     <th>Status</th>
                     <th>Tags</th>
@@ -599,72 +706,7 @@ const Targets: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* New Target Row */}
-                  {addingNew && (
-                    <tr style={{ background: '#f0f9ff', border: '2px solid #10b981' }}>
-                      <td>
-                        <input
-                          type="text"
-                          value={newTarget.name}
-                          onChange={(e) => setNewTarget({...newTarget, name: e.target.value})}
-                          onKeyDown={handleNewTargetKeyPress}
-                          placeholder="Target name"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                          autoFocus
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          value={newTarget.hostname}
-                          onChange={(e) => setNewTarget({...newTarget, hostname: e.target.value})}
-                          onKeyDown={handleNewTargetKeyPress}
-                          placeholder="Hostname"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="text"
-                          value={newTarget.ip_address}
-                          onChange={(e) => setNewTarget({...newTarget, ip_address: e.target.value})}
-                          onKeyDown={handleNewTargetKeyPress}
-                          placeholder="IP (optional)"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        />
-                      </td>
-                      <td>
-                        <select 
-                          value={newTarget.os_type} 
-                          onChange={(e) => setNewTarget({...newTarget, os_type: e.target.value})}
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        >
-                          <option value="windows">Windows</option>
-                          <option value="linux">Linux</option>
-                          <option value="macos">macOS</option>
-                        </select>
-                      </td>
-                      <td style={{ color: '#64748b', fontSize: '12px' }}>New</td>
-                      <td>
-                        <input
-                          type="text"
-                          value={newTarget.tags.join(', ')}
-                          onChange={(e) => setNewTarget({...newTarget, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)})}
-                          onKeyDown={handleNewTargetKeyPress}
-                          placeholder="Tags"
-                          style={{ width: '100%', border: 'none', background: 'transparent', padding: '4px' }}
-                        />
-                      </td>
-                      <td>
-                        <button onClick={saveNewTarget} className="btn-icon btn-success" title="Save" disabled={saving}>
-                          <Check size={16} />
-                        </button>
-                        <button onClick={cancelAddingNew} className="btn-icon btn-ghost" title="Cancel">
-                          <X size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  )}
+
 
                   {/* Existing Targets */}
                   {targets.map((target) => (
@@ -673,9 +715,7 @@ const Targets: React.FC = () => {
                       className={selectedTarget?.id === target.id ? 'selected' : ''}
                       onClick={() => handleTargetClick(target)}
                     >
-                      <td style={{ fontWeight: '500' }}>{target.name}</td>
-                      <td>{target.hostname}</td>
-                      <td>{target.ip_address || '-'}</td>
+                      <td style={{ fontWeight: '500' }}>{target.ip_address || '-'}</td>
                       <td>{target.os_type}</td>
                       <td>
                         <span className={`status-badge ${getStatusBadge(getTargetStatus(target))}`}>
@@ -684,31 +724,28 @@ const Targets: React.FC = () => {
                       </td>
                       <td>{target.tags?.length ? target.tags.join(', ') : '-'}</td>
                       <td>
-                        <button 
-                          className="btn-icon btn-ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTest(target.id);
-                          }}
-                          disabled={testingTarget === target.id}
-                          title="Test connection"
-                        >
-                          {testingTarget === target.id ? (
-                            <span className="loading-spinner"></span>
-                          ) : (
-                            <Search size={16} />
-                          )}
-                        </button>
-                        <button 
-                          className="btn-icon btn-danger"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(target.id);
-                          }}
-                          title="Delete target"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button 
+                            className="btn-icon btn-secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTarget(target);
+                            }}
+                            title="Edit target details"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button 
+                            className="btn-icon btn-danger"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(target.id);
+                            }}
+                            title="Delete target"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -721,27 +758,415 @@ const Targets: React.FC = () => {
 
         {/* Column 3: Target Details Panel */}
         <div className="dashboard-section">
-          <div className="section-header">
-            {selectedTarget ? `Target Details` : 'Select Target'}
+          <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{addingNew ? 'Create New Target' : selectedTarget ? `Target Details` : 'Select Target'}</span>
+            {addingNew && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={saveNewTarget}
+                  className="btn-icon btn-success"
+                  disabled={saving}
+                  title="Create Target"
+                >
+                  <Check size={16} />
+                </button>
+                <button 
+                  onClick={cancelAddingNew}
+                  className="btn-icon btn-ghost"
+                  title="Cancel"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
           </div>
           <div className="compact-content">
-            {selectedTarget ? (
+            {addingNew ? (
+              <div className="target-details">
+                <style>{`
+                  .subtle-input {
+                    width: 100%;
+                    padding: 8px 12px;
+                    border: 1px solid var(--neutral-200);
+                    background: white;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    color: var(--neutral-900);
+                  }
+                  .subtle-input:focus {
+                    outline: none;
+                  }
+                  .subtle-input::placeholder {
+                    color: var(--neutral-400);
+                  }
+                  .subtle-select {
+                    width: 100%;
+                    padding: 8px 12px;
+                    border: 1px solid var(--neutral-200);
+                    background: white;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    color: var(--neutral-900);
+                    cursor: pointer;
+                  }
+                  .subtle-select:focus {
+                    outline: none;
+                  }
+                  .target-form-grid {
+                    display: grid;
+                    grid-template-columns: 2fr 1fr 1fr;
+                    gap: 20px;
+                    margin-bottom: 20px;
+                  }
+                  .form-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                  }
+                  .form-label {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: var(--neutral-700);
+                  }
+                  .form-label.required::after {
+                    content: ' *';
+                    color: var(--primary-red);
+                  }
+                  .char-counter {
+                    font-size: 11px;
+                    color: var(--neutral-500);
+                    text-align: right;
+                    margin-top: 2px;
+                  }
+                `}</style>
+                <div className="target-form-grid">
+                  {/* Column 1 - Primary Field */}
+                  <div>
+                    <div className="form-field">
+                      <label className="form-label required">IP Address / FQDN</label>
+                      <input
+                        type="text"
+                        value={newTarget.ip_address}
+                        onChange={(e) => setNewTarget({...newTarget, ip_address: e.target.value})}
+                        className="subtle-input"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="form-label">Tags</label>
+                      <input
+                        type="text"
+                        value={newTarget.tags.join(', ')}
+                        onChange={(e) => setNewTarget({...newTarget, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)})}
+                        className="subtle-input"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Column 2 */}
+                  <div>
+                    <div className="form-field">
+                      <label className="form-label">Operating System</label>
+                      <select 
+                        value={newTarget.os_type} 
+                        onChange={(e) => setNewTarget({...newTarget, os_type: e.target.value})}
+                        className="subtle-select"
+                      >
+                        <option value="">Select OS</option>
+                        <option value="windows">Windows</option>
+                        <option value="linux">Linux</option>
+                        <option value="macos">macOS</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Column 3 */}
+                  <div>
+                    <div className="form-field">
+                      <label className="form-label">Description</label>
+                      <input
+                        type="text"
+                        value={newTarget.description}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value.length <= 20) {
+                            setNewTarget({...newTarget, description: value});
+                          }
+                        }}
+                        className="subtle-input"
+                        maxLength={20}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Services Section */}
+                <div style={{ marginTop: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ margin: 0 }}>Services & Communication Types</label>
+                    <button 
+                      onClick={addService}
+                      className="btn-icon btn-success"
+                      title="Add Service"
+                      type="button"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+
+                  {newTarget.services.length === 0 ? (
+                    <div style={{ 
+                      padding: '12px 0', 
+                      color: 'var(--neutral-500)',
+                      fontSize: '13px',
+                      textAlign: 'center',
+                      fontStyle: 'italic'
+                    }}>
+                      No services configured. Click + to add a service.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {newTarget.services.map((service, index) => (
+                        <div key={index} style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '2fr 1fr 2fr auto auto', 
+                          gap: '12px', 
+                          alignItems: 'center',
+                          padding: '0',
+                          marginBottom: '12px'
+                        }}>
+                          {/* Service Type */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Service Type</label>
+                            <select
+                              value={service.service_type}
+                              onChange={(e) => updateService(index, 'service_type', e.target.value)}
+                              className="subtle-select"
+                              style={{ fontSize: '12px' }}
+                            >
+                              <option value="">Select Service</option>
+                              <optgroup label="Remote Access">
+                                <option value="SSH">SSH</option>
+                                <option value="RDP">RDP</option>
+                                <option value="VNC">VNC</option>
+                                <option value="Telnet">Telnet</option>
+                              </optgroup>
+                              <optgroup label="Windows Management">
+                                <option value="WinRM HTTP">WinRM HTTP</option>
+                                <option value="WinRM HTTPS">WinRM HTTPS</option>
+                                <option value="WMI">WMI</option>
+                                <option value="SMB">SMB</option>
+                              </optgroup>
+                              <optgroup label="Web Services">
+                                <option value="HTTP">HTTP</option>
+                                <option value="HTTPS">HTTPS</option>
+                                <option value="HTTP Alt">HTTP Alt</option>
+                                <option value="HTTPS Alt">HTTPS Alt</option>
+                              </optgroup>
+                              <optgroup label="Database Services">
+                                <option value="MySQL">MySQL</option>
+                                <option value="PostgreSQL">PostgreSQL</option>
+                                <option value="SQL Server">SQL Server</option>
+                                <option value="Oracle">Oracle</option>
+                                <option value="MongoDB">MongoDB</option>
+                                <option value="Redis">Redis</option>
+                              </optgroup>
+                              <optgroup label="Email Services">
+                                <option value="SMTP">SMTP</option>
+                                <option value="SMTP SSL">SMTP SSL</option>
+                                <option value="SMTP TLS">SMTP TLS</option>
+                                <option value="IMAP">IMAP</option>
+                                <option value="IMAPS">IMAPS</option>
+                                <option value="POP3">POP3</option>
+                                <option value="POP3S">POP3S</option>
+                              </optgroup>
+                              <optgroup label="File Transfer">
+                                <option value="FTP">FTP</option>
+                                <option value="FTPS">FTPS</option>
+                                <option value="SFTP">SFTP</option>
+                              </optgroup>
+                              <optgroup label="Network Services">
+                                <option value="DNS">DNS</option>
+                                <option value="SNMP">SNMP</option>
+                                <option value="NTP">NTP</option>
+                              </optgroup>
+                            </select>
+                          </div>
+
+                          {/* Port */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Port</label>
+                            <input
+                              type="number"
+                              value={service.port}
+                              onChange={(e) => updateService(index, 'port', parseInt(e.target.value) || 22)}
+                              className="subtle-input"
+                              style={{ fontSize: '12px' }}
+                              min="1"
+                              max="65535"
+                            />
+                          </div>
+
+                          {/* Credential */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential</label>
+                            <select
+                              value={service.credential_id || ''}
+                              onChange={(e) => updateService(index, 'credential_id', e.target.value ? parseInt(e.target.value) : undefined)}
+                              className="subtle-select"
+                              style={{ fontSize: '12px' }}
+                            >
+                              <option value="">No Credential</option>
+                              {credentials.map(cred => (
+                                <option key={cred.id} value={cred.id}>
+                                  {cred.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Test Connection Button */}
+                          <div style={{ paddingTop: '14px' }}>
+                            <button 
+                              className="btn-icon btn-ghost"
+                              title="Test Connection"
+                              type="button"
+                            >
+                              <MonitorCheck size={14} />
+                            </button>
+                          </div>
+
+                          {/* Remove Button */}
+                          <div style={{ paddingTop: '14px' }}>
+                            <button 
+                              onClick={() => removeService(index)}
+                              className="btn-icon btn-ghost"
+                              title="Remove Service"
+                              type="button"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : selectedTarget ? (
               <div className="target-details">
                 <h3>{selectedTarget.name}</h3>
                 
                 <div className="detail-group">
                   <div className="detail-label">Name</div>
-                  <div className="detail-value">{selectedTarget.name}</div>
+                  <div className="detail-value">
+                    {editing?.targetId === selectedTarget.id && editing?.field === 'name' ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedTarget.name}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedTarget.id, 'name', selectedTarget.name)}
+                          title="Edit name"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Hostname</div>
-                  <div className="detail-value">{selectedTarget.hostname}</div>
+                  <div className="detail-value">
+                    {editing?.targetId === selectedTarget.id && editing?.field === 'hostname' ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedTarget.hostname}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedTarget.id, 'hostname', selectedTarget.hostname)}
+                          title="Edit hostname"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">IP Address</div>
-                  <div className="detail-value">{selectedTarget.ip_address || '-'}</div>
+                  <div className="detail-value">
+                    {editing?.targetId === selectedTarget.id && editing?.field === 'ip_address' ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedTarget.ip_address || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedTarget.id, 'ip_address', selectedTarget.ip_address || '')}
+                          title="Edit IP address"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="detail-group">
@@ -756,19 +1181,83 @@ const Targets: React.FC = () => {
 
                 <div className="detail-group">
                   <div className="detail-label">Description</div>
-                  <div className="detail-value">{selectedTarget.description || '-'}</div>
+                  <div className="detail-value">
+                    {editing?.targetId === selectedTarget.id && editing?.field === 'description' ? (
+                      <div>
+                        <textarea
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-textarea"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>{selectedTarget.description || '-'}</span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedTarget.id, 'description', selectedTarget.description || '')}
+                          title="Edit description"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="detail-group">
                   <div className="detail-label">Tags</div>
                   <div className="detail-value">
-                    {selectedTarget.tags?.length ? (
-                      <div className="tag-list">
-                        {selectedTarget.tags.map((tag, index) => (
-                          <span key={index} className="tag">{tag}</span>
-                        ))}
+                    {editing?.targetId === selectedTarget.id && editing?.field === 'tags' ? (
+                      <div>
+                        <input
+                          type="text"
+                          value={editing.value}
+                          onChange={(e) => setEditing({...editing, value: e.target.value})}
+                          onKeyDown={handleKeyPress}
+                          className="detail-input"
+                          placeholder="Comma-separated tags (e.g. web,production,database)"
+                          autoFocus
+                        />
+                        <div className="action-buttons">
+                          <button onClick={saveEdit} className="btn-icon btn-success" title="Save" disabled={saving}>
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="btn-icon btn-ghost" title="Cancel">
+                            <X size={16} />
+                          </button>
+                        </div>
                       </div>
-                    ) : '-'}
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span>
+                          {selectedTarget.tags?.length ? (
+                            <div className="tag-list">
+                              {selectedTarget.tags.map((tag, index) => (
+                                <span key={index} className="tag">{tag}</span>
+                              ))}
+                            </div>
+                          ) : '-'}
+                        </span>
+                        <button 
+                          className="btn-icon btn-ghost btn-sm"
+                          onClick={() => startEditing(selectedTarget.id, 'tags', selectedTarget.tags?.join(', ') || '')}
+                          title="Edit tags"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -812,7 +1301,7 @@ const Targets: React.FC = () => {
                             {testingService === service.id ? (
                               <span className="loading-spinner"></span>
                             ) : (
-                              <Search size={14} />
+                              <MonitorCheck size={14} />
                             )}
                           </button>
                         </div>
@@ -846,18 +1335,6 @@ const Targets: React.FC = () => {
 
                 <div className="action-buttons">
                   <button 
-                    className="btn-icon btn-ghost"
-                    onClick={() => handleTest(selectedTarget.id)}
-                    disabled={testingTarget === selectedTarget.id}
-                    title="Test connection"
-                  >
-                    {testingTarget === selectedTarget.id ? (
-                      <span className="loading-spinner"></span>
-                    ) : (
-                      <Search size={16} />
-                    )}
-                  </button>
-                  <button 
                     className="btn-icon btn-danger"
                     onClick={() => handleDelete(selectedTarget.id)}
                     title="Delete target"
@@ -875,105 +1352,9 @@ const Targets: React.FC = () => {
         </div>
       </div>
 
-      {/* Additional form for new target details */}
-      {addingNew && (
-        <div style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          background: 'white',
-          border: '1px solid var(--neutral-300)',
-          borderRadius: '8px',
-          padding: '16px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          zIndex: 1000,
-          minWidth: '400px'
-        }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>Complete Target Details</h3>
-          
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Protocol</label>
-            <select 
-              value={newTarget.protocol} 
-              onChange={(e) => handleProtocolChange(e.target.value)}
-              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
-            >
-              <option value="winrm">WinRM</option>
-              <option value="ssh">SSH</option>
-              <option value="https">HTTPS</option>
-              <option value="http">HTTP</option>
-            </select>
-          </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Port</label>
-            <input
-              type="number"
-              value={newTarget.port}
-              onChange={(e) => setNewTarget({...newTarget, port: parseInt(e.target.value) || 5985})}
-              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
-            />
-          </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Credential</label>
-            <select 
-              value={newTarget.credential_ref} 
-              onChange={(e) => setNewTarget({...newTarget, credential_ref: parseInt(e.target.value)})}
-              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px' }}
-            >
-              <option value={0}>Select a credential</option>
-              {credentials.map(credential => (
-                <option key={credential.id} value={credential.id}>
-                  {credential.name} ({credential.credential_type.toUpperCase()})
-                </option>
-              ))}
-            </select>
-          </div>
 
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>Description</label>
-            <textarea
-              value={newTarget.description}
-              onChange={(e) => setNewTarget({...newTarget, description: e.target.value})}
-              style={{ width: '100%', padding: '6px', border: '1px solid var(--neutral-300)', borderRadius: '4px', minHeight: '60px', resize: 'vertical' }}
-              placeholder="Optional description"
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            <button 
-              onClick={cancelAddingNew}
-              style={{ padding: '6px 12px', border: '1px solid var(--neutral-300)', background: 'white', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              Cancel
-            </button>
-            <button 
-              onClick={saveNewTarget}
-              disabled={saving}
-              style={{ padding: '6px 12px', border: 'none', background: 'var(--success-green)', color: 'white', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              {saving ? 'Creating...' : 'Create Target'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {addingNew && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 999
-          }}
-          onClick={cancelAddingNew}
-        />
-      )}
     </div>
   );
 };

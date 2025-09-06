@@ -60,21 +60,46 @@ export interface Credential {
   id: number;
   name: string;
   description?: string;
-  credential_type: string;
-  created_by: number;
+  credential_type: 'password' | 'key' | 'certificate';
+  // Authentication fields (non-sensitive)
+  username?: string;
+  domain?: string;
+  // Validity fields
+  valid_from?: string;
+  valid_until?: string;
+  next_rotation_date?: string;
+  // System fields
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface CredentialCreate {
   name: string;
   description?: string;
-  credential_type: string;
-  credential_data: Record<string, any>;
+  credential_type: 'password' | 'key' | 'certificate';
+  // Authentication fields
+  username?: string;
+  password?: string;
+  domain?: string;
+  private_key?: string;
+  public_key?: string;
+  certificate?: string;
+  certificate_chain?: string;
+  passphrase?: string;
+  // Validity fields
+  valid_from?: string;
+  valid_until?: string;
+  next_rotation_date?: string;
 }
 
 export interface CredentialDecrypted extends Credential {
-  credential_data: Record<string, any>;
+  // Sensitive fields (only returned when explicitly decrypting)
+  password?: string;
+  private_key?: string;
+  public_key?: string;
+  certificate?: string;
+  certificate_chain?: string;
+  passphrase?: string;
 }
 
 // Target Types
