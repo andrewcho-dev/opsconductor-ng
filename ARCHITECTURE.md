@@ -49,15 +49,21 @@ All Python services in OpsConductor follow a unified architecture pattern using 
   - `create_success_response()` - Helper for success responses
 
 #### 5. **Error Handling Module** (`shared/errors.py`)
-- **Custom Exceptions**: Standardized exception classes with proper HTTP status codes
-- **Error Context**: Rich error information with request context
-- **Database Error Handling**: Specialized handling for database-related errors
+- **Standardized Exception Classes**: Complete replacement of HTTPException with domain-specific errors
+- **Consistent HTTP Status Mapping**: Automatic mapping of custom exceptions to appropriate HTTP status codes
+- **Rich Error Context**: Detailed error information with field-level validation context
+- **Global Exception Handler**: Centralized error handling with proper logging and response formatting
 - **Key Classes**:
-  - `DatabaseError` - Database operation failures
-  - `ValidationError` - Input validation failures
-  - `NotFoundError` - Resource not found errors
-  - `PermissionError` - Authorization failures
+  - `DatabaseError` - Database operation failures (500 status)
+  - `ValidationError` - Input validation failures with field context (400 status)
+  - `NotFoundError` - Resource not found errors (404 status)
+  - `AuthError` - Authentication failures (401 status)
+  - `PermissionError` - Authorization failures (403 status)
+  - `ServiceCommunicationError` - Inter-service communication failures (503 status)
+- **Key Functions**:
+  - `setup_error_handlers(app)` - Configure global exception handlers
   - `handle_database_error()` - Centralized database error handling
+- **Migration Status**: All 129 HTTPException instances across services have been standardized
 
 #### 6. **Authentication Module** (`shared/auth.py`)
 - **JWT Token Validation**: Centralized token verification

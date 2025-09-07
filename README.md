@@ -216,6 +216,49 @@ pip install -r requirements.txt
 python main.py  # Development server
 ```
 
+### Error Handling Standards
+All services use standardized error handling with custom exception classes:
+
+#### Available Error Classes
+```python
+from shared.errors import (
+    DatabaseError,        # Database operation failures (500)
+    ValidationError,      # Input validation failures (400)
+    NotFoundError,        # Resource not found (404)
+    AuthError,           # Authentication failures (401)
+    PermissionError,     # Authorization failures (403)
+    ServiceCommunicationError  # Inter-service communication (503)
+)
+```
+
+#### Usage Examples
+```python
+# Input validation
+if not user_data.email:
+    raise ValidationError("Email is required", "email")
+
+# Resource not found
+if not user:
+    raise NotFoundError("User not found")
+
+# Database operations
+try:
+    cursor.execute(query, params)
+except Exception as e:
+    raise DatabaseError(f"Failed to create user: {str(e)}")
+
+# Service communication
+try:
+    response = requests.get(f"{AUTH_SERVICE_URL}/verify")
+except requests.RequestException:
+    raise ServiceCommunicationError("auth-service", "Auth service unavailable")
+```
+
+#### Migration from HTTPException
+- **DO NOT** use `HTTPException` directly in new code
+- All 129 existing `HTTPException` instances have been standardized
+- Use the appropriate custom error class for better error handling and consistency
+
 ## 📋 API Endpoints
 
 ### Authentication
