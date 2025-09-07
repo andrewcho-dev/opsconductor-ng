@@ -38,7 +38,6 @@ app = FastAPI(
 add_standard_middleware(app, "scheduler-service", version="1.0.0")
 
 # Service URLs
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 JOBS_SERVICE_URL = os.getenv("JOBS_SERVICE_URL", "http://jobs-service:3006")
 
 # Global scheduler state
@@ -79,26 +78,7 @@ class SchedulerStatusResponse(BaseModel):
     next_execution: Optional[datetime]
     last_check: Optional[datetime]
 
-# Authentication
-def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify token with auth service"""
-    try:
-        headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
-        
-        if response.status_code != 200:
-            raise AuthError("Invalid token")
-            
-        return response.json()["user"]
-        
-    except requests.RequestException:
-        raise ServiceCommunicationError("unknown", "Auth service unavailable")
-
-def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
-    """Require admin or operator role"""
-    if current_user["role"] not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Authentication is now handled by shared.auth module
 
 def calculate_next_run(cron_expr: str, timezone_str: str) -> datetime:
     """Calculate next run time for cron expression"""

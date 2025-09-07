@@ -25,6 +25,7 @@ from shared.logging import setup_service_logging, get_logger
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, StandardResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, handle_database_error, AuthError
+from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
 
 # Load environment variables
 load_dotenv()

@@ -49,7 +49,6 @@ add_standard_middleware(app, "notification-service", version="2.0.0")
 
 
 # Service URLs
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 
 # SMTP Configuration
 SMTP_CONFIG = {

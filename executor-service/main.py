@@ -34,6 +34,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
+from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
 from shared.utils import get_service_client
 
 # Load environment variables
@@ -56,7 +57,6 @@ add_standard_middleware(app, "executor-service", version="1.0.0")
 # Configuration
 CREDENTIALS_SERVICE_URL = os.getenv("CREDENTIALS_SERVICE_URL", "http://credentials-service:3004")
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:3009")
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 WORKER_POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "5"))  # seconds
 WORKER_ENABLED = os.getenv("WORKER_ENABLED", "true").lower() == "true"
 

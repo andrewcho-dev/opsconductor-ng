@@ -49,7 +49,6 @@ add_standard_middleware(app, "discovery-service", version="1.0.0")
 # Database configuration is now handled by shared.database module
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 
 # Enums
 class JobStatus(str, Enum):
@@ -351,42 +350,7 @@ class NetworkRangeParser:
 
 # Database connection is now handled by shared.database module
 
-# Authentication
-def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify token with auth service"""
-    try:
-        headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            raise AuthError("Invalid token")
-            
-        return response.json()["user"]
-        
-    except requests.RequestException as e:
-        logger.error(f"Auth service request failed: {e}")
-        raise ServiceCommunicationError("unknown", "Auth service unavailable")
-
-def verify_token_manual(credentials -> Any: HTTPAuthorizationCredentials) -> Any:
-    """Verify token with auth service (manual call)"""
-    try:
-        headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
-        
-        if response.status_code != 200:
-            raise AuthError("Invalid token")
-            
-        return response.json()["user"]
-        
-    except requests.RequestException as e:
-        logger.error(f"Auth service request failed: {e}")
-        raise ServiceCommunicationError("unknown", "Auth service unavailable")
-
-async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
-    """Require admin or operator role"""
-    if current_user["role"] not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Authentication is now handled by shared.auth module
 
 # Network Scanner Class
 class NetworkScanner:

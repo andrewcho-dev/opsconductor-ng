@@ -29,7 +29,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
 
 # Load environment variables
 load_dotenv()
@@ -48,11 +48,7 @@ app = FastAPI(
 # Add standard middleware
 add_standard_middleware(app, "credentials-service", version="1.0.0")
 
-# Security
-security = HTTPBearer()
-
 # Configuration
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 MASTER_KEY = os.getenv("MASTER_KEY", "default-key-change-in-production")
 
 # Database configuration is now handled by shared.database module
@@ -125,26 +121,7 @@ class CredentialListResponse(BaseModel):
 
 # Database connection is now handled by shared.database module
 
-# Authentication
-def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify token with auth service"""
-    try:
-        headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
-        
-        if response.status_code != 200:
-            raise AuthError("Invalid token")
-            
-        return response.json()["user"]
-        
-    except requests.RequestException:
-        raise ServiceCommunicationError("unknown", "Auth service unavailable")
-
-def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
-    """Require admin or operator role"""
-    if current_user["role"] not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Authentication is now handled by shared.auth module
 
 # Encryption utilities
 def get_encryption_key() -> bytes:
