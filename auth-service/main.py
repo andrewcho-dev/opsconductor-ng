@@ -6,7 +6,6 @@ Handles authentication, JWT tokens, and user session management
 
 import os
 import sys
-import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -15,31 +14,34 @@ sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from dotenv import load_dotenv
+
+# Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, StandardResponse, create_success_response
+from shared.errors import DatabaseError, ValidationError, handle_database_error, AuthError
 
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("auth-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("auth-service")
 
 # FastAPI app
-app = FastAPI(title="Auth Service", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Auth Service", 
+    version="1.0.0",
+    description="Authentication and JWT token management service"
 )
+
+# Add standard middleware (includes CORS, logging, error handling, etc.)
+add_standard_middleware(app, "auth-service", version="1.0.0")
 
 # Security
 security = HTTPBearer()
@@ -138,8 +140,8 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
             return User(**user_data)
         
     except Exception as e:
-        logger.error(f"Authentication error: {e}")
-        return None
+        logger.error(f"Authentication error: {e}", exc_info=True)
+        raise handle_database_error(e, "user authentication")
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     """Verify JWT token and return user"""
@@ -151,50 +153,48 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
         token_type: str = payload.get("type")
         
         if user_id is None or token_type != "access":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         # Verify user exists and token_version matches
-        with get_db_cursor(commit=False) as cursor:
-            cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
-                (user_id,)
-            )
-            user_data = cursor.fetchone()
-            
-            if not user_data:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found"
+        try:
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                    (user_id,)
                 )
+                user_data = cursor.fetchone()
                 
-            if user_data['token_version'] != payload.get("token_version", 1):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token revoked"
-                )
-                
-            return User(**user_data)
+                if not user_data:
+                    raise AuthError("User not found")
+                    
+                if user_data['token_version'] != payload.get("token_version", 1):
+                    raise AuthError("Token revoked")
+                    
+                return User(**user_data)
+        except Exception as e:
+            if isinstance(e, AuthError):
+                raise
+            logger.error(f"Database error during token verification: {e}", exc_info=True)
+            raise handle_database_error(e, "token verification")
             
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
+        raise AuthError("Invalid token")
 
 # API Endpoints
 @app.post("/login", response_model=TokenResponse)
 async def login(login_request: LoginRequest):
     """Login endpoint - authenticate user and return tokens"""
-    user = authenticate_user(login_request.username, login_request.password)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
-        )
+    try:
+        user = authenticate_user(login_request.username, login_request.password)
+        
+        if not user:
+            raise AuthError("Invalid username or password")
+    except DatabaseError:
+        # Re-raise database errors as-is
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during login: {e}", exc_info=True)
+        raise AuthError("Authentication failed")
     
     # Create tokens
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -233,64 +233,58 @@ async def refresh_token(refresh_request: RefreshRequest):
         token_type: str = payload.get("type")
         
         if user_id is None or token_type != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
-            )
+            raise AuthError("Invalid refresh token")
         
         # Verify user and token version
-        with get_db_cursor(commit=False) as cursor:
-            cursor.execute(
-                "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
-                (user_id,)
+        try:
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
+                    (user_id,)
+                )
+                user_data = cursor.fetchone()
+                
+                if not user_data:
+                    raise AuthError("User not found")
+                
+                if user_data['token_version'] != payload.get("token_version", 1):
+                    raise AuthError("Token revoked")
+        except AuthError:
+            raise
+        except Exception as e:
+            logger.error(f"Database error during token refresh: {e}", exc_info=True)
+            raise handle_database_error(e, "token refresh")
+        
+        # Create new tokens
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        
+        token_data = {
+            "user_id": user_data['id'],
+            "username": user_data['username'],
+            "role": user_data['role'],
+            "token_version": user_data['token_version']
+        }
+        
+        access_token = create_access_token(token_data, expires_delta=access_token_expires)
+        new_refresh_token = create_refresh_token(token_data, expires_delta=refresh_token_expires)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=new_refresh_token,
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=UserResponse(
+                id=user_data['id'],
+                email=user_data['email'],
+                username=user_data['username'],
+                role=user_data['role'],
+                created_at=user_data['created_at'].isoformat(),
+                token_version=user_data['token_version']
             )
-            user_data = cursor.fetchone()
-            
-            if not user_data:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found"
-                )
-            
-            if user_data['token_version'] != payload.get("token_version", 1):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token revoked"
-                )
-            
-            # Create new tokens
-            access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-            refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-            
-            token_data = {
-                "user_id": user_data['id'],
-                "username": user_data['username'],
-                "role": user_data['role'],
-                "token_version": user_data['token_version']
-            }
-            
-            access_token = create_access_token(token_data, expires_delta=access_token_expires)
-            new_refresh_token = create_refresh_token(token_data, expires_delta=refresh_token_expires)
-            
-            return TokenResponse(
-                access_token=access_token,
-                refresh_token=new_refresh_token,
-                expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-                user=UserResponse(
-                    id=user_data['id'],
-                    email=user_data['email'],
-                    username=user_data['username'],
-                    role=user_data['role'],
-                    created_at=user_data['created_at'].isoformat(),
-                    token_version=user_data['token_version']
-                )
-            )
-            
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
         )
+        
+    except JWTError:
+        raise AuthError("Invalid refresh token")
 
 @app.post("/revoke-all")
 async def revoke_all_tokens(current_user: User = Depends(verify_token)):
@@ -302,42 +296,65 @@ async def revoke_all_tokens(current_user: User = Depends(verify_token)):
                 (current_user.id,)
             )
         
-        return {"message": "All tokens revoked successfully"}
+        return create_success_response(message="All tokens revoked successfully")
         
     except Exception as e:
-        logger.error(f"Token revocation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to revoke tokens"
-        )
+        logger.error(f"Token revocation error: {e}", exc_info=True)
+        raise handle_database_error(e, "token revocation")
 
 @app.get("/verify")
 async def verify_token_endpoint(current_user: User = Depends(verify_token)):
     """Verify token and return user info"""
-    return {
-        "valid": True,
-        "user": {
-            "id": current_user.id,
-            "username": current_user.username,
-            "email": current_user.email,
-            "role": current_user.role
-        }
-    }
+    return create_success_response(
+        data={
+            "valid": True,
+            "user": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "email": current_user.email,
+                "role": current_user.role
+            }
+        },
+        message="Token is valid"
+    )
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
-    return {
-        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
-        "service": "auth-service",
-        "database": db_health
-    }
+    
+    # Create health checks list
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    # Determine overall status
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="auth-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
 
-# Cleanup on shutdown
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    from shared.logging import log_startup
+    log_startup("auth-service", "1.0.0", 3001)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up database connections on shutdown"""
+    from shared.logging import log_shutdown
+    log_shutdown("auth-service")
     cleanup_database_pool()
 
 if __name__ == "__main__":

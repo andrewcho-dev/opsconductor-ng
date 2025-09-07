@@ -24,21 +24,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
 import aiofiles
-# Database connection handled by shared module
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
-from abc import ABC, abstractmethod
-import logging
 import sys
 import traceback
 from contextlib import asynccontextmanager
-sys.path.append('/home/opsconductor/shared')
-from database import get_db_cursor
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+sys.path.append('/home/opsconductor')
+
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
+from pydantic import BaseModel, Field, validator
+from abc import ABC, abstractmethod
+
+# Import shared modules
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
+from shared.utils import get_service_client
+
+# Setup structured logging
+setup_service_logging("step-libraries-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("step-libraries-service")
 
 # Database connection handled by shared module
 
@@ -750,12 +757,13 @@ library_manager = LibraryManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management"""
-    logger.info("Starting Step Libraries Service...")
+    log_startup("step-libraries-service", "1.0.0", 3011)
     
     # Initialize any startup tasks here
     yield
     
-    logger.info("Shutting down Step Libraries Service...")
+    log_shutdown("step-libraries-service")
+    cleanup_database_pool()
 
 app = FastAPI(
     title="Step Libraries Service",
@@ -764,28 +772,40 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add standard middleware
+add_standard_middleware(app, "step-libraries-service", version="1.0.0")
 
 # =============================================================================
 # API ENDPOINTS
 # =============================================================================
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "step-libraries-service",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "performance": library_manager.performance_stats
-    }
+    db_health = check_database_health()
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        ),
+        HealthCheck(
+            name="library_manager",
+            status="healthy",
+            message="Library manager operational"
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="step-libraries-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
 
 @app.get("/api/v1/libraries", response_model=List[LibraryResponse])
 async def get_libraries(enabled_only: bool = False):

@@ -8,22 +8,19 @@ import os
 import time
 import json
 import base64
-import logging
 import threading
 from datetime import datetime
 from typing import Dict, Any, Optional
 
 import psycopg2
 import psycopg2.extras
-import requests
 import sys
-sys.path.append('/home/opsconductor/shared')
-from database import get_db_cursor
+sys.path.append('/home/opsconductor')
+
 import hmac
 import hashlib
 from urllib.parse import urljoin, urlparse
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import winrm
 from jinja2 import Template, Environment, BaseLoader, select_autoescape
@@ -31,24 +28,30 @@ from ssh_executor import SSHExecutor, SFTPExecutor, SSHExecutionError
 import aiohttp
 import asyncio
 
+# Import shared modules
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
+from shared.utils import get_service_client
+
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("executor-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("executor-service")
 
 # FastAPI app
-app = FastAPI(title="Executor Service", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Executor Service", 
+    version="1.0.0",
+    description="Job execution service with WinRM and SSH support"
 )
+
+# Add standard middleware
+add_standard_middleware(app, "executor-service", version="1.0.0")
 
 # Configuration
 CREDENTIALS_SERVICE_URL = os.getenv("CREDENTIALS_SERVICE_URL", "http://credentials-service:3004")
@@ -2115,25 +2118,46 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
 # Global executor instance
 executor = JobExecutor()
 
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    db_health = check_database_health()
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        ),
+        HealthCheck(
+            name="executor_worker",
+            status="healthy" if executor.running else "unhealthy",
+            message="Executor worker status"
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" and executor.running else "unhealthy"
+    
+    return HealthResponse(
+        service="executor-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
+
 @app.on_event("startup")
 async def startup_event():
     """Start the executor worker on startup"""
+    log_startup("executor-service", "1.0.0", 3007)
     executor.start_worker()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop the executor worker on shutdown"""
     executor.stop_worker()
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy", 
-        "service": "executor-service",
-        "worker_running": executor.running,
-        "worker_enabled": WORKER_ENABLED
-    }
+    log_shutdown("executor-service")
+    cleanup_database_pool()
 
 @app.get("/status")
 async def get_status():

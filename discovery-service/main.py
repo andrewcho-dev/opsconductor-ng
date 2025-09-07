@@ -6,7 +6,6 @@ Automated target discovery and network scanning
 
 import os
 import sys
-import logging
 import asyncio
 import uuid
 import json
@@ -15,22 +14,28 @@ import re
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 from enum import Enum
-import requests
 import httpx
 
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import jwt
 import nmap
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import shared modules
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
+from shared.utils import get_service_client
+
+# Setup structured logging
+setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("discovery-service")
 
 app = FastAPI(
     title="Discovery Service",
@@ -38,7 +43,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-security = HTTPBearer()
+# Add standard middleware
+add_standard_middleware(app, "discovery-service", version="1.0.0")
 
 # Database configuration is now handled by shared.database module
 
@@ -1849,6 +1855,40 @@ async def delete_job_alias(job_id: int, current_user: dict = Depends(verify_toke
 async def cancel_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Cancel discovery job (frontend compatibility endpoint)"""
     return await cancel_discovery_job_new(job_id, current_user)
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    db_health = check_database_health()
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="discovery-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
+
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    log_startup("discovery-service", "1.0.0", 3010)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    log_shutdown("discovery-service")
+    cleanup_database_pool()
 
 if __name__ == "__main__":
     import uvicorn

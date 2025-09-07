@@ -7,7 +7,6 @@ Job definition and execution management with full CRUD operations
 import os
 import json
 import uuid
-import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -16,34 +15,36 @@ sys.path.append('/home/opsconductor')
 
 import psycopg2
 import psycopg2.extras
-import requests
 from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator, Field
 from dotenv import load_dotenv
 import jsonschema
 
+# Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
+from shared.utils import get_service_client
 
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("jobs-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("jobs-service")
 
 # FastAPI app
-app = FastAPI(title="Jobs Service", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Jobs Service", 
+    version="1.0.0",
+    description="Job definition and execution management service"
 )
+
+# Add standard middleware
+add_standard_middleware(app, "jobs-service", version="1.0.0")
 
 
 
@@ -900,18 +901,38 @@ async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_w
             detail="Failed to retrieve job run steps"
         )
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     db_health = check_database_health()
-    return {
-        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
-        "service": "jobs-service",
-        "database": db_health
-    }
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="jobs-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
+
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    log_startup("jobs-service", "1.0.0", 3006)
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    log_shutdown("jobs-service")
     cleanup_database_pool()
 
 if __name__ == "__main__":

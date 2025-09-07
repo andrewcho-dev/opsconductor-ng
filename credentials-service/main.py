@@ -8,17 +8,13 @@ import os
 import sys
 import json
 import base64
-import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-import requests
 from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -26,26 +22,31 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
+
+# Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
 
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("credentials-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("credentials-service")
 
 # FastAPI app
-app = FastAPI(title="Credentials Service", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+app = FastAPI(
+    title="Credentials Service", 
+    version="1.0.0",
+    description="Encrypted credential storage and management service"
 )
+
+# Add standard middleware
+add_standard_middleware(app, "credentials-service", version="1.0.0")
 
 # Security
 security = HTTPBearer()
@@ -652,20 +653,38 @@ async def delete_credential_by_name(
             detail="Failed to delete credential"
         )
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
-    return {
-        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
-        "service": "credentials-service",
-        "database": db_health
-    }
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="credentials-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
 
-# Cleanup on shutdown
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    log_startup("credentials-service", "1.0.0", 3004)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up database connections on shutdown"""
+    log_shutdown("credentials-service")
     cleanup_database_pool()
 
 if __name__ == "__main__":

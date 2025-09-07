@@ -7,19 +7,23 @@ Supports both legacy single-service and new multi-service targets
 import os
 import sys
 import json
-import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-import requests
 from fastapi import FastAPI, HTTPException, Depends, status, Query
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+# Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
+from shared.utils import get_service_client
 
 # Import our enhanced models
 from models import (
@@ -35,9 +39,9 @@ from models import (
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("targets-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("targets-service")
 
 # FastAPI app
 app = FastAPI(
@@ -46,49 +50,16 @@ app = FastAPI(
     description="Multi-service target management with backward compatibility"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Security
-security = HTTPBearer()
+# Add standard middleware
+add_standard_middleware(app, "targets-service", version="2.0.0")
 
 # Database connection is now handled by shared.database module
 
-# Authentication functions
-async def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify JWT token with auth service"""
-    try:
-        auth_service_url = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
-        # Log the URL used for verification to aid troubleshooting
-        logger.info(f"Verifying token via: {auth_service_url}/verify")
-        response = requests.get(
-            f"{auth_service_url}/verify",
-            headers={"Authorization": f"Bearer {credentials.credentials}"},
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except requests.RequestException as e:
-        logger.error(f"Auth verification request failed: {e}")
-        raise HTTPException(status_code=503, detail="Auth service unavailable")
-
-async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
+async def require_admin_or_operator_role(current_user: dict = Depends(get_current_user)):
     """Require admin or operator role"""
-    # Handle both direct role and nested user.role formats
-    user_role = current_user.get("role") or current_user.get("user", {}).get("role")
-    logger.info(f"Role check - user_role: {user_role}, full user data: {current_user}")
+    user_role = current_user.get("role")
     if user_role not in ["admin", "operator"]:
-        logger.error(f"Access denied for user role: {user_role}")
-        raise HTTPException(status_code=403, detail="Admin or operator role required")
+        raise PermissionError("Admin or operator role required")
     return current_user
 
 # Helper functions
@@ -757,22 +728,38 @@ async def test_service_connection(
         logger.error(f"Error testing service connection: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
-    return {
-        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
-        "service": "targets-service",
-        "version": "2.0.0",
-        "features": ["multi-service", "crud-complete"],
-        "database": db_health
-    }
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="targets-service",
+        status=overall_status,
+        version="2.0.0",
+        checks=checks
+    )
 
-# Cleanup on shutdown
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    log_startup("targets-service", "2.0.0", 3005)
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up database connections on shutdown"""
+    log_shutdown("targets-service")
     cleanup_database_pool()
 
 if __name__ == "__main__":

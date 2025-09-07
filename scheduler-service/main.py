@@ -2,33 +2,40 @@
 
 import os
 import json
-import logging
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 import httpx
 import pytz
 from croniter import croniter
-import requests
 
-# Database connection handled by shared module
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
 import sys
-sys.path.append('/home/opsconductor/shared')
-from database import get_db_cursor
+sys.path.append('/home/opsconductor')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
+from pydantic import BaseModel, Field
 
-app = FastAPI(title="Scheduler Service", version="1.0.0")
+# Import shared modules
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import get_current_user, require_admin
+from shared.utils import get_service_client
 
-# Security
-security = HTTPBearer()
+# Setup structured logging
+setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("scheduler-service")
 
-# Database connection handled by shared module
+app = FastAPI(
+    title="Scheduler Service", 
+    version="1.0.0",
+    description="Job scheduling service with cron-based execution"
+)
+
+# Add standard middleware
+add_standard_middleware(app, "scheduler-service", version="1.0.0")
 
 # Service URLs
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
@@ -529,13 +536,42 @@ async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_
     logger.info("Scheduler stopped")
     return {"message": "Scheduler stopped successfully"}
 
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    db_health = check_database_health()
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        ),
+        HealthCheck(
+            name="scheduler_worker",
+            status="healthy" if scheduler_running else "unhealthy",
+            message="Scheduler worker status"
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" and scheduler_running else "unhealthy"
+    
+    return HealthResponse(
+        service="scheduler-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     """Start scheduler on service startup"""
     global scheduler_running, scheduler_task
     
-    logger.info("Starting scheduler service...")
+    # Log service startup
+    log_startup("scheduler-service", "1.0.0", 3008)
     
     # Auto-start scheduler
     scheduler_running = True
@@ -549,8 +585,6 @@ async def shutdown_event():
     """Stop scheduler on service shutdown"""
     global scheduler_running, scheduler_task
     
-    logger.info("Shutting down scheduler service...")
-    
     scheduler_running = False
     
     if scheduler_task:
@@ -560,6 +594,8 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
     
+    log_shutdown("scheduler-service")
+    cleanup_database_pool()
     logger.info("Scheduler service shut down")
 
 if __name__ == "__main__":

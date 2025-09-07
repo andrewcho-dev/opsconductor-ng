@@ -6,55 +6,47 @@ Full CRUD operations for user management
 
 import os
 import sys
-import logging
 from datetime import datetime
 from typing import List, Optional
 
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-import requests
 from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from dotenv import load_dotenv
+
+# Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.auth import verify_token_dependency, get_current_user, require_admin
+from shared.utils import get_service_client
 
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured logging
+setup_service_logging("user-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("user-service")
 
 # FastAPI app
 app = FastAPI(
     title="User Service", 
     version="1.0.0",
-    # Configure to include None values in JSON responses
+    description="User management and CRUD operations service",
     openapi_url="/openapi.json"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add standard middleware (includes CORS, logging, error handling, etc.)
+add_standard_middleware(app, "user-service", version="1.0.0")
 
 # Security
-security = HTTPBearer()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# Configuration
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
-
-# Database configuration is now handled by shared.database module
 
 # Pydantic models
 class UserCreate(BaseModel):
@@ -99,45 +91,14 @@ class UserListResponse(BaseModel):
 class RoleAssignment(BaseModel):
     role: str
 
-# Database connection is now handled by shared.database module
-
-# Authentication utilities
+# Utility functions
 def get_password_hash(password: str) -> str:
     """Hash a password"""
     return pwd_context.hash(password)
 
-def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify token with auth service"""
-    try:
-        headers = {"Authorization": f"Bearer {credentials.credentials}"}
-        response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
-        
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-            
-        return response.json()["user"]
-        
-    except requests.RequestException:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
-
-def require_admin_role(current_user: dict = Depends(verify_token_with_auth_service)):
-    """Require admin role for protected endpoints"""
-    if current_user["role"] != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required"
-        )
-    return current_user
-
 # CRUD Operations
 @app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user_data: UserCreate, current_user: dict = Depends(require_admin_role)):
+async def create_user(user_data: UserCreate, current_user: dict = Depends(require_admin)):
     """Create a new user - ADMIN ONLY"""
     try:
         with get_db_cursor() as cursor:
@@ -147,10 +108,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
                 (user_data.email, user_data.username)
             )
             if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="User with this email or username already exists"
-                )
+                raise ValidationError("User with this email or username already exists")
             
             # Hash password
             hashed_password = get_password_hash(user_data.password)
@@ -168,18 +126,17 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
             new_user = cursor.fetchone()
             return UserResponse(**new_user)
         
+    except ValidationError:
+        raise
     except Exception as e:
-        logger.error(f"User creation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user"
-        )
+        logger.error(f"User creation error: {e}", exc_info=True)
+        raise handle_database_error(e, "user creation")
 
-@app.get("/users", response_model=UserListResponse, response_model_exclude_none=False)
+@app.get("/users", response_model=PaginatedResponse, response_model_exclude_none=False)
 async def list_users(
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    current_user: dict = Depends(get_current_user)
 ):
     """List all users with pagination"""
     # Non-admin users can only see their own profile
@@ -206,18 +163,18 @@ async def list_users(
                     'telephone': user_data.get('telephone'),
                     'title': user_data.get('title')
                 }
-                return UserListResponse(
-                    users=[UserResponse(**response_data)],
-                    total=1
+                return PaginatedResponse(
+                    data=[UserResponse(**response_data)],
+                    total=1,
+                    page=1,
+                    per_page=1,
+                    pages=1
                 )
             else:
-                return UserListResponse(users=[], total=0)
+                return PaginatedResponse(data=[], total=0, page=1, per_page=limit, pages=0)
         except Exception as e:
-            logger.error(f"Error fetching user profile: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to fetch user profile"
-            )
+            logger.error(f"Error fetching user profile: {e}", exc_info=True)
+            raise handle_database_error(e, "user profile fetch")
     
     # Admin can see all users
     try:
@@ -253,27 +210,28 @@ async def list_users(
             }
             user_responses.append(UserResponse(**response_data))
         
-            return UserListResponse(
-                users=user_responses,
-                total=total
-            )
+        # Calculate pagination info
+        pages = (total + limit - 1) // limit
+        current_page = (skip // limit) + 1
+        
+        return PaginatedResponse(
+            data=user_responses,
+            total=total,
+            page=current_page,
+            per_page=limit,
+            pages=pages
+        )
             
     except Exception as e:
-        logger.error(f"User listing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve users"
-        )
+        logger.error(f"User listing error: {e}", exc_info=True)
+        raise handle_database_error(e, "user listing")
 
 @app.get("/users/{user_id}")
-async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_user(user_id: int, current_user: dict = Depends(get_current_user)):
     """Get user by ID"""
     # Non-admin users can only access their own profile
     if current_user["role"] != "admin" and current_user["id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise PermissionError("Access denied")
     
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -284,62 +242,49 @@ async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_
             user_data = cursor.fetchone()
         
         if not user_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+            raise NotFoundError("User", user_id)
         
-        # Return raw JSON response to ensure all fields are included
+        # Return user response
         response_data = {
             'id': user_data['id'],
             'email': user_data['email'],
             'username': user_data['username'],
             'role': user_data['role'],
-            'created_at': user_data['created_at'].isoformat(),
+            'created_at': user_data['created_at'],
             'token_version': user_data['token_version'],
             'first_name': user_data.get('first_name'),
             'last_name': user_data.get('last_name'),
             'telephone': user_data.get('telephone'),
             'title': user_data.get('title')
         }
-            return JSONResponse(content=response_data)
+        return UserResponse(**response_data)
         
+    except (NotFoundError, PermissionError):
+        raise
     except Exception as e:
-        logger.error(f"User retrieval error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve user"
-        )
+        logger.error(f"User retrieval error: {e}", exc_info=True)
+        raise handle_database_error(e, "user retrieval")
 
 @app.put("/users/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: int, 
     user_data: UserUpdate, 
-    current_user: dict = Depends(verify_token_with_auth_service)
+    current_user: dict = Depends(get_current_user)
 ):
     """Update user by ID"""
     # Non-admin users can only update their own profile (and not change role)
     if current_user["role"] != "admin":
         if current_user["id"] != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
-            )
+            raise PermissionError("Access denied")
         if user_data.role is not None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot change your own role"
-            )
+            raise PermissionError("Cannot change your own role")
     
     try:
         with get_db_cursor() as cursor:
             # Check if user exists
             cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User", user_id)
             
             # Build update query
             update_fields = []
@@ -679,18 +624,38 @@ async def update_user_notification_preferences(
             detail="Failed to update notification preferences"
         )
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
     db_health = check_database_health()
-    return {
-        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
-        "service": "user-service",
-        "database": db_health
-    }
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
+    
+    return HealthResponse(
+        service="user-service",
+        status=overall_status,
+        version="1.0.0",
+        checks=checks
+    )
+
+@app.on_event("startup")
+async def startup_event():
+    """Log service startup"""
+    log_startup("user-service", "1.0.0", 3002)
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    log_shutdown("user-service")
     cleanup_database_pool()
 
 if __name__ == "__main__":

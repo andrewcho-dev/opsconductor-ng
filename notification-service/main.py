@@ -7,7 +7,6 @@ Multi-channel notifications with user preferences and advanced rules
 import os
 import sys
 import json
-import logging
 import asyncio
 import smtplib
 from datetime import datetime, timezone, time
@@ -21,17 +20,31 @@ sys.path.append('/home/opsconductor')
 import httpx
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
 from pydantic import BaseModel, Field, EmailStr
 from jinja2 import Template, Environment
 import re
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import shared modules
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
+from shared.middleware import add_standard_middleware
+from shared.models import HealthResponse, HealthCheck, create_success_response
+from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
+from shared.auth import get_current_user, require_admin
 
-app = FastAPI(title="Enhanced Notification Service", version="2.0.0")
+# Setup structured logging
+setup_service_logging("notification-service", level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("notification-service")
+
+app = FastAPI(
+    title="Enhanced Notification Service", 
+    version="2.0.0",
+    description="Multi-channel notification service with user preferences"
+)
+
+# Add standard middleware
+add_standard_middleware(app, "notification-service", version="2.0.0")
 
 
 
@@ -1110,10 +1123,41 @@ async def test_smtp_settings(test_request: SMTPTestRequest, request: Request):
         return SMTPTestResponse(success=False, message=f"SMTP test failed: {str(e)}")
 
 # Initialize worker on startup
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
+    db_health = check_database_health()
+    
+    checks = [
+        HealthCheck(
+            name="database",
+            status=db_health["status"],
+            message=db_health.get("message", "Database connection check"),
+            duration_ms=db_health.get("response_time_ms")
+        ),
+        HealthCheck(
+            name="notification_worker",
+            status="healthy" if notification_worker_running else "unhealthy",
+            message="Notification worker status"
+        )
+    ]
+    
+    overall_status = "healthy" if db_health["status"] == "healthy" and notification_worker_running else "unhealthy"
+    
+    return HealthResponse(
+        service="notification-service",
+        status=overall_status,
+        version="2.0.0",
+        checks=checks
+    )
+
 @app.on_event("startup")
 async def startup_event():
     """Start notification worker on service startup"""
     global notification_worker_running, notification_worker_task
+    
+    # Log service startup
+    log_startup("notification-service", "2.0.0", 3009)
     
     # Load SMTP settings from database on startup
     db_settings = get_smtp_settings_from_db()
@@ -1151,6 +1195,8 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
     
+    log_shutdown("notification-service")
+    cleanup_database_pool()
     logger.info("Enhanced notification service stopped")
 
 if __name__ == "__main__":
