@@ -37,7 +37,11 @@ from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_
 from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
 
 # Import utility modules
-from utils import HTTPExecutor, WebhookExecutor, CommandBuilder, SFTPExecutor, NotificationUtils
+from utils.utility_http_executor import HTTPExecutor
+from utils.utility_webhook_executor import WebhookExecutor
+from utils.utility_command_builder import CommandBuilder
+from utils.utility_sftp_executor import SFTPExecutor
+from utils.utility_notification_utils import NotificationUtils
 
 # Load environment variables
 load_dotenv()
@@ -478,112 +482,8 @@ class JobExecutor:
             }
     
     def _generate_windows_command(self, command_type: str, parameters: Dict[str, Any]) -> str:
-        """Generate PowerShell command based on command type and parameters"""
-        
-        if command_type == 'system_info':
-            return """
-Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, TotalPhysicalMemory, 
-CsProcessors, CsSystemType, TimeZone, LastBootUpTime | Format-List
-"""
-        
-        elif command_type == 'disk_space':
-            drive = parameters.get('drive', '')
-            if drive:
-                return f"Get-WmiObject -Class Win32_LogicalDisk -Filter \"DeviceID='{drive}'\" | Select-Object DeviceID, Size, FreeSpace, @{{Name='UsedSpace';Expression={{$_.Size - $_.FreeSpace}}}}, @{{Name='PercentFree';Expression={{[math]::Round(($_.FreeSpace / $_.Size) * 100, 2)}}}} | Format-Table -AutoSize"
-            else:
-                return "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, Size, FreeSpace, @{Name='UsedSpace';Expression={$_.Size - $_.FreeSpace}}, @{Name='PercentFree';Expression={[math]::Round(($_.FreeSpace / $_.Size) * 100, 2)}} | Format-Table -AutoSize"
-        
-        elif command_type == 'running_services':
-            service_filter = parameters.get('service_filter', '')
-            if service_filter:
-                return f"Get-Service | Where-Object {{$_.Name -like '*{service_filter}*' -and $_.Status -eq 'Running'}} | Select-Object Name, Status, StartType | Format-Table -AutoSize"
-            else:
-                return "Get-Service | Where-Object {$_.Status -eq 'Running'} | Select-Object Name, Status, StartType | Format-Table -AutoSize"
-        
-        elif command_type == 'installed_programs':
-            return """
-Get-WmiObject -Class Win32_Product | Select-Object Name, Version, Vendor, InstallDate | 
-Sort-Object Name | Format-Table -AutoSize
-"""
-        
-        elif command_type == 'network_config':
-            return """
-Get-NetIPConfiguration | Select-Object InterfaceAlias, IPv4Address, IPv6Address, 
-DNSServer | Format-List
-"""
-        
-        elif command_type == 'event_logs':
-            log_name = parameters.get('log_name', 'System')
-            max_events = parameters.get('max_events', 50)
-            level = parameters.get('level', '')
-            
-            if level:
-                return f"Get-WinEvent -LogName '{log_name}' -MaxEvents {max_events} | Where-Object {{$_.LevelDisplayName -eq '{level}'}} | Select-Object TimeCreated, Id, LevelDisplayName, Message | Format-Table -Wrap"
-            else:
-                return f"Get-WinEvent -LogName '{log_name}' -MaxEvents {max_events} | Select-Object TimeCreated, Id, LevelDisplayName, Message | Format-Table -Wrap"
-        
-        elif command_type == 'process_list':
-            process_filter = parameters.get('process_filter', '')
-            if process_filter:
-                return f"Get-Process | Where-Object {{$_.ProcessName -like '*{process_filter}*'}} | Select-Object ProcessName, Id, CPU, WorkingSet, StartTime | Format-Table -AutoSize"
-            else:
-                return "Get-Process | Select-Object ProcessName, Id, CPU, WorkingSet, StartTime | Sort-Object CPU -Descending | Select-Object -First 20 | Format-Table -AutoSize"
-        
-        elif command_type == 'windows_updates':
-            return """
-if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
-    Get-WUList | Select-Object Title, Size, Status | Format-Table -AutoSize
-} else {
-    Write-Output "PSWindowsUpdate module not installed. Using alternative method..."
-    Get-HotFix | Select-Object Description, HotFixID, InstalledOn | Sort-Object InstalledOn -Descending | Select-Object -First 20 | Format-Table -AutoSize
-}
-"""
-        
-        elif command_type == 'user_accounts':
-            return """
-Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordLastSet, 
-PasswordExpires | Format-Table -AutoSize
-"""
-        
-        elif command_type == 'system_uptime':
-            return """
-$bootTime = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
-$uptime = (Get-Date) - $bootTime
-Write-Output "System Boot Time: $bootTime"
-Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($uptime.Minutes) minutes"
-"""
-        
-        elif command_type == 'registry_query':
-            registry_path = parameters.get('registry_path', '')
-            value_name = parameters.get('value_name', '')
-            
-            if not registry_path:
-                return "Write-Error 'Registry path is required'"
-            
-            if value_name:
-                return f"Get-ItemProperty -Path '{registry_path}' -Name '{value_name}' -ErrorAction SilentlyContinue"
-            else:
-                return f"Get-ItemProperty -Path '{registry_path}' -ErrorAction SilentlyContinue | Format-List"
-        
-        elif command_type == 'file_operations':
-            operation = parameters.get('operation', 'list')
-            path = parameters.get('path', '')
-            
-            if not path:
-                return "Write-Error 'Path is required for file operations'"
-            
-            if operation == 'list':
-                file_filter = parameters.get('filter', '*')
-                return f"Get-ChildItem -Path '{path}' -Filter '{file_filter}' | Select-Object Name, Length, LastWriteTime, Attributes | Format-Table -AutoSize"
-            elif operation == 'check_exists':
-                return f"Test-Path -Path '{path}'"
-            elif operation == 'get_size':
-                return f"if (Test-Path -Path '{path}') {{ (Get-Item -Path '{path}').Length }} else {{ Write-Output 'File not found' }}"
-            elif operation == 'get_info':
-                return f"Get-Item -Path '{path}' | Select-Object Name, Length, LastWriteTime, LastAccessTime, CreationTime, Attributes | Format-List"
-        
-        else:
-            return f"Write-Error 'Unknown command type: {command_type}'"
+        """Generate Windows command using utility module"""
+        return self.command_builder.generate_windows_command(command_type, parameters)
     
     def _execute_ssh_exec(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ssh.exec step"""
@@ -903,7 +803,7 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
             }
     
     def _execute_sftp_sync(self, step: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute sftp.sync step"""
+        """Execute SFTP sync using utility module"""
         try:
             # Get target and credential info
             target_info = self._get_target_info(step['target_id'])
@@ -924,79 +824,13 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
                     'stderr': 'Credential not found or not accessible'
                 }
             
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            # Execute SFTP sync using utility
+            result = self.sftp_utility.execute_sftp_sync(step, target_info, credential_data)
             
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Render paths
-            local_template = Template(step_definition['local_path'])
-            remote_template = Template(step_definition['remote_path'])
-            
-            local_path = local_template.render(**run_parameters)
-            remote_path = remote_template.render(**run_parameters)
-            direction = step_definition.get('direction', 'upload')  # 'upload' or 'download'
-            
-            # Use SSH port from target or default to 22
-            ssh_port = target_info.get('ssh_port', 22)
-            if ssh_port == 5985:  # Default WinRM port, use SSH default
-                ssh_port = 22
-            
-            logger.info(f"SFTP sync ({direction}): {local_path} <-> {target_info['hostname']}:{remote_path}")
-            
-            # Execute directory sync via SFTP
-            with SSHExecutor() as ssh_executor:
-                # Connect to target
-                connection_info = ssh_executor.connect(
-                    hostname=target_info['hostname'],
-                    port=ssh_port,
-                    credential_data=credential_data,
-                    timeout=30
-                )
+            return result
                 
-                # Sync directory
-                result = ssh_executor.sync_directory(
-                    local_path=local_path,
-                    remote_path=remote_path,
-                    direction=direction
-                )
-                
-                status_msg = f"Directory sync completed: {result['files_transferred']} files, {result['total_bytes']} bytes"
-                if result['errors']:
-                    status_msg += f" with {len(result['errors'])} errors"
-                
-                return {
-                    'status': 'succeeded' if result['success'] else 'failed',
-                    'exit_code': 0 if result['success'] else 1,
-                    'stdout': status_msg,
-                    'stderr': '\n'.join(result['errors']) if result['errors'] else '',
-                    'metrics': {
-                        'target': target_info['hostname'],
-                        'port': ssh_port,
-                        'auth_method': connection_info['auth_method'],
-                        'local_path': local_path,
-                        'remote_path': remote_path,
-                        'direction': direction,
-                        'files_transferred': result['files_transferred'],
-                        'total_bytes': result['total_bytes'],
-                        'sync_time_ms': result['sync_time_ms'],
-                        'transfer_rate_mbps': result['transfer_rate_mbps'],
-                        'error_count': len(result['errors'])
-                    }
-                }
-                
-        except SSHExecutionError as e:
-            logger.error(f"SFTP sync error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'SFTP sync failed: {str(e)}'
-            }
         except Exception as e:
-            logger.error(f"SFTP sync error: {e}")
+            logger.error(f"SFTP sync execution failed: {e}")
             return {
                 'status': 'failed',
                 'exit_code': 1,
@@ -1241,105 +1075,11 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
             )
     
     def _send_job_completion_notification(self, job_run_id: int, status: str, cursor):
-        """Send notification for job completion"""
+        """Send job completion notification using utility module"""
         try:
-            # Get job run details with user information
-            cursor.execute("""
-                SELECT 
-                    jr.id as run_id,
-                    jr.job_id,
-                    jr.status,
-                    jr.queued_at,
-                    jr.started_at,
-                    jr.finished_at,
-                    jr.requested_by,
-                    j.name as job_name,
-                    u.email as user_email,
-                    u.username,
-                    COUNT(jrs.id) as total_steps,
-                    COUNT(CASE WHEN jrs.status = 'succeeded' THEN 1 END) as succeeded_steps,
-                    COUNT(CASE WHEN jrs.status = 'failed' THEN 1 END) as failed_steps
-                FROM job_runs jr
-                JOIN jobs j ON jr.job_id = j.id
-                LEFT JOIN users u ON jr.requested_by = u.id
-                LEFT JOIN job_run_steps jrs ON jr.id = jrs.job_run_id
-                WHERE jr.id = %s
-                GROUP BY jr.id, j.name, u.email, u.username
-            """, (job_run_id,))
-            
-            job_info = cursor.fetchone()
-            if not job_info or not job_info['user_email']:
-                logger.info(f"No email address found for job run {job_run_id}, skipping notification")
-                return
-            
-            # Calculate duration
-            duration = "Unknown"
-            if job_info['started_at'] and job_info['finished_at']:
-                delta = job_info['finished_at'] - job_info['started_at']
-                duration = str(delta).split('.')[0]  # Remove microseconds
-            
-            # Get error details for failed jobs
-            error_details = None
-            if status == 'failed':
-                cursor.execute("""
-                    SELECT stderr, stdout 
-                    FROM job_run_steps 
-                    WHERE job_run_id = %s AND status = 'failed'
-                    ORDER BY idx
-                    LIMIT 1
-                """, (job_run_id,))
-                
-                error_step = cursor.fetchone()
-                if error_step:
-                    error_details = error_step['stderr'] or error_step['stdout'] or "Unknown error"
-            
-            # Prepare notification payload
-            notification_payload = {
-                "job_id": job_info['job_id'],
-                "job_name": job_info['job_name'],
-                "run_id": job_info['run_id'],
-                "status": status,
-                "started_at": job_info['started_at'].isoformat() if job_info['started_at'] else None,
-                "finished_at": job_info['finished_at'].isoformat() if job_info['finished_at'] else None,
-                "duration": duration,
-                "requested_by": job_info['username'],
-                "steps_summary": {
-                    "total": job_info['total_steps'],
-                    "succeeded": job_info['succeeded_steps'],
-                    "failed": job_info['failed_steps']
-                }
-            }
-            
-            if error_details:
-                notification_payload["error_details"] = error_details[:1000]  # Limit error message length
-            
-            # Send enhanced notification using new system
-            try:
-                # Determine event type based on status
-                event_type = "job_success" if status == "succeeded" else "job_failure"
-                
-                response = requests.post(
-                    f"{NOTIFICATION_SERVICE_URL}/internal/notifications/enhanced",
-                    json={
-                        "job_run_id": job_run_id,
-                        "user_id": job_info['requested_by'],
-                        "event_type": event_type,
-                        "payload": notification_payload
-                    },
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    logger.info(f"Enhanced notifications created for job run {job_run_id}: {result.get('count', 0)} notifications")
-                else:
-                    logger.error(f"Failed to create enhanced notifications for job run {job_run_id}: {response.status_code}")
-                    
-            except Exception as e:
-                logger.error(f"Error creating enhanced notifications for job run {job_run_id}: {e}")
-                
+            self.notification_utils.send_job_completion_notification(job_run_id, status, cursor)
         except Exception as e:
-            logger.error(f"Error preparing notification for job run {job_run_id}: {e}")
+            logger.error(f"Error sending job completion notification for run {job_run_id}: {e}")
     
     def _execute_notify_email(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.email step"""
@@ -1937,6 +1677,10 @@ async def get_status() -> Dict[str, Any]:
                 "poll_interval": WORKER_POLL_INTERVAL,
                 "queue_stats": dict(stats)
             }
+            
+    except Exception as e:
+        logger.error(f"Status retrieval error: {e}")
+        raise DatabaseError("Failed to retrieve status")
 
 @app.get("/metrics/database")
 async def database_metrics() -> Dict[str, Any]:
@@ -1947,10 +1691,6 @@ async def database_metrics() -> Dict[str, Any]:
         "timestamp": datetime.utcnow().isoformat(),
         "database": metrics
     }
-
-    except Exception as e:
-        logger.error(f"Status retrieval error: {e}")
-        raise DatabaseError("Failed to retrieve status")
 
 if __name__ == "__main__":
     import uvicorn
