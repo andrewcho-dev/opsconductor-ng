@@ -33,6 +33,11 @@ from shared.errors import DatabaseError, ValidationError, NotFoundError, Permiss
 from shared.auth import get_current_user, require_admin
 from shared.utils import get_service_client
 
+# Import utility modules
+from utils.utility_network_scanner import NetworkScannerUtility
+from utils.utility_discovery_job import DiscoveryJobUtility
+from utils.utility_network_range_parser import NetworkRangeParserUtility
+
 # Setup structured logging
 setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
 logger = get_logger("discovery-service")
@@ -148,385 +153,25 @@ class ServiceInfo(BaseModel):
 
 
 
-# Network range parsing utilities
-class NetworkRangeParser:
-    """Utility class for parsing various network range formats"""
-    
-    @staticmethod
-    def parse_network_ranges(range_input: str) -> List[str]:
-        """
-        Parse various network range formats and return a list of individual IP addresses or CIDR ranges.
-        
-        Supported formats:
-        - CIDR: 192.168.1.0/24
-        - IP Range: 192.168.1.100-120 or 192.168.1.100-192.168.1.120
-        - Individual IPs: 192.168.1.20, 192.168.1.22, 192.168.1.25
-        - Mixed: 192.168.1.23, 192.168.1.26-32, 10.0.0.0/24
-        """
-        if not range_input or not range_input.strip():
-            return []
-        
-        # Split by commas first to handle multiple entries
-        entries = [entry.strip() for entry in range_input.split(',') if entry.strip()]
-        all_targets = []
-        
-        for entry in entries:
-            try:
-                targets = NetworkRangeParser._parse_single_entry(entry)
-                all_targets.extend(targets)
-            except Exception as e:
-                logger.warning(f"Failed to parse network range entry '{entry}': {e}")
-                continue
-        
-        return all_targets
-    
-    @staticmethod
-    def _parse_single_entry(entry: str) -> List[str]:
-        """Parse a single network range entry"""
-        entry = entry.strip()
-        
-        # Check if it's a CIDR range
-        if '/' in entry:
-            return NetworkRangeParser._parse_cidr(entry)
-        
-        # Check if it's an IP range
-        elif '-' in entry:
-            return NetworkRangeParser._parse_ip_range(entry)
-        
-        # Check if it's a single IP
-        else:
-            return NetworkRangeParser._parse_single_ip(entry)
-    
-    @staticmethod
-    def _parse_cidr(cidr: str) -> List[str]:
-        """Parse CIDR notation (e.g., 192.168.1.0/24)"""
-        try:
-            network = ipaddress.ip_network(cidr, strict=False)
-            # For large networks (>1000 hosts), return as CIDR for efficiency
-            if network.num_addresses > 1000:
-                return [str(network)]
-            else:
-                # For smaller networks, return individual IPs
-                return [str(ip) for ip in network.hosts()]
-        except ValueError as e:
-            raise ValueError(f"Invalid CIDR format '{cidr}': {e}")
-    
-    @staticmethod
-    def _parse_ip_range(ip_range: str) -> List[str]:
-        """Parse IP range (e.g., 192.168.1.100-120 or 192.168.1.100-192.168.1.120)"""
-        try:
-            start_ip, end_part = ip_range.split('-', 1)
-            start_ip = start_ip.strip()
-            end_part = end_part.strip()
-            
-            # Validate start IP
-            start_addr = ipaddress.ip_address(start_ip)
-            
-            # Check if end_part is just a number (short form) or full IP
-            if '.' in end_part:
-                # Full IP address
-                end_addr = ipaddress.ip_address(end_part)
-            else:
-                # Short form - just the last octet
-                if not end_part.isdigit():
-                    raise ValueError(f"Invalid range end '{end_part}' - must be a number or full IP")
-                
-                end_octet = int(end_part)
-                if end_octet < 0 or end_octet > 255:
-                    raise ValueError(f"Invalid range end '{end_part}' - must be between 0-255")
-                
-                # Construct full end IP
-                start_parts = str(start_addr).split('.')
-                end_ip = f"{start_parts[0]}.{start_parts[1]}.{start_parts[2]}.{end_octet}"
-                end_addr = ipaddress.ip_address(end_ip)
-            
-            # Generate IP list
-            if start_addr > end_addr:
-                raise ValueError(f"Start IP {start_addr} is greater than end IP {end_addr}")
-            
-            ips = []
-            current = int(start_addr)
-            end = int(end_addr)
-            
-            while current <= end:
-                ips.append(str(ipaddress.ip_address(current)))
-                current += 1
-                
-                # Safety limit to prevent memory issues
-                if len(ips) > 10000:
-                    raise ValueError(f"IP range too large (>10000 addresses): {ip_range}")
-            
-            return ips
-            
-        except ValueError as e:
-            raise ValueError(f"Invalid IP range format '{ip_range}': {e}")
-    
-    @staticmethod
-    def _parse_single_ip(ip: str) -> List[str]:
-        """Parse and validate a single IP address"""
-        try:
-            ipaddress.ip_address(ip)
-            return [ip]
-        except ValueError as e:
-            raise ValueError(f"Invalid IP address '{ip}': {e}")
-    
-    @staticmethod
-    def optimize_targets_for_nmap(targets: List[str]) -> List[str]:
-        """
-        Optimize target list for nmap scanning by grouping consecutive IPs into ranges
-        and keeping CIDR ranges as-is.
-        """
-        if not targets:
-            return []
-        
-        # Separate CIDR ranges from individual IPs
-        cidr_ranges = []
-        individual_ips = []
-        
-        for target in targets:
-            if '/' in target:
-                cidr_ranges.append(target)
-            else:
-                try:
-                    individual_ips.append(ipaddress.ip_address(target))
-                except ValueError:
-                    # If it's not a valid IP, keep it as-is (might be hostname)
-                    cidr_ranges.append(target)
-        
-        # Sort individual IPs
-        individual_ips.sort()
-        
-        # Group consecutive IPs into ranges
-        optimized = cidr_ranges.copy()
-        if individual_ips:
-            optimized.extend(NetworkRangeParser._group_consecutive_ips(individual_ips))
-        
-        return optimized
-    
-    @staticmethod
-    def _group_consecutive_ips(ips: List[ipaddress.IPv4Address]) -> List[str]:
-        """Group consecutive IP addresses into ranges for efficient nmap scanning"""
-        if not ips:
-            return []
-        
-        groups = []
-        current_group = [ips[0]]
-        
-        for i in range(1, len(ips)):
-            if int(ips[i]) == int(current_group[-1]) + 1:
-                current_group.append(ips[i])
-            else:
-                # End current group and start new one
-                groups.append(current_group)
-                current_group = [ips[i]]
-        
-        # Add the last group
-        groups.append(current_group)
-        
-        # Convert groups to nmap-friendly format
-        result = []
-        for group in groups:
-            if len(group) == 1:
-                result.append(str(group[0]))
-            elif len(group) == 2:
-                result.extend([str(group[0]), str(group[1])])
-            else:
-                # Use nmap range format for 3+ consecutive IPs
-                start_ip = str(group[0])
-                end_ip = str(group[-1])
-                
-                # Check if they're in the same subnet for range notation
-                start_parts = start_ip.split('.')
-                end_parts = end_ip.split('.')
-                
-                if start_parts[:3] == end_parts[:3]:
-                    # Same subnet - use short range notation
-                    result.append(f"{start_ip}-{end_parts[3]}")
-                else:
-                    # Different subnets - use full range notation
-                    result.append(f"{start_ip}-{end_ip}")
-        
-        return result
+# Network range parsing is now handled by utility module
 
 # Database connection is now handled by shared.database module
 
 # Authentication is now handled by shared.auth module
 
-# Network Scanner Class
-class NetworkScanner:
-    def __init__(self):
-        self.nm = nmap.PortScanner()
-    
-    async def scan_network_range(self, cidr_range: str, ports: str = "22,3389,5985,5986") -> List[Dict]:
-        """Scan network range for active hosts and services"""
-        try:
-            logger.info(f"Starting network scan for {cidr_range} on ports {ports}")
-            # Use TCP connect scan with service detection
-            # Use -PS to do TCP SYN ping on common ports instead of ICMP ping
-            # This helps discover Windows hosts that block ICMP but have services running
-            scan_result = self.nm.scan(hosts=cidr_range, ports=ports, arguments='-sT -sV --version-intensity 3 -PS22,80,135,139,443,445,3389,5985')
-            
-            discovered_hosts = []
-            for host in scan_result['scan']:
-                host_info = self.analyze_host(scan_result['scan'][host])
-                if host_info:
-                    # Debug logging
-                    logger.info(f"Host {host}: Found services {host_info.get('services', [])}")
-                    discovered_hosts.append(host_info)
-            
-            logger.info(f"Discovered {len(discovered_hosts)} hosts in {cidr_range}")
-            return discovered_hosts
-        except Exception as e:
-            logger.error(f"Network scan failed for {cidr_range}: {e}")
-            raise
-    
-    def analyze_host(self, host_data: Dict) -> Optional[Dict]:
-        """Analyze host data to determine OS and services"""
-        if host_data['status']['state'] != 'up':
-            return None
-        
-        services, preferred_service = self.detect_services(host_data)
-        
-        host_info = {
-            'ip_address': host_data.get('addresses', {}).get('ipv4'),
-            'hostname': host_data.get('hostnames', [{}])[0].get('name', ''),
-            'os_type': self.detect_os_type(host_data),
-            'os_version': self.detect_os_version(host_data),
-            'services': services,
-            'preferred_service': preferred_service,
-            'ports': host_data.get('tcp', {})
-        }
-        
-        return host_info
-    
-    def detect_os_type(self, host_data: Dict) -> str:
-        """Detect OS type based on open ports and OS fingerprinting"""
-        tcp_ports = host_data.get('tcp', {})
-        
-        # Only consider ports that are actually "open", not "filtered" or "closed"
-        open_ports = set()
-        for port, port_info in tcp_ports.items():
-            if port_info.get('state') == 'open':
-                open_ports.add(port)
-        
-        # Windows indicators (only if ports are actually open)
-        windows_ports = {135, 445, 3389, 5985, 5986}
-        if any(port in open_ports for port in windows_ports):
-            return 'windows'  # lowercase to match database constraint
-        
-        # Linux indicators (SSH is typically Linux/Unix)
-        if 22 in open_ports:
-            return 'linux'  # lowercase to match database constraint
-        
-        # Check OS fingerprinting results
-        os_matches = host_data.get('osmatch', [])
-        if os_matches:
-            os_name = os_matches[0].get('name', '').lower()
-            if 'windows' in os_name:
-                return 'windows'  # lowercase to match database constraint
-            elif any(linux_dist in os_name for linux_dist in ['linux', 'ubuntu', 'centos', 'redhat']):
-                return 'linux'  # lowercase to match database constraint
-            elif 'macos' in os_name or 'mac os' in os_name:
-                return 'macos'  # lowercase to match database constraint
-            elif any(unix_type in os_name for unix_type in ['unix', 'solaris', 'aix', 'bsd']):
-                return 'unix'  # lowercase to match database constraint
-        
-        return 'other'  # use 'other' instead of 'Unknown' to match database constraint
-    
-    def detect_os_version(self, host_data: Dict) -> Optional[str]:
-        """Detect OS version from fingerprinting"""
-        os_matches = host_data.get('osmatch', [])
-        if os_matches:
-            return os_matches[0].get('name', '')
-        return None
-    
-    def detect_services(self, host_data: Dict) -> Tuple[List[Dict], Optional[Dict]]:
-        """Detect available services and determine preferred service"""
-        services = []
-        tcp_ports = host_data.get('tcp', {})
-        
-        # Debug logging
-        ip_address = host_data.get('addresses', {}).get('ipv4', 'unknown')
-        logger.info(f"Detecting services for {ip_address}. Open TCP ports: {list(tcp_ports.keys())}")
-        
-        # Detailed port state debugging
-        for port, port_info in tcp_ports.items():
-            logger.info(f"Port {port}: state={port_info.get('state')}, name={port_info.get('name')}, product={port_info.get('product')}, version={port_info.get('version')}")
-        
-        # WinRM detection
-        if 5985 in tcp_ports and tcp_ports[5985]['state'] == 'open':
-            winrm_http = {
-                'type': 'winrm',
-                'port': 5985,
-                'transport': 'http',
-                'confidence': 'high',
-                'secure': False
-            }
-            services.append(winrm_http)
-            logger.info(f"Found WinRM HTTP on {ip_address}:5985")
-        
-        if 5986 in tcp_ports and tcp_ports[5986]['state'] == 'open':
-            winrm_https = {
-                'type': 'winrm',
-                'port': 5986,
-                'transport': 'https',
-                'confidence': 'high',
-                'secure': True
-            }
-            services.append(winrm_https)
-            logger.info(f"Found WinRM HTTPS on {ip_address}:5986")
-        
-        # SSH detection
-        if 22 in tcp_ports and tcp_ports[22]['state'] == 'open':
-            ssh_service = {
-                'type': 'ssh',
-                'port': 22,
-                'confidence': 'high',
-                'secure': True
-            }
-            services.append(ssh_service)
-        
-        # RDP detection
-        if 3389 in tcp_ports and tcp_ports[3389]['state'] == 'open':
-            rdp_service = {
-                'type': 'rdp',
-                'port': 3389,
-                'confidence': 'high',
-                'secure': False
-            }
-            services.append(rdp_service)
-        
-        # Determine preferred service
-        preferred_service = self.select_preferred_service(services)
-        
-        return services, preferred_service
-    
-    def select_preferred_service(self, services: List[Dict]) -> Optional[Dict]:
-        """Select preferred service based on security and availability"""
-        if not services:
-            return None
-        
-        # Priority: HTTPS WinRM > SSH > HTTP WinRM > RDP > Others
-        winrm_https = next((s for s in services if s['type'] == 'winrm' and s['secure']), None)
-        if winrm_https:
-            return winrm_https
-        
-        ssh_service = next((s for s in services if s['type'] == 'ssh'), None)
-        if ssh_service:
-            return ssh_service
-        
-        winrm_http = next((s for s in services if s['type'] == 'winrm' and not s['secure']), None)
-        if winrm_http:
-            return winrm_http
-        
-        # Fallback to first available service
-        return services[0]
+# Network scanning is now handled by utility module
 
 # Discovery Service Class
 class DiscoveryService:
     def __init__(self):
-        self.scanner = NetworkScanner()
         self.active_jobs = {}
+        # Initialize utility modules
+        self.network_scanner_utility = NetworkScannerUtility()
+        self.network_range_parser = NetworkRangeParserUtility()
+        self.discovery_job_utility = DiscoveryJobUtility(
+            self.network_scanner_utility, 
+            self.network_range_parser
+        )
     
     async def start_discovery_job(self, job_id: int, job_config: Dict, user_id: int) -> str:
         """Start a discovery job"""
@@ -657,176 +302,19 @@ class DiscoveryService:
             logger.error(f"Error checking job cancellation status: {e}")
             return False
 
-    async def network_scan_discovery(self, job_id -> Dict[str, Any]: int, config -> Dict[str, Any]: Dict) -> Dict[str, Any]:
-        """Execute network scan discovery"""
-        scan_config = NetworkScanConfig(**config)
-        
-        # Check if job was cancelled before starting
-        if await self.check_job_cancelled(job_id):
-            logger.info(f"Discovery job {job_id} was cancelled before starting")
-            return
-        
-        # Determine ports to scan
-        if scan_config.services:
-            # Use new services array - extract enabled services' ports
-            enabled_ports = [str(service.port) for service in scan_config.services if service.enabled]
-            ports = ",".join(enabled_ports) if enabled_ports else "22,3389,5985"  # fallback
-        elif scan_config.ports:
-            # Use explicit ports
-            ports = scan_config.ports
-        else:
-            # Default fallback - common management ports
-            ports = "22,3389,5985,5986"
-        
-        all_discovered_hosts = []
-        failed_ranges = []
-        successful_ranges = []
-        
-        # Parse and optimize network ranges
-        all_targets = []
-        for range_input in scan_config.cidr_ranges:
-            try:
-                parsed_targets = NetworkRangeParser.parse_network_ranges(range_input)
-                all_targets.extend(parsed_targets)
-                logger.info(f"Parsed range '{range_input}' into {len(parsed_targets)} targets")
-            except Exception as e:
-                logger.error(f"Failed to parse range '{range_input}': {e}")
-                failed_ranges.append({"range": range_input, "error": str(e)})
-        
-        if not all_targets and not failed_ranges:
-            raise Exception("No valid targets found in provided ranges")
-        
-        # Optimize targets for efficient nmap scanning
-        optimized_targets = NetworkRangeParser.optimize_targets_for_nmap(all_targets)
-        logger.info(f"Optimized {len(all_targets)} targets into {len(optimized_targets)} scan ranges")
-        
-        # Scan each optimized target/range
-        for target_range in optimized_targets:
-            # Check for cancellation before each range
-            if await self.check_job_cancelled(job_id):
-                logger.info(f"Discovery job {job_id} was cancelled during execution")
-                return
-                
-            try:
-                discovered_hosts = await self.scanner.scan_network_range(target_range, ports)
-                all_discovered_hosts.extend(discovered_hosts)
-                successful_ranges.append(target_range)
-                logger.info(f"Successfully scanned {target_range}: found {len(discovered_hosts)} hosts")
-            except Exception as e:
-                logger.error(f"Failed to scan {target_range}: {e}")
-                failed_ranges.append({"range": target_range, "error": str(e)})
-        
-        # Check if ALL scans failed
-        if len(failed_ranges) > 0 and len(successful_ranges) == 0:
-            error_details = "; ".join([f"{fr['range']}: {fr['error']}" for fr in failed_ranges])
-            raise Exception(f"All network scans failed. Errors: {error_details}")
-        
-        # Check if we found any targets at all
-        if len(all_discovered_hosts) == 0 and len(successful_ranges) > 0:
-            logger.warning(f"Network scan completed but found no targets in ranges: {successful_ranges}")
-        
-        # Store discovered targets in database
-        await self.store_discovered_targets(job_id, all_discovered_hosts)
-        
-        # Log summary
-        if failed_ranges:
-            logger.warning(f"Network scan partially completed. Found {len(all_discovered_hosts)} targets. Failed ranges: {[fr['range'] for fr in failed_ranges]}")
-        else:
-            logger.info(f"Network scan discovery completed successfully. Found {len(all_discovered_hosts)} targets")
-        
-        # If some ranges failed but we got some results, that's still a partial success
-        # Only fail completely if ALL ranges failed (handled above)
+    async def network_scan_discovery(self, job_id: int, config: Dict) -> Dict[str, Any]:
+        """Execute network scan discovery using utility module"""
+        return await self.discovery_job_utility.execute_network_scan_discovery(
+            job_id, config, NetworkScanConfig
+        )
     
-    async def store_discovered_targets(self, job_id -> Dict[str, Any]: int, discovered_hosts -> Dict[str, Any]: List[Dict]) -> Dict[str, Any]:
-        """Store discovered targets in database with deduplication"""
-        try:
-            with get_db_cursor() as cursor:
-                for host in discovered_hosts:
-                    ip_address = host['ip_address']
-                    hostname = host.get('hostname')
-                    
-                    # Check if this target already exists in discovered_targets
-                    existing_discovered = await self.check_existing_discovered_target(ip_address, hostname)
-                    
-                    if existing_discovered:
-                        # Update existing discovered target with latest info
-                        logger.info(f"Updating existing discovered target {ip_address} (ID: {existing_discovered['id']})")
-                        cursor.execute("""
-                            UPDATE discovered_targets 
-                            SET hostname = COALESCE(%s, hostname),
-                                os_type = COALESCE(%s, os_type),
-                                os_version = COALESCE(%s, os_version),
-                                services = %s,
-                                preferred_service = %s,
-                                system_info = %s,
-                                discovery_job_id = %s,
-                                discovered_at = CURRENT_TIMESTAMP
-                            WHERE id = %s
-                        """, (
-                            hostname,
-                            host.get('os_type'),
-                            host.get('os_version'),
-                            json.dumps(host.get('services', [])),
-                            json.dumps(host.get('preferred_service')),
-                            json.dumps(host.get('ports', {})),
-                            job_id,
-                            existing_discovered['id']
-                        ))
-                        continue
-                    
-                    # Check for duplicates against registered targets
-                    duplicate_status, existing_target_id = await self.check_for_duplicates(
-                        ip_address, hostname
-                    )
-                    
-                    # Insert new discovered target
-                    cursor.execute("""
-                        INSERT INTO discovered_targets (
-                            discovery_job_id, hostname, ip_address, os_type, os_version,
-                            services, preferred_service, system_info, duplicate_status,
-                            existing_target_id, discovered_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                    """, (
-                        job_id,
-                        hostname,
-                        ip_address,
-                        host.get('os_type'),
-                        host.get('os_version'),
-                        json.dumps(host.get('services', [])),
-                        json.dumps(host.get('preferred_service')),
-                        json.dumps(host.get('ports', {})),
-                        duplicate_status,
-                        existing_target_id
-                    ))
-        except Exception as e:
-            logger.error(f"Failed to store discovered targets: {e}")
-            raise
+    async def store_discovered_targets(self, job_id: int, discovered_hosts: List[Dict]) -> Dict[str, Any]:
+        """Store discovered targets using utility module"""
+        return await self.discovery_job_utility.store_discovered_targets(job_id, discovered_hosts)
     
     async def check_existing_discovered_target(self, ip_address: str, hostname: str = None) -> Optional[Dict]:
-        """Check if target already exists in discovered_targets table"""
-        try:
-            with get_db_cursor(commit=False) as cursor:
-                # Check by IP address first (primary key for uniqueness)
-                cursor.execute("""
-                    SELECT id, hostname, ip_address, import_status 
-                    FROM discovered_targets 
-                    WHERE ip_address = %s AND import_status = 'pending'
-                """, (ip_address,))
-                existing = cursor.fetchone()
-                
-                # If not found by IP and we have hostname, check by hostname
-                if not existing and hostname:
-                    cursor.execute("""
-                        SELECT id, hostname, ip_address, import_status 
-                        FROM discovered_targets 
-                        WHERE hostname = %s AND import_status = 'pending'
-                    """, (hostname,))
-                    existing = cursor.fetchone()
-                
-            return existing
-        except Exception as e:
-            logger.error(f"Error checking existing discovered target: {e}")
-            return None
+        """Check if target already exists using utility module"""
+        return await self.discovery_job_utility.check_existing_discovered_target(ip_address, hostname)
     
     async def check_for_duplicates(self, ip_address: str, hostname: str = None) -> Tuple[str, Optional[int]]:
         """Check if target already exists by IP address or hostname"""
@@ -894,7 +382,7 @@ async def test_simple() -> Dict[str, Any]:
 
 
 @app.post("/validate-network-ranges")
-async def validate_network_ranges(ranges -> Dict[str, Any]: Dict[str, List[str]]) -> Dict[str, Any]:
+async def validate_network_ranges(ranges: Dict[str, List[str]]) -> Dict[str, Any]:
     """Validate network range inputs and return parsed targets"""
     try:
         results = []
@@ -902,8 +390,8 @@ async def validate_network_ranges(ranges -> Dict[str, Any]: Dict[str, List[str]]
         
         for range_input in ranges.get("ranges", []):
             try:
-                parsed_targets = NetworkRangeParser.parse_network_ranges(range_input)
-                optimized_targets = NetworkRangeParser.optimize_targets_for_nmap(parsed_targets)
+                parsed_targets = NetworkRangeParserUtility.parse_network_ranges(range_input)
+                optimized_targets = NetworkRangeParserUtility.optimize_targets_for_nmap(parsed_targets)
                 
                 results.append({
                     "input": range_input,
