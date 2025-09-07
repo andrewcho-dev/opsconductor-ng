@@ -2187,7 +2187,7 @@ async def get_status():
         
     except Exception as e:
         logger.error(f"Status retrieval error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve status")
+        raise DatabaseError("Failed to retrieve status")
 
 if __name__ == "__main__":
     import uvicorn

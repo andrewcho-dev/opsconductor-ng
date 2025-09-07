@@ -415,26 +415,17 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         return response.json()["user"]
         
     except requests.RequestException:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     if current_user["role"] not in ["admin", "operator"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or operator role required"
-        )
+        raise PermissionError("Admin or operator role required")
     return current_user
 
 # Job validation
@@ -443,10 +434,7 @@ def validate_job_definition(definition: Dict[str, Any]) -> None:
     try:
         jsonschema.validate(definition, JOB_SCHEMA)
     except jsonschema.ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid job definition: {e.message}"
-        )
+        raise ValidationError(f"Invalid job definition: {e.message}", "definition")
 
 # JOB CRUD Operations
 @app.post("/jobs", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
@@ -464,10 +452,7 @@ async def create_job(
             cursor.execute("SELECT id FROM jobs WHERE name = %s AND deleted_at IS NULL", (job_data.name,))
             existing_job = cursor.fetchone()
             if existing_job:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Job with this name already exists"
-                )
+                raise ValidationError("Job with this name already exists")
             
             # Insert job
             cursor.execute(
@@ -496,10 +481,7 @@ async def create_job(
         raise  # Re-raise HTTPExceptions (like 409 Conflict) without modification
     except Exception as e:
         logger.error(f"Job creation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create job"
-        )
+        raise DatabaseError("Failed to create job")
 
 @app.get("/jobs", response_model=JobListResponse)
 async def list_jobs(
@@ -544,10 +526,7 @@ async def list_jobs(
         
     except Exception as e:
         logger.error(f"Job listing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve jobs"
-        )
+        raise DatabaseError("Failed to retrieve jobs")
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -561,10 +540,7 @@ async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_au
             job_data = cursor.fetchone()
             
             if not job_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job not found"
-                )
+                raise NotFoundError("Job not found")
             
             # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
             if isinstance(job_data["definition"], str):
@@ -574,10 +550,7 @@ async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_au
         
     except Exception as e:
         logger.error(f"Job retrieval error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve job"
-        )
+        raise DatabaseError("Failed to retrieve job")
 
 @app.put("/jobs/{job_id}", response_model=JobResponse)
 async def update_job(
@@ -595,10 +568,7 @@ async def update_job(
             # Check if job exists (excluding soft-deleted)
             cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (job_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job not found"
-                )
+                raise NotFoundError("Job not found")
             logger.info("Job exists check passed")
             
             # Validate definition if provided - DISABLED FOR TESTING
@@ -666,10 +636,7 @@ async def update_job(
         
     except Exception as e:
         logger.error(f"Job update error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update job"
-        )
+        raise DatabaseError("Failed to update job")
 
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
@@ -683,10 +650,7 @@ async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_
             )
             
             if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job not found or already deleted"
-                )
+                raise NotFoundError("Job not found or already deleted")
             
             return create_success_response(
                 message="Job deleted successfully",
@@ -695,10 +659,7 @@ async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_
         
     except Exception as e:
         logger.error(f"Job deletion error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete job"
-        )
+        raise DatabaseError("Failed to delete job")
 
 # JOB RUN Operations
 @app.post("/jobs/{job_id}/run", response_model=JobRunResponse, status_code=status.HTTP_201_CREATED)
@@ -721,16 +682,10 @@ async def run_job(
             job_data = cursor.fetchone()
             
             if not job_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job not found"
-                )
+                raise NotFoundError("Job not found")
             
             if not job_data["is_active"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Job is not active"
-                )
+                raise ValidationError("Job is not active")
             
             # Parse job definition if it's a string, otherwise use as-is
             job_definition = job_data["definition"]
@@ -789,10 +744,7 @@ async def run_job(
         
     except Exception as e:
         logger.error(f"Job run creation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create job run"
-        )
+        raise DatabaseError("Failed to create job run")
 
 @app.get("/runs", response_model=JobRunListResponse)
 async def list_runs(
@@ -837,10 +789,7 @@ async def list_runs(
         
     except Exception as e:
         logger.error(f"Job run listing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve job runs"
-        )
+        raise DatabaseError("Failed to retrieve job runs")
 
 @app.get("/runs/{run_id}", response_model=JobRunResponse)
 async def get_run(run_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -854,10 +803,7 @@ async def get_run(run_id: int, current_user: dict = Depends(verify_token_with_au
             run_data = cursor.fetchone()
             
             if not run_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job run not found"
-                )
+                raise NotFoundError("Job run not found")
             
             # Parameters are already parsed by psycopg2 RealDictCursor
             # run_data["parameters"] is already a dict
@@ -866,10 +812,7 @@ async def get_run(run_id: int, current_user: dict = Depends(verify_token_with_au
         
     except Exception as e:
         logger.error(f"Job run retrieval error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve job run"
-        )
+        raise DatabaseError("Failed to retrieve job run")
 
 @app.get("/runs/{run_id}/steps", response_model=List[JobRunStepResponse])
 async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -879,10 +822,7 @@ async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_w
             # Verify run exists
             cursor.execute("SELECT id FROM job_runs WHERE id = %s", (run_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job run not found"
-                )
+                raise NotFoundError("Job run not found")
             
             # Get steps
             cursor.execute(
@@ -899,10 +839,7 @@ async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_w
         
     except Exception as e:
         logger.error(f"Job run steps retrieval error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve job run steps"
-        )
+        raise DatabaseError("Failed to retrieve job run steps")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

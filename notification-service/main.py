@@ -194,10 +194,7 @@ class SMTPTestResponse(BaseModel):
 async def verify_token_with_auth_service(authorization: str = None):
     """Verify JWT token with auth service"""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authorization header"
-        )
+        raise AuthError("Missing or invalid authorization header")
     
     token = authorization.split(" ")[1]
     
@@ -209,17 +206,11 @@ async def verify_token_with_auth_service(authorization: str = None):
             )
             
             if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token"
-                )
+                raise AuthError("Invalid token")
             
             return response.json()
     except httpx.RequestError:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 async def verify_token(request: Request):
     """Dependency for token verification"""
@@ -660,10 +651,7 @@ async def get_notification_status():
         
     except Exception as e:
         logger.error(f"Error getting notification status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get notification status"
-        )
+        raise DatabaseError("Failed to get notification status")
 
 # User Notification Preferences Endpoints
 
@@ -701,10 +689,7 @@ async def get_user_preferences(user_id: int, request: Request):
         
     except Exception as e:
         logger.error(f"Error getting user preferences: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get user preferences"
-        )
+        raise DatabaseError("Failed to get user preferences")
 
 @app.put("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
 async def update_user_preferences(user_id: int, preferences: NotificationPreferences, request: Request):
@@ -758,10 +743,7 @@ async def update_user_preferences(user_id: int, preferences: NotificationPrefere
         
     except Exception as e:
         logger.error(f"Error updating user preferences: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user preferences"
-        )
+        raise DatabaseError("Failed to update user preferences")
 
 # Notification Channels Endpoints
 
@@ -779,10 +761,7 @@ async def get_notification_channels(request: Request):
         
     except Exception as e:
         logger.error(f"Error getting notification channels: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get notification channels"
-        )
+        raise DatabaseError("Failed to get notification channels")
 
 # Enhanced notification creation endpoint
 
@@ -802,10 +781,7 @@ async def create_enhanced_notification(
     )
     
     if not notification_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No notifications created - check user preferences"
-        )
+        raise ValidationError("No notifications created - check user preferences")
     
     # Return created notifications
     try:
@@ -822,10 +798,7 @@ async def create_enhanced_notification(
         
     except Exception as e:
         logger.error(f"Error retrieving created notifications: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Notifications created but failed to retrieve details"
-        )
+        raise DatabaseError("Notifications created but failed to retrieve details")
 
 # Internal endpoint for service-to-service communication
 @app.post("/internal/notifications/enhanced")
@@ -927,10 +900,7 @@ async def get_notifications(
         
     except Exception as e:
         logger.error(f"Error getting notifications: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get notifications"
-        )
+        raise DatabaseError("Failed to get notifications")
 
 # SMTP Settings endpoints (keeping existing functionality)
 def get_smtp_settings_from_db():
@@ -1064,10 +1034,7 @@ async def update_smtp_settings(settings: SMTPSettings, request: Request):
         
     except Exception as e:
         logger.error(f"Error updating SMTP settings: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update SMTP settings"
-        )
+        raise DatabaseError("Failed to update SMTP settings")
 
 @app.post("/smtp/test", response_model=SMTPTestResponse)
 async def test_smtp_settings(test_request: SMTPTestRequest, request: Request):

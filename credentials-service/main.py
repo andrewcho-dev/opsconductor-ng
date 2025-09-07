@@ -133,26 +133,17 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         return response.json()["user"]
         
     except requests.RequestException:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     if current_user["role"] not in ["admin", "operator"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or operator role required"
-        )
+        raise PermissionError("Admin or operator role required")
     return current_user
 
 # Encryption utilities
@@ -178,10 +169,7 @@ def encrypt_data(data: Dict[str, Any]) -> str:
         return base64.b64encode(encrypted_data).decode()
     except Exception as e:
         logger.error(f"Encryption error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to encrypt credential data"
-        )
+        raise DatabaseError("Failed to encrypt credential data")
 
 def decrypt_data(encrypted_data: str) -> Dict[str, Any]:
     """Decrypt credential data"""
@@ -193,10 +181,7 @@ def decrypt_data(encrypted_data: str) -> Dict[str, Any]:
         return json.loads(decrypted_data.decode())
     except Exception as e:
         logger.error(f"Decryption error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to decrypt credential data"
-        )
+        raise DatabaseError("Failed to decrypt credential data")
 
 def parse_certificate_validity(cert_content: str) -> tuple[Optional[datetime], Optional[datetime]]:
     """Parse certificate to extract validity dates"""
@@ -236,10 +221,7 @@ def encrypt_sensitive_field(value: str) -> str:
         return base64.b64encode(encrypted_data).decode()
     except Exception as e:
         logger.error(f"Field encryption error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to encrypt sensitive data"
-        )
+        raise DatabaseError("Failed to encrypt sensitive data")
 
 def decrypt_sensitive_field(encrypted_value: str) -> str:
     """Decrypt a single sensitive field"""
@@ -253,10 +235,7 @@ def decrypt_sensitive_field(encrypted_value: str) -> str:
         return decrypted_data.decode()
     except Exception as e:
         logger.error(f"Field decryption error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to decrypt sensitive data"
-        )
+        raise DatabaseError("Failed to decrypt sensitive data")
 
 # CRUD Operations
 @app.post("/credentials", response_model=CredentialResponse, status_code=status.HTTP_201_CREATED)
@@ -273,45 +252,27 @@ async def create_credential(
                 (cred_data.name,)
             )
             if cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Credential with this name already exists"
-                )
+                raise ValidationError("Credential with this name already exists")
             
             # Validate credential type
             valid_types = ["password", "key", "certificate"]
             if cred_data.credential_type not in valid_types:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid credential type. Must be one of: {valid_types}"
-                )
+                raise ValidationError(f"Invalid credential type. Must be one of: {valid_types}", "credential_type")
             
             # Validate description length
             if cred_data.description and len(cred_data.description) > 20:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Description must be 20 characters or less"
-                )
+                raise ValidationError("Description must be 20 characters or less")
             
             # Validate required fields based on credential type
             if cred_data.credential_type == "password":
                 if not cred_data.username or not cred_data.password:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Username and password are required for password credentials"
-                    )
+                    raise ValidationError("Username and password are required for password credentials")
             elif cred_data.credential_type == "key":
                 if not cred_data.username or not cred_data.private_key:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Username and private_key are required for key credentials"
-                    )
+                    raise ValidationError("Username and private_key are required for key credentials")
             elif cred_data.credential_type == "certificate":
                 if not cred_data.certificate:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Certificate is required for certificate credentials"
-                    )
+                    raise ValidationError("Certificate is required for certificate credentials")
             
             # Parse certificate validity dates if certificate is provided
             valid_from = cred_data.valid_from
@@ -368,10 +329,7 @@ async def create_credential(
         logger.error(f"Credential creation error: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create credential: {str(e)}"
-        )
+        raise DatabaseError(f"Failed to create credential: {str(e)}")
 
 @app.get("/credentials", response_model=CredentialListResponse)
 async def list_credentials(
@@ -404,10 +362,7 @@ async def list_credentials(
         
     except Exception as e:
         logger.error(f"Credential listing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve credentials"
-        )
+        raise DatabaseError("Failed to retrieve credentials")
 
 @app.get("/credentials/{credential_id}", response_model=CredentialResponse)
 async def get_credential(
@@ -426,19 +381,13 @@ async def get_credential(
             cred_data = cursor.fetchone()
             
             if not cred_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found"
-                )
+                raise NotFoundError("Credential not found")
             
             return CredentialResponse(**cred_data)
         
     except Exception as e:
         logger.error(f"Credential retrieval error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve credential"
-        )
+        raise DatabaseError("Failed to retrieve credential")
 
 @app.get("/credentials/{credential_id}/decrypt", response_model=CredentialDecrypted)
 async def get_credential_decrypted(
@@ -458,10 +407,7 @@ async def get_credential_decrypted(
             cred_data = cursor.fetchone()
             
             if not cred_data:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found"
-                )
+                raise NotFoundError("Credential not found")
             
             # Decrypt sensitive fields
             result = dict(cred_data)
@@ -476,10 +422,7 @@ async def get_credential_decrypted(
         
     except Exception as e:
         logger.error(f"Credential decryption error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to decrypt credential"
-        )
+        raise DatabaseError("Failed to decrypt credential")
 
 @app.put("/credentials/{credential_id}", response_model=CredentialResponse)
 async def update_credential(
@@ -493,10 +436,7 @@ async def update_credential(
             # Check if credential exists (excluding soft-deleted)
             cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found"
-                )
+                raise NotFoundError("Credential not found")
             
             # Build update query
             update_fields = []
@@ -548,10 +488,7 @@ async def update_credential(
         
     except Exception as e:
         logger.error(f"Credential update error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update credential"
-        )
+        raise DatabaseError("Failed to update credential")
 
 @app.delete("/credentials/{credential_id}")
 async def delete_credential(
@@ -568,10 +505,7 @@ async def delete_credential(
             )
             
             if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found or already deleted"
-                )
+                raise NotFoundError("Credential not found or already deleted")
             
             return create_success_response(
                 message="Credential deleted successfully",
@@ -580,10 +514,7 @@ async def delete_credential(
         
     except Exception as e:
         logger.error(f"Credential deletion error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete credential"
-        )
+        raise DatabaseError("Failed to delete credential")
 
 @app.post("/credentials/{credential_id}/rotate")
 async def rotate_credential(
@@ -597,10 +528,7 @@ async def rotate_credential(
             # Check if credential exists (excluding soft-deleted)
             cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found"
-                )
+                raise NotFoundError("Credential not found")
             
             # Encrypt new credential data and wrap in JSON structure
             encrypted_data = encrypt_data(new_credential_data)
@@ -622,10 +550,7 @@ async def rotate_credential(
         
     except Exception as e:
         logger.error(f"Credential rotation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to rotate credential"
-        )
+        raise DatabaseError("Failed to rotate credential")
 
 @app.delete("/credentials/by-name/{credential_name}")
 async def delete_credential_by_name(
@@ -642,10 +567,7 @@ async def delete_credential_by_name(
             )
             
             if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Credential not found or already deleted"
-                )
+                raise NotFoundError("Credential not found or already deleted")
             
             return create_success_response(
                 message="Credential deleted successfully",
@@ -654,10 +576,7 @@ async def delete_credential_by_name(
         
     except Exception as e:
         logger.error(f"Credential deletion error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete credential"
-        )
+        raise DatabaseError("Failed to delete credential")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

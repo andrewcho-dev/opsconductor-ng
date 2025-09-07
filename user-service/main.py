@@ -346,39 +346,27 @@ async def update_user(
         
     except Exception as e:
         logger.error(f"User update error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user"
-        )
+        raise DatabaseError("Failed to update user")
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, current_user: dict = Depends(require_admin_role)):
     """Delete user by ID - ADMIN ONLY"""
     # Prevent admin from deleting themselves
     if current_user["id"] == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete your own account"
-        )
+        raise ValidationError("Cannot delete your own account")
     
     try:
         with get_db_cursor() as cursor:
             # Check if user exists
             cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User not found")
             
             # Delete user
             cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
             
             if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User not found")
             
             return create_success_response(
                 message="User deleted successfully",
@@ -387,10 +375,7 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin_r
         
     except Exception as e:
         logger.error(f"User deletion error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete user"
-        )
+        raise DatabaseError("Failed to delete user")
 
 @app.post("/users/{user_id}/roles")
 async def assign_role(
@@ -401,20 +386,14 @@ async def assign_role(
     """Assign role to user - ADMIN ONLY"""
     valid_roles = ["admin", "operator", "viewer"]
     if role_data.role not in valid_roles:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}"
-        )
+        raise ValidationError(f"Invalid role. Must be one of: {', '.join(valid_roles)}", "role")
     
     try:
         with get_db_cursor() as cursor:
             # Check if user exists
             cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User not found")
             
             # Update role
             cursor.execute(
@@ -429,10 +408,7 @@ async def assign_role(
         
     except Exception as e:
         logger.error(f"Role assignment error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to assign role"
-        )
+        raise DatabaseError("Failed to assign role")
 
 # Notification Preferences Models
 class NotificationPreferences(BaseModel):
@@ -469,20 +445,14 @@ async def get_user_notification_preferences(
     """Get user notification preferences"""
     # Users can only access their own preferences, admins can access any
     if current_user["role"] != "admin" and current_user["user_id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise PermissionError("Access denied")
     
     try:
         with get_db_cursor(commit=False) as cursor:
             # Check if user exists
             cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User not found")
             
             # Get notification preferences
             cursor.execute("""
@@ -520,10 +490,7 @@ async def get_user_notification_preferences(
         
     except Exception as e:
         logger.error(f"Error getting notification preferences: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get notification preferences"
-        )
+        raise DatabaseError("Failed to get notification preferences")
 
 @app.put("/users/{user_id}/notification-preferences", response_model=NotificationPreferencesResponse)
 async def update_user_notification_preferences(
@@ -534,20 +501,14 @@ async def update_user_notification_preferences(
     """Update user notification preferences"""
     # Users can only update their own preferences, admins can update any
     if current_user["role"] != "admin" and current_user["user_id"] != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise PermissionError("Access denied")
     
     try:
         with get_db_cursor() as cursor:
             # Check if user exists
             cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found"
-                )
+                raise NotFoundError("User not found")
         
         # Convert time strings to time objects
         quiet_hours_start = None
@@ -558,20 +519,14 @@ async def update_user_notification_preferences(
                 hour, minute = map(int, preferences.quiet_hours_start.split(':'))
                 quiet_hours_start = f"{hour:02d}:{minute:02d}:00"
             except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid quiet_hours_start format. Use HH:MM"
-                )
+                raise ValidationError("Invalid quiet_hours_start format. Use HH:MM")
         
         if preferences.quiet_hours_end:
             try:
                 hour, minute = map(int, preferences.quiet_hours_end.split(':'))
                 quiet_hours_end = f"{hour:02d}:{minute:02d}:00"
             except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid quiet_hours_end format. Use HH:MM"
-                )
+                raise ValidationError("Invalid quiet_hours_end format. Use HH:MM")
         
             # Upsert preferences
             cursor.execute("""
@@ -625,10 +580,7 @@ async def update_user_notification_preferences(
         
     except Exception as e:
         logger.error(f"Error updating notification preferences: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update notification preferences"
-        )
+        raise DatabaseError("Failed to update notification preferences")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

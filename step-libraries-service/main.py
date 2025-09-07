@@ -327,11 +327,11 @@ class LibraryManager:
             # Check if library already exists
             existing = await self._check_existing_library(metadata.name, metadata.version)
             if existing:
-                raise HTTPException(status_code=409, detail=f"Library {metadata.name} v{metadata.version} already installed")
+                raise ValidationError(f"Library {metadata.name} v{metadata.version} already installed")
             
             # Validate premium license if required
             if metadata.is_premium and not license_key:
-                raise HTTPException(status_code=402, detail="Premium license key required")
+                raise ValidationError("Premium license key required")
             
             # Install library files
             final_path = LIBRARIES_DIR / f"{metadata.name}_{metadata.version}"
@@ -372,7 +372,7 @@ class LibraryManager:
             # Cleanup on failure
             if 'temp_file' in locals():
                 temp_file.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"Installation failed: {str(e)}")
+            raise DatabaseError(f"Installation failed: {str(e)}")
     
     async def uninstall_library(self, library_id: int) -> Dict[str, Any]:
         """Uninstall a library"""
@@ -381,7 +381,7 @@ class LibraryManager:
             libraries = await self.db.get_libraries()
             library = next((l for l in libraries if l['id'] == library_id), None)
             if not library:
-                raise HTTPException(status_code=404, detail="Library not found")
+                raise NotFoundError("Library", library_id)
             
             # Remove from memory
             if library_id in self.loaded_libraries:
@@ -407,7 +407,7 @@ class LibraryManager:
             
         except Exception as e:
             logger.error(f"Failed to uninstall library {library_id}: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Uninstallation failed: {str(e)}")
+            raise DatabaseError(f"Uninstallation failed: {str(e)}")
     
     def _get_core_workflow_steps(self) -> List[Dict[str, Any]]:
         """Get core workflow steps that are always available"""
@@ -836,7 +836,7 @@ async def get_libraries(enabled_only: bool = False):
         
     except Exception as e:
         logger.error(f"Failed to get libraries: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.get("/api/v1/libraries/{library_id}")
 async def get_library(library_id: int):
@@ -846,7 +846,7 @@ async def get_library(library_id: int):
         library = next((l for l in libraries if l['id'] == library_id), None)
         
         if not library:
-            raise HTTPException(status_code=404, detail="Library not found")
+            raise NotFoundError("Library not found")
         
         steps = await library_manager.db.get_library_steps(library_id)
         
@@ -859,7 +859,7 @@ async def get_library(library_id: int):
         raise
     except Exception as e:
         logger.error(f"Failed to get library {library_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.post("/api/v1/libraries/install")
 async def install_library(
@@ -882,7 +882,7 @@ async def install_library(
         import traceback
         tb = traceback.format_exc()
         logger.error(f"Failed to install library: {str(e)}\nTraceback:\n{tb}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.delete("/api/v1/libraries/{library_id}")
 async def uninstall_library(library_id: int):
@@ -899,7 +899,7 @@ async def uninstall_library(library_id: int):
         raise
     except Exception as e:
         logger.error(f"Failed to uninstall library: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.put("/api/v1/libraries/{library_id}/toggle")
 async def toggle_library(library_id: int, enabled: bool):
@@ -908,7 +908,7 @@ async def toggle_library(library_id: int, enabled: bool):
         success = await library_manager.db.toggle_library(library_id, enabled)
         
         if not success:
-            raise HTTPException(status_code=404, detail="Library not found")
+            raise NotFoundError("Library", library_id)
         
         # Clear cache after toggle
         library_manager.library_cache.clear()
@@ -923,7 +923,7 @@ async def toggle_library(library_id: int, enabled: bool):
         raise
     except Exception as e:
         logger.error(f"Failed to toggle library {library_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.get("/api/v1/steps")
 async def get_available_steps(
@@ -950,7 +950,7 @@ async def get_available_steps(
         import traceback
         tb = traceback.format_exc()
         logger.error(f"Failed to get steps: {str(e)}\nTraceback:\n{tb}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 @app.get("/api/v1/debug/steps")
 async def debug_steps():
@@ -1017,7 +1017,7 @@ async def get_usage_analytics():
         
     except Exception as e:
         logger.error(f"Failed to get analytics: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise DatabaseError(str(e))
 
 # =============================================================================
 # MAIN

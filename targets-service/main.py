@@ -156,7 +156,7 @@ async def get_service_definitions():
         
     except Exception as e:
         logger.error(f"Error getting service definitions: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "get service definitions")
 
 @app.get("/targets", response_model=TargetListResponse)
 async def get_targets(
@@ -220,7 +220,7 @@ async def get_targets(
         import traceback
         logger.error(f"Error getting targets: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "get targets")
 
 @app.post("/targets", response_model=Target)
 async def create_target(
@@ -294,12 +294,12 @@ async def create_target(
         if isinstance(e, psycopg2.IntegrityError):
             if "unique constraint" in str(e).lower():
                 if "hostname" in str(e).lower():
-                    raise HTTPException(status_code=400, detail="Hostname already exists")
+                    raise ValidationError("Hostname already exists", "hostname")
                 elif "ip_address" in str(e).lower():
-                    raise HTTPException(status_code=400, detail="IP address already exists")
-            raise HTTPException(status_code=400, detail="Database constraint violation")
+                    raise ValidationError("IP address already exists", "ip_address")
+            raise ValidationError("Database constraint violation")
         logger.error(f"Error creating target: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "create target")
 
 @app.get("/targets/{target_id}", response_model=Target)
 async def get_target(
@@ -317,7 +317,7 @@ async def get_target(
             
             target_row = cursor.fetchone()
             if not target_row:
-                raise HTTPException(status_code=404, detail="Target not found")
+                raise NotFoundError("Target", target_id)
             
             # Get services and credentials
             services = get_target_services(target_id)
@@ -342,7 +342,7 @@ async def get_target(
         raise
     except Exception as e:
         logger.error(f"Error getting target: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "get target")
 
 @app.put("/targets/{target_id}", response_model=Target)
 async def update_target(
@@ -357,7 +357,7 @@ async def update_target(
             # Check if target exists and is not deleted
             cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
             if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Target not found")
+                raise NotFoundError("Target", target_id)
             
             # Build dynamic update query for only provided fields
             update_fields = []
@@ -386,7 +386,7 @@ async def update_target(
                 update_values.append(target.tags)
             
             if not update_fields:
-                raise HTTPException(status_code=400, detail="No fields provided for update")
+                raise ValidationError("No fields provided for update")
             
             # Always update the updated_at timestamp
             update_fields.append("updated_at = %s")
@@ -464,14 +464,14 @@ async def update_target(
         if isinstance(e, psycopg2.IntegrityError):
             if "unique constraint" in str(e).lower():
                 if "hostname" in str(e).lower():
-                    raise HTTPException(status_code=400, detail="Hostname already exists")
+                    raise ValidationError("Hostname already exists", "hostname")
                 elif "ip_address" in str(e).lower():
-                    raise HTTPException(status_code=400, detail="IP address already exists")
-            raise HTTPException(status_code=400, detail="Database constraint violation")
+                    raise ValidationError("IP address already exists", "ip_address")
+            raise ValidationError("Database constraint violation")
         elif isinstance(e, HTTPException):
             raise
         logger.error(f"Error updating target: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "update target")
 
 @app.delete("/targets/{target_id}")
 async def delete_target(
@@ -515,13 +515,13 @@ async def add_credential_to_target(
             # Verify target exists
             cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
             if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Target not found")
+                raise NotFoundError("Target", target_id)
             
             # Verify credential exists
             cursor.execute("SELECT id, name, credential_type FROM credentials WHERE id = %s", (credential.credential_id,))
             cred_data = cursor.fetchone()
             if not cred_data:
-                raise HTTPException(status_code=404, detail="Credential not found")
+                raise NotFoundError("Credential", credential.credential_id)
             
             # Create target credential association
             cursor.execute("""
@@ -550,12 +550,12 @@ async def add_credential_to_target(
         import psycopg2
         if isinstance(e, psycopg2.IntegrityError):
             if "unique constraint" in str(e).lower():
-                raise HTTPException(status_code=400, detail="Credential already associated with this target")
-            raise HTTPException(status_code=400, detail="Database constraint violation")
+                raise ValidationError("Credential already associated with this target")
+            raise ValidationError("Database constraint violation")
         elif isinstance(e, HTTPException):
             raise
         logger.error(f"Error adding credential to target: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "add credential to target")
 
 @app.put("/targets/{target_id}/credentials/{credential_id}", response_model=TargetCredential)
 async def update_target_credential(
@@ -577,7 +577,7 @@ async def update_target_credential(
             
             tc_data = cursor.fetchone()
             if not tc_data:
-                raise HTTPException(status_code=404, detail="Target credential association not found")
+                raise NotFoundError("Target credential association", f"{target_id}-{credential_id}")
             
             # Update target credential
             cursor.execute("""
@@ -602,7 +602,7 @@ async def update_target_credential(
         raise
     except Exception as e:
         logger.error(f"Error updating target credential: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "update target credential")
 
 @app.delete("/targets/{target_id}/credentials/{credential_id}")
 async def delete_target_credential(
@@ -669,7 +669,7 @@ async def test_service_connection(
             service = cursor.fetchone()
             logger.info(f"Service query result: {service}")
             if not service:
-                raise HTTPException(status_code=404, detail="Service not found or disabled")
+                raise NotFoundError("Service", service_id)
         
         # Basic connection test based on service type
         target_host = service['ip_address'] or service['hostname']
@@ -732,7 +732,7 @@ async def test_service_connection(
         raise
     except Exception as e:
         logger.error(f"Error testing service connection: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "test service connection")
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

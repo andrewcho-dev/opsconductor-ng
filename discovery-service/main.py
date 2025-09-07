@@ -29,7 +29,7 @@ from shared.database import get_db_cursor, check_database_health, cleanup_databa
 from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, AuthError, handle_database_error
 from shared.auth import get_current_user, require_admin
 from shared.utils import get_service_client
 
@@ -359,19 +359,13 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         return response.json()["user"]
         
     except requests.RequestException as e:
         logger.error(f"Auth service request failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 def verify_token_manual(credentials: HTTPAuthorizationCredentials):
     """Verify token with auth service (manual call)"""
@@ -380,27 +374,18 @@ def verify_token_manual(credentials: HTTPAuthorizationCredentials):
         response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=10)
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         return response.json()["user"]
         
     except requests.RequestException as e:
         logger.error(f"Auth service request failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     if current_user["role"] not in ["admin", "operator"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or operator role required"
-        )
+        raise PermissionError("Admin or operator role required")
     return current_user
 
 # Network Scanner Class
@@ -596,7 +581,7 @@ class DiscoveryService:
             if job_config['discovery_type'] == "network_scan":
                 await self.network_scan_discovery(job_id, job_config['config'])
             else:
-                raise HTTPException(status_code=400, detail=f"Discovery type {job_config['discovery_type']} not implemented")
+                raise ValidationError(f"Discovery type {job_config['discovery_type']} not implemented", "discovery_type")
             
             # Update job status to completed with detailed results summary
             with get_db_cursor() as cursor:
@@ -971,7 +956,7 @@ async def validate_network_ranges(ranges: Dict[str, List[str]]):
         
     except Exception as e:
         logger.error(f"Error validating network ranges: {e}")
-        raise HTTPException(status_code=500, detail="Failed to validate network ranges")
+        raise handle_database_error(e, "validate network ranges")
 
 
 
@@ -998,7 +983,7 @@ async def create_discovery_job(
             logger.error(f"Failed to extract user ID: {e}")
             logger.error(f"current_user type: {type(current_user)}")
             logger.error(f"current_user value: {current_user}")
-            raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
+            raise AuthError(f"Authentication error: {e}")
         
         with get_db_cursor() as cursor:
             cursor.execute("""
@@ -1020,7 +1005,7 @@ async def create_discovery_job(
         return new_job
     except Exception as e:
         logger.error(f"Error creating discovery job: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create discovery job")
+        raise handle_database_error(e, "create discovery job")
 
 @app.get("/discovery-jobs", response_model=DiscoveryJobListResponse)
 async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1044,7 +1029,7 @@ async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict
         return DiscoveryJobListResponse(jobs=jobs, total=total)
     except Exception as e:
         logger.error(f"Error fetching discovery jobs: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch discovery jobs")
+        raise handle_database_error(e, "fetch discovery jobs")
 
 # Frontend compatibility endpoint - alias for discovery jobs list
 @app.get("/jobs", response_model=DiscoveryJobListResponse)
@@ -1068,14 +1053,14 @@ async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_tok
             job = cursor.fetchone()
         
         if not job:
-            raise HTTPException(status_code=404, detail="Discovery job not found")
+            raise NotFoundError("Discovery job", job_id)
         
         return job
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching discovery job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch discovery job")
+        raise DatabaseError("Failed to fetch discovery job")
 
 @app.get("/discovery-jobs/{job_id}/summary")
 async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1091,7 +1076,7 @@ async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(ve
             job = cursor.fetchone()
             
             if not job:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
+                raise NotFoundError("Discovery job not found")
             
             # Get detailed target breakdown
             cursor.execute("""
@@ -1154,7 +1139,7 @@ async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(ve
         raise
     except Exception as e:
         logger.error(f"Error fetching discovery job summary {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch discovery job summary")
+        raise DatabaseError("Failed to fetch discovery job summary")
 
 @app.get("/discovery/targets", response_model=DiscoveredTargetListResponse)
 async def get_discovered_targets(
@@ -1199,7 +1184,7 @@ async def get_discovered_targets(
         return DiscoveredTargetListResponse(targets=targets, total=total)
     except Exception as e:
         logger.error(f"Error fetching discovered targets: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch discovered targets")
+        raise DatabaseError("Failed to fetch discovered targets")
 
 # Frontend compatibility endpoint - alias for discovered targets
 @app.get("/targets", response_model=DiscoveredTargetListResponse)
@@ -1434,7 +1419,7 @@ async def _import_discovered_targets_impl(
         
     except Exception as e:
         logger.error(f"Error importing targets: {e}")
-        raise HTTPException(status_code=500, detail="Failed to import targets")
+        raise DatabaseError("Failed to import targets")
 
 @app.post("/discovery/targets/ignore")
 async def ignore_discovered_targets(
@@ -1460,7 +1445,7 @@ async def ignore_discovered_targets(
         
     except Exception as e:
         logger.error(f"Error ignoring targets: {e}")
-        raise HTTPException(status_code=500, detail="Failed to ignore targets")
+        raise DatabaseError("Failed to ignore targets")
 
 @app.delete("/discovery/targets/bulk")
 async def bulk_delete_discovered_targets(
@@ -1485,7 +1470,7 @@ async def bulk_delete_discovered_targets(
         
     except Exception as e:
         logger.error(f"Error bulk deleting targets: {e}")
-        raise HTTPException(status_code=500, detail="Failed to bulk delete targets")
+        raise DatabaseError("Failed to bulk delete targets")
 
 @app.post("/discovery-jobs/{job_id}/run")
 async def run_discovery_job(
@@ -1503,13 +1488,10 @@ async def run_discovery_job(
             job = cursor.fetchone()
             
             if not job:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
+                raise NotFoundError("Discovery job not found")
             
             if job['status'] not in [JobStatus.PENDING, JobStatus.FAILED]:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Cannot run job with status '{job['status']}'. Only pending or failed jobs can be run."
-                )
+                raise ValidationError(f"Cannot run job with status '{job['status']}'. Only pending or failed jobs can be run.", "status")
             
             # Reset job status to pending and clear previous results
             cursor.execute("""
@@ -1535,7 +1517,7 @@ async def run_discovery_job(
         raise
     except Exception as e:
         logger.error(f"Error starting discovery job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to start discovery job")
+        raise DatabaseError("Failed to start discovery job")
 
 @app.post("/discovery-jobs/{job_id}/cancel")
 async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1546,13 +1528,10 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
             job = cursor.fetchone()
             
             if not job:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
+                raise NotFoundError("Discovery job not found")
             
             if job['status'] != JobStatus.RUNNING:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Cannot cancel job with status '{job['status']}'. Only running jobs can be cancelled."
-                )
+                raise ValidationError(f"Cannot cancel job with status '{job['status']}'. Only running jobs can be cancelled.", "status")
             
             cursor.execute("""
                 UPDATE discovery_jobs 
@@ -1570,7 +1549,7 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
         raise
     except Exception as e:
         logger.error(f"Error cancelling discovery job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to cancel discovery job")
+        raise DatabaseError("Failed to cancel discovery job")
 
 @app.delete("/discovery-jobs/{job_id}")
 async def delete_discovery_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
@@ -1582,7 +1561,7 @@ async def delete_discovery_job(job_id: int, current_user: dict = Depends(require
             job = cursor.fetchone()
             
             if not job:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
+                raise NotFoundError("Discovery job not found")
             
             # If job is running, cancel it first
             if job['status'] == JobStatus.RUNNING:
@@ -1614,7 +1593,7 @@ async def delete_discovery_job(job_id: int, current_user: dict = Depends(require
         raise
     except Exception as e:
         logger.error(f"Error deleting discovery job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete discovery job")
+        raise DatabaseError("Failed to delete discovery job")
 
 
 
@@ -1637,14 +1616,11 @@ async def update_discovery_job(
             current_job = cursor.fetchone()
             
             if not current_job:
-                raise HTTPException(status_code=404, detail="Discovery job not found")
+                raise NotFoundError("Discovery job not found")
             
             # Only allow updates if job is pending or failed
             if current_job['status'] not in [JobStatus.PENDING, JobStatus.FAILED]:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Cannot update job with status '{current_job['status']}'. Only pending or failed jobs can be updated."
-                )
+                raise ValidationError(f"Cannot update job with status '{current_job['status']}'. Only pending or failed jobs can be updated.", "status")
             
             # Build update query dynamically
             update_fields = []
@@ -1683,7 +1659,7 @@ async def update_discovery_job(
         raise
     except Exception as e:
         logger.error(f"Error updating discovery job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update discovery job")
+        raise DatabaseError("Failed to update discovery job")
 
 @app.get("/discovery/targets/{target_id}", response_model=DiscoveredTargetResponse)
 async def get_discovered_target(target_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1700,7 +1676,7 @@ async def get_discovered_target(target_id: int, current_user: dict = Depends(ver
             target = cursor.fetchone()
         
         if not target:
-            raise HTTPException(status_code=404, detail="Discovered target not found")
+            raise NotFoundError("Discovered target", target_id)
         
         return target
         
@@ -1708,7 +1684,7 @@ async def get_discovered_target(target_id: int, current_user: dict = Depends(ver
         raise
     except Exception as e:
         logger.error(f"Error fetching discovered target {target_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch discovered target")
+        raise DatabaseError("Failed to fetch discovered target")
 
 @app.put("/discovery/targets/{target_id}", response_model=DiscoveredTargetResponse)
 async def update_discovered_target(
@@ -1725,7 +1701,7 @@ async def update_discovered_target(
             """, (target_id,))
             
             if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Discovered target not found")
+                raise NotFoundError("Discovered target", target_id)
             
             # Build update query dynamically
             update_fields = []
@@ -1780,7 +1756,7 @@ async def update_discovered_target(
         raise
     except Exception as e:
         logger.error(f"Error updating discovered target {target_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update discovered target")
+        raise DatabaseError("Failed to update discovered target")
 
 @app.delete("/discovery/targets/{target_id}")
 async def delete_discovered_target(target_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
@@ -1790,7 +1766,7 @@ async def delete_discovered_target(target_id: int, current_user: dict = Depends(
             cursor.execute("DELETE FROM discovered_targets WHERE id = %s", (target_id,))
             
             if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Discovered target not found")
+                raise NotFoundError("Discovered target", target_id)
         
         logger.info(f"Deleted discovered target {target_id}")
         return create_success_response(
@@ -1802,7 +1778,7 @@ async def delete_discovered_target(target_id: int, current_user: dict = Depends(
         raise
     except Exception as e:
         logger.error(f"Error deleting discovered target {target_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete discovered target")
+        raise DatabaseError("Failed to delete discovered target")
 
 # Additional frontend compatibility endpoints - aliases for discovery jobs
 @app.post("/jobs", response_model=DiscoveryJobResponse)
@@ -1827,7 +1803,7 @@ async def create_job_alias(
             logger.error(f"Failed to extract user ID: {e}")
             logger.error(f"current_user type: {type(current_user)}")
             logger.error(f"current_user value: {current_user}")
-            raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
+            raise AuthError(f"Authentication error: {e}")
         
         with get_db_cursor() as cursor:
             cursor.execute("""
@@ -1849,7 +1825,7 @@ async def create_job_alias(
         return new_job
     except Exception as e:
         logger.error(f"Error creating discovery job: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create discovery job")
+        raise handle_database_error(e, "create discovery job")
 
 @app.get("/jobs/{job_id}", response_model=DiscoveryJobResponse)
 async def get_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):

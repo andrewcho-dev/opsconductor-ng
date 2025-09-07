@@ -87,26 +87,17 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         response = requests.get(f"{AUTH_SERVICE_URL}/verify", headers=headers, timeout=5)
         
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+            raise AuthError("Invalid token")
             
         return response.json()["user"]
         
     except requests.RequestException:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Auth service unavailable"
-        )
+        raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
 def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     if current_user["role"] not in ["admin", "operator"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or operator role required"
-        )
+        raise PermissionError("Admin or operator role required")
     return current_user
 
 def calculate_next_run(cron_expr: str, timezone_str: str) -> datetime:
@@ -245,10 +236,7 @@ async def get_scheduler_status():
         
     except Exception as e:
         logger.error(f"Error getting scheduler status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get scheduler status"
-        )
+        raise DatabaseError("Failed to get scheduler status")
 
 @app.post("/schedules", response_model=ScheduleResponse)
 async def create_schedule(
@@ -266,10 +254,7 @@ async def create_schedule(
             # Verify job exists (excluding soft-deleted)
             cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (schedule_data.job_id,))
             if not cursor.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Job not found"
-                )
+                raise NotFoundError("Job not found")
             
             # Generate schedule name
             schedule_name = f"schedule-job-{schedule_data.job_id}-{int(datetime.now().timestamp())}"
@@ -295,16 +280,10 @@ async def create_schedule(
             return ScheduleResponse(**schedule)
         
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise ValidationError(str(e))
     except Exception as e:
         logger.error(f"Error creating schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create schedule"
-        )
+        raise DatabaseError("Failed to create schedule")
 
 @app.get("/schedules", response_model=ScheduleListResponse)
 async def list_schedules(
@@ -349,10 +328,7 @@ async def list_schedules(
         
     except Exception as e:
         logger.error(f"Error listing schedules: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve schedules"
-        )
+        raise DatabaseError("Failed to retrieve schedules")
 
 @app.get("/schedules/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(
@@ -370,19 +346,13 @@ async def get_schedule(
             
             schedule = cursor.fetchone()
             if not schedule:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Schedule not found"
-                )
+                raise NotFoundError("Schedule not found")
             
             return ScheduleResponse(**schedule)
         
     except Exception as e:
         logger.error(f"Error getting schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve schedule"
-        )
+        raise DatabaseError("Failed to retrieve schedule")
 
 @app.put("/schedules/{schedule_id}", response_model=ScheduleResponse)
 async def update_schedule(
@@ -403,10 +373,7 @@ async def update_schedule(
             
             current_schedule = cursor.fetchone()
             if not current_schedule:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Schedule not found"
-                )
+                raise NotFoundError("Schedule not found")
             
             # Prepare update data
             update_fields = []
@@ -452,16 +419,10 @@ async def update_schedule(
             return ScheduleResponse(**updated_schedule)
         
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        raise ValidationError(str(e))
     except Exception as e:
         logger.error(f"Error updating schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update schedule"
-        )
+        raise DatabaseError("Failed to update schedule")
 
 @app.delete("/schedules/{schedule_id}")
 async def delete_schedule(
@@ -481,10 +442,7 @@ async def delete_schedule(
             deleted = cursor.fetchone()
             
             if not deleted:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Schedule not found or already deleted"
-                )
+                raise NotFoundError("Schedule not found or already deleted")
             
             logger.info(f"Soft deleted schedule {schedule_id}")
             return create_success_response(
@@ -494,10 +452,7 @@ async def delete_schedule(
         
     except Exception as e:
         logger.error(f"Error deleting schedule: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete schedule"
-        )
+        raise DatabaseError("Failed to delete schedule")
 
 @app.post("/scheduler/start")
 async def start_scheduler(
