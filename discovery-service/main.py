@@ -5,6 +5,7 @@ Automated target discovery and network scanning
 """
 
 import os
+import sys
 import logging
 import asyncio
 import uuid
@@ -17,13 +18,15 @@ from enum import Enum
 import requests
 import httpx
 
-import psycopg2
-from psycopg2.extras import RealDictCursor, Json
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import jwt
 import nmap
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,14 +40,7 @@ app = FastAPI(
 
 security = HTTPBearer()
 
-# Database configuration
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "postgres"),
-    "port": int(os.getenv("DB_PORT", "5432")),
-    "database": os.getenv("DB_NAME", "opsconductor"),
-    "user": os.getenv("DB_USER", "opsconductor"),
-    "password": os.getenv("DB_PASSWORD", "opsconductor123")
-}
+# Database configuration is now handled by shared.database module
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
@@ -347,15 +343,7 @@ class NetworkRangeParser:
         
         return result
 
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
+# Database connection is now handled by shared.database module
 
 # Authentication
 def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -591,15 +579,12 @@ class DiscoveryService:
             logger.info(f"Starting discovery job {job_id}")
             
             # Update job status to running
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
+            with get_db_cursor() as cursor:
                 cursor.execute("""
                     UPDATE discovery_jobs 
                     SET status = %s, started_at = CURRENT_TIMESTAMP 
                     WHERE id = %s
                 """, (JobStatus.RUNNING, job_id))
-                conn.commit()
-            conn.close()
             
             # Execute discovery based on type
             if job_config['discovery_type'] == "network_scan":
@@ -608,8 +593,7 @@ class DiscoveryService:
                 raise HTTPException(status_code=400, detail=f"Discovery type {job_config['discovery_type']} not implemented")
             
             # Update job status to completed with detailed results summary
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
+            with get_db_cursor() as cursor:
                 # Get total count of discovered targets for this job
                 cursor.execute("SELECT COUNT(*) FROM discovered_targets WHERE discovery_job_id = %s", (job_id,))
                 result = cursor.fetchone()
@@ -671,9 +655,7 @@ class DiscoveryService:
                     UPDATE discovery_jobs 
                     SET status = %s, completed_at = CURRENT_TIMESTAMP, results_summary = %s
                     WHERE id = %s
-                """, (JobStatus.COMPLETED, Json(results_summary), job_id))
-                conn.commit()
-            conn.close()
+                """, (JobStatus.COMPLETED, json.dumps(results_summary), job_id))
             
             # Enhanced logging with breakdown
             logger.info(f"Discovery job {job_id} completed successfully:")
@@ -688,8 +670,7 @@ class DiscoveryService:
             logger.error(f"Discovery job {job_id} failed: {e}")
             
             # Update job status to failed with error details and partial results
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
+            with get_db_cursor() as cursor:
                 # Get count of any targets that were discovered before failure
                 cursor.execute("SELECT COUNT(*) FROM discovered_targets WHERE discovery_job_id = %s", (job_id,))
                 partial_count = cursor.fetchone()[0]
@@ -705,21 +686,17 @@ class DiscoveryService:
                     UPDATE discovery_jobs 
                     SET status = %s, completed_at = CURRENT_TIMESTAMP, results_summary = %s
                     WHERE id = %s
-                """, (JobStatus.FAILED, Json(results_summary), job_id))
-                conn.commit()
-            conn.close()
+                """, (JobStatus.FAILED, json.dumps(results_summary), job_id))
             raise
     
     async def check_job_cancelled(self, job_id: int) -> bool:
         """Check if a job has been cancelled"""
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
+            with get_db_cursor(commit=False) as cursor:
                 cursor.execute("SELECT status FROM discovery_jobs WHERE id = %s", (job_id,))
                 result = cursor.fetchone()
                 if result and result[0] == JobStatus.CANCELLED:
                     return True
-            conn.close()
             return False
         except Exception as e:
             logger.error(f"Error checking job cancellation status: {e}")
@@ -807,10 +784,8 @@ class DiscoveryService:
     
     async def store_discovered_targets(self, job_id: int, discovered_hosts: List[Dict]):
         """Store discovered targets in database with deduplication"""
-        conn = get_db_connection()
-        
         try:
-            with conn.cursor() as cursor:
+            with get_db_cursor() as cursor:
                 for host in discovered_hosts:
                     ip_address = host['ip_address']
                     hostname = host.get('hostname')
@@ -836,9 +811,9 @@ class DiscoveryService:
                             hostname,
                             host.get('os_type'),
                             host.get('os_version'),
-                            Json(host.get('services', [])),
-                            Json(host.get('preferred_service')),
-                            Json(host.get('ports', {})),
+                            json.dumps(host.get('services', [])),
+                            json.dumps(host.get('preferred_service')),
+                            json.dumps(host.get('ports', {})),
                             job_id,
                             existing_discovered['id']
                         ))
@@ -862,26 +837,20 @@ class DiscoveryService:
                         ip_address,
                         host.get('os_type'),
                         host.get('os_version'),
-                        Json(host.get('services', [])),
-                        Json(host.get('preferred_service')),
-                        Json(host.get('ports', {})),
+                        json.dumps(host.get('services', [])),
+                        json.dumps(host.get('preferred_service')),
+                        json.dumps(host.get('ports', {})),
                         duplicate_status,
                         existing_target_id
                     ))
-                
-                conn.commit()
         except Exception as e:
-            conn.rollback()
             logger.error(f"Failed to store discovered targets: {e}")
             raise
-        finally:
-            conn.close()
     
     async def check_existing_discovered_target(self, ip_address: str, hostname: str = None) -> Optional[Dict]:
         """Check if target already exists in discovered_targets table"""
         try:
-            conn = get_db_connection()
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            with get_db_cursor(commit=False) as cursor:
                 # Check by IP address first (primary key for uniqueness)
                 cursor.execute("""
                     SELECT id, hostname, ip_address, import_status 
@@ -899,7 +868,6 @@ class DiscoveryService:
                     """, (hostname,))
                     existing = cursor.fetchone()
                 
-            conn.close()
             return existing
         except Exception as e:
             logger.error(f"Error checking existing discovered target: {e}")
@@ -908,8 +876,7 @@ class DiscoveryService:
     async def check_for_duplicates(self, ip_address: str, hostname: str = None) -> Tuple[str, Optional[int]]:
         """Check if target already exists by IP address or hostname"""
         try:
-            conn = get_db_connection()
-            with conn.cursor() as cursor:
+            with get_db_cursor(commit=False) as cursor:
                 # Check for duplicate by IP address OR hostname
                 if hostname:
                     cursor.execute("""
@@ -920,7 +887,6 @@ class DiscoveryService:
                         SELECT id FROM targets WHERE hostname = %s
                     """, (ip_address,))
                 existing_target = cursor.fetchone()
-            conn.close()
             
             if existing_target:
                 return DuplicateStatus.POTENTIAL_DUPLICATE, existing_target[0]
@@ -936,16 +902,13 @@ discovery_service = DiscoveryService()
 # Health check endpoint (no auth required)
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-        conn.close()
-        return {"status": "healthy", "service": "discovery-service", "test": "endpoint registration works"}
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {"status": "unhealthy", "service": "discovery-service", "error": str(e)}
+    """Health check endpoint with database connectivity"""
+    db_health = check_database_health()
+    return {
+        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+        "service": "discovery-service",
+        "database": db_health
+    }
 
 @app.get("/whoami")
 def whoami(current_user: dict = Depends(verify_token_with_auth_service)):
@@ -1025,16 +988,13 @@ async def create_discovery_job(
             logger.error(f"current_user value: {current_user}")
             raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
         
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("""
                 INSERT INTO discovery_jobs (name, discovery_type, config, created_by, created_at)
                 VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                 RETURNING id, name, discovery_type, config, status, created_by, created_at, started_at, completed_at, results_summary
-            """, (job.name, job.discovery_type, Json(job.config), user_id))
+            """, (job.name, job.discovery_type, json.dumps(job.config), user_id))
             new_job = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         # Start discovery job in background
         background_tasks.add_task(
@@ -1054,8 +1014,7 @@ async def create_discovery_job(
 async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get all discovery jobs"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             # Get total count
             cursor.execute("SELECT COUNT(*) FROM discovery_jobs")
             total = cursor.fetchone()['count']
@@ -1069,7 +1028,6 @@ async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict
                 LIMIT %s OFFSET %s
             """, (limit, skip))
             jobs = cursor.fetchall()
-        conn.close()
         
         return DiscoveryJobListResponse(jobs=jobs, total=total)
     except Exception as e:
@@ -1088,8 +1046,7 @@ async def get_jobs_alias(skip: int = 0, limit: int = 100, current_user: dict = D
 async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get discovery job by ID"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute("""
                 SELECT id, name, discovery_type, config, status, created_by,
                        created_at, started_at, completed_at, results_summary
@@ -1097,7 +1054,6 @@ async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_tok
                 WHERE id = %s
             """, (job_id,))
             job = cursor.fetchone()
-        conn.close()
         
         if not job:
             raise HTTPException(status_code=404, detail="Discovery job not found")
@@ -1113,8 +1069,7 @@ async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_tok
 async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get detailed discovery job results summary"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             # Get job basic info
             cursor.execute("""
                 SELECT id, name, discovery_type, status, results_summary, created_at, completed_at
@@ -1183,7 +1138,6 @@ async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(ve
                     for target in sample_targets
                 ]
             }
-        conn.close()
     except HTTPException:
         raise
     except Exception as e:
@@ -1200,8 +1154,7 @@ async def get_discovered_targets(
 ):
     """Get discovered targets"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             # Build base query and params
             base_query = "FROM discovered_targets WHERE 1=1"
             params = []
@@ -1230,7 +1183,6 @@ async def get_discovered_targets(
             
             cursor.execute(query, params + [limit, skip])
             targets = cursor.fetchall()
-        conn.close()
         
         return DiscoveredTargetListResponse(targets=targets, total=total)
     except Exception as e:
@@ -1288,12 +1240,11 @@ async def _import_discovered_targets_impl(
 ):
     """Import discovered targets into the main targets system"""
     try:
-        conn = get_db_connection()
         imported_count = 0
         failed_count = 0
         details = []
         
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             for target_id in import_request.target_ids:
                 try:
                     # Get discovered target details
@@ -1461,9 +1412,6 @@ async def _import_discovered_targets_impl(
                     failed_count += 1
                     details.append({"target_id": target_id, "error": str(e)})
                     logger.error(f"Failed to import target {target_id}: {e}")
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Import completed: {imported_count} imported, {failed_count} failed")
         return {
@@ -1483,10 +1431,9 @@ async def ignore_discovered_targets(
 ):
     """Mark discovered targets as ignored"""
     try:
-        conn = get_db_connection()
         ignored_count = 0
         
-        with conn.cursor() as cursor:
+        with get_db_cursor() as cursor:
             for target_id in ignore_request.target_ids:
                 cursor.execute("""
                     DELETE FROM discovered_targets 
@@ -1495,9 +1442,6 @@ async def ignore_discovered_targets(
                 
                 if cursor.rowcount > 0:
                     ignored_count += 1
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Ignored {ignored_count} targets")
         return {"ignored": ignored_count}
@@ -1513,10 +1457,9 @@ async def bulk_delete_discovered_targets(
 ):
     """Bulk delete discovered targets"""
     try:
-        conn = get_db_connection()
         deleted_count = 0
         
-        with conn.cursor() as cursor:
+        with get_db_cursor() as cursor:
             for target_id in delete_request.target_ids:
                 cursor.execute("""
                     DELETE FROM discovered_targets WHERE id = %s
@@ -1524,9 +1467,6 @@ async def bulk_delete_discovered_targets(
                 
                 if cursor.rowcount > 0:
                     deleted_count += 1
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Bulk deleted {deleted_count} targets")
         return {"deleted": deleted_count}
@@ -1543,8 +1483,7 @@ async def run_discovery_job(
 ):
     """Run/start a discovery job"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("""
                 SELECT id, name, discovery_type, config, status, created_by
                 FROM discovery_jobs WHERE id = %s
@@ -1566,8 +1505,6 @@ async def run_discovery_job(
                 SET status = %s, started_at = NULL, completed_at = NULL, results_summary = NULL
                 WHERE id = %s
             """, (JobStatus.PENDING, job_id))
-            conn.commit()
-        conn.close()
         
         # Start discovery job in background
         background_tasks.add_task(
@@ -1589,8 +1526,7 @@ async def run_discovery_job(
 async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Cancel a running discovery job"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("SELECT id, status FROM discovery_jobs WHERE id = %s", (job_id,))
             job = cursor.fetchone()
             
@@ -1608,9 +1544,6 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
                 SET status = %s, completed_at = CURRENT_TIMESTAMP 
                 WHERE id = %s
             """, (JobStatus.CANCELLED, job_id))
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Cancelled discovery job {job_id}")
         return {"message": "Discovery job cancelled successfully"}
@@ -1625,8 +1558,7 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
 async def delete_discovery_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
     """Delete a discovery job and its associated targets"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             # First check if job exists and get current status
             cursor.execute("SELECT id, status FROM discovery_jobs WHERE id = %s", (job_id,))
             job = cursor.fetchone()
@@ -1642,7 +1574,6 @@ async def delete_discovery_job(job_id: int, current_user: dict = Depends(require
                     SET status = %s, completed_at = CURRENT_TIMESTAMP 
                     WHERE id = %s
                 """, (JobStatus.CANCELLED, job_id))
-                conn.commit()
                 
                 # Give a moment for any running processes to notice the cancellation
                 await asyncio.sleep(1)
@@ -1653,9 +1584,6 @@ async def delete_discovery_job(job_id: int, current_user: dict = Depends(require
             
             # Delete the job
             cursor.execute("DELETE FROM discovery_jobs WHERE id = %s", (job_id,))
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Deleted discovery job {job_id} (cancelled if running, deleted {targets_deleted} associated targets)")
         return {
@@ -1680,8 +1608,7 @@ async def update_discovery_job(
 ):
     """Update a discovery job (only if not running/completed)"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             # First check if job exists and get current status
             cursor.execute("""
                 SELECT id, name, discovery_type, config, status, created_by,
@@ -1711,7 +1638,7 @@ async def update_discovery_job(
             
             if job_update.config is not None:
                 update_fields.append("config = %s")
-                update_values.append(Json(job_update.config))
+                update_values.append(json.dumps(job_update.config))
             
             if not update_fields:
                 # No updates provided, return current job
@@ -1730,8 +1657,6 @@ async def update_discovery_job(
             """, update_values)
             
             updated_job = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         logger.info(f"Updated discovery job {job_id}")
         return updated_job
@@ -1746,8 +1671,7 @@ async def update_discovery_job(
 async def get_discovered_target(target_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get a specific discovered target by ID"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute("""
                 SELECT id, discovery_job_id, hostname, ip_address, os_type, os_version,
                        services, preferred_service, connection_test_results, system_info,
@@ -1756,7 +1680,6 @@ async def get_discovered_target(target_id: int, current_user: dict = Depends(ver
                 WHERE id = %s
             """, (target_id,))
             target = cursor.fetchone()
-        conn.close()
         
         if not target:
             raise HTTPException(status_code=404, detail="Discovered target not found")
@@ -1777,8 +1700,7 @@ async def update_discovered_target(
 ):
     """Update a discovered target"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             # First check if target exists
             cursor.execute("""
                 SELECT id FROM discovered_targets WHERE id = %s
@@ -1832,8 +1754,6 @@ async def update_discovered_target(
             """, update_values)
             
             updated_target = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         logger.info(f"Updated discovered target {target_id}")
         return updated_target
@@ -1848,15 +1768,11 @@ async def update_discovered_target(
 async def delete_discovered_target(target_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
     """Delete a discovered target"""
     try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM discovered_targets WHERE id = %s", (target_id,))
             
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Discovered target not found")
-            
-            conn.commit()
-        conn.close()
         
         logger.info(f"Deleted discovered target {target_id}")
         return {"message": "Discovered target deleted successfully"}
@@ -1892,16 +1808,13 @@ async def create_job_alias(
             logger.error(f"current_user value: {current_user}")
             raise HTTPException(status_code=500, detail=f"Authentication error: {e}")
         
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("""
                 INSERT INTO discovery_jobs (name, discovery_type, config, created_by, created_at)
                 VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                 RETURNING id, name, discovery_type, config, status, created_by, created_at, started_at, completed_at, results_summary
-            """, (job_data.name, job_data.discovery_type, Json(job_data.config), user_id))
+            """, (job_data.name, job_data.discovery_type, json.dumps(job_data.config), user_id))
             new_job = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         # Start discovery job in background
         background_tasks.add_task(

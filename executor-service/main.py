@@ -16,6 +16,9 @@ from typing import Dict, Any, Optional
 import psycopg2
 import psycopg2.extras
 import requests
+import sys
+sys.path.append('/home/opsconductor/shared')
+from database import get_db_cursor
 import hmac
 import hashlib
 from urllib.parse import urljoin, urlparse
@@ -54,29 +57,7 @@ AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 WORKER_POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "5"))  # seconds
 WORKER_ENABLED = os.getenv("WORKER_ENABLED", "true").lower() == "true"
 
-# Database configuration
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "opsconductor")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
-
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            cursor_factory=psycopg2.extras.RealDictCursor
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        return None
+# Database connection handled by shared module
 
 class JobExecutor:
     """Job execution engine with queue processing"""
@@ -109,45 +90,37 @@ class JobExecutor:
         while self.running:
             try:
                 # Get next queued step using SKIP LOCKED
-                conn = get_db_connection()
-                if not conn:
-                    time.sleep(WORKER_POLL_INTERVAL)
-                    continue
-                
                 try:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
-                        FROM job_run_steps jrs
-                        JOIN job_runs jr ON jrs.job_run_id = jr.id
-                        JOIN jobs j ON jr.job_id = j.id
-                        WHERE jrs.status = 'queued'
-                        ORDER BY jrs.id
-                        FOR UPDATE SKIP LOCKED
-                        LIMIT 1
-                    """)
-                    
-                    step = cursor.fetchone()
-                    if not step:
-                        # No queued steps, sleep and continue
-                        time.sleep(WORKER_POLL_INTERVAL)
-                        continue
-                    
-                    # Process the step
-                    logger.info(f"Processing step {step['id']} (run {step['job_run_id']}, type {step['type']})")
-                    self._execute_step(step, cursor, conn)
+                    with get_db_cursor() as cursor:
+                        cursor.execute("""
+                            SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
+                            FROM job_run_steps jrs
+                            JOIN job_runs jr ON jrs.job_run_id = jr.id
+                            JOIN jobs j ON jr.job_id = j.id
+                            WHERE jrs.status = 'queued'
+                            ORDER BY jrs.id
+                            FOR UPDATE SKIP LOCKED
+                            LIMIT 1
+                        """)
+                        
+                        step = cursor.fetchone()
+                        if not step:
+                            # No queued steps, sleep and continue
+                            time.sleep(WORKER_POLL_INTERVAL)
+                            continue
+                        
+                        # Process the step
+                        logger.info(f"Processing step {step['id']} (run {step['job_run_id']}, type {step['type']})")
+                        self._execute_step(step, cursor)
                     
                 except Exception as e:
                     logger.error(f"Worker loop error: {e}")
-                    conn.rollback()
-                finally:
-                    conn.close()
                     
             except Exception as e:
                 logger.error(f"Critical worker loop error: {e}")
                 time.sleep(WORKER_POLL_INTERVAL)
     
-    def _execute_step(self, step: Dict[str, Any], cursor, conn):
+    def _execute_step(self, step: Dict[str, Any], cursor):
         """Execute a single job step"""
         step_id = step['id']
         job_run_id = step['job_run_id']
@@ -164,8 +137,6 @@ class JobExecutor:
                 "UPDATE job_runs SET status = 'running', started_at = COALESCE(started_at, %s) WHERE id = %s",
                 (datetime.utcnow(), job_run_id)
             )
-            
-            conn.commit()
             
             # Execute based on step type
             if step['type'] == 'winrm.exec':
@@ -233,7 +204,6 @@ class JobExecutor:
             # Check if job run is complete and send notifications
             self._update_job_run_status(job_run_id, cursor)
             
-            conn.commit()
             logger.info(f"Step {step_id} completed with status: {result['status']}")
             
         except Exception as e:
@@ -245,7 +215,6 @@ class JobExecutor:
             """, (str(e), datetime.utcnow(), step_id))
             
             self._update_job_run_status(job_run_id, cursor)
-            conn.commit()
             
             logger.error(f"Step {step_id} failed: {e}")
     
@@ -1398,25 +1367,18 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
                            timeout_seconds: int, max_redirects: int):
         """Store HTTP request details in database"""
         try:
-            conn = get_db_connection()
-            if not conn:
-                return
-            
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO http_requests (
-                    job_run_step_id, method, url, request_headers, request_body,
-                    response_status_code, response_headers, response_body,
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO http_requests (
+                        job_run_step_id, method, url, request_headers, request_body,
+                        response_status_code, response_headers, response_body,
+                        response_time_ms, ssl_verify, timeout_seconds, max_redirects
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    step_id, method, url, json.dumps(request_headers), request_body,
+                    status_code, json.dumps(response_headers), response_body,
                     response_time_ms, ssl_verify, timeout_seconds, max_redirects
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                step_id, method, url, json.dumps(request_headers), request_body,
-                status_code, json.dumps(response_headers), response_body,
-                response_time_ms, ssl_verify, timeout_seconds, max_redirects
-            ))
-            
-            conn.commit()
-            conn.close()
+                ))
             
         except Exception as e:
             logger.error(f"Error storing HTTP request details: {e}")
@@ -1427,25 +1389,18 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
                                 retry_count: int, max_retries: int):
         """Store webhook execution details in database"""
         try:
-            conn = get_db_connection()
-            if not conn:
-                return
-            
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO webhook_executions (
-                    job_run_step_id, webhook_url, payload, signature_method,
-                    signature_header, signature_value, response_status_code,
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO webhook_executions (
+                        job_run_step_id, webhook_url, payload, signature_method,
+                        signature_header, signature_value, response_status_code,
+                        response_body, response_time_ms, retry_count, max_retries
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    step_id, webhook_url, json.dumps(payload), signature_method,
+                    signature_header, signature_value, status_code,
                     response_body, response_time_ms, retry_count, max_retries
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                step_id, webhook_url, json.dumps(payload), signature_method,
-                signature_header, signature_value, status_code,
-                response_body, response_time_ms, retry_count, max_retries
-            ))
-            
-            conn.commit()
-            conn.close()
+                ))
             
         except Exception as e:
             logger.error(f"Error storing webhook execution details: {e}")
@@ -1453,20 +1408,15 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
     def _get_target_info(self, target_id: int) -> Optional[Dict[str, Any]]:
         """Get target information from database"""
         try:
-            conn = get_db_connection()
-            if not conn:
-                return None
-            
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM targets WHERE id = %s AND deleted_at IS NULL",
-                (target_id,)
-            )
-            
-            target = cursor.fetchone()
-            conn.close()
-            
-            return dict(target) if target else None
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT * FROM targets WHERE id = %s AND deleted_at IS NULL",
+                    (target_id,)
+                )
+                
+                target = cursor.fetchone()
+                
+                return dict(target) if target else None
             
         except Exception as e:
             logger.error(f"Error getting target info: {e}")
@@ -2013,121 +1963,109 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
             return True
         
         # Get job run status
-        conn = get_db_connection()
-        if not conn:
-            return True  # Default to sending if we can't check
-        
         try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT status FROM job_runs WHERE id = %s",
-                (step['job_run_id'],)
-            )
-            result = cursor.fetchone()
-            
-            if not result:
-                return True
-            
-            job_status = result['status']
-            
-            if job_status == 'succeeded' and 'success' in send_on:
-                return True
-            elif job_status == 'failed' and 'failure' in send_on:
-                return True
-            
-            return False
-            
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute(
+                    "SELECT status FROM job_runs WHERE id = %s",
+                    (step['job_run_id'],)
+                )
+                result = cursor.fetchone()
+                
+                if not result:
+                    return True
+                
+                job_status = result['status']
+                
+                if job_status == 'succeeded' and 'success' in send_on:
+                    return True
+                elif job_status == 'failed' and 'failure' in send_on:
+                    return True
+                
+                return False
+                
         except Exception as e:
             logger.error(f"Error checking send_on condition: {e}")
             return True  # Default to sending on error
-        finally:
-            conn.close()
     
     def _get_notification_context(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Get context data for notification template rendering"""
-        conn = get_db_connection()
-        if not conn:
-            return {}
-        
         try:
-            cursor = conn.cursor()
-            
-            # Get job run info with user details
-            cursor.execute("""
-                SELECT jr.id as run_id, jr.job_id, jr.status, jr.started_at, jr.finished_at,
-                       jr.parameters, j.name as job_name, j.definition,
-                       u.username, u.email, u.id as user_id
-                FROM job_runs jr
-                JOIN jobs j ON jr.job_id = j.id
-                LEFT JOIN users u ON jr.requested_by = u.id
-                WHERE jr.id = %s
-            """, (step['job_run_id'],))
-            
-            job_info = cursor.fetchone()
-            if not job_info:
-                return {}
-            
-            # Get target info if step has target_id
-            target_info = None
-            if step.get('target_id'):
+            with get_db_cursor(commit=False) as cursor:
+                
+                # Get job run info with user details
                 cursor.execute("""
-                    SELECT id, name, hostname, protocol, port, tags, metadata
-                    FROM targets WHERE id = %s
-                """, (step['target_id'],))
-                target_info = cursor.fetchone()
-            
-            # Get step statistics
-            cursor.execute("""
-                SELECT 
-                    COUNT(*) as total_steps,
-                    COUNT(*) FILTER (WHERE status = 'succeeded') as completed_steps,
-                    COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
-                FROM job_run_steps
-                WHERE job_run_id = %s
-            """, (step['job_run_id'],))
-            
-            step_stats = cursor.fetchone()
-            
-            # Calculate execution time
-            execution_time_ms = 0
-            if job_info['started_at'] and job_info['finished_at']:
-                execution_time_ms = int((job_info['finished_at'] - job_info['started_at']).total_seconds() * 1000)
-            
-            # Build context
-            context = {
-                'job': {
-                    'id': job_info['job_id'],
-                    'name': job_info['job_name'],
-                    'status': job_info['status'],
-                    'execution_time_ms': execution_time_ms,
-                    'total_steps': step_stats['total_steps'],
-                    'completed_steps': step_stats['completed_steps'],
-                    'failed_steps': step_stats['failed_steps']
-                },
-                'user': {
-                    'id': job_info['user_id'],
-                    'username': job_info['username'],
-                    'email': job_info['email']
-                },
-                'system': {
-                    'timestamp': datetime.utcnow().isoformat()
+                    SELECT jr.id as run_id, jr.job_id, jr.status, jr.started_at, jr.finished_at,
+                           jr.parameters, j.name as job_name, j.definition,
+                           u.username, u.email, u.id as user_id
+                    FROM job_runs jr
+                    JOIN jobs j ON jr.job_id = j.id
+                    LEFT JOIN users u ON jr.requested_by = u.id
+                    WHERE jr.id = %s
+                """, (step['job_run_id'],))
+                
+                job_info = cursor.fetchone()
+                if not job_info:
+                    return {}
+                
+                # Get target info if step has target_id
+                target_info = None
+                if step.get('target_id'):
+                    cursor.execute("""
+                        SELECT id, name, hostname, protocol, port, tags, metadata
+                        FROM targets WHERE id = %s
+                    """, (step['target_id'],))
+                    target_info = cursor.fetchone()
+                
+                # Get step statistics
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total_steps,
+                        COUNT(*) FILTER (WHERE status = 'succeeded') as completed_steps,
+                        COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
+                    FROM job_run_steps
+                    WHERE job_run_id = %s
+                """, (step['job_run_id'],))
+                
+                step_stats = cursor.fetchone()
+                
+                # Calculate execution time
+                execution_time_ms = 0
+                if job_info['started_at'] and job_info['finished_at']:
+                    execution_time_ms = int((job_info['finished_at'] - job_info['started_at']).total_seconds() * 1000)
+                
+                # Build context
+                context = {
+                    'job': {
+                        'id': job_info['job_id'],
+                        'name': job_info['job_name'],
+                        'status': job_info['status'],
+                        'execution_time_ms': execution_time_ms,
+                        'total_steps': step_stats['total_steps'],
+                        'completed_steps': step_stats['completed_steps'],
+                        'failed_steps': step_stats['failed_steps']
+                    },
+                    'user': {
+                        'id': job_info['user_id'],
+                        'username': job_info['username'],
+                        'email': job_info['email']
+                    },
+                    'system': {
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
                 }
-            }
-            
-            if target_info:
-                context['target'] = dict(target_info)
-            
-            # Add job parameters
-            if job_info['parameters']:
-                context.update(job_info['parameters'])
-            
-            return context
+                
+                if target_info:
+                    context['target'] = dict(target_info)
+                
+                # Add job parameters
+                if job_info['parameters']:
+                    context.update(job_info['parameters'])
+                
+                return context
             
         except Exception as e:
             logger.error(f"Error getting notification context: {e}")
             return {}
-        finally:
-            conn.close()
     
     def _render_template(self, template_str: str, context: Dict[str, Any]) -> str:
         """Render Jinja2 template with context"""
@@ -2163,23 +2101,16 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
     def _store_notification_execution(self, step_id: int, notification_type: str, 
                                     recipients: list, subject: str, content: str):
         """Store notification execution in database"""
-        conn = get_db_connection()
-        if not conn:
-            return
-        
         try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO notification_step_executions 
-                (job_run_step_id, notification_type, recipients, subject, content, delivery_status)
-                VALUES (%s, %s, %s, %s, %s, 'sent')
-            """, (step_id, notification_type, json.dumps(recipients), subject, content))
-            conn.commit()
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO notification_step_executions 
+                    (job_run_step_id, notification_type, recipients, subject, content, delivery_status)
+                    VALUES (%s, %s, %s, %s, %s, 'sent')
+                """, (step_id, notification_type, json.dumps(recipients), subject, content))
             
         except Exception as e:
             logger.error(f"Error storing notification execution: {e}")
-        finally:
-            conn.close()
 
 # Global executor instance
 executor = JobExecutor()
@@ -2207,38 +2138,32 @@ async def health_check():
 @app.get("/status")
 async def get_status():
     """Get executor status and statistics"""
-    conn = get_db_connection()
-    if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed")
-    
     try:
-        cursor = conn.cursor()
-        
-        # Get queue statistics
-        cursor.execute("""
-            SELECT 
-                COUNT(*) FILTER (WHERE status = 'queued') as queued_steps,
-                COUNT(*) FILTER (WHERE status = 'running') as running_steps,
-                COUNT(*) FILTER (WHERE status = 'succeeded') as succeeded_steps,
-                COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
-            FROM job_run_steps
-            WHERE finished_at > NOW() - INTERVAL '24 hours' OR status IN ('queued', 'running')
-        """)
-        
-        stats = cursor.fetchone()
-        
-        return {
-            "worker_running": executor.running,
-            "worker_enabled": WORKER_ENABLED,
-            "poll_interval": WORKER_POLL_INTERVAL,
-            "queue_stats": dict(stats)
-        }
+        with get_db_cursor(commit=False) as cursor:
+            
+            # Get queue statistics
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) FILTER (WHERE status = 'queued') as queued_steps,
+                    COUNT(*) FILTER (WHERE status = 'running') as running_steps,
+                    COUNT(*) FILTER (WHERE status = 'succeeded') as succeeded_steps,
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
+                FROM job_run_steps
+                WHERE finished_at > NOW() - INTERVAL '24 hours' OR status IN ('queued', 'running')
+            """)
+            
+            stats = cursor.fetchone()
+            
+            return {
+                "worker_running": executor.running,
+                "worker_enabled": WORKER_ENABLED,
+                "poll_interval": WORKER_POLL_INTERVAL,
+                "queue_stats": dict(stats)
+            }
         
     except Exception as e:
         logger.error(f"Status retrieval error: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve status")
-    finally:
-        conn.close()
 
 if __name__ == "__main__":
     import uvicorn

@@ -5,12 +5,14 @@ Handles authentication, JWT tokens, and user session management
 """
 
 import os
+import sys
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-import psycopg2
-import psycopg2.extras
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +20,7 @@ from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from dotenv import load_dotenv
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
 # Load environment variables
 load_dotenv()
@@ -48,12 +51,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-# Database configuration
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "opsconductor")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+# Database configuration is now handled by shared.database module
 
 # Pydantic models
 class LoginRequest(BaseModel):
@@ -86,25 +84,7 @@ class User(BaseModel):
     created_at: datetime
     token_version: int = 1
 
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            cursor_factory=psycopg2.extras.RealDictCursor
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection failed"
-        )
+# Database connection is now handled by shared.database module
 
 # Authentication utilities
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -141,28 +121,25 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def authenticate_user(username: str, password: str) -> Optional[User]:
     """Authenticate user by username and password"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, email, username, pwd_hash, role, created_at, token_version FROM users WHERE username = %s",
-            (username,)
-        )
-        user_data = cursor.fetchone()
-        
-        if not user_data:
-            return None
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT id, email, username, pwd_hash, role, created_at, token_version FROM users WHERE username = %s",
+                (username,)
+            )
+            user_data = cursor.fetchone()
             
-        if not verify_password(password, user_data['pwd_hash']):
-            return None
-            
-        return User(**user_data)
+            if not user_data:
+                return None
+                
+            if not verify_password(password, user_data['pwd_hash']):
+                return None
+                
+            return User(**user_data)
         
     except Exception as e:
         logger.error(f"Authentication error: {e}")
         return None
-    finally:
-        conn.close()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     """Verify JWT token and return user"""
@@ -180,9 +157,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             )
             
         # Verify user exists and token_version matches
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute(
                 "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
@@ -202,9 +177,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
                 )
                 
             return User(**user_data)
-            
-        finally:
-            conn.close()
             
     except JWTError:
         raise HTTPException(
@@ -267,9 +239,7 @@ async def refresh_token(refresh_request: RefreshRequest):
             )
         
         # Verify user and token version
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor()
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute(
                 "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
                 (user_id,)
@@ -316,9 +286,6 @@ async def refresh_token(refresh_request: RefreshRequest):
                 )
             )
             
-        finally:
-            conn.close()
-            
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -328,26 +295,21 @@ async def refresh_token(refresh_request: RefreshRequest):
 @app.post("/revoke-all")
 async def revoke_all_tokens(current_user: User = Depends(verify_token)):
     """Revoke all tokens for current user"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET token_version = token_version + 1 WHERE id = %s",
-            (current_user.id,)
-        )
-        conn.commit()
+        with get_db_cursor() as cursor:
+            cursor.execute(
+                "UPDATE users SET token_version = token_version + 1 WHERE id = %s",
+                (current_user.id,)
+            )
         
         return {"message": "All tokens revoked successfully"}
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Token revocation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to revoke tokens"
         )
-    finally:
-        conn.close()
 
 @app.get("/verify")
 async def verify_token_endpoint(current_user: User = Depends(verify_token)):
@@ -364,8 +326,19 @@ async def verify_token_endpoint(current_user: User = Depends(verify_token)):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "auth-service"}
+    """Health check endpoint with database connectivity"""
+    db_health = check_database_health()
+    return {
+        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+        "service": "auth-service",
+        "database": db_health
+    }
+
+# Cleanup on shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    cleanup_database_pool()
 
 if __name__ == "__main__":
     import uvicorn

@@ -5,12 +5,15 @@ Replace 'new-service' with your actual service name throughout this file
 """
 
 import os
+import sys
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
@@ -28,14 +31,7 @@ app = FastAPI(
 
 security = HTTPBearer()
 
-# Database configuration
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "postgres"),
-    "port": int(os.getenv("DB_PORT", "5432")),
-    "database": os.getenv("DB_NAME", "opsconductor"),
-    "user": os.getenv("DB_USER", "opsconductor"),
-    "password": os.getenv("DB_PASSWORD", "opsconductor123")
-}
+# Database connection handled by shared module
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 
@@ -55,15 +51,7 @@ class ItemUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
 
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(**DB_CONFIG)
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise HTTPException(status_code=500, detail="Database connection failed")
+# Database connection handled by shared module
 
 # Authentication
 async def verify_token(token: str = Depends(security)):
@@ -81,11 +69,8 @@ async def verify_token(token: str = Depends(security)):
 async def health_check():
     """Health check endpoint"""
     try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-        conn.close()
-        return {"status": "healthy", "service": "new-service"}
+        health_status = await check_database_health()
+        return {"status": "healthy" if health_status else "unhealthy", "service": "new-service"}
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {"status": "unhealthy", "service": "new-service", "error": str(e)}
@@ -95,15 +80,13 @@ async def health_check():
 async def get_items(user: dict = Depends(verify_token)):
     """Get all items"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute("""
                 SELECT id, name, description, created_at, updated_at 
                 FROM items 
                 ORDER BY created_at DESC
             """)
             items = cursor.fetchall()
-        conn.close()
         return items
     except Exception as e:
         logger.error(f"Error fetching items: {e}")
@@ -113,15 +96,13 @@ async def get_items(user: dict = Depends(verify_token)):
 async def get_item(item_id: int, user: dict = Depends(verify_token)):
     """Get item by ID"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor(commit=False) as cursor:
             cursor.execute("""
                 SELECT id, name, description, created_at, updated_at 
                 FROM items 
                 WHERE id = %s
             """, (item_id,))
             item = cursor.fetchone()
-        conn.close()
         
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -137,16 +118,13 @@ async def get_item(item_id: int, user: dict = Depends(verify_token)):
 async def create_item(item: ItemCreate, user: dict = Depends(verify_token)):
     """Create new item"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("""
                 INSERT INTO items (name, description, created_at, updated_at)
                 VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id, name, description, created_at, updated_at
             """, (item.name, item.description))
             new_item = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         logger.info(f"Created item: {new_item['id']}")
         return new_item
@@ -158,8 +136,7 @@ async def create_item(item: ItemCreate, user: dict = Depends(verify_token)):
 async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verify_token)):
     """Update item"""
     try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+        with get_db_cursor() as cursor:
             # Build dynamic update query
             update_fields = []
             values = []
@@ -186,8 +163,6 @@ async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verif
             """, values)
             
             updated_item = cursor.fetchone()
-            conn.commit()
-        conn.close()
         
         if not updated_item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -204,13 +179,10 @@ async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verif
 async def delete_item(item_id: int, user: dict = Depends(verify_token)):
     """Delete item"""
     try:
-        conn = get_db_connection()
-        with conn.cursor() as cursor:
+        with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM items WHERE id = %s", (item_id,))
             if cursor.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Item not found")
-            conn.commit()
-        conn.close()
         
         logger.info(f"Deleted item: {item_id}")
         return {"message": "Item deleted successfully"}

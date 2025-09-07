@@ -5,14 +5,16 @@ Encrypted credential storage with full CRUD operations
 """
 
 import os
+import sys
 import json
 import base64
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-import psycopg2
-import psycopg2.extras
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
 import requests
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -24,6 +26,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
 # Load environment variables
 load_dotenv()
@@ -51,12 +54,7 @@ security = HTTPBearer()
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
 MASTER_KEY = os.getenv("MASTER_KEY", "default-key-change-in-production")
 
-# Database configuration
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "opsconductor")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+# Database configuration is now handled by shared.database module
 
 # Pydantic models
 class CredentialCreate(BaseModel):
@@ -124,25 +122,7 @@ class CredentialListResponse(BaseModel):
     credentials: List[CredentialResponse]
     total: int
 
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            cursor_factory=psycopg2.extras.RealDictCursor
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection failed"
-        )
+# Database connection is now handled by shared.database module
 
 # Authentication
 def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -284,112 +264,106 @@ async def create_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Create new encrypted credential"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Check if credential name already exists
-        cursor.execute(
-            "SELECT id FROM credentials WHERE name = %s",
-            (cred_data.name,)
-        )
-        if cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Credential with this name already exists"
+        with get_db_cursor() as cursor:
+            # Check if credential name already exists
+            cursor.execute(
+                "SELECT id FROM credentials WHERE name = %s",
+                (cred_data.name,)
             )
-        
-        # Validate credential type
-        valid_types = ["password", "key", "certificate"]
-        if cred_data.credential_type not in valid_types:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid credential type. Must be one of: {valid_types}"
-            )
-        
-        # Validate description length
-        if cred_data.description and len(cred_data.description) > 20:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Description must be 20 characters or less"
-            )
-        
-        # Validate required fields based on credential type
-        if cred_data.credential_type == "password":
-            if not cred_data.username or not cred_data.password:
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Credential with this name already exists"
+                )
+            
+            # Validate credential type
+            valid_types = ["password", "key", "certificate"]
+            if cred_data.credential_type not in valid_types:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username and password are required for password credentials"
+                    detail=f"Invalid credential type. Must be one of: {valid_types}"
                 )
-        elif cred_data.credential_type == "key":
-            if not cred_data.username or not cred_data.private_key:
+            
+            # Validate description length
+            if cred_data.description and len(cred_data.description) > 20:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username and private_key are required for key credentials"
+                    detail="Description must be 20 characters or less"
                 )
-        elif cred_data.credential_type == "certificate":
-            if not cred_data.certificate:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Certificate is required for certificate credentials"
+            
+            # Validate required fields based on credential type
+            if cred_data.credential_type == "password":
+                if not cred_data.username or not cred_data.password:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Username and password are required for password credentials"
+                    )
+            elif cred_data.credential_type == "key":
+                if not cred_data.username or not cred_data.private_key:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Username and private_key are required for key credentials"
+                    )
+            elif cred_data.credential_type == "certificate":
+                if not cred_data.certificate:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Certificate is required for certificate credentials"
+                    )
+            
+            # Parse certificate validity dates if certificate is provided
+            valid_from = cred_data.valid_from
+            valid_until = cred_data.valid_until
+            if cred_data.certificate:
+                cert_valid_from, cert_valid_until = parse_certificate_validity(cred_data.certificate)
+                if cert_valid_from and cert_valid_until:
+                    valid_from = cert_valid_from
+                    valid_until = cert_valid_until
+            
+            # Encrypt sensitive fields
+            encrypted_password = encrypt_sensitive_field(cred_data.password) if cred_data.password else None
+            encrypted_private_key = encrypt_sensitive_field(cred_data.private_key) if cred_data.private_key else None
+            encrypted_public_key = encrypt_sensitive_field(cred_data.public_key) if cred_data.public_key else None
+            encrypted_certificate = encrypt_sensitive_field(cred_data.certificate) if cred_data.certificate else None
+            encrypted_certificate_chain = encrypt_sensitive_field(cred_data.certificate_chain) if cred_data.certificate_chain else None
+            encrypted_passphrase = encrypt_sensitive_field(cred_data.passphrase) if cred_data.passphrase else None
+            
+            # Insert credential
+            cursor.execute(
+                """INSERT INTO credentials (
+                    name, description, credential_type, username, password, domain,
+                    private_key, public_key, certificate, certificate_chain, passphrase,
+                    valid_from, valid_until, next_rotation_date, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, name, description, credential_type, username, domain,
+                         valid_from, valid_until, next_rotation_date, created_at, updated_at""",
+                (
+                    cred_data.name,
+                    cred_data.description,
+                    cred_data.credential_type,
+                    cred_data.username,
+                    encrypted_password,
+                    cred_data.domain,
+                    encrypted_private_key,
+                    encrypted_public_key,
+                    encrypted_certificate,
+                    encrypted_certificate_chain,
+                    encrypted_passphrase,
+                    valid_from,
+                    valid_until,
+                    cred_data.next_rotation_date,
+                    datetime.utcnow(),
+                    datetime.utcnow()
                 )
-        
-        # Parse certificate validity dates if certificate is provided
-        valid_from = cred_data.valid_from
-        valid_until = cred_data.valid_until
-        if cred_data.certificate:
-            cert_valid_from, cert_valid_until = parse_certificate_validity(cred_data.certificate)
-            if cert_valid_from and cert_valid_until:
-                valid_from = cert_valid_from
-                valid_until = cert_valid_until
-        
-        # Encrypt sensitive fields
-        encrypted_password = encrypt_sensitive_field(cred_data.password) if cred_data.password else None
-        encrypted_private_key = encrypt_sensitive_field(cred_data.private_key) if cred_data.private_key else None
-        encrypted_public_key = encrypt_sensitive_field(cred_data.public_key) if cred_data.public_key else None
-        encrypted_certificate = encrypt_sensitive_field(cred_data.certificate) if cred_data.certificate else None
-        encrypted_certificate_chain = encrypt_sensitive_field(cred_data.certificate_chain) if cred_data.certificate_chain else None
-        encrypted_passphrase = encrypt_sensitive_field(cred_data.passphrase) if cred_data.passphrase else None
-        
-        # Insert credential
-        cursor.execute(
-            """INSERT INTO credentials (
-                name, description, credential_type, username, password, domain,
-                private_key, public_key, certificate, certificate_chain, passphrase,
-                valid_from, valid_until, next_rotation_date, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, name, description, credential_type, username, domain,
-                     valid_from, valid_until, next_rotation_date, created_at, updated_at""",
-            (
-                cred_data.name,
-                cred_data.description,
-                cred_data.credential_type,
-                cred_data.username,
-                encrypted_password,
-                cred_data.domain,
-                encrypted_private_key,
-                encrypted_public_key,
-                encrypted_certificate,
-                encrypted_certificate_chain,
-                encrypted_passphrase,
-                valid_from,
-                valid_until,
-                cred_data.next_rotation_date,
-                datetime.utcnow(),
-                datetime.utcnow()
             )
-        )
-        
-        new_cred = cursor.fetchone()
-        conn.commit()
-        
-        return CredentialResponse(**new_cred)
+            
+            new_cred = cursor.fetchone()
+            return CredentialResponse(**new_cred)
         
     except HTTPException:
-        conn.rollback()
         raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        conn.rollback()
         logger.error(f"Credential creation error: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -397,8 +371,6 @@ async def create_credential(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create credential: {str(e)}"
         )
-    finally:
-        conn.close()
 
 @app.get("/credentials", response_model=CredentialListResponse)
 async def list_credentials(
@@ -407,24 +379,22 @@ async def list_credentials(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """List all credentials (metadata only, no decrypted data)"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Get total count
-        cursor.execute("SELECT COUNT(*) FROM credentials")
-        total = cursor.fetchone()["count"]
-        
-        # Get credentials with pagination (non-sensitive fields only)
-        cursor.execute(
-            """SELECT id, name, description, credential_type, username, domain,
-                      valid_from, valid_until, next_rotation_date, created_at, updated_at
-               FROM credentials 
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (limit, skip)
-        )
-        credentials = cursor.fetchall()
+        with get_db_cursor(commit=False) as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) FROM credentials")
+            total = cursor.fetchone()["count"]
+            
+            # Get credentials with pagination (non-sensitive fields only)
+            cursor.execute(
+                """SELECT id, name, description, credential_type, username, domain,
+                          valid_from, valid_until, next_rotation_date, created_at, updated_at
+                   FROM credentials 
+                   ORDER BY created_at DESC 
+                   LIMIT %s OFFSET %s""",
+                (limit, skip)
+            )
+            credentials = cursor.fetchall()
         
         return CredentialListResponse(
             credentials=[CredentialResponse(**cred) for cred in credentials],
@@ -437,8 +407,6 @@ async def list_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve credentials"
         )
-    finally:
-        conn.close()
 
 @app.get("/credentials/{credential_id}", response_model=CredentialResponse)
 async def get_credential(
@@ -446,24 +414,23 @@ async def get_credential(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """Get credential metadata by ID (no decrypted data)"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT id, name, description, credential_type, username, domain,
-                      valid_from, valid_until, next_rotation_date, created_at, updated_at 
-               FROM credentials WHERE id = %s""",
-            (credential_id,)
-        )
-        cred_data = cursor.fetchone()
-        
-        if not cred_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                """SELECT id, name, description, credential_type, username, domain,
+                          valid_from, valid_until, next_rotation_date, created_at, updated_at 
+                   FROM credentials WHERE id = %s""",
+                (credential_id,)
             )
-        
-        return CredentialResponse(**cred_data)
+            cred_data = cursor.fetchone()
+            
+            if not cred_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found"
+                )
+            
+            return CredentialResponse(**cred_data)
         
     except Exception as e:
         logger.error(f"Credential retrieval error: {e}")
@@ -471,8 +438,6 @@ async def get_credential(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve credential"
         )
-    finally:
-        conn.close()
 
 @app.get("/credentials/{credential_id}/decrypt", response_model=CredentialDecrypted)
 async def get_credential_decrypted(
@@ -480,34 +445,33 @@ async def get_credential_decrypted(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Get credential with decrypted data - ADMIN/OPERATOR ONLY"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """SELECT id, name, description, credential_type, username, domain,
-                      password, private_key, public_key, certificate, certificate_chain, passphrase,
-                      valid_from, valid_until, next_rotation_date, created_at, updated_at 
-               FROM credentials WHERE id = %s""",
-            (credential_id,)
-        )
-        cred_data = cursor.fetchone()
-        
-        if not cred_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                """SELECT id, name, description, credential_type, username, domain,
+                          password, private_key, public_key, certificate, certificate_chain, passphrase,
+                          valid_from, valid_until, next_rotation_date, created_at, updated_at 
+                   FROM credentials WHERE id = %s""",
+                (credential_id,)
             )
-        
-        # Decrypt sensitive fields
-        result = dict(cred_data)
-        result['password'] = decrypt_sensitive_field(result['password']) if result['password'] else None
-        result['private_key'] = decrypt_sensitive_field(result['private_key']) if result['private_key'] else None
-        result['public_key'] = decrypt_sensitive_field(result['public_key']) if result['public_key'] else None
-        result['certificate'] = decrypt_sensitive_field(result['certificate']) if result['certificate'] else None
-        result['certificate_chain'] = decrypt_sensitive_field(result['certificate_chain']) if result['certificate_chain'] else None
-        result['passphrase'] = decrypt_sensitive_field(result['passphrase']) if result['passphrase'] else None
-        
-        return CredentialDecrypted(**result)
+            cred_data = cursor.fetchone()
+            
+            if not cred_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found"
+                )
+            
+            # Decrypt sensitive fields
+            result = dict(cred_data)
+            result['password'] = decrypt_sensitive_field(result['password']) if result['password'] else None
+            result['private_key'] = decrypt_sensitive_field(result['private_key']) if result['private_key'] else None
+            result['public_key'] = decrypt_sensitive_field(result['public_key']) if result['public_key'] else None
+            result['certificate'] = decrypt_sensitive_field(result['certificate']) if result['certificate'] else None
+            result['certificate_chain'] = decrypt_sensitive_field(result['certificate_chain']) if result['certificate_chain'] else None
+            result['passphrase'] = decrypt_sensitive_field(result['passphrase']) if result['passphrase'] else None
+            
+            return CredentialDecrypted(**result)
         
     except Exception as e:
         logger.error(f"Credential decryption error: {e}")
@@ -515,8 +479,6 @@ async def get_credential_decrypted(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to decrypt credential"
         )
-    finally:
-        conn.close()
 
 @app.put("/credentials/{credential_id}", response_model=CredentialResponse)
 async def update_credential(
@@ -525,76 +487,70 @@ async def update_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Update credential by ID"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Check if credential exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
-        if not cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
-            )
-        
-        # Build update query
-        update_fields = []
-        update_values = []
-        
-        if cred_data.name is not None:
-            update_fields.append("name = %s")
-            update_values.append(cred_data.name)
+        with get_db_cursor() as cursor:
+            # Check if credential exists (excluding soft-deleted)
+            cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found"
+                )
             
-        if cred_data.description is not None:
-            update_fields.append("description = %s")
-            update_values.append(cred_data.description)
+            # Build update query
+            update_fields = []
+            update_values = []
             
-        if cred_data.credential_type is not None:
-            update_fields.append("credential_type = %s")
-            update_values.append(cred_data.credential_type)
+            if cred_data.name is not None:
+                update_fields.append("name = %s")
+                update_values.append(cred_data.name)
+                
+            if cred_data.description is not None:
+                update_fields.append("description = %s")
+                update_values.append(cred_data.description)
+                
+            if cred_data.credential_type is not None:
+                update_fields.append("credential_type = %s")
+                update_values.append(cred_data.credential_type)
+                
+            if cred_data.credential_data is not None:
+                encrypted_data = encrypt_data(cred_data.credential_data)
+                credential_json = {"encrypted": encrypted_data}
+                update_fields.append("credential_data = %s")
+                update_values.append(json.dumps(credential_json))
             
-        if cred_data.credential_data is not None:
-            encrypted_data = encrypt_data(cred_data.credential_data)
-            credential_json = {"encrypted": encrypted_data}
-            update_fields.append("credential_data = %s")
-            update_values.append(json.dumps(credential_json))
-        
-        if not update_fields:
-            # No fields to update, just return current credential
-            cursor.execute(
-                "SELECT id, name, description, credential_type, created_at, updated_at FROM credentials WHERE id = %s",
-                (credential_id,)
-            )
-            return CredentialResponse(**cursor.fetchone())
-        
-        # Add updated_at
-        update_fields.append("updated_at = %s")
-        update_values.append(datetime.utcnow())
-        
-        # Execute update
-        update_query = f"""
-            UPDATE credentials 
-            SET {', '.join(update_fields)}
-            WHERE id = %s
-            RETURNING id, name, description, credential_type, created_at, updated_at
-        """
-        update_values.append(credential_id)
-        
-        cursor.execute(update_query, update_values)
-        updated_cred = cursor.fetchone()
-        conn.commit()
-        
-        return CredentialResponse(**updated_cred)
+            if not update_fields:
+                # No fields to update, just return current credential
+                cursor.execute(
+                    "SELECT id, name, description, credential_type, created_at, updated_at FROM credentials WHERE id = %s",
+                    (credential_id,)
+                )
+                return CredentialResponse(**cursor.fetchone())
+            
+            # Add updated_at
+            update_fields.append("updated_at = %s")
+            update_values.append(datetime.utcnow())
+            
+            # Execute update
+            update_query = f"""
+                UPDATE credentials 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, name, description, credential_type, created_at, updated_at
+            """
+            update_values.append(credential_id)
+            
+            cursor.execute(update_query, update_values)
+            updated_cred = cursor.fetchone()
+            
+            return CredentialResponse(**updated_cred)
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Credential update error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update credential"
         )
-    finally:
-        conn.close()
 
 @app.delete("/credentials/{credential_id}")
 async def delete_credential(
@@ -602,35 +558,28 @@ async def delete_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Delete credential by ID"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Hard delete credential
-        cursor.execute(
-            "DELETE FROM credentials WHERE id = %s",
-            (credential_id,)
-        )
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found or already deleted"
+        with get_db_cursor() as cursor:
+            # Hard delete credential
+            cursor.execute(
+                "DELETE FROM credentials WHERE id = %s",
+                (credential_id,)
             )
-        
-        conn.commit()
-        
-        return {"message": "Credential deleted successfully"}
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found or already deleted"
+                )
+            
+            return {"message": "Credential deleted successfully"}
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Credential deletion error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete credential"
         )
-    finally:
-        conn.close()
 
 @app.post("/credentials/{credential_id}/rotate")
 async def rotate_credential(
@@ -639,46 +588,40 @@ async def rotate_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Rotate credential data"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Check if credential exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
-        if not cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found"
+        with get_db_cursor() as cursor:
+            # Check if credential exists (excluding soft-deleted)
+            cursor.execute("SELECT id FROM credentials WHERE id = %s AND deleted_at IS NULL", (credential_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found"
+                )
+            
+            # Encrypt new credential data and wrap in JSON structure
+            encrypted_data = encrypt_data(new_credential_data)
+            credential_json = {"encrypted": encrypted_data}
+            
+            # Update credential
+            rotated_at = datetime.utcnow()
+            cursor.execute(
+                """UPDATE credentials 
+                   SET credential_data = %s, updated_at = %s
+                   WHERE id = %s""",
+                (json.dumps(credential_json), rotated_at, credential_id)
             )
-        
-        # Encrypt new credential data and wrap in JSON structure
-        encrypted_data = encrypt_data(new_credential_data)
-        credential_json = {"encrypted": encrypted_data}
-        
-        # Update credential
-        rotated_at = datetime.utcnow()
-        cursor.execute(
-            """UPDATE credentials 
-               SET credential_data = %s, updated_at = %s
-               WHERE id = %s""",
-            (json.dumps(credential_json), rotated_at, credential_id)
-        )
-        conn.commit()
-        
-        return {
-            "message": "Credential rotated successfully",
-            "rotated_at": rotated_at.isoformat() + "Z"
-        }
+            
+            return {
+                "message": "Credential rotated successfully",
+                "rotated_at": rotated_at.isoformat() + "Z"
+            }
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Credential rotation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to rotate credential"
         )
-    finally:
-        conn.close()
 
 @app.delete("/credentials/by-name/{credential_name}")
 async def delete_credential_by_name(
@@ -686,40 +629,44 @@ async def delete_credential_by_name(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Delete credential by name"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Soft delete credential by name
-        cursor.execute(
-            "UPDATE credentials SET deleted_at = %s WHERE name = %s AND deleted_at IS NULL",
-            (datetime.utcnow(), credential_name)
-        )
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Credential not found or already deleted"
+        with get_db_cursor() as cursor:
+            # Soft delete credential by name
+            cursor.execute(
+                "UPDATE credentials SET deleted_at = %s WHERE name = %s AND deleted_at IS NULL",
+                (datetime.utcnow(), credential_name)
             )
-        
-        conn.commit()
-        
-        return {"message": "Credential deleted successfully"}
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Credential not found or already deleted"
+                )
+            
+            return {"message": "Credential deleted successfully"}
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Credential deletion error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete credential"
         )
-    finally:
-        conn.close()
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "credentials-service"}
+    """Health check endpoint with database connectivity"""
+    db_health = check_database_health()
+    return {
+        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+        "service": "credentials-service",
+        "database": db_health
+    }
+
+# Cleanup on shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    cleanup_database_pool()
 
 if __name__ == "__main__":
     import uvicorn

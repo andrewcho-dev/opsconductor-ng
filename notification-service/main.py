@@ -5,6 +5,7 @@ Multi-channel notifications with user preferences and advanced rules
 """
 
 import os
+import sys
 import json
 import logging
 import asyncio
@@ -14,9 +15,13 @@ from typing import List, Optional, Dict, Any, Union
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
 import httpx
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
 from pydantic import BaseModel, Field, EmailStr
 from jinja2 import Template, Environment
@@ -28,14 +33,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Enhanced Notification Service", version="2.0.0")
 
-# Database configuration
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "postgres"),
-    "port": int(os.getenv("DB_PORT", "5432")),
-    "database": os.getenv("DB_NAME", "opsconductor"),
-    "user": os.getenv("DB_USER", "opsconductor"),
-    "password": os.getenv("DB_PASSWORD", "opsconductor123")
-}
+
 
 # Service URLs
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001")
@@ -55,12 +53,7 @@ SMTP_CONFIG = {
 notification_worker_running = False
 notification_worker_task = None
 
-def get_db_connection():
-    """Get database connection with RealDictCursor"""
-    return psycopg2.connect(
-        cursor_factory=RealDictCursor,
-        **DB_CONFIG
-    )
+
 
 # Enhanced Pydantic models
 class NotificationPreferences(BaseModel):
@@ -224,37 +217,31 @@ async def verify_token(request: Request):
 
 def get_user_notification_preferences(user_id: int) -> Optional[Dict[str, Any]]:
     """Get user notification preferences"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM user_notification_preferences_view 
-            WHERE user_id = %s
-        """, (user_id,))
-        return cursor.fetchone()
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT * FROM user_notification_preferences_view 
+                WHERE user_id = %s
+            """, (user_id,))
+            return cursor.fetchone()
     except Exception as e:
         logger.error(f"Error getting user preferences for user {user_id}: {e}")
         return None
-    finally:
-        conn.close()
 
 def get_notification_template(channel: str, event_type: str) -> Optional[Dict[str, Any]]:
     """Get notification template for channel and event type"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM notification_templates 
-            WHERE channel = %s AND event_type = %s AND is_active = true AND deleted_at IS NULL
-            ORDER BY is_default DESC, id ASC
-            LIMIT 1
-        """, (channel, event_type))
-        return cursor.fetchone()
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT * FROM notification_templates 
+                WHERE channel = %s AND event_type = %s AND is_active = true AND deleted_at IS NULL
+                ORDER BY is_default DESC, id ASC
+                LIMIT 1
+            """, (channel, event_type))
+            return cursor.fetchone()
     except Exception as e:
         logger.error(f"Error getting template for {channel}/{event_type}: {e}")
         return None
-    finally:
-        conn.close()
 
 def is_in_quiet_hours(preferences: Dict[str, Any]) -> bool:
     """Check if current time is in user's quiet hours"""
@@ -457,15 +444,12 @@ async def process_notification(notification_id: int, channel: str, dest: str, pa
     
     # Get template if specified
     if template_id:
-        conn = get_db_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM notification_templates WHERE id = %s", (template_id,))
-            template = cursor.fetchone()
+            with get_db_cursor(commit=False) as cursor:
+                cursor.execute("SELECT * FROM notification_templates WHERE id = %s", (template_id,))
+                template = cursor.fetchone()
         except Exception as e:
             logger.error(f"Error getting template {template_id}: {e}")
-        finally:
-            conn.close()
     
     # Send notification based on channel
     if channel == "email":
@@ -481,136 +465,123 @@ async def process_notification(notification_id: int, channel: str, dest: str, pa
         return False
     
     # Update notification status in database
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        if success:
-            cursor.execute("""
-                UPDATE notifications 
-                SET status = 'sent', sent_at = %s 
-                WHERE id = %s
-            """, (datetime.now(timezone.utc), notification_id))
-        else:
-            cursor.execute("""
-                UPDATE notifications 
-                SET retries = retries + 1 
-                WHERE id = %s
-            """, (notification_id,))
-            
-            # Mark as failed after 3 retries
-            cursor.execute("""
-                UPDATE notifications 
-                SET status = 'failed' 
-                WHERE id = %s AND retries >= 3
-            """, (notification_id,))
-        
-        conn.commit()
+        with get_db_cursor() as cursor:
+            if success:
+                cursor.execute("""
+                    UPDATE notifications 
+                    SET status = 'sent', sent_at = %s 
+                    WHERE id = %s
+                """, (datetime.now(timezone.utc), notification_id))
+            else:
+                cursor.execute("""
+                    UPDATE notifications 
+                    SET retries = retries + 1 
+                    WHERE id = %s
+                """, (notification_id,))
+                
+                # Mark as failed after 3 retries
+                cursor.execute("""
+                    UPDATE notifications 
+                    SET status = 'failed' 
+                    WHERE id = %s AND retries >= 3
+                """, (notification_id,))
         
     except Exception as e:
         logger.error(f"Failed to update notification {notification_id} status: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
     
     return success
 
 async def create_notifications_for_job_run(job_run_id: int, event_type: str, payload: Dict[str, Any], user_id: Optional[int] = None):
     """Create notifications for a job run based on user preferences"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # If user_id is provided, get their preferences
-        if user_id:
-            preferences = get_user_notification_preferences(user_id)
-            if not preferences or not should_notify(preferences, event_type):
-                logger.info(f"User {user_id} preferences indicate no notification needed for {event_type}")
-                return []
-        else:
-            # Get job run details to find the user
-            cursor.execute("""
-                SELECT requested_by FROM job_runs WHERE id = %s
-            """, (job_run_id,))
-            job_run = cursor.fetchone()
-            if job_run and job_run['requested_by']:
-                user_id = job_run['requested_by']
+        with get_db_cursor() as cursor:
+            # If user_id is provided, get their preferences
+            if user_id:
                 preferences = get_user_notification_preferences(user_id)
                 if not preferences or not should_notify(preferences, event_type):
                     logger.info(f"User {user_id} preferences indicate no notification needed for {event_type}")
                     return []
             else:
-                # No user found, use default admin notification
-                preferences = None
-        
-        notifications_created = []
-        
-        if preferences:
-            # Create notifications based on user preferences
-            channels_to_notify = []
+                # Get job run details to find the user
+                cursor.execute("""
+                    SELECT requested_by FROM job_runs WHERE id = %s
+                """, (job_run_id,))
+                job_run = cursor.fetchone()
+                if job_run and job_run['requested_by']:
+                    user_id = job_run['requested_by']
+                    preferences = get_user_notification_preferences(user_id)
+                    if not preferences or not should_notify(preferences, event_type):
+                        logger.info(f"User {user_id} preferences indicate no notification needed for {event_type}")
+                        return []
+                else:
+                    # No user found, use default admin notification
+                    preferences = None
             
-            if preferences.get('email_enabled', True):
-                email_addr = preferences.get('notification_email') or preferences.get('user_email')
-                if email_addr:
-                    template = get_notification_template('email', event_type)
+            notifications_created = []
+            
+            if preferences:
+                # Create notifications based on user preferences
+                channels_to_notify = []
+                
+                if preferences.get('email_enabled', True):
+                    email_addr = preferences.get('notification_email') or preferences.get('user_email')
+                    if email_addr:
+                        template = get_notification_template('email', event_type)
+                        cursor.execute("""
+                            INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (job_run_id, user_id, 'email', email_addr, json.dumps(payload), template['id'] if template else None))
+                        notification_id = cursor.fetchone()['id']
+                        notifications_created.append(notification_id)
+                
+                if preferences.get('slack_enabled', False) and preferences.get('slack_webhook_url'):
+                    template = get_notification_template('slack', event_type)
                     cursor.execute("""
                         INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
                         VALUES (%s, %s, %s, %s, %s, %s)
                         RETURNING id
-                    """, (job_run_id, user_id, 'email', email_addr, json.dumps(payload), template['id'] if template else None))
+                    """, (job_run_id, user_id, 'slack', preferences['slack_webhook_url'], json.dumps(payload), template['id'] if template else None))
                     notification_id = cursor.fetchone()['id']
                     notifications_created.append(notification_id)
-            
-            if preferences.get('slack_enabled', False) and preferences.get('slack_webhook_url'):
-                template = get_notification_template('slack', event_type)
+                
+                if preferences.get('teams_enabled', False) and preferences.get('teams_webhook_url'):
+                    template = get_notification_template('teams', event_type)
+                    cursor.execute("""
+                        INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (job_run_id, user_id, 'teams', preferences['teams_webhook_url'], json.dumps(payload), template['id'] if template else None))
+                    notification_id = cursor.fetchone()['id']
+                    notifications_created.append(notification_id)
+                
+                if preferences.get('webhook_enabled', False) and preferences.get('webhook_url'):
+                    template = get_notification_template('webhook', event_type)
+                    cursor.execute("""
+                        INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (job_run_id, user_id, 'webhook', preferences['webhook_url'], json.dumps(payload), template['id'] if template else None))
+                    notification_id = cursor.fetchone()['id']
+                    notifications_created.append(notification_id)
+            else:
+                # Default notification to admin email
+                template = get_notification_template('email', event_type)
                 cursor.execute("""
-                    INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO notifications (job_run_id, channel, dest, payload, template_id)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING id
-                """, (job_run_id, user_id, 'slack', preferences['slack_webhook_url'], json.dumps(payload), template['id'] if template else None))
+                """, (job_run_id, 'email', 'admin@opsconductor.local', json.dumps(payload), template['id'] if template else None))
                 notification_id = cursor.fetchone()['id']
                 notifications_created.append(notification_id)
             
-            if preferences.get('teams_enabled', False) and preferences.get('teams_webhook_url'):
-                template = get_notification_template('teams', event_type)
-                cursor.execute("""
-                    INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (job_run_id, user_id, 'teams', preferences['teams_webhook_url'], json.dumps(payload), template['id'] if template else None))
-                notification_id = cursor.fetchone()['id']
-                notifications_created.append(notification_id)
-            
-            if preferences.get('webhook_enabled', False) and preferences.get('webhook_url'):
-                template = get_notification_template('webhook', event_type)
-                cursor.execute("""
-                    INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (job_run_id, user_id, 'webhook', preferences['webhook_url'], json.dumps(payload), template['id'] if template else None))
-                notification_id = cursor.fetchone()['id']
-                notifications_created.append(notification_id)
-        else:
-            # Default notification to admin email
-            template = get_notification_template('email', event_type)
-            cursor.execute("""
-                INSERT INTO notifications (job_run_id, channel, dest, payload, template_id)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id
-            """, (job_run_id, 'email', 'admin@opsconductor.local', json.dumps(payload), template['id'] if template else None))
-            notification_id = cursor.fetchone()['id']
-            notifications_created.append(notification_id)
-        
-        conn.commit()
-        logger.info(f"Created {len(notifications_created)} notifications for job run {job_run_id}")
-        return notifications_created
+            logger.info(f"Created {len(notifications_created)} notifications for job run {job_run_id}")
+            return notifications_created
         
     except Exception as e:
         logger.error(f"Error creating notifications for job run {job_run_id}: {e}")
-        conn.rollback()
         return []
-    finally:
-        conn.close()
 
 async def notification_worker():
     """Enhanced background worker that processes pending notifications"""
@@ -620,20 +591,16 @@ async def notification_worker():
     
     while notification_worker_running:
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            # Get pending notifications (including retries)
-            cursor.execute("""
-                SELECT id, job_run_id, user_id, channel, dest, payload, template_id
-                FROM notifications 
-                WHERE status = 'pending' AND retries < 3
-                ORDER BY id
-                LIMIT 10
-            """)
-            
-            pending_notifications = cursor.fetchall()
-            conn.close()
+            with get_db_cursor(commit=False) as cursor:
+                # Get pending notifications (including retries)
+                cursor.execute("""
+                    SELECT id, job_run_id, user_id, channel, dest, payload, template_id
+                    FROM notifications 
+                    WHERE status = 'pending' AND retries < 3
+                    ORDER BY id
+                    LIMIT 10
+                """)
+                pending_notifications = cursor.fetchall()
             
             for notification in pending_notifications:
                 await process_notification(
@@ -662,23 +629,21 @@ async def health_check():
 @app.get("/status", response_model=NotificationWorkerStatus)
 async def get_notification_status():
     """Get notification worker status"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Count pending and failed notifications
-        cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE status = 'pending'")
-        pending_count = cursor.fetchone()["count"]
-        
-        cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE status = 'failed'")
-        failed_count = cursor.fetchone()["count"]
-        
-        return NotificationWorkerStatus(
-            worker_running=notification_worker_running,
-            pending_notifications=pending_count,
-            failed_notifications=failed_count,
-            last_check=datetime.now(timezone.utc)
-        )
+        with get_db_cursor(commit=False) as cursor:
+            # Count pending and failed notifications
+            cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE status = 'pending'")
+            pending_count = cursor.fetchone()["count"]
+            
+            cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE status = 'failed'")
+            failed_count = cursor.fetchone()["count"]
+            
+            return NotificationWorkerStatus(
+                worker_running=notification_worker_running,
+                pending_notifications=pending_count,
+                failed_notifications=failed_count,
+                last_check=datetime.now(timezone.utc)
+            )
         
     except Exception as e:
         logger.error(f"Error getting notification status: {e}")
@@ -686,8 +651,6 @@ async def get_notification_status():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get notification status"
         )
-    finally:
-        conn.close()
 
 # User Notification Preferences Endpoints
 
@@ -696,18 +659,17 @@ async def get_user_preferences(user_id: int, request: Request):
     """Get user notification preferences"""
     await verify_token(request)
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM user_notification_preferences WHERE user_id = %s
-        """, (user_id,))
-        
-        preferences = cursor.fetchone()
-        if not preferences:
-            # Return default preferences
-            return NotificationPreferencesResponse(
-                id=0,
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT * FROM user_notification_preferences WHERE user_id = %s
+            """, (user_id,))
+            
+            preferences = cursor.fetchone()
+            if not preferences:
+                # Return default preferences
+                return NotificationPreferencesResponse(
+                    id=0,
                 user_id=user_id,
                 email_enabled=True,
                 webhook_enabled=False,
@@ -721,8 +683,8 @@ async def get_user_preferences(user_id: int, request: Request):
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc)
             )
-        
-        return NotificationPreferencesResponse(**preferences)
+            
+            return NotificationPreferencesResponse(**preferences)
         
     except Exception as e:
         logger.error(f"Error getting user preferences: {e}")
@@ -730,71 +692,63 @@ async def get_user_preferences(user_id: int, request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get user preferences"
         )
-    finally:
-        conn.close()
 
 @app.put("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
 async def update_user_preferences(user_id: int, preferences: NotificationPreferences, request: Request):
     """Update user notification preferences"""
     await verify_token(request)
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Upsert preferences
-        cursor.execute("""
-            INSERT INTO user_notification_preferences (
-                user_id, email_enabled, email_address, webhook_enabled, webhook_url,
-                slack_enabled, slack_webhook_url, slack_channel, teams_enabled, teams_webhook_url,
-                notify_on_success, notify_on_failure, notify_on_start,
-                quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_timezone,
-                updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET
-                email_enabled = EXCLUDED.email_enabled,
-                email_address = EXCLUDED.email_address,
-                webhook_enabled = EXCLUDED.webhook_enabled,
-                webhook_url = EXCLUDED.webhook_url,
-                slack_enabled = EXCLUDED.slack_enabled,
-                slack_webhook_url = EXCLUDED.slack_webhook_url,
-                slack_channel = EXCLUDED.slack_channel,
-                teams_enabled = EXCLUDED.teams_enabled,
-                teams_webhook_url = EXCLUDED.teams_webhook_url,
-                notify_on_success = EXCLUDED.notify_on_success,
-                notify_on_failure = EXCLUDED.notify_on_failure,
-                notify_on_start = EXCLUDED.notify_on_start,
-                quiet_hours_enabled = EXCLUDED.quiet_hours_enabled,
-                quiet_hours_start = EXCLUDED.quiet_hours_start,
-                quiet_hours_end = EXCLUDED.quiet_hours_end,
-                quiet_hours_timezone = EXCLUDED.quiet_hours_timezone,
-                updated_at = EXCLUDED.updated_at
-            RETURNING *
-        """, (
-            user_id, preferences.email_enabled, preferences.email_address,
-            preferences.webhook_enabled, preferences.webhook_url,
-            preferences.slack_enabled, preferences.slack_webhook_url, preferences.slack_channel,
-            preferences.teams_enabled, preferences.teams_webhook_url,
-            preferences.notify_on_success, preferences.notify_on_failure, preferences.notify_on_start,
-            preferences.quiet_hours_enabled, preferences.quiet_hours_start, preferences.quiet_hours_end,
-            preferences.quiet_hours_timezone, datetime.now(timezone.utc)
-        ))
-        
-        updated_preferences = cursor.fetchone()
-        conn.commit()
-        
-        logger.info(f"Updated notification preferences for user {user_id}")
-        return NotificationPreferencesResponse(**updated_preferences)
+        with get_db_cursor() as cursor:
+            # Upsert preferences
+            cursor.execute("""
+                INSERT INTO user_notification_preferences (
+                    user_id, email_enabled, email_address, webhook_enabled, webhook_url,
+                    slack_enabled, slack_webhook_url, slack_channel, teams_enabled, teams_webhook_url,
+                    notify_on_success, notify_on_failure, notify_on_start,
+                    quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_timezone,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    email_enabled = EXCLUDED.email_enabled,
+                    email_address = EXCLUDED.email_address,
+                    webhook_enabled = EXCLUDED.webhook_enabled,
+                    webhook_url = EXCLUDED.webhook_url,
+                    slack_enabled = EXCLUDED.slack_enabled,
+                    slack_webhook_url = EXCLUDED.slack_webhook_url,
+                    slack_channel = EXCLUDED.slack_channel,
+                    teams_enabled = EXCLUDED.teams_enabled,
+                    teams_webhook_url = EXCLUDED.teams_webhook_url,
+                    notify_on_success = EXCLUDED.notify_on_success,
+                    notify_on_failure = EXCLUDED.notify_on_failure,
+                    notify_on_start = EXCLUDED.notify_on_start,
+                    quiet_hours_enabled = EXCLUDED.quiet_hours_enabled,
+                    quiet_hours_start = EXCLUDED.quiet_hours_start,
+                    quiet_hours_end = EXCLUDED.quiet_hours_end,
+                    quiet_hours_timezone = EXCLUDED.quiet_hours_timezone,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+            """, (
+                user_id, preferences.email_enabled, preferences.email_address,
+                preferences.webhook_enabled, preferences.webhook_url,
+                preferences.slack_enabled, preferences.slack_webhook_url, preferences.slack_channel,
+                preferences.teams_enabled, preferences.teams_webhook_url,
+                preferences.notify_on_success, preferences.notify_on_failure, preferences.notify_on_start,
+                preferences.quiet_hours_enabled, preferences.quiet_hours_start, preferences.quiet_hours_end,
+                preferences.quiet_hours_timezone, datetime.now(timezone.utc)
+            ))
+            
+            updated_preferences = cursor.fetchone()
+            
+            logger.info(f"Updated notification preferences for user {user_id}")
+            return NotificationPreferencesResponse(**updated_preferences)
         
     except Exception as e:
         logger.error(f"Error updating user preferences: {e}")
-        conn.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user preferences"
         )
-    finally:
-        conn.close()
 
 # Notification Channels Endpoints
 
@@ -803,13 +757,12 @@ async def get_notification_channels(request: Request):
     """Get available notification channels"""
     await verify_token(request)
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM notification_channels WHERE is_active = true ORDER BY name")
-        channels = cursor.fetchall()
-        
-        return [NotificationChannelResponse(**channel) for channel in channels]
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("SELECT * FROM notification_channels WHERE is_active = true ORDER BY name")
+            channels = cursor.fetchall()
+            
+            return [NotificationChannelResponse(**channel) for channel in channels]
         
     except Exception as e:
         logger.error(f"Error getting notification channels: {e}")
@@ -817,8 +770,6 @@ async def get_notification_channels(request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get notification channels"
         )
-    finally:
-        conn.close()
 
 # Enhanced notification creation endpoint
 
@@ -844,18 +795,17 @@ async def create_enhanced_notification(
         )
     
     # Return created notifications
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, job_run_id, user_id, channel, dest, payload, status, sent_at, retries, 
-                   is_escalation, escalation_level
-            FROM notifications 
-            WHERE id = ANY(%s)
-        """, (notification_ids,))
-        
-        notifications = cursor.fetchall()
-        return [NotificationResponse(**notification) for notification in notifications]
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT id, job_run_id, user_id, channel, dest, payload, status, sent_at, retries, 
+                       is_escalation, escalation_level
+                FROM notifications 
+                WHERE id = ANY(%s)
+            """, (notification_ids,))
+            
+            notifications = cursor.fetchall()
+            return [NotificationResponse(**notification) for notification in notifications]
         
     except Exception as e:
         logger.error(f"Error retrieving created notifications: {e}")
@@ -863,8 +813,6 @@ async def create_enhanced_notification(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Notifications created but failed to retrieve details"
         )
-    finally:
-        conn.close()
 
 # Internal endpoint for service-to-service communication
 @app.post("/internal/notifications/enhanced")
@@ -930,29 +878,27 @@ async def get_notifications(
     """Get notifications with pagination"""
     await verify_token(request)
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Get total count
-        cursor.execute("SELECT COUNT(*) as count FROM notifications")
-        total = cursor.fetchone()["count"]
-        
-        # Get notifications with pagination
-        cursor.execute("""
-            SELECT id, job_run_id, user_id, channel, dest, payload, status, sent_at, retries,
-                   is_escalation, escalation_level
-            FROM notifications 
-            ORDER BY id DESC 
-            LIMIT %s OFFSET %s
-        """, (limit, offset))
-        
-        notifications = cursor.fetchall()
-        
-        return NotificationListResponse(
-            notifications=[NotificationResponse(**notification) for notification in notifications],
-            total=total
-        )
+        with get_db_cursor(commit=False) as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) as count FROM notifications")
+            total = cursor.fetchone()["count"]
+            
+            # Get notifications with pagination
+            cursor.execute("""
+                SELECT id, job_run_id, user_id, channel, dest, payload, status, sent_at, retries,
+                       is_escalation, escalation_level
+                FROM notifications 
+                ORDER BY id DESC 
+                LIMIT %s OFFSET %s
+            """, (limit, offset))
+            
+            notifications = cursor.fetchall()
+            
+            return NotificationListResponse(
+                notifications=[NotificationResponse(**notification) for notification in notifications],
+                total=total
+            )
         
     except Exception as e:
         logger.error(f"Error getting notifications: {e}")
@@ -960,79 +906,68 @@ async def get_notifications(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get notifications"
         )
-    finally:
-        conn.close()
 
 # SMTP Settings endpoints (keeping existing functionality)
 def get_smtp_settings_from_db():
     """Get SMTP settings from database"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT setting_key, setting_value 
-            FROM system_settings 
-            WHERE setting_key LIKE 'smtp_%'
-        """)
-        settings = cursor.fetchall()
-        
-        # Convert to dict
-        smtp_dict = {}
-        for setting in settings:
-            key = setting['setting_key'].replace('smtp_', '')
-            smtp_dict[key] = setting['setting_value']
-        
-        return smtp_dict
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT setting_key, setting_value 
+                FROM system_settings 
+                WHERE setting_key LIKE 'smtp_%'
+            """)
+            settings = cursor.fetchall()
+            
+            # Convert to dict
+            smtp_dict = {}
+            for setting in settings:
+                key = setting['setting_key'].replace('smtp_', '')
+                smtp_dict[key] = setting['setting_value']
+            
+            return smtp_dict
     except Exception as e:
         logger.error(f"Error getting SMTP settings from DB: {e}")
         return {}
-    finally:
-        conn.close()
 
 def save_smtp_settings_to_db(settings: SMTPSettings):
     """Save SMTP settings to database"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Create system_settings table if it doesn't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS system_settings (
-                setting_key VARCHAR(255) PRIMARY KEY,
-                setting_value TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Save each setting
-        settings_dict = {
-            'smtp_host': settings.host,
-            'smtp_port': str(settings.port),
-            'smtp_username': settings.username,
-            'smtp_password': settings.password,
-            'smtp_use_tls': str(settings.use_tls).lower(),
-            'smtp_from_email': settings.from_email,
-            'smtp_from_name': settings.from_name
-        }
-        
-        for key, value in settings_dict.items():
+        with get_db_cursor() as cursor:
+            # Create system_settings table if it doesn't exist
             cursor.execute("""
-                INSERT INTO system_settings (setting_key, setting_value, updated_at)
-                VALUES (%s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (setting_key) 
-                DO UPDATE SET setting_value = EXCLUDED.setting_value, 
-                             updated_at = CURRENT_TIMESTAMP
-            """, (key, value))
-        
-        conn.commit()
-        logger.info("SMTP settings saved to database")
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    setting_key VARCHAR(255) PRIMARY KEY,
+                    setting_value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Save each setting
+            settings_dict = {
+                'smtp_host': settings.host,
+                'smtp_port': str(settings.port),
+                'smtp_username': settings.username,
+                'smtp_password': settings.password,
+                'smtp_use_tls': str(settings.use_tls).lower(),
+                'smtp_from_email': settings.from_email,
+                'smtp_from_name': settings.from_name
+            }
+            
+            for key, value in settings_dict.items():
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (setting_key) 
+                    DO UPDATE SET setting_value = EXCLUDED.setting_value, 
+                                 updated_at = CURRENT_TIMESTAMP
+                """, (key, value))
+            
+            logger.info("SMTP settings saved to database")
         
     except Exception as e:
         logger.error(f"Error saving SMTP settings to DB: {e}")
-        conn.rollback()
         raise
-    finally:
-        conn.close()
 
 def update_smtp_config(settings: SMTPSettings):
     """Update global SMTP_CONFIG with new settings"""

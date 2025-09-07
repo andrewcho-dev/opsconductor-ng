@@ -5,18 +5,21 @@ Supports both legacy single-service and new multi-service targets
 """
 
 import os
+import sys
 import json
 import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-import psycopg2
-import psycopg2.extras
+# Add shared module to path
+sys.path.append('/home/opsconductor')
+
 import requests
 from fastapi import FastAPI, HTTPException, Depends, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
 # Import our enhanced models
 from models import (
@@ -55,15 +58,7 @@ app.add_middleware(
 # Security
 security = HTTPBearer()
 
-# Database connection
-def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST", "postgres"),  # default to docker service name
-        database=os.getenv("DB_NAME", "opsconductor"),
-        user=os.getenv("DB_USER", "opsconductor"),
-        password=os.getenv("DB_PASSWORD", "opsconductor123"),
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+# Database connection is now handled by shared.database module
 
 # Authentication functions
 async def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -97,103 +92,100 @@ async def require_admin_or_operator_role(current_user: dict = Depends(verify_tok
     return current_user
 
 # Helper functions
-def get_target_services(conn, target_id: int) -> List[TargetService]:
+def get_target_services(target_id: int) -> List[TargetService]:
     """Get all services for a target"""
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT ts.*, sd.display_name, sd.category, sd.default_port, c.name as credential_name
-        FROM target_services ts
-        JOIN service_definitions sd ON ts.service_type = sd.service_type
-        LEFT JOIN credentials c ON ts.credential_id = c.id
-        WHERE ts.target_id = %s
-        ORDER BY sd.category, sd.display_name
-    """, (target_id,))
-    
-    services = []
-    for row in cursor.fetchall():
-        services.append(TargetService(
-            id=row['id'],
-            service_type=row['service_type'],
-            display_name=row['display_name'],
-            category=row['category'],
-            port=row['port'],
-            default_port=row['default_port'],
-            credential_id=row['credential_id'],
-            credential_name=row['credential_name'],
-            is_secure=row['is_secure'],
-            is_enabled=row['is_enabled'],
-            is_custom_port=row['is_custom_port'],
-            discovery_method=row['discovery_method'],
-            connection_status=row['connection_status'] or 'unknown',
-            last_checked=row['last_checked'],
-            notes=row['notes'],
-            created_at=row['created_at']
-        ))
-    
-    return services
+    with get_db_cursor(commit=False) as cursor:
+        cursor.execute("""
+            SELECT ts.*, sd.display_name, sd.category, sd.default_port, c.name as credential_name
+            FROM target_services ts
+            JOIN service_definitions sd ON ts.service_type = sd.service_type
+            LEFT JOIN credentials c ON ts.credential_id = c.id
+            WHERE ts.target_id = %s
+            ORDER BY sd.category, sd.display_name
+        """, (target_id,))
+        
+        services = []
+        for row in cursor.fetchall():
+            services.append(TargetService(
+                id=row['id'],
+                service_type=row['service_type'],
+                display_name=row['display_name'],
+                category=row['category'],
+                port=row['port'],
+                default_port=row['default_port'],
+                credential_id=row['credential_id'],
+                credential_name=row['credential_name'],
+                is_secure=row['is_secure'],
+                is_enabled=row['is_enabled'],
+                is_custom_port=row['is_custom_port'],
+                discovery_method=row['discovery_method'],
+                connection_status=row['connection_status'] or 'unknown',
+                last_checked=row['last_checked'],
+                notes=row['notes'],
+                created_at=row['created_at']
+            ))
+        
+        return services
 
-def get_target_credentials(conn, target_id: int) -> List[TargetCredential]:
+def get_target_credentials(target_id: int) -> List[TargetCredential]:
     """Get all credentials for a target"""
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT tc.id, tc.credential_id, c.name as credential_name, 
-               c.credential_type, tc.service_types, tc.is_primary, tc.created_at
-        FROM target_credentials tc
-        JOIN credentials c ON tc.credential_id = c.id
-        WHERE tc.target_id = %s AND c.deleted_at IS NULL
-        ORDER BY c.credential_type, c.name
-    """, (target_id,))
-    
-    credentials = []
-    for row in cursor.fetchall():
-        credentials.append(TargetCredential(
-            id=row['id'],
-            credential_id=row['credential_id'],
-            credential_name=row['credential_name'],
-            credential_type=row['credential_type'],
-            service_types=row['service_types'] or [],
-            is_primary=row['is_primary'] or False,
-            created_at=row['created_at']
-        ))
-    
-    return credentials
+    with get_db_cursor(commit=False) as cursor:
+        cursor.execute("""
+            SELECT tc.id, tc.credential_id, c.name as credential_name, 
+                   c.credential_type, tc.service_types, tc.is_primary, tc.created_at
+            FROM target_credentials tc
+            JOIN credentials c ON tc.credential_id = c.id
+            WHERE tc.target_id = %s AND c.deleted_at IS NULL
+            ORDER BY c.credential_type, c.name
+        """, (target_id,))
+        
+        credentials = []
+        for row in cursor.fetchall():
+            credentials.append(TargetCredential(
+                id=row['id'],
+                credential_id=row['credential_id'],
+                credential_name=row['credential_name'],
+                credential_type=row['credential_type'],
+                service_types=row['service_types'] or [],
+                is_primary=row['is_primary'] or False,
+                created_at=row['created_at']
+            ))
+        
+        return credentials
 
 # ENDPOINTS
 
 @app.get("/service-definitions", response_model=ServiceDefinitionResponse)
 async def get_service_definitions():
     """Get all available service definitions"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, service_type, display_name, category, default_port, 
-                   description, is_secure_by_default, is_common, created_at
-            FROM service_definitions
-            ORDER BY category, display_name
-        """)
-        
-        definitions = []
-        for row in cursor.fetchall():
-            definitions.append(ServiceDefinition(
-                id=row['id'],
-                service_type=row['service_type'],
-                display_name=row['display_name'],
-                category=row['category'],
-                default_port=row['default_port'],
-                description=row['description'],
-                is_secure_by_default=row['is_secure_by_default'],
-                is_common=row['is_common'],
-                created_at=row['created_at']
-            ))
-        
-        return ServiceDefinitionResponse(services=definitions, total=len(definitions))
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT id, service_type, display_name, category, default_port, 
+                       description, is_secure_by_default, is_common, created_at
+                FROM service_definitions
+                ORDER BY category, display_name
+            """)
+            
+            definitions = []
+            for row in cursor.fetchall():
+                definitions.append(ServiceDefinition(
+                    id=row['id'],
+                    service_type=row['service_type'],
+                    display_name=row['display_name'],
+                    category=row['category'],
+                    default_port=row['default_port'],
+                    description=row['description'],
+                    is_secure_by_default=row['is_secure_by_default'],
+                    is_common=row['is_common'],
+                    created_at=row['created_at']
+                ))
+            
+            return ServiceDefinitionResponse(services=definitions, total=len(definitions))
         
     except Exception as e:
         logger.error(f"Error getting service definitions: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.get("/targets", response_model=TargetListResponse)
 async def get_targets(
@@ -202,66 +194,62 @@ async def get_targets(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """Get all targets with pagination"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Get total count first
-        cursor.execute("""
-            SELECT COUNT(*) as total
-            FROM targets
-            WHERE deleted_at IS NULL
-        """)
-        total_result = cursor.fetchone()
-        total = total_result['total'] if total_result else 0
-        
-        # Get targets with pagination
-        cursor.execute("""
-            SELECT id, name, hostname, ip_address, os_type, os_version,
-                   description, tags, created_at, updated_at
-            FROM targets
-            WHERE deleted_at IS NULL
-            ORDER BY name
-            LIMIT %s OFFSET %s
-        """, (limit, skip))
-        
-        targets = []
-        rows = cursor.fetchall()
-        
-        for row in rows:
-            # Get services and credentials for each target
-            services = get_target_services(conn, row['id'])
-            credentials = get_target_credentials(conn, row['id'])
+        with get_db_cursor(commit=False) as cursor:
+            # Get total count first
+            cursor.execute("""
+                SELECT COUNT(*) as total
+                FROM targets
+                WHERE deleted_at IS NULL
+            """)
+            total_result = cursor.fetchone()
+            total = total_result['total'] if total_result else 0
             
-            targets.append(Target(
-                id=row['id'],
-                name=row['name'],
-                hostname=row['hostname'],
-                ip_address=row['ip_address'],
-                os_type=row['os_type'],
-                os_version=row['os_version'],
-                description=row['description'],
-                tags=row['tags'] or [],
-                services=services,
-                credentials=credentials,
-                created_at=row['created_at'],
-                updated_at=row['updated_at']
-            ))
-        
-        return TargetListResponse(
-            targets=targets,
-            total=total,
-            skip=skip,
-            limit=limit
-        )
+            # Get targets with pagination
+            cursor.execute("""
+                SELECT id, name, hostname, ip_address, os_type, os_version,
+                       description, tags, created_at, updated_at
+                FROM targets
+                WHERE deleted_at IS NULL
+                ORDER BY name
+                LIMIT %s OFFSET %s
+            """, (limit, skip))
+            
+            targets = []
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                # Get services and credentials for each target
+                services = get_target_services(row['id'])
+                credentials = get_target_credentials(row['id'])
+                
+                targets.append(Target(
+                    id=row['id'],
+                    name=row['name'],
+                    hostname=row['hostname'],
+                    ip_address=row['ip_address'],
+                    os_type=row['os_type'],
+                    os_version=row['os_version'],
+                    description=row['description'],
+                    tags=row['tags'] or [],
+                    services=services,
+                    credentials=credentials,
+                    created_at=row['created_at'],
+                    updated_at=row['updated_at']
+                ))
+            
+            return TargetListResponse(
+                targets=targets,
+                total=total,
+                skip=skip,
+                limit=limit
+            )
         
     except Exception as e:
         import traceback
         logger.error(f"Error getting targets: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.post("/targets", response_model=Target)
 async def create_target(
@@ -269,84 +257,78 @@ async def create_target(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Create a new target"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO targets (name, hostname, ip_address, os_type, os_version, description, tags)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, created_at, updated_at
-        """, (
-            target.name, target.hostname, target.ip_address,
-            target.os_type, target.os_version, target.description, target.tags
-        ))
-        
-        result = cursor.fetchone()
-        target_id = result['id']
-        
-        # Handle services if provided
-        if target.services:
-            for service in target.services:
-                cursor.execute("""
-                    INSERT INTO target_services 
-                    (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    target_id, service.service_type, service.port, service.credential_id,
-                    service.is_secure, service.is_enabled, service.notes,
-                    datetime.utcnow()
-                ))
-                
-                # Create credential association if credential_id is provided
-                if service.credential_id:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO targets (name, hostname, ip_address, os_type, os_version, description, tags)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, created_at, updated_at
+            """, (
+                target.name, target.hostname, target.ip_address,
+                target.os_type, target.os_version, target.description, target.tags
+            ))
+            
+            result = cursor.fetchone()
+            target_id = result['id']
+            
+            # Handle services if provided
+            if target.services:
+                for service in target.services:
                     cursor.execute("""
-                        INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary, created_at)
-                        VALUES (%s, %s, %s, %s, %s)
-                        ON CONFLICT (target_id, credential_id) DO UPDATE SET
-                        service_types = CASE 
-                            WHEN %s = ANY(target_credentials.service_types) THEN target_credentials.service_types
-                            ELSE array_append(target_credentials.service_types, %s)
-                        END
+                        INSERT INTO target_services 
+                        (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
-                        target_id, service.credential_id, [service.service_type], False, datetime.utcnow(),
-                        service.service_type, service.service_type
+                        target_id, service.service_type, service.port, service.credential_id,
+                        service.is_secure, service.is_enabled, service.notes,
+                        datetime.utcnow()
                     ))
+                    
+                    # Create credential association if credential_id is provided
+                    if service.credential_id:
+                        cursor.execute("""
+                            INSERT INTO target_credentials (target_id, credential_id, service_types, is_primary, created_at)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (target_id, credential_id) DO UPDATE SET
+                            service_types = CASE 
+                                WHEN %s = ANY(target_credentials.service_types) THEN target_credentials.service_types
+                                ELSE array_append(target_credentials.service_types, %s)
+                            END
+                        """, (
+                            target_id, service.credential_id, [service.service_type], False, datetime.utcnow(),
+                            service.service_type, service.service_type
+                        ))
+            
+            # Get services and credentials for the response
+            services = get_target_services(target_id)
+            credentials = get_target_credentials(target_id)
+            
+            return Target(
+                id=result['id'],
+                name=target.name,
+                hostname=target.hostname,
+                ip_address=target.ip_address,
+                os_type=target.os_type,
+                os_version=target.os_version,
+                description=target.description,
+                tags=target.tags or [],
+                services=services,
+                credentials=credentials,
+                created_at=result['created_at'],
+                updated_at=result['updated_at']
+            )
         
-        conn.commit()
-        
-        # Get services and credentials for the response
-        services = get_target_services(conn, target_id)
-        credentials = get_target_credentials(conn, target_id)
-        
-        return Target(
-            id=result['id'],
-            name=target.name,
-            hostname=target.hostname,
-            ip_address=target.ip_address,
-            os_type=target.os_type,
-            os_version=target.os_version,
-            description=target.description,
-            tags=target.tags or [],
-            services=services,
-            credentials=credentials,
-            created_at=result['created_at'],
-            updated_at=result['updated_at']
-        )
-        
-    except psycopg2.IntegrityError as e:
-        conn.rollback()
-        if "unique constraint" in str(e).lower():
-            if "hostname" in str(e).lower():
-                raise HTTPException(status_code=400, detail="Hostname already exists")
-            elif "ip_address" in str(e).lower():
-                raise HTTPException(status_code=400, detail="IP address already exists")
-        raise HTTPException(status_code=400, detail="Database constraint violation")
     except Exception as e:
-        conn.rollback()
+        import psycopg2
+        if isinstance(e, psycopg2.IntegrityError):
+            if "unique constraint" in str(e).lower():
+                if "hostname" in str(e).lower():
+                    raise HTTPException(status_code=400, detail="Hostname already exists")
+                elif "ip_address" in str(e).lower():
+                    raise HTTPException(status_code=400, detail="IP address already exists")
+            raise HTTPException(status_code=400, detail="Database constraint violation")
         logger.error(f"Error creating target: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.get("/targets/{target_id}", response_model=Target)
 async def get_target(
@@ -354,44 +336,42 @@ async def get_target(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """Get a specific target with its services and credentials"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, hostname, ip_address, os_type, os_version,
-                   description, tags, created_at, updated_at
-            FROM targets WHERE id = %s AND deleted_at IS NULL
-        """, (target_id,))
-        
-        target_row = cursor.fetchone()
-        if not target_row:
-            raise HTTPException(status_code=404, detail="Target not found")
-        
-        services = get_target_services(conn, target_id)
-        credentials = get_target_credentials(conn, target_id)
-        
-        return Target(
-            id=target_row['id'],
-            name=target_row['name'],
-            hostname=target_row['hostname'],
-            ip_address=target_row['ip_address'],
-            os_type=target_row['os_type'],
-            os_version=target_row['os_version'],
-            description=target_row['description'],
-            tags=target_row['tags'] or [],
-            services=services,
-            credentials=credentials,
-            created_at=target_row['created_at'],
-            updated_at=target_row['updated_at']
-        )
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute("""
+                SELECT id, name, hostname, ip_address, os_type, os_version,
+                       description, tags, created_at, updated_at
+                FROM targets WHERE id = %s AND deleted_at IS NULL
+            """, (target_id,))
+            
+            target_row = cursor.fetchone()
+            if not target_row:
+                raise HTTPException(status_code=404, detail="Target not found")
+            
+            # Get services and credentials
+            services = get_target_services(target_id)
+            credentials = get_target_credentials(target_id)
+            
+            return Target(
+                id=target_row['id'],
+                name=target_row['name'],
+                hostname=target_row['hostname'],
+                ip_address=target_row['ip_address'],
+                os_type=target_row['os_type'],
+                os_version=target_row['os_version'],
+                description=target_row['description'],
+                tags=target_row['tags'] or [],
+                services=services,
+                credentials=credentials,
+                created_at=target_row['created_at'],
+                updated_at=target_row['updated_at']
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting target: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.put("/targets/{target_id}", response_model=Target)
 async def update_target(
@@ -401,66 +381,64 @@ async def update_target(
 ):
     """Update an existing target"""
     logger.info(f"Updating target {target_id} with data: {target.dict()}")
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Check if target exists and is not deleted
-        cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Target not found")
-        
-        # Build dynamic update query for only provided fields
-        update_fields = []
-        update_values = []
-        
-        if target.name is not None:
-            update_fields.append("name = %s")
-            update_values.append(target.name)
-        if target.hostname is not None:
-            update_fields.append("hostname = %s")
-            update_values.append(target.hostname)
-        if target.ip_address is not None:
-            update_fields.append("ip_address = %s")
-            update_values.append(target.ip_address)
-        if target.os_type is not None:
-            update_fields.append("os_type = %s")
-            update_values.append(target.os_type)
-        if target.os_version is not None:
-            update_fields.append("os_version = %s")
-            update_values.append(target.os_version)
-        if target.description is not None:
-            update_fields.append("description = %s")
-            update_values.append(target.description)
-        if target.tags is not None:
-            update_fields.append("tags = %s")
-            update_values.append(target.tags)
-        
-        if not update_fields:
-            raise HTTPException(status_code=400, detail="No fields provided for update")
-        
-        # Always update the updated_at timestamp
-        update_fields.append("updated_at = %s")
-        update_values.append(datetime.utcnow())
-        update_values.append(target_id)
-        
-        query = f"UPDATE targets SET {', '.join(update_fields)} WHERE id = %s"
-        cursor.execute(query, update_values)
-        
-        # Handle services update if provided
-        if target.services is not None:
-            # Delete existing services for this target
-            cursor.execute("DELETE FROM target_services WHERE target_id = %s", (target_id,))
+        with get_db_cursor() as cursor:
+            # Check if target exists and is not deleted
+            cursor.execute("SELECT id FROM targets WHERE id = %s AND deleted_at IS NULL", (target_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Target not found")
             
-            # Clear existing credential associations (we'll recreate them)
-            cursor.execute("DELETE FROM target_credentials WHERE target_id = %s", (target_id,))
+            # Build dynamic update query for only provided fields
+            update_fields = []
+            update_values = []
             
-            # Add new services
-            for service in target.services:
-                cursor.execute("""
-                    INSERT INTO target_services 
-                    (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            if target.name is not None:
+                update_fields.append("name = %s")
+                update_values.append(target.name)
+            if target.hostname is not None:
+                update_fields.append("hostname = %s")
+                update_values.append(target.hostname)
+            if target.ip_address is not None:
+                update_fields.append("ip_address = %s")
+                update_values.append(target.ip_address)
+            if target.os_type is not None:
+                update_fields.append("os_type = %s")
+                update_values.append(target.os_type)
+            if target.os_version is not None:
+                update_fields.append("os_version = %s")
+                update_values.append(target.os_version)
+            if target.description is not None:
+                update_fields.append("description = %s")
+                update_values.append(target.description)
+            if target.tags is not None:
+                update_fields.append("tags = %s")
+                update_values.append(target.tags)
+            
+            if not update_fields:
+                raise HTTPException(status_code=400, detail="No fields provided for update")
+            
+            # Always update the updated_at timestamp
+            update_fields.append("updated_at = %s")
+            update_values.append(datetime.utcnow())
+            update_values.append(target_id)
+            
+            query = f"UPDATE targets SET {', '.join(update_fields)} WHERE id = %s"
+            cursor.execute(query, update_values)
+            
+            # Handle services update if provided
+            if target.services is not None:
+                # Delete existing services for this target
+                cursor.execute("DELETE FROM target_services WHERE target_id = %s", (target_id,))
+                
+                # Clear existing credential associations (we'll recreate them)
+                cursor.execute("DELETE FROM target_credentials WHERE target_id = %s", (target_id,))
+                
+                # Add new services
+                for service in target.services:
+                    cursor.execute("""
+                        INSERT INTO target_services 
+                        (target_id, service_type, port, credential_id, is_secure, is_enabled, notes, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     target_id, service.service_type, service.port, service.credential_id,
                     service.is_secure, service.is_enabled, service.notes,
@@ -481,51 +459,48 @@ async def update_target(
                         target_id, service.credential_id, [service.service_type], False, datetime.utcnow(),
                         service.service_type, service.service_type
                     ))
+            
+            # Get updated target data
+            cursor.execute("""
+                SELECT id, name, hostname, ip_address, os_type, os_version,
+                       description, tags, created_at, updated_at
+                FROM targets WHERE id = %s
+            """, (target_id,))
+            
+            target_row = cursor.fetchone()
+            
+            # Get services and credentials
+            services = get_target_services(target_id)
+            credentials = get_target_credentials(target_id)
         
-        conn.commit()
+            return Target(
+                id=target_row['id'],
+                name=target_row['name'],
+                hostname=target_row['hostname'],
+                ip_address=target_row['ip_address'],
+                os_type=target_row['os_type'],
+                os_version=target_row['os_version'],
+                description=target_row['description'],
+                tags=target_row['tags'] or [],
+                services=services,
+                credentials=credentials,
+                created_at=target_row['created_at'],
+                updated_at=target_row['updated_at']
+            )
         
-        # Get updated target data
-        cursor.execute("""
-            SELECT id, name, hostname, ip_address, os_type, os_version,
-                   description, tags, created_at, updated_at
-            FROM targets WHERE id = %s
-        """, (target_id,))
-        
-        target_row = cursor.fetchone()
-        services = get_target_services(conn, target_id)
-        credentials = get_target_credentials(conn, target_id)
-        
-        return Target(
-            id=target_row['id'],
-            name=target_row['name'],
-            hostname=target_row['hostname'],
-            ip_address=target_row['ip_address'],
-            os_type=target_row['os_type'],
-            os_version=target_row['os_version'],
-            description=target_row['description'],
-            tags=target_row['tags'] or [],
-            services=services,
-            credentials=credentials,
-            created_at=target_row['created_at'],
-            updated_at=target_row['updated_at']
-        )
-        
-    except psycopg2.IntegrityError as e:
-        conn.rollback()
-        if "unique constraint" in str(e).lower():
-            if "hostname" in str(e).lower():
-                raise HTTPException(status_code=400, detail="Hostname already exists")
-            elif "ip_address" in str(e).lower():
-                raise HTTPException(status_code=400, detail="IP address already exists")
-        raise HTTPException(status_code=400, detail="Database constraint violation")
-    except HTTPException:
-        raise
     except Exception as e:
-        conn.rollback()
+        import psycopg2
+        if isinstance(e, psycopg2.IntegrityError):
+            if "unique constraint" in str(e).lower():
+                if "hostname" in str(e).lower():
+                    raise HTTPException(status_code=400, detail="Hostname already exists")
+                elif "ip_address" in str(e).lower():
+                    raise HTTPException(status_code=400, detail="IP address already exists")
+            raise HTTPException(status_code=400, detail="Database constraint violation")
+        elif isinstance(e, HTTPException):
+            raise
         logger.error(f"Error updating target: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.delete("/targets/{target_id}")
 async def delete_target(
@@ -533,34 +508,27 @@ async def delete_target(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Delete a target (soft delete)"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Soft delete target
-        cursor.execute(
-            "UPDATE targets SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
-            (datetime.utcnow(), target_id)
-        )
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=404, 
-                detail="Target not found or already deleted"
+        with get_db_cursor() as cursor:
+            # Soft delete target
+            cursor.execute(
+                "UPDATE targets SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+                (datetime.utcnow(), target_id)
             )
-        
-        conn.commit()
-        
-        return {"message": "Target deleted successfully"}
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=404, 
+                    detail="Target not found or already deleted"
+                )
+            
+            return {"message": "Target deleted successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
         logger.error(f"Error deleting target: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 # CREDENTIAL MANAGEMENT ENDPOINTS
 
@@ -571,58 +539,52 @@ async def add_credential_to_target(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Add a credential to a target"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
+        with get_db_cursor() as cursor:
+            # Verify target exists
+            cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Target not found")
+            
+            # Verify credential exists
+            cursor.execute("SELECT id, name, credential_type FROM credentials WHERE id = %s", (credential.credential_id,))
+            cred_data = cursor.fetchone()
+            if not cred_data:
+                raise HTTPException(status_code=404, detail="Credential not found")
+            
+            # Create target credential association
+            cursor.execute("""
+                INSERT INTO target_credentials 
+                (target_id, credential_id, service_types, is_primary, created_at)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                target_id, credential.credential_id, credential.service_types,
+                credential.is_primary, datetime.utcnow()
+            ))
+            
+            tc_id = cursor.fetchone()['id']
         
-        # Verify target exists
-        cursor.execute("SELECT id FROM targets WHERE id = %s", (target_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Target not found")
+            return TargetCredential(
+                id=tc_id,
+                credential_id=credential.credential_id,
+                credential_name=cred_data['name'],
+                credential_type=cred_data['credential_type'],
+                service_types=credential.service_types,
+                is_primary=credential.is_primary,
+                created_at=datetime.utcnow()
+            )
         
-        # Verify credential exists
-        cursor.execute("SELECT id, name, credential_type FROM credentials WHERE id = %s", (credential.credential_id,))
-        cred_data = cursor.fetchone()
-        if not cred_data:
-            raise HTTPException(status_code=404, detail="Credential not found")
-        
-        # Create target credential association
-        cursor.execute("""
-            INSERT INTO target_credentials 
-            (target_id, credential_id, service_types, is_primary, created_at)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            target_id, credential.credential_id, credential.service_types,
-            credential.is_primary, datetime.utcnow()
-        ))
-        
-        tc_id = cursor.fetchone()['id']
-        conn.commit()
-        
-        return TargetCredential(
-            id=tc_id,
-            credential_id=credential.credential_id,
-            credential_name=cred_data['name'],
-            credential_type=cred_data['credential_type'],
-            service_types=credential.service_types,
-            is_primary=credential.is_primary,
-            created_at=datetime.utcnow()
-        )
-        
-    except psycopg2.IntegrityError as e:
-        conn.rollback()
-        if "unique constraint" in str(e).lower():
-            raise HTTPException(status_code=400, detail="Credential already associated with this target")
-        raise HTTPException(status_code=400, detail="Database constraint violation")
-    except HTTPException:
-        raise
     except Exception as e:
-        conn.rollback()
+        import psycopg2
+        if isinstance(e, psycopg2.IntegrityError):
+            if "unique constraint" in str(e).lower():
+                raise HTTPException(status_code=400, detail="Credential already associated with this target")
+            raise HTTPException(status_code=400, detail="Database constraint violation")
+        elif isinstance(e, HTTPException):
+            raise
         logger.error(f"Error adding credential to target: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.put("/targets/{target_id}/credentials/{credential_id}", response_model=TargetCredential)
 async def update_target_credential(
@@ -632,51 +594,44 @@ async def update_target_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Update a credential association on a target"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
+        with get_db_cursor() as cursor:
+            # Verify target credential exists
+            cursor.execute("""
+                SELECT tc.id, c.name, c.credential_type
+                FROM target_credentials tc
+                JOIN credentials c ON tc.credential_id = c.id
+                WHERE tc.target_id = %s AND tc.credential_id = %s
+            """, (target_id, credential_id))
+            
+            tc_data = cursor.fetchone()
+            if not tc_data:
+                raise HTTPException(status_code=404, detail="Target credential association not found")
+            
+            # Update target credential
+            cursor.execute("""
+                UPDATE target_credentials 
+                SET service_types = %s, is_primary = %s
+                WHERE target_id = %s AND credential_id = %s
+            """, (
+                credential.service_types, credential.is_primary, target_id, credential_id
+            ))
         
-        # Verify target credential exists
-        cursor.execute("""
-            SELECT tc.id, c.name, c.credential_type
-            FROM target_credentials tc
-            JOIN credentials c ON tc.credential_id = c.id
-            WHERE tc.target_id = %s AND tc.credential_id = %s
-        """, (target_id, credential_id))
-        
-        tc_data = cursor.fetchone()
-        if not tc_data:
-            raise HTTPException(status_code=404, detail="Target credential association not found")
-        
-        # Update target credential
-        cursor.execute("""
-            UPDATE target_credentials 
-            SET service_types = %s, is_primary = %s
-            WHERE target_id = %s AND credential_id = %s
-        """, (
-            credential.service_types, credential.is_primary, target_id, credential_id
-        ))
-        
-        conn.commit()
-        
-        return TargetCredential(
-            id=tc_data['id'],
-            credential_id=credential_id,
-            credential_name=tc_data['name'],
-            credential_type=tc_data['credential_type'],
-            service_types=credential.service_types,
-            is_primary=credential.is_primary,
-            created_at=datetime.utcnow()
-        )
+            return TargetCredential(
+                id=tc_data['id'],
+                credential_id=credential_id,
+                credential_name=tc_data['name'],
+                credential_type=tc_data['credential_type'],
+                service_types=credential.service_types,
+                is_primary=credential.is_primary,
+                created_at=datetime.utcnow()
+            )
         
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
         logger.error(f"Error updating target credential: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.delete("/targets/{target_id}/credentials/{credential_id}")
 async def delete_target_credential(
@@ -685,37 +640,30 @@ async def delete_target_credential(
     current_user: dict = Depends(require_admin_or_operator_role)
 ):
     """Remove a credential association from a target"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Verify target credential exists
-        cursor.execute("""
-            SELECT id FROM target_credentials 
-            WHERE target_id = %s AND credential_id = %s
-        """, (target_id, credential_id))
-        
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Target credential association not found")
-        
-        # Delete target credential
-        cursor.execute("""
-            DELETE FROM target_credentials 
-            WHERE target_id = %s AND credential_id = %s
-        """, (target_id, credential_id))
-        
-        conn.commit()
-        
-        return {"message": "Credential association deleted successfully"}
+        with get_db_cursor() as cursor:
+            # Verify target credential exists
+            cursor.execute("""
+                SELECT id FROM target_credentials 
+                WHERE target_id = %s AND credential_id = %s
+            """, (target_id, credential_id))
+            
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Target credential association not found")
+            
+            # Delete target credential
+            cursor.execute("""
+                DELETE FROM target_credentials 
+                WHERE target_id = %s AND credential_id = %s
+            """, (target_id, credential_id))
+            
+            return {"message": "Credential association deleted successfully"}
         
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
         logger.error(f"Error deleting target credential: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.post("/targets/services/{service_id}/test")
 async def test_service_connection(
@@ -724,28 +672,27 @@ async def test_service_connection(
 ):
     """Test connection to a specific service"""
     logger.info(f"Starting test connection for service_id: {service_id}")
-    conn = get_db_connection()
     try:
-        logger.info("Database connection established, creating cursor")
-        cursor = conn.cursor()
-        
-        # Get service details with target info
-        logger.info(f"Querying service details for service_id: {service_id}")
-        cursor.execute("""
-            SELECT 
-                ts.id, ts.service_type, ts.port, ts.is_secure, ts.is_enabled,
-                t.hostname, t.ip_address,
-                c.username, c.password, c.private_key, c.credential_type
-            FROM target_services ts
-            JOIN targets t ON ts.target_id = t.id
-            LEFT JOIN credentials c ON ts.credential_id = c.id
-            WHERE ts.id = %s AND ts.is_enabled = true
-        """, (service_id,))
-        
-        service = cursor.fetchone()
-        logger.info(f"Service query result: {service}")
-        if not service:
-            raise HTTPException(status_code=404, detail="Service not found or disabled")
+        with get_db_cursor() as cursor:
+            logger.info("Database connection established, creating cursor")
+            
+            # Get service details with target info
+            logger.info(f"Querying service details for service_id: {service_id}")
+            cursor.execute("""
+                SELECT 
+                    ts.id, ts.service_type, ts.port, ts.is_secure, ts.is_enabled,
+                    t.hostname, t.ip_address,
+                    c.username, c.password, c.private_key, c.credential_type
+                FROM target_services ts
+                JOIN targets t ON ts.target_id = t.id
+                LEFT JOIN credentials c ON ts.credential_id = c.id
+                WHERE ts.id = %s AND ts.is_enabled = true
+            """, (service_id,))
+            
+            service = cursor.fetchone()
+            logger.info(f"Service query result: {service}")
+            if not service:
+                raise HTTPException(status_code=404, detail="Service not found or disabled")
         
         # Basic connection test based on service type
         target_host = service['ip_address'] or service['hostname']
@@ -771,43 +718,29 @@ async def test_service_connection(
             if result == 0:
                 success = True
                 message = f"Port {port} is open and accepting connections"
-                
-                # Update connection status in database
-                logger.info(f"Updating connection status to 'connected' for service_id: {service_id}")
-                cursor.execute("""
-                    UPDATE target_services 
-                    SET connection_status = 'connected', last_checked = %s
-                    WHERE id = %s
-                """, (datetime.utcnow().isoformat(), service_id))
+                status = 'connected'
             else:
                 success = False
                 message = f"Port {port} is not accessible (connection refused)"
-                
-                # Update connection status in database
-                cursor.execute("""
-                    UPDATE target_services 
-                    SET connection_status = 'failed', last_checked = %s
-                    WHERE id = %s
-                """, (datetime.utcnow().isoformat(), service_id))
+                status = 'failed'
                 
         except socket.gaierror as e:
             success = False
             message = f"DNS resolution failed: {str(e)}"
-            cursor.execute("""
-                UPDATE target_services 
-                SET connection_status = 'failed', last_checked = %s
-                WHERE id = %s
-            """, (datetime.utcnow().isoformat(), service_id))
+            status = 'failed'
         except Exception as e:
             success = False
             message = f"Connection test failed: {str(e)}"
-            cursor.execute("""
-                UPDATE target_services 
-                SET connection_status = 'failed', last_checked = %s
-                WHERE id = %s
-            """, (datetime.utcnow().isoformat(), service_id))
+            status = 'failed'
         
-        conn.commit()
+        # Update connection status in database
+        with get_db_cursor() as update_cursor:
+            logger.info(f"Updating connection status to '{status}' for service_id: {service_id}")
+            update_cursor.execute("""
+                UPDATE target_services 
+                SET connection_status = %s, last_checked = %s
+                WHERE id = %s
+            """, (status, datetime.utcnow().isoformat(), service_id))
         
         return {
             "success": success,
@@ -821,24 +754,26 @@ async def test_service_connection(
     except HTTPException:
         raise
     except Exception as e:
-        conn.rollback()
         logger.error(f"Error testing service connection: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        conn.close()
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        conn.close()
-        return {"status": "healthy", "version": "2.0.0", "features": ["multi-service", "crud-complete"]}
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+    """Health check endpoint with database connectivity"""
+    db_health = check_database_health()
+    return {
+        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+        "service": "targets-service",
+        "version": "2.0.0",
+        "features": ["multi-service", "crud-complete"],
+        "database": db_health
+    }
+
+# Cleanup on shutdown
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up database connections on shutdown"""
+    cleanup_database_pool()
 
 if __name__ == "__main__":
     import uvicorn

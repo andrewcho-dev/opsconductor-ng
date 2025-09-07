@@ -11,6 +11,9 @@ import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
+import sys
+sys.path.append('/home/opsconductor')
+
 import psycopg2
 import psycopg2.extras
 import requests
@@ -20,6 +23,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, validator, Field
 from dotenv import load_dotenv
 import jsonschema
+
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
 
 # Load environment variables
 load_dotenv()
@@ -399,25 +404,7 @@ class JobRunStepResponse(BaseModel):
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
 
-# Database connection
-def get_db_connection():
-    """Get database connection"""
-    try:
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            cursor_factory=psycopg2.extras.RealDictCursor
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection failed"
-        )
+# Database connection - now using shared connection pool
 
 # Authentication
 def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -470,55 +457,48 @@ async def create_job(
     # Validate job definition
     validate_job_definition(job_data.definition)
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Check if job name already exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM jobs WHERE name = %s AND deleted_at IS NULL", (job_data.name,))
-        existing_job = cursor.fetchone()
-        if existing_job:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Job with this name already exists"
+        with get_db_cursor() as cursor:
+            # Check if job name already exists (excluding soft-deleted)
+            cursor.execute("SELECT id FROM jobs WHERE name = %s AND deleted_at IS NULL", (job_data.name,))
+            existing_job = cursor.fetchone()
+            if existing_job:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Job with this name already exists"
+                )
+            
+            # Insert job
+            cursor.execute(
+                """INSERT INTO jobs (name, version, definition, created_by, is_active, created_at)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   RETURNING id, name, version, definition, created_by, is_active, created_at""",
+                (
+                    job_data.name,
+                    job_data.version,
+                    json.dumps(job_data.definition),
+                    current_user["id"],
+                    job_data.is_active,
+                    datetime.utcnow()
+                )
             )
-        
-        # Insert job
-        cursor.execute(
-            """INSERT INTO jobs (name, version, definition, created_by, is_active, created_at)
-               VALUES (%s, %s, %s, %s, %s, %s)
-               RETURNING id, name, version, definition, created_by, is_active, created_at""",
-            (
-                job_data.name,
-                job_data.version,
-                json.dumps(job_data.definition),
-                current_user["id"],
-                job_data.is_active,
-                datetime.utcnow()
-            )
-        )
-        
-        new_job = cursor.fetchone()
-        conn.commit()
-        
-        # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
-        if isinstance(new_job["definition"], str):
-            new_job["definition"] = json.loads(new_job["definition"])
-        
-        return JobResponse(**new_job)
+            
+            new_job = cursor.fetchone()
+            
+            # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
+            if isinstance(new_job["definition"], str):
+                new_job["definition"] = json.loads(new_job["definition"])
+            
+            return JobResponse(**new_job)
         
     except HTTPException:
-        conn.rollback()
         raise  # Re-raise HTTPExceptions (like 409 Conflict) without modification
     except Exception as e:
-        conn.rollback()
         logger.error(f"Job creation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create job"
         )
-    finally:
-        conn.close()
 
 @app.get("/jobs", response_model=JobListResponse)
 async def list_jobs(
@@ -528,40 +508,38 @@ async def list_jobs(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """List all jobs with pagination"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Build query with optional active filter and soft delete exclusion
-        if active_only:
-            where_clause = "WHERE is_active = true AND deleted_at IS NULL"
-        else:
-            where_clause = "WHERE deleted_at IS NULL"
-        
-        # Get total count
-        cursor.execute(f"SELECT COUNT(*) FROM jobs {where_clause}")
-        total = cursor.fetchone()["count"]
-        
-        # Get jobs with pagination
-        cursor.execute(
-            f"""SELECT id, name, version, definition, created_by, is_active, created_at
-               FROM jobs {where_clause}
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (limit, skip)
-        )
-        jobs = cursor.fetchall()
-        
-        # Handle JSON definitions (already parsed by psycopg2 for JSONB fields)
-        for job in jobs:
-            if isinstance(job["definition"], str):
-                job["definition"] = json.loads(job["definition"])
-            # If it's already a dict, keep it as is
-        
-        return JobListResponse(
-            jobs=[JobResponse(**job) for job in jobs],
-            total=total
-        )
+        with get_db_cursor(commit=False) as cursor:
+            # Build query with optional active filter and soft delete exclusion
+            if active_only:
+                where_clause = "WHERE is_active = true AND deleted_at IS NULL"
+            else:
+                where_clause = "WHERE deleted_at IS NULL"
+            
+            # Get total count
+            cursor.execute(f"SELECT COUNT(*) FROM jobs {where_clause}")
+            total = cursor.fetchone()["count"]
+            
+            # Get jobs with pagination
+            cursor.execute(
+                f"""SELECT id, name, version, definition, created_by, is_active, created_at
+                   FROM jobs {where_clause}
+                   ORDER BY created_at DESC 
+                   LIMIT %s OFFSET %s""",
+                (limit, skip)
+            )
+            jobs = cursor.fetchall()
+            
+            # Handle JSON definitions (already parsed by psycopg2 for JSONB fields)
+            for job in jobs:
+                if isinstance(job["definition"], str):
+                    job["definition"] = json.loads(job["definition"])
+                # If it's already a dict, keep it as is
+            
+            return JobListResponse(
+                jobs=[JobResponse(**job) for job in jobs],
+                total=total
+            )
         
     except Exception as e:
         logger.error(f"Job listing error: {e}")
@@ -569,32 +547,29 @@ async def list_jobs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve jobs"
         )
-    finally:
-        conn.close()
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get job by ID"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s AND deleted_at IS NULL",
-            (job_id,)
-        )
-        job_data = cursor.fetchone()
-        
-        if not job_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s AND deleted_at IS NULL",
+                (job_id,)
             )
-        
-        # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
-        if isinstance(job_data["definition"], str):
-            job_data["definition"] = json.loads(job_data["definition"])
-        
-        return JobResponse(**job_data)
+            job_data = cursor.fetchone()
+            
+            if not job_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job not found"
+                )
+            
+            # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
+            if isinstance(job_data["definition"], str):
+                job_data["definition"] = json.loads(job_data["definition"])
+            
+            return JobResponse(**job_data)
         
     except Exception as e:
         logger.error(f"Job retrieval error: {e}")
@@ -602,8 +577,6 @@ async def get_job(job_id: int, current_user: dict = Depends(verify_token_with_au
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve job"
         )
-    finally:
-        conn.close()
 
 @app.put("/jobs/{job_id}", response_model=JobResponse)
 async def update_job(
@@ -614,126 +587,114 @@ async def update_job(
     """Update job by ID"""
     logger.info(f"Update job request - ID: {job_id}, Data type: {type(job_data)}")
     logger.info(f"Job data definition type: {type(job_data.definition) if job_data.definition else 'None'}")
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        logger.info("Database connection established")
-        
-        # Check if job exists (excluding soft-deleted)
-        cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (job_id,))
-        if not cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
-            )
-        logger.info("Job exists check passed")
-        
-        # Validate definition if provided - DISABLED FOR TESTING
-        # if job_data.definition is not None:
-        #     validate_job_definition(job_data.definition)
-        
-        # Build update query
-        update_fields = []
-        update_values = []
-        
-        if job_data.name is not None:
-            update_fields.append("name = %s")
-            update_values.append(job_data.name)
+        with get_db_cursor() as cursor:
+            logger.info("Database connection established")
             
-        if job_data.version is not None:
-            update_fields.append("version = %s")
-            update_values.append(job_data.version)
+            # Check if job exists (excluding soft-deleted)
+            cursor.execute("SELECT id FROM jobs WHERE id = %s AND deleted_at IS NULL", (job_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job not found"
+                )
+            logger.info("Job exists check passed")
             
-        if job_data.definition is not None:
-            update_fields.append("definition = %s")
-            # Handle definition - it should be a dict, convert to JSON string
-            logger.info(f"Definition type: {type(job_data.definition)}, value: {job_data.definition}")
-            if isinstance(job_data.definition, dict):
-                definition_json = json.dumps(job_data.definition)
-                logger.info(f"Converted to JSON: {definition_json}")
-                update_values.append(definition_json)
-            else:
-                # If it's already a string, use it as-is
-                logger.info(f"Using as-is: {job_data.definition}")
-                update_values.append(job_data.definition)
+            # Validate definition if provided - DISABLED FOR TESTING
+            # if job_data.definition is not None:
+            #     validate_job_definition(job_data.definition)
             
-        if job_data.is_active is not None:
-            update_fields.append("is_active = %s")
-            update_values.append(job_data.is_active)
-        
-        if not update_fields:
-            # No fields to update, just return current job
-            cursor.execute(
-                "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s",
-                (job_id,)
-            )
-            job_result = cursor.fetchone()
+            # Build update query
+            update_fields = []
+            update_values = []
+            
+            if job_data.name is not None:
+                update_fields.append("name = %s")
+                update_values.append(job_data.name)
+                
+            if job_data.version is not None:
+                update_fields.append("version = %s")
+                update_values.append(job_data.version)
+                
+            if job_data.definition is not None:
+                update_fields.append("definition = %s")
+                # Handle definition - it should be a dict, convert to JSON string
+                logger.info(f"Definition type: {type(job_data.definition)}, value: {job_data.definition}")
+                if isinstance(job_data.definition, dict):
+                    definition_json = json.dumps(job_data.definition)
+                    logger.info(f"Converted to JSON: {definition_json}")
+                    update_values.append(definition_json)
+                else:
+                    # If it's already a string, use it as-is
+                    logger.info(f"Using as-is: {job_data.definition}")
+                    update_values.append(job_data.definition)
+                
+            if job_data.is_active is not None:
+                update_fields.append("is_active = %s")
+                update_values.append(job_data.is_active)
+            
+            if not update_fields:
+                # No fields to update, just return current job
+                cursor.execute(
+                    "SELECT id, name, version, definition, created_by, is_active, created_at FROM jobs WHERE id = %s",
+                    (job_id,)
+                )
+                job_result = cursor.fetchone()
+                # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
+                if isinstance(job_result["definition"], str):
+                    job_result["definition"] = json.loads(job_result["definition"])
+                return JobResponse(**job_result)
+            
+            # Execute update
+            update_query = f"""
+                UPDATE jobs 
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, name, version, definition, created_by, is_active, created_at
+            """
+            update_values.append(job_id)
+            
+            cursor.execute(update_query, update_values)
+            updated_job = cursor.fetchone()
+            
             # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
-            if isinstance(job_result["definition"], str):
-                job_result["definition"] = json.loads(job_result["definition"])
-            return JobResponse(**job_result)
-        
-        # Execute update
-        update_query = f"""
-            UPDATE jobs 
-            SET {', '.join(update_fields)}
-            WHERE id = %s
-            RETURNING id, name, version, definition, created_by, is_active, created_at
-        """
-        update_values.append(job_id)
-        
-        cursor.execute(update_query, update_values)
-        updated_job = cursor.fetchone()
-        conn.commit()
-        
-        # Handle JSON definition (already parsed by psycopg2 for JSONB fields)
-        if isinstance(updated_job["definition"], str):
-            updated_job["definition"] = json.loads(updated_job["definition"])
-        
-        return JobResponse(**updated_job)
+            if isinstance(updated_job["definition"], str):
+                updated_job["definition"] = json.loads(updated_job["definition"])
+            
+            return JobResponse(**updated_job)
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Job update error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update job"
         )
-    finally:
-        conn.close()
 
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
     """Delete job by ID"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Soft delete job (no need to check job runs anymore)
-        cursor.execute(
-            "UPDATE jobs SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
-            (datetime.utcnow(), job_id)
-        )
-        
-        if cursor.rowcount == 0:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found or already deleted"
+        with get_db_cursor() as cursor:
+            # Soft delete job (no need to check job runs anymore)
+            cursor.execute(
+                "UPDATE jobs SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL",
+                (datetime.utcnow(), job_id)
             )
-        
-        conn.commit()
-        
-        return {"message": "Job deleted successfully"}
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job not found or already deleted"
+                )
+            
+            return {"message": "Job deleted successfully"}
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Job deletion error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete job"
         )
-    finally:
-        conn.close()
 
 # JOB RUN Operations
 @app.post("/jobs/{job_id}/run", response_model=JobRunResponse, status_code=status.HTTP_201_CREATED)
@@ -746,95 +707,88 @@ async def run_job(
     if run_data is None:
         run_data = {}
     
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Get job definition
-        cursor.execute(
-            "SELECT id, name, definition, is_active FROM jobs WHERE id = %s",
-            (job_id,)
-        )
-        job_data = cursor.fetchone()
-        
-        if not job_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
-            )
-        
-        if not job_data["is_active"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Job is not active"
-            )
-        
-        # Parse job definition if it's a string, otherwise use as-is
-        job_definition = job_data["definition"]
-        if isinstance(job_definition, str):
-            job_definition = json.loads(job_definition)
-        
-        # Generate correlation ID
-        correlation_id = str(uuid.uuid4())
-        
-        # Create job run
-        cursor.execute(
-            """INSERT INTO job_runs (job_id, status, requested_by, parameters, queued_at, correlation_id)
-               VALUES (%s, %s, %s, %s, %s, %s)
-               RETURNING id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id""",
-            (
-                job_id,
-                "queued",
-                current_user["id"],
-                json.dumps(run_data or {}),
-                datetime.utcnow(),
-                correlation_id
-            )
-        )
-        
-        job_run = cursor.fetchone()
-        job_run_id = job_run["id"]
-        
-        # Create job run steps
-        for idx, step in enumerate(job_definition["steps"]):
-            # Resolve target reference
-            target_id = None
-            if step.get("target"):
-                cursor.execute("SELECT id FROM targets WHERE name = %s", (step["target"],))
-                target_result = cursor.fetchone()
-                if target_result:
-                    target_id = target_result["id"]
-            
+        with get_db_cursor() as cursor:
+            # Get job definition
             cursor.execute(
-                """INSERT INTO job_run_steps (job_run_id, idx, type, target_id, status, shell, timeoutsec)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                "SELECT id, name, definition, is_active FROM jobs WHERE id = %s",
+                (job_id,)
+            )
+            job_data = cursor.fetchone()
+            
+            if not job_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job not found"
+                )
+            
+            if not job_data["is_active"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Job is not active"
+                )
+            
+            # Parse job definition if it's a string, otherwise use as-is
+            job_definition = job_data["definition"]
+            if isinstance(job_definition, str):
+                job_definition = json.loads(job_definition)
+            
+            # Generate correlation ID
+            correlation_id = str(uuid.uuid4())
+            
+            # Create job run
+            cursor.execute(
+                """INSERT INTO job_runs (job_id, status, requested_by, parameters, queued_at, correlation_id)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   RETURNING id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id""",
                 (
-                    job_run_id,
-                    idx,
-                    step["type"],
-                    target_id,
+                    job_id,
                     "queued",
-                    step.get("shell"),
-                    step.get("timeoutSec", 60)
+                    current_user["id"],
+                    json.dumps(run_data or {}),
+                    datetime.utcnow(),
+                    correlation_id
                 )
             )
-        
-        conn.commit()
-        
-        # Parameters are already parsed by psycopg2 RealDictCursor
-        # job_run["parameters"] is already a dict
-        
-        return JobRunResponse(**job_run)
+            
+            job_run = cursor.fetchone()
+            job_run_id = job_run["id"]
+            
+            # Create job run steps
+            for idx, step in enumerate(job_definition["steps"]):
+                # Resolve target reference
+                target_id = None
+                if step.get("target"):
+                    cursor.execute("SELECT id FROM targets WHERE name = %s", (step["target"],))
+                    target_result = cursor.fetchone()
+                    if target_result:
+                        target_id = target_result["id"]
+                
+                cursor.execute(
+                    """INSERT INTO job_run_steps (job_run_id, idx, type, target_id, status, shell, timeoutsec)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        job_run_id,
+                        idx,
+                        step["type"],
+                        target_id,
+                        "queued",
+                        step.get("shell"),
+                        step.get("timeoutSec", 60)
+                    )
+                )
+            
+            # Parameters are already parsed by psycopg2 RealDictCursor
+            # job_run["parameters"] is already a dict
+            
+            return JobRunResponse(**job_run)
         
     except Exception as e:
-        conn.rollback()
         logger.error(f"Job run creation error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create job run"
         )
-    finally:
-        conn.close()
 
 @app.get("/runs", response_model=JobRunListResponse)
 async def list_runs(
@@ -844,40 +798,38 @@ async def list_runs(
     current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """List job runs with pagination"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Build query with optional job filter
-        where_clause = ""
-        params = []
-        if job_id is not None:
-            where_clause = "WHERE job_id = %s"
-            params.append(job_id)
-        
-        # Get total count
-        count_query = f"SELECT COUNT(*) FROM job_runs {where_clause}"
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()["count"]
-        
-        # Get runs with pagination
-        query = f"""
-            SELECT id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id
-            FROM job_runs {where_clause}
-            ORDER BY queued_at DESC 
-            LIMIT %s OFFSET %s
-        """
-        params.extend([limit, skip])
-        cursor.execute(query, params)
-        runs = cursor.fetchall()
-        
-        # Parameters are already parsed by psycopg2 RealDictCursor
-        # run["parameters"] is already a dict
-        
-        return JobRunListResponse(
-            runs=[JobRunResponse(**run) for run in runs],
-            total=total
-        )
+        with get_db_cursor(commit=False) as cursor:
+            # Build query with optional job filter
+            where_clause = ""
+            params = []
+            if job_id is not None:
+                where_clause = "WHERE job_id = %s"
+                params.append(job_id)
+            
+            # Get total count
+            count_query = f"SELECT COUNT(*) FROM job_runs {where_clause}"
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()["count"]
+            
+            # Get runs with pagination
+            query = f"""
+                SELECT id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id
+                FROM job_runs {where_clause}
+                ORDER BY queued_at DESC 
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, skip])
+            cursor.execute(query, params)
+            runs = cursor.fetchall()
+            
+            # Parameters are already parsed by psycopg2 RealDictCursor
+            # run["parameters"] is already a dict
+            
+            return JobRunListResponse(
+                runs=[JobRunResponse(**run) for run in runs],
+                total=total
+            )
         
     except Exception as e:
         logger.error(f"Job run listing error: {e}")
@@ -885,31 +837,28 @@ async def list_runs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve job runs"
         )
-    finally:
-        conn.close()
 
 @app.get("/runs/{run_id}", response_model=JobRunResponse)
 async def get_run(run_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get job run by ID"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id FROM job_runs WHERE id = %s",
-            (run_id,)
-        )
-        run_data = cursor.fetchone()
-        
-        if not run_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job run not found"
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                "SELECT id, job_id, status, requested_by, parameters, queued_at, started_at, finished_at, correlation_id FROM job_runs WHERE id = %s",
+                (run_id,)
             )
-        
-        # Parameters are already parsed by psycopg2 RealDictCursor
-        # run_data["parameters"] is already a dict
-        
-        return JobRunResponse(**run_data)
+            run_data = cursor.fetchone()
+            
+            if not run_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job run not found"
+                )
+            
+            # Parameters are already parsed by psycopg2 RealDictCursor
+            # run_data["parameters"] is already a dict
+            
+            return JobRunResponse(**run_data)
         
     except Exception as e:
         logger.error(f"Job run retrieval error: {e}")
@@ -917,36 +866,32 @@ async def get_run(run_id: int, current_user: dict = Depends(verify_token_with_au
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve job run"
         )
-    finally:
-        conn.close()
 
 @app.get("/runs/{run_id}/steps", response_model=List[JobRunStepResponse])
 async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get job run steps with logs"""
-    conn = get_db_connection()
     try:
-        cursor = conn.cursor()
-        
-        # Verify run exists
-        cursor.execute("SELECT id FROM job_runs WHERE id = %s", (run_id,))
-        if not cursor.fetchone():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job run not found"
+        with get_db_cursor(commit=False) as cursor:
+            # Verify run exists
+            cursor.execute("SELECT id FROM job_runs WHERE id = %s", (run_id,))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Job run not found"
+                )
+            
+            # Get steps
+            cursor.execute(
+                """SELECT id, job_run_id, idx, type, target_id, status, shell, timeoutsec, 
+                          exit_code, stdout, stderr, metrics, started_at, finished_at
+                   FROM job_run_steps 
+                   WHERE job_run_id = %s 
+                   ORDER BY idx""",
+                (run_id,)
             )
-        
-        # Get steps
-        cursor.execute(
-            """SELECT id, job_run_id, idx, type, target_id, status, shell, timeoutsec, 
-                      exit_code, stdout, stderr, metrics, started_at, finished_at
-               FROM job_run_steps 
-               WHERE job_run_id = %s 
-               ORDER BY idx""",
-            (run_id,)
-        )
-        steps = cursor.fetchall()
-        
-        return [JobRunStepResponse(**step) for step in steps]
+            steps = cursor.fetchall()
+            
+            return [JobRunStepResponse(**step) for step in steps]
         
     except Exception as e:
         logger.error(f"Job run steps retrieval error: {e}")
@@ -954,13 +899,20 @@ async def get_run_steps(run_id: int, current_user: dict = Depends(verify_token_w
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve job run steps"
         )
-    finally:
-        conn.close()
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "jobs-service"}
+    db_health = check_database_health()
+    return {
+        "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
+        "service": "jobs-service",
+        "database": db_health
+    }
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    cleanup_database_pool()
 
 if __name__ == "__main__":
     import uvicorn

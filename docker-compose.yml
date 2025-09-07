@@ -35,6 +35,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
       JWT_SECRET_KEY: your-secret-key-here
     depends_on:
       postgres:
@@ -62,6 +64,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +92,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
       ENCRYPTION_KEY: your-encryption-key-here
     depends_on:
       postgres:
@@ -115,6 +121,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
       AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
@@ -142,6 +150,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,6 +178,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
     depends_on:
       postgres:
         condition: service_healthy
@@ -194,6 +206,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,6 +234,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USERNAME: your-email@gmail.com
@@ -250,6 +266,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
       JWT_SECRET_KEY: your-secret-key-here
     depends_on:
       postgres:
@@ -277,6 +295,8 @@ services:
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
     depends_on:
       postgres:
         condition: service_healthy

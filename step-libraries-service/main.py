@@ -24,8 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
 import aiofiles
-import psycopg2
-from psycopg2.extras import RealDictCursor
+# Database connection handled by shared module
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
@@ -34,19 +33,14 @@ import logging
 import sys
 import traceback
 from contextlib import asynccontextmanager
+sys.path.append('/home/opsconductor/shared')
+from database import get_db_cursor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database configuration
-DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', 5432)),
-    'database': os.getenv('DB_NAME', 'opsconductor'),
-    'user': os.getenv('DB_USER', 'opsconductor'),
-    'password': os.getenv('DB_PASSWORD', 'opsconductor123')
-}
+# Database connection handled by shared module
 
 # Library storage configuration
 LIBRARIES_DIR = Path("/app/libraries")
@@ -168,140 +162,113 @@ class DatabaseManager:
     
     async def get_connection(self):
         """Get database connection"""
-        return psycopg2.connect(**DB_CONFIG, cursor_factory=RealDictCursor)
+        # This method is deprecated - use get_db_cursor() directly
+        pass
     
     async def create_library_record(self, metadata: LibraryMetadata, file_path: str, file_hash: str) -> int:
         """Create a new library record in database"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO step_libraries (
-                        name, version, display_name, description, author, author_email,
-                        homepage, repository, license, categories, tags, dependencies,
-                        min_opsconductor_version, is_premium, price, trial_days,
-                        file_path, file_hash, is_enabled, installation_date, status
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    ) RETURNING id
-                """, (
-                    metadata.name, metadata.version, metadata.display_name, metadata.description,
-                    metadata.author, metadata.author_email, metadata.homepage, metadata.repository,
-                    metadata.license, metadata.categories, metadata.tags, metadata.dependencies,
-                    metadata.min_opsconductor_version, metadata.is_premium, metadata.price,
-                    metadata.trial_days, file_path, file_hash, True, datetime.now(timezone.utc), 'installed'
-                ))
-                library_id = cur.fetchone()['id']
-                conn.commit()
-                return library_id
-        finally:
-            conn.close()
+        with get_db_cursor() as cur:
+            cur.execute("""
+                INSERT INTO step_libraries (
+                    name, version, display_name, description, author, author_email,
+                    homepage, repository, license, categories, tags, dependencies,
+                    min_opsconductor_version, is_premium, price, trial_days,
+                    file_path, file_hash, is_enabled, installation_date, status
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING id
+            """, (
+                metadata.name, metadata.version, metadata.display_name, metadata.description,
+                metadata.author, metadata.author_email, metadata.homepage, metadata.repository,
+                metadata.license, metadata.categories, metadata.tags, metadata.dependencies,
+                metadata.min_opsconductor_version, metadata.is_premium, metadata.price,
+                metadata.trial_days, file_path, file_hash, True, datetime.now(timezone.utc), 'installed'
+            ))
+            library_id = cur.fetchone()['id']
+            return library_id
     
     async def create_step_records(self, library_id: int, steps: List[StepDefinition]):
         """Create step definition records"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                for step in steps:
-                    try:
-                        # Convert StepParameter objects to dictionaries for JSON serialization
-                        parameters_dict = {}
-                        for param_name, param_obj in step.parameters.items():
-                            logger.info(f"Processing parameter {param_name}, type: {type(param_obj)}")
-                            if hasattr(param_obj, 'model_dump'):
-                                parameters_dict[param_name] = param_obj.model_dump()
-                                logger.info(f"Used model_dump for {param_name}")
-                            elif hasattr(param_obj, 'dict'):
-                                parameters_dict[param_name] = param_obj.dict()
-                                logger.info(f"Used dict for {param_name}")
-                            else:
-                                parameters_dict[param_name] = param_obj
-                                logger.info(f"Used raw object for {param_name}")
-                        
-                        logger.info(f"About to serialize parameters: {parameters_dict}")
-                        json_test = json.dumps(parameters_dict)
-                        logger.info(f"JSON serialization test successful")
-                        
-                        logger.info(f"Creating step record for {step.name}")
-                        cur.execute("""
-                            INSERT INTO library_steps (
-                                library_id, name, display_name, category, description, icon, color,
-                                inputs, outputs, parameters, platform_support, required_permissions,
-                                examples, tags
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            library_id, step.name, step.display_name, step.category, step.description,
-                            step.icon, step.color, step.inputs, step.outputs, 
-                            json.dumps(parameters_dict), step.platform_support, step.required_permissions,
-                            json.dumps(step.examples), step.tags
-                        ))
-                        logger.info(f"Successfully created step record for {step.name}")
-                    except Exception as e:
-                        logger.error(f"Failed to create step record for {step.name}: {str(e)}")
-                        raise
-                conn.commit()
-        finally:
-            conn.close()
+        with get_db_cursor() as cur:
+            for step in steps:
+                try:
+                    # Convert StepParameter objects to dictionaries for JSON serialization
+                    parameters_dict = {}
+                    for param_name, param_obj in step.parameters.items():
+                        logger.info(f"Processing parameter {param_name}, type: {type(param_obj)}")
+                        if hasattr(param_obj, 'model_dump'):
+                            parameters_dict[param_name] = param_obj.model_dump()
+                            logger.info(f"Used model_dump for {param_name}")
+                        elif hasattr(param_obj, 'dict'):
+                            parameters_dict[param_name] = param_obj.dict()
+                            logger.info(f"Used dict for {param_name}")
+                        else:
+                            parameters_dict[param_name] = param_obj
+                            logger.info(f"Used raw object for {param_name}")
+                    
+                    logger.info(f"About to serialize parameters: {parameters_dict}")
+                    json_test = json.dumps(parameters_dict)
+                    logger.info(f"JSON serialization test successful")
+                    
+                    logger.info(f"Creating step record for {step.name}")
+                    cur.execute("""
+                        INSERT INTO library_steps (
+                            library_id, name, display_name, category, description, icon, color,
+                            inputs, outputs, parameters, platform_support, required_permissions,
+                            examples, tags
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        library_id, step.name, step.display_name, step.category, step.description,
+                        step.icon, step.color, step.inputs, step.outputs, 
+                        json.dumps(parameters_dict), step.platform_support, step.required_permissions,
+                        json.dumps(step.examples), step.tags
+                    ))
+                    logger.info(f"Successfully created step record for {step.name}")
+                except Exception as e:
+                    logger.error(f"Failed to create step record for {step.name}: {str(e)}")
+                    raise
     
     async def get_libraries(self, enabled_only: bool = False) -> List[Dict[str, Any]]:
         """Get all installed libraries"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                query = "SELECT * FROM step_libraries"
-                if enabled_only:
-                    query += " WHERE is_enabled = true"
-                query += " ORDER BY display_name"
-                
-                cur.execute(query)
-                return cur.fetchall()
-        finally:
-            conn.close()
+        with get_db_cursor(commit=False) as cur:
+            query = "SELECT * FROM step_libraries"
+            if enabled_only:
+                query += " WHERE is_enabled = true"
+            query += " ORDER BY display_name"
+            
+            cur.execute(query)
+            return cur.fetchall()
     
     async def get_library_steps(self, library_id: int) -> List[Dict[str, Any]]:
         """Get all steps for a library"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT s.*, l.is_enabled as library_enabled
-                    FROM library_steps s
-                    JOIN step_libraries l ON s.library_id = l.id
-                    WHERE s.library_id = %s
-                    ORDER BY s.category, s.display_name
-                """, (library_id,))
-                return cur.fetchall()
-        finally:
-            conn.close()
+        with get_db_cursor(commit=False) as cur:
+            cur.execute("""
+                SELECT s.*, l.is_enabled as library_enabled
+                FROM library_steps s
+                JOIN step_libraries l ON s.library_id = l.id
+                WHERE s.library_id = %s
+                ORDER BY s.category, s.display_name
+            """, (library_id,))
+            return cur.fetchall()
     
     async def toggle_library(self, library_id: int, enabled: bool) -> bool:
         """Enable or disable a library"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE step_libraries 
-                    SET is_enabled = %s, last_updated = %s
-                    WHERE id = %s
-                """, (enabled, datetime.now(timezone.utc), library_id))
-                conn.commit()
-                return cur.rowcount > 0
-        finally:
-            conn.close()
+        with get_db_cursor() as cur:
+            cur.execute("""
+                UPDATE step_libraries 
+                SET is_enabled = %s, last_updated = %s
+                WHERE id = %s
+            """, (enabled, datetime.now(timezone.utc), library_id))
+            return cur.rowcount > 0
     
     async def delete_library(self, library_id: int) -> bool:
         """Delete a library and its steps"""
-        conn = await self.get_connection()
-        try:
-            with conn.cursor() as cur:
-                # Delete steps first (foreign key constraint)
-                cur.execute("DELETE FROM library_steps WHERE library_id = %s", (library_id,))
-                # Delete library
-                cur.execute("DELETE FROM step_libraries WHERE id = %s", (library_id,))
-                conn.commit()
-                return cur.rowcount > 0
-        finally:
-            conn.close()
+        with get_db_cursor() as cur:
+            # Delete steps first (foreign key constraint)
+            cur.execute("DELETE FROM library_steps WHERE library_id = %s", (library_id,))
+            # Delete library
+            cur.execute("DELETE FROM step_libraries WHERE id = %s", (library_id,))
+            return cur.rowcount > 0
 
 # =============================================================================
 # LIBRARY MANAGER
