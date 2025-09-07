@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 # Add shared module to path
-sys.path.append('/home/opsconductor')
+sys.path.append('/home/opsconductor', Dict, Any)
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -97,7 +97,7 @@ def get_password_hash(password: str) -> str:
     """Hash a password"""
     return pwd_context.hash(password)
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data -> Any: dict, expires_delta -> Any: Optional[timedelta] = None) -> Any:
     """Create JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -109,7 +109,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_refresh_token(data -> Any: dict, expires_delta -> Any: Optional[timedelta] = None) -> Any:
     """Create JWT refresh token"""
     to_encode = data.copy()
     if expires_delta:
@@ -182,7 +182,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
 
 # API Endpoints
 @app.post("/login", response_model=TokenResponse)
-async def login(login_request: LoginRequest):
+async def login(login_request -> Dict[str, Any]: LoginRequest) -> Dict[str, Any]:
     """Login endpoint - authenticate user and return tokens"""
     try:
         user = authenticate_user(login_request.username, login_request.password)
@@ -225,7 +225,7 @@ async def login(login_request: LoginRequest):
     )
 
 @app.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_request: RefreshRequest):
+async def refresh_token(refresh_request -> Dict[str, Any]: RefreshRequest) -> Dict[str, Any]:
     """Refresh token endpoint"""
     try:
         payload = jwt.decode(refresh_request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -319,7 +319,7 @@ async def verify_token_endpoint(current_user: User = Depends(verify_token)):
     )
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
     
@@ -344,7 +344,7 @@ async def health_check():
     )
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -355,13 +355,13 @@ async def database_metrics():
 
 # Startup and shutdown events
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Log service startup"""
     from shared.logging import log_startup
     log_startup("auth-service", "1.0.0", 3001)
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Clean up database connections on shutdown"""
     from shared.logging import log_shutdown
     log_shutdown("auth-service")

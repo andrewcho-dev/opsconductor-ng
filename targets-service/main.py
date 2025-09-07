@@ -127,7 +127,7 @@ def get_target_credentials(target_id: int) -> List[TargetCredential]:
 # ENDPOINTS
 
 @app.get("/service-definitions", response_model=ServiceDefinitionResponse)
-async def get_service_definitions():
+async def get_service_definitions() -> Dict[str, Any]:
     """Get all available service definitions"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -735,7 +735,7 @@ async def test_service_connection(
         raise handle_database_error(e, "test service connection")
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
     
@@ -758,7 +758,7 @@ async def health_check():
     )
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -768,12 +768,12 @@ async def database_metrics():
     }
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Log service startup"""
     log_startup("targets-service", "2.0.0", 3005)
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Clean up database connections on shutdown"""
     log_shutdown("targets-service")
     cleanup_database_pool()

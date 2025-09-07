@@ -191,7 +191,7 @@ class SMTPTestResponse(BaseModel):
     message: str
 
 # Auth verification
-async def verify_token_with_auth_service(authorization: str = None):
+async def verify_token_with_auth_service(authorization -> Dict[str, Any]: str = None) -> Dict[str, Any]:
     """Verify JWT token with auth service"""
     if not authorization or not authorization.startswith("Bearer "):
         raise AuthError("Missing or invalid authorization header")
@@ -212,7 +212,7 @@ async def verify_token_with_auth_service(authorization: str = None):
     except httpx.RequestError:
         raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
-async def verify_token(request: Request):
+async def verify_token(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Dependency for token verification"""
     authorization = request.headers.get("authorization")
     return await verify_token_with_auth_service(authorization)
@@ -292,7 +292,7 @@ def render_template(template_content: str, payload: Dict[str, Any]) -> str:
         logger.error(f"Template rendering error: {e}")
         return template_content
 
-async def send_email_notification(notification_id: int, dest: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None):
+async def send_email_notification(notification_id -> Dict[str, Any]: int, dest -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Send email notification with template support"""
     try:
         # Use template if provided, otherwise fall back to basic template
@@ -332,7 +332,7 @@ async def send_email_notification(notification_id: int, dest: str, payload: Dict
         logger.error(f"Failed to send email notification {notification_id}: {e}")
         return False
 
-async def send_slack_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None):
+async def send_slack_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Send Slack notification"""
     try:
         if template:
@@ -372,7 +372,7 @@ async def send_slack_notification(notification_id: int, webhook_url: str, payloa
         logger.error(f"Failed to send Slack notification {notification_id}: {e}")
         return False
 
-async def send_teams_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None):
+async def send_teams_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Send Microsoft Teams notification"""
     try:
         if template:
@@ -414,7 +414,7 @@ async def send_teams_notification(notification_id: int, webhook_url: str, payloa
         logger.error(f"Failed to send Teams notification {notification_id}: {e}")
         return False
 
-async def send_webhook_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None):
+async def send_webhook_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Send generic webhook notification"""
     try:
         if template:
@@ -441,7 +441,7 @@ async def send_webhook_notification(notification_id: int, webhook_url: str, payl
         logger.error(f"Failed to send webhook notification {notification_id}: {e}")
         return False
 
-async def process_notification(notification_id: int, channel: str, dest: str, payload: Dict[str, Any], template_id: Optional[int] = None):
+async def process_notification(notification_id -> Dict[str, Any]: int, channel -> Dict[str, Any]: str, dest -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template_id -> Dict[str, Any]: Optional[int] = None) -> Dict[str, Any]:
     """Process a single notification with template support"""
     success = False
     template = None
@@ -496,7 +496,7 @@ async def process_notification(notification_id: int, channel: str, dest: str, pa
     
     return success
 
-async def create_notifications_for_job_run(job_run_id: int, event_type: str, payload: Dict[str, Any], user_id: Optional[int] = None):
+async def create_notifications_for_job_run(job_run_id -> Dict[str, Any]: int, event_type -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], user_id -> Dict[str, Any]: Optional[int] = None) -> Dict[str, Any]:
     """Create notifications for a job run based on user preferences"""
     try:
         with get_db_cursor() as cursor:
@@ -587,7 +587,7 @@ async def create_notifications_for_job_run(job_run_id: int, event_type: str, pay
         logger.error(f"Error creating notifications for job run {job_run_id}: {e}")
         return []
 
-async def notification_worker():
+async def notification_worker() -> Dict[str, Any]:
     """Enhanced background worker that processes pending notifications"""
     global notification_worker_running
     
@@ -626,12 +626,12 @@ async def notification_worker():
 # API Endpoints
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     return {"status": "healthy", "service": "enhanced-notification", "version": "2.0.0"}
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -641,7 +641,7 @@ async def database_metrics():
     }
 
 @app.get("/status", response_model=NotificationWorkerStatus)
-async def get_notification_status():
+async def get_notification_status() -> Dict[str, Any]:
     """Get notification worker status"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -666,7 +666,7 @@ async def get_notification_status():
 # User Notification Preferences Endpoints
 
 @app.get("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
-async def get_user_preferences(user_id: int, request: Request):
+async def get_user_preferences(user_id -> Dict[str, Any]: int, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Get user notification preferences"""
     await verify_token(request)
     
@@ -702,7 +702,7 @@ async def get_user_preferences(user_id: int, request: Request):
         raise DatabaseError("Failed to get user preferences")
 
 @app.put("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
-async def update_user_preferences(user_id: int, preferences: NotificationPreferences, request: Request):
+async def update_user_preferences(user_id -> Dict[str, Any]: int, preferences -> Dict[str, Any]: NotificationPreferences, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Update user notification preferences"""
     await verify_token(request)
     
@@ -758,7 +758,7 @@ async def update_user_preferences(user_id: int, preferences: NotificationPrefere
 # Notification Channels Endpoints
 
 @app.get("/channels", response_model=List[NotificationChannelResponse])
-async def get_notification_channels(request: Request):
+async def get_notification_channels(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Get available notification channels"""
     await verify_token(request)
     
@@ -777,9 +777,9 @@ async def get_notification_channels(request: Request):
 
 @app.post("/notifications/enhanced", response_model=List[NotificationResponse])
 async def create_enhanced_notification(
-    notification_data: EnhancedNotificationCreate,
-    request: Request
-):
+    notification_data -> Dict[str, Any]: EnhancedNotificationCreate,
+    request -> Dict[str, Any]: Request
+) -> Dict[str, Any]:
     """Create enhanced notifications with user preferences and templates"""
     await verify_token(request)
     
@@ -812,7 +812,7 @@ async def create_enhanced_notification(
 
 # Internal endpoint for service-to-service communication
 @app.post("/internal/notifications/enhanced")
-async def create_internal_enhanced_notification(notification: EnhancedNotificationCreate):
+async def create_internal_enhanced_notification(notification -> Dict[str, Any]: EnhancedNotificationCreate) -> Dict[str, Any]:
     """Create enhanced notifications (internal service endpoint - no auth required)"""
     notification_ids = await create_notifications_for_job_run(
         notification.job_run_id,
@@ -826,7 +826,7 @@ async def create_internal_enhanced_notification(notification: EnhancedNotificati
 # Worker control endpoints
 
 @app.post("/worker/start")
-async def start_notification_worker(request: Request):
+async def start_notification_worker(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Start the notification worker"""
     await verify_token(request)
     
@@ -848,7 +848,7 @@ async def start_notification_worker(request: Request):
     )
 
 @app.post("/worker/stop")
-async def stop_notification_worker(request: Request):
+async def stop_notification_worker(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Stop the notification worker"""
     await verify_token(request)
     
@@ -879,10 +879,10 @@ async def stop_notification_worker(request: Request):
 # Legacy endpoints for backward compatibility
 @app.get("/notifications", response_model=NotificationListResponse)
 async def get_notifications(
-    request: Request,
-    limit: int = 50,
-    offset: int = 0
-):
+    request -> Dict[str, Any]: Request,
+    limit -> Dict[str, Any]: int = 50,
+    offset -> Dict[str, Any]: int = 0
+) -> Dict[str, Any]:
     """Get notifications with pagination"""
     await verify_token(request)
     
@@ -913,7 +913,7 @@ async def get_notifications(
         raise DatabaseError("Failed to get notifications")
 
 # SMTP Settings endpoints (keeping existing functionality)
-def get_smtp_settings_from_db():
+def get_smtp_settings_from_db() -> Any:
     """Get SMTP settings from database"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -935,7 +935,7 @@ def get_smtp_settings_from_db():
         logger.error(f"Error getting SMTP settings from DB: {e}")
         return {}
 
-def save_smtp_settings_to_db(settings: SMTPSettings):
+def save_smtp_settings_to_db(settings -> Any: SMTPSettings) -> Any:
     """Save SMTP settings to database"""
     try:
         with get_db_cursor() as cursor:
@@ -974,7 +974,7 @@ def save_smtp_settings_to_db(settings: SMTPSettings):
         logger.error(f"Error saving SMTP settings to DB: {e}")
         raise
 
-def update_smtp_config(settings: SMTPSettings):
+def update_smtp_config(settings -> Any: SMTPSettings) -> Any:
     """Update global SMTP_CONFIG with new settings"""
     global SMTP_CONFIG
     SMTP_CONFIG.update({
@@ -989,7 +989,7 @@ def update_smtp_config(settings: SMTPSettings):
     logger.info("SMTP configuration updated in memory")
 
 @app.get("/smtp/settings", response_model=SMTPSettingsResponse)
-async def get_smtp_settings(request: Request):
+async def get_smtp_settings(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Get SMTP settings"""
     await verify_token(request)
     
@@ -1020,7 +1020,7 @@ async def get_smtp_settings(request: Request):
         )
 
 @app.post("/smtp/settings", response_model=SMTPSettingsResponse)
-async def update_smtp_settings(settings: SMTPSettings, request: Request):
+async def update_smtp_settings(settings -> Dict[str, Any]: SMTPSettings, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Update SMTP settings"""
     await verify_token(request)
     
@@ -1047,7 +1047,7 @@ async def update_smtp_settings(settings: SMTPSettings, request: Request):
         raise DatabaseError("Failed to update SMTP settings")
 
 @app.post("/smtp/test", response_model=SMTPTestResponse)
-async def test_smtp_settings(test_request: SMTPTestRequest, request: Request):
+async def test_smtp_settings(test_request -> Dict[str, Any]: SMTPTestRequest, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
     """Test SMTP configuration"""
     await verify_token(request)
     
@@ -1113,7 +1113,7 @@ async def test_smtp_settings(test_request: SMTPTestRequest, request: Request):
 
 # Initialize worker on startup
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     db_health = check_database_health()
     
@@ -1141,7 +1141,7 @@ async def health_check():
     )
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Start notification worker on service startup"""
     global notification_worker_running, notification_worker_task
     
@@ -1172,7 +1172,7 @@ async def startup_event():
     logger.info("Enhanced notification service started with worker")
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Stop notification worker on service shutdown"""
     global notification_worker_running, notification_worker_task
     

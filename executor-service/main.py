@@ -71,7 +71,7 @@ class JobExecutor:
         self.ssh_executor = SSHExecutor()
         self.sftp_executor = SFTPExecutor(self.ssh_executor)
     
-    def start_worker(self):
+    def start_worker(self) -> Any:
         """Start the worker thread"""
         if WORKER_ENABLED and not self.running:
             self.running = True
@@ -79,7 +79,7 @@ class JobExecutor:
             self.worker_thread.start()
             logger.info("Executor worker started")
     
-    def stop_worker(self):
+    def stop_worker(self) -> Any:
         """Stop the worker thread"""
         self.running = False
         if self.worker_thread:
@@ -2119,7 +2119,7 @@ Write-Output "Current Uptime: $($uptime.Days) days, $($uptime.Hours) hours, $($u
 executor = JobExecutor()
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     db_health = check_database_health()
     
@@ -2147,20 +2147,20 @@ async def health_check():
     )
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Start the executor worker on startup"""
     log_startup("executor-service", "1.0.0", 3007)
     executor.start_worker()
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Stop the executor worker on shutdown"""
     executor.stop_worker()
     log_shutdown("executor-service")
     cleanup_database_pool()
 
 @app.get("/status")
-async def get_status():
+async def get_status() -> Dict[str, Any]:
     """Get executor status and statistics"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -2186,7 +2186,7 @@ async def get_status():
             }
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {

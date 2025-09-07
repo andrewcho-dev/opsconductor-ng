@@ -112,7 +112,7 @@ def calculate_next_run(cron_expr: str, timezone_str: str) -> datetime:
         logger.error(f"Error calculating next run: {e}")
         raise ValueError(f"Invalid cron expression or timezone: {e}")
 
-async def execute_scheduled_job(job_id: int, schedule_id: int):
+async def execute_scheduled_job(job_id -> Dict[str, Any]: int, schedule_id -> Dict[str, Any]: int) -> Dict[str, Any]:
     """Execute a scheduled job by calling the jobs service"""
     try:
         async with httpx.AsyncClient() as client:
@@ -143,7 +143,7 @@ async def execute_scheduled_job(job_id: int, schedule_id: int):
     except Exception as e:
         logger.error(f"Error executing scheduled job {job_id}: {e}")
 
-async def scheduler_worker():
+async def scheduler_worker() -> Dict[str, Any]:
     """Background worker that checks for scheduled jobs"""
     global scheduler_running
     
@@ -204,12 +204,12 @@ async def scheduler_worker():
 # API Endpoints
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     return {"status": "healthy", "service": "scheduler"}
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -219,7 +219,7 @@ async def database_metrics():
     }
 
 @app.get("/status", response_model=SchedulerStatusResponse)
-async def get_scheduler_status():
+async def get_scheduler_status() -> Dict[str, Any]:
     """Get scheduler status"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -517,7 +517,7 @@ async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_
     )
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     db_health = check_database_health()
     
@@ -546,7 +546,7 @@ async def health_check():
 
 # Startup event
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Start scheduler on service startup"""
     global scheduler_running, scheduler_task
     
@@ -561,7 +561,7 @@ async def startup_event():
 
 # Shutdown event
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Stop scheduler on service shutdown"""
     global scheduler_running, scheduler_task
     

@@ -367,7 +367,7 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         logger.error(f"Auth service request failed: {e}")
         raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
-def verify_token_manual(credentials: HTTPAuthorizationCredentials):
+def verify_token_manual(credentials -> Any: HTTPAuthorizationCredentials) -> Any:
     """Verify token with auth service (manual call)"""
     try:
         headers = {"Authorization": f"Bearer {credentials.credentials}"}
@@ -693,7 +693,7 @@ class DiscoveryService:
             logger.error(f"Error checking job cancellation status: {e}")
             return False
 
-    async def network_scan_discovery(self, job_id: int, config: Dict):
+    async def network_scan_discovery(self, job_id -> Dict[str, Any]: int, config -> Dict[str, Any]: Dict) -> Dict[str, Any]:
         """Execute network scan discovery"""
         scan_config = NetworkScanConfig(**config)
         
@@ -773,7 +773,7 @@ class DiscoveryService:
         # If some ranges failed but we got some results, that's still a partial success
         # Only fail completely if ALL ranges failed (handled above)
     
-    async def store_discovered_targets(self, job_id: int, discovered_hosts: List[Dict]):
+    async def store_discovered_targets(self, job_id -> Dict[str, Any]: int, discovered_hosts -> Dict[str, Any]: List[Dict]) -> Dict[str, Any]:
         """Store discovered targets in database with deduplication"""
         try:
             with get_db_cursor() as cursor:
@@ -892,7 +892,7 @@ discovery_service = DiscoveryService()
 
 # Health check endpoint (no auth required)
 @app.get("/health")
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint with database connectivity"""
     db_health = check_database_health()
     return {
@@ -902,7 +902,7 @@ async def health_check():
     }
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -920,7 +920,7 @@ def whoami(current_user: dict = Depends(verify_token_with_auth_service)):
     )
 
 @app.post("/test-simple")
-async def test_simple():
+async def test_simple() -> Dict[str, Any]:
     """Simple test endpoint without dependencies"""
     return create_success_response(
         message="Simple endpoint working",
@@ -930,7 +930,7 @@ async def test_simple():
 
 
 @app.post("/validate-network-ranges")
-async def validate_network_ranges(ranges: Dict[str, List[str]]):
+async def validate_network_ranges(ranges -> Dict[str, Any]: Dict[str, List[str]]) -> Dict[str, Any]:
     """Validate network range inputs and return parsed targets"""
     try:
         results = []
@@ -1858,7 +1858,7 @@ async def cancel_job_alias(job_id: int, current_user: dict = Depends(verify_toke
     return await cancel_discovery_job_new(job_id, current_user)
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     db_health = check_database_health()
     
@@ -1881,12 +1881,12 @@ async def health_check():
     )
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Log service startup"""
     log_startup("discovery-service", "1.0.0", 3010)
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Clean up database connections on shutdown"""
     log_shutdown("discovery-service")
     cleanup_database_pool()

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # Add shared module to path
-sys.path.append('/home/opsconductor')
+sys.path.append('/home/opsconductor', Dict, Any)
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.responses import JSONResponse
@@ -583,7 +583,7 @@ async def update_user_notification_preferences(
         raise DatabaseError("Failed to update notification preferences")
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check() -> HealthResponse:
     """Health check endpoint"""
     db_health = check_database_health()
     
@@ -606,7 +606,7 @@ async def health_check():
     )
 
 @app.get("/metrics/database")
-async def database_metrics():
+async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
     metrics = get_database_metrics()
     return {
@@ -616,12 +616,12 @@ async def database_metrics():
     }
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Log service startup"""
     log_startup("user-service", "1.0.0", 3002)
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Clean up database connections on shutdown"""
     log_shutdown("user-service")
     cleanup_database_pool()
