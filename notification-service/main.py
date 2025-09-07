@@ -850,13 +850,19 @@ async def start_notification_worker(request: Request):
     global notification_worker_running, notification_worker_task
     
     if notification_worker_running:
-        return {"message": "Notification worker is already running"}
+        return create_success_response(
+            message="Notification worker is already running",
+            data={"status": "running"}
+        )
     
     notification_worker_running = True
     notification_worker_task = asyncio.create_task(notification_worker())
     
     logger.info("Enhanced notification worker started via API")
-    return {"message": "Enhanced notification worker started"}
+    return create_success_response(
+        message="Enhanced notification worker started",
+        data={"status": "started"}
+    )
 
 @app.post("/worker/stop")
 async def stop_notification_worker(request: Request):
@@ -866,7 +872,10 @@ async def stop_notification_worker(request: Request):
     global notification_worker_running, notification_worker_task
     
     if not notification_worker_running:
-        return {"message": "Notification worker is not running"}
+        return create_success_response(
+            message="Notification worker is not running",
+            data={"status": "stopped"}
+        )
     
     notification_worker_running = False
     
@@ -879,7 +888,10 @@ async def stop_notification_worker(request: Request):
         notification_worker_task = None
     
     logger.info("Enhanced notification worker stopped via API")
-    return {"message": "Enhanced notification worker stopped"}
+    return create_success_response(
+        message="Enhanced notification worker stopped",
+        data={"status": "stopped"}
+    )
 
 # Legacy endpoints for backward compatibility
 @app.get("/notifications", response_model=NotificationListResponse)

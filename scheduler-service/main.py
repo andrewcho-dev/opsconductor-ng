@@ -487,7 +487,10 @@ async def delete_schedule(
                 )
             
             logger.info(f"Soft deleted schedule {schedule_id}")
-            return {"message": "Schedule deleted successfully"}
+            return create_success_response(
+                message="Schedule deleted successfully",
+                data={"schedule_id": schedule_id}
+            )
         
     except Exception as e:
         logger.error(f"Error deleting schedule: {e}")
@@ -506,13 +509,19 @@ async def start_scheduler(
     global scheduler_running, scheduler_task
     
     if scheduler_running:
-        return {"message": "Scheduler is already running"}
+        return create_success_response(
+            message="Scheduler is already running",
+            data={"status": "running"}
+        )
     
     scheduler_running = True
     scheduler_task = asyncio.create_task(scheduler_worker())
     
     logger.info("Scheduler started")
-    return {"message": "Scheduler started successfully"}
+    return create_success_response(
+        message="Scheduler started successfully",
+        data={"status": "started"}
+    )
 
 @app.post("/scheduler/stop")
 async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_role)):
@@ -521,7 +530,10 @@ async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_
     global scheduler_running, scheduler_task
     
     if not scheduler_running:
-        return {"message": "Scheduler is not running"}
+        return create_success_response(
+            message="Scheduler is not running",
+            data={"status": "stopped"}
+        )
     
     scheduler_running = False
     
@@ -534,7 +546,10 @@ async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_
         scheduler_task = None
     
     logger.info("Scheduler stopped")
-    return {"message": "Scheduler stopped successfully"}
+    return create_success_response(
+        message="Scheduler stopped successfully",
+        data={"status": "stopped"}
+    )
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():

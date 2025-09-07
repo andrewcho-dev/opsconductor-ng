@@ -919,12 +919,18 @@ async def health_check():
 @app.get("/whoami")
 def whoami(current_user: dict = Depends(verify_token_with_auth_service)):
     """Simple test endpoint to check authentication"""
-    return {"user": current_user, "message": "Authentication working"}
+    return create_success_response(
+        data={"user": current_user},
+        message="Authentication working"
+    )
 
 @app.post("/test-simple")
 async def test_simple():
     """Simple test endpoint without dependencies"""
-    return {"message": "Simple endpoint working", "timestamp": datetime.now().isoformat()}
+    return create_success_response(
+        message="Simple endpoint working",
+        data={"timestamp": datetime.now().isoformat()}
+    )
 
 
 
@@ -1521,7 +1527,10 @@ async def run_discovery_job(
         )
         
         logger.info(f"Started discovery job {job_id}")
-        return {"message": f"Discovery job {job_id} has been started"}
+        return create_success_response(
+            message=f"Discovery job {job_id} has been started",
+            data={"job_id": job_id}
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -1552,7 +1561,10 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
             """, (JobStatus.CANCELLED, job_id))
         
         logger.info(f"Cancelled discovery job {job_id}")
-        return {"message": "Discovery job cancelled successfully"}
+        return create_success_response(
+            message="Discovery job cancelled successfully",
+            data={"job_id": job_id}
+        )
         
     except HTTPException:
         raise
@@ -1781,7 +1793,10 @@ async def delete_discovered_target(target_id: int, current_user: dict = Depends(
                 raise HTTPException(status_code=404, detail="Discovered target not found")
         
         logger.info(f"Deleted discovered target {target_id}")
-        return {"message": "Discovered target deleted successfully"}
+        return create_success_response(
+            message="Discovered target deleted successfully",
+            data={"target_id": target_id}
+        )
         
     except HTTPException:
         raise

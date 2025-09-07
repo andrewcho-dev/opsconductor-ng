@@ -573,7 +573,10 @@ async def delete_credential(
                     detail="Credential not found or already deleted"
                 )
             
-            return {"message": "Credential deleted successfully"}
+            return create_success_response(
+                message="Credential deleted successfully",
+                data={"credential_id": credential_id}
+            )
         
     except Exception as e:
         logger.error(f"Credential deletion error: {e}")
@@ -644,7 +647,10 @@ async def delete_credential_by_name(
                     detail="Credential not found or already deleted"
                 )
             
-            return {"message": "Credential deleted successfully"}
+            return create_success_response(
+                message="Credential deleted successfully",
+                data={"credential_id": credential_id}
+            )
         
     except Exception as e:
         logger.error(f"Credential deletion error: {e}")

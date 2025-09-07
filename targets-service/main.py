@@ -488,18 +488,18 @@ async def delete_target(
             )
             
             if cursor.rowcount == 0:
-                raise HTTPException(
-                    status_code=404, 
-                    detail="Target not found or already deleted"
-                )
+                raise NotFoundError("Target not found or already deleted")
             
-            return {"message": "Target deleted successfully"}
+            return create_success_response(
+                message="Target deleted successfully",
+                data={"target_id": target_id}
+            )
         
-    except HTTPException:
+    except (NotFoundError, ValidationError, PermissionError):
         raise
     except Exception as e:
         logger.error(f"Error deleting target: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "Failed to delete target")
 
 # CREDENTIAL MANAGEMENT ENDPOINTS
 
@@ -620,7 +620,7 @@ async def delete_target_credential(
             """, (target_id, credential_id))
             
             if not cursor.fetchone():
-                raise HTTPException(status_code=404, detail="Target credential association not found")
+                raise NotFoundError("Target credential association not found")
             
             # Delete target credential
             cursor.execute("""
@@ -628,13 +628,19 @@ async def delete_target_credential(
                 WHERE target_id = %s AND credential_id = %s
             """, (target_id, credential_id))
             
-            return {"message": "Credential association deleted successfully"}
+            return create_success_response(
+                message="Credential association deleted successfully",
+                data={
+                    "target_id": target_id,
+                    "credential_id": credential_id
+                }
+            )
         
-    except HTTPException:
+    except (NotFoundError, ValidationError, PermissionError):
         raise
     except Exception as e:
         logger.error(f"Error deleting target credential: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise handle_database_error(e, "Failed to delete target credential association")
 
 @app.post("/targets/services/{service_id}/test")
 async def test_service_connection(

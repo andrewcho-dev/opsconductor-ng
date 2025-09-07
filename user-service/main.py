@@ -380,7 +380,10 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin_r
                     detail="User not found"
                 )
             
-            return {"message": "User deleted successfully"}
+            return create_success_response(
+                message="User deleted successfully",
+                data={"user_id": user_id}
+            )
         
     except Exception as e:
         logger.error(f"User deletion error: {e}")
@@ -419,7 +422,10 @@ async def assign_role(
                 (role_data.role, user_id)
             )
             
-            return {"message": f"Role '{role_data.role}' assigned successfully"}
+            return create_success_response(
+                message=f"Role '{role_data.role}' assigned successfully",
+                data={"user_id": user_id, "role": role_data.role}
+            )
         
     except Exception as e:
         logger.error(f"Role assignment error: {e}")

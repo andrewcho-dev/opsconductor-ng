@@ -688,7 +688,10 @@ async def delete_job(job_id: int, current_user: dict = Depends(require_admin_or_
                     detail="Job not found or already deleted"
                 )
             
-            return {"message": "Job deleted successfully"}
+            return create_success_response(
+                message="Job deleted successfully",
+                data={"job_id": job_id}
+            )
         
     except Exception as e:
         logger.error(f"Job deletion error: {e}")
