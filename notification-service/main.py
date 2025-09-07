@@ -34,7 +34,7 @@ from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_
 from shared.auth import get_current_user, require_admin
 
 # Setup structured logging
-setup_service_logging("notification-service", level=os.getenv("LOG_LEVEL", "INFO"))
+setup_service_logging("notification-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
 logger = get_logger("notification-service")
 
 app = FastAPI(
@@ -629,6 +629,16 @@ async def notification_worker():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "enhanced-notification", "version": "2.0.0"}
+
+@app.get("/metrics/database")
+async def database_metrics():
+    """Database connection pool metrics endpoint"""
+    metrics = get_database_metrics()
+    return {
+        "service": "notification-service",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": metrics
+    }
 
 @app.get("/status", response_model=NotificationWorkerStatus)
 async def get_notification_status():

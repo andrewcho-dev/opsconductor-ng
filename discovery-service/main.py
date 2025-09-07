@@ -34,7 +34,7 @@ from shared.auth import get_current_user, require_admin
 from shared.utils import get_service_client
 
 # Setup structured logging
-setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO"))
+setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
 logger = get_logger("discovery-service")
 
 app = FastAPI(
@@ -899,6 +899,16 @@ async def health_check():
         "status": "healthy" if db_health["status"] == "healthy" else "unhealthy",
         "service": "discovery-service",
         "database": db_health
+    }
+
+@app.get("/metrics/database")
+async def database_metrics():
+    """Database connection pool metrics endpoint"""
+    metrics = get_database_metrics()
+    return {
+        "service": "discovery-service",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": metrics
     }
 
 @app.get("/whoami")

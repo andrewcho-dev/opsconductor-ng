@@ -37,7 +37,7 @@ from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_
 from shared.utils import get_service_client
 
 # Load environment variables
-load_dotenv()
+load_dotenv(, get_database_metrics)
 
 # Setup structured logging
 setup_service_logging("executor-service", level=os.getenv("LOG_LEVEL", "INFO"))
@@ -2184,7 +2184,17 @@ async def get_status():
                 "poll_interval": WORKER_POLL_INTERVAL,
                 "queue_stats": dict(stats)
             }
-        
+
+@app.get("/metrics/database")
+async def database_metrics():
+    """Database connection pool metrics endpoint"""
+    metrics = get_database_metrics()
+    return {
+        "service": "executor-service",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": metrics
+    }
+
     except Exception as e:
         logger.error(f"Status retrieval error: {e}")
         raise DatabaseError("Failed to retrieve status")

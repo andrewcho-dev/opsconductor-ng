@@ -25,7 +25,7 @@ from shared.auth import get_current_user, require_admin
 from shared.utils import get_service_client
 
 # Setup structured logging
-setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO"))
+setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
 logger = get_logger("scheduler-service")
 
 app = FastAPI(
@@ -207,6 +207,16 @@ async def scheduler_worker():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "scheduler"}
+
+@app.get("/metrics/database")
+async def database_metrics():
+    """Database connection pool metrics endpoint"""
+    metrics = get_database_metrics()
+    return {
+        "service": "scheduler-service",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": metrics
+    }
 
 @app.get("/status", response_model=SchedulerStatusResponse)
 async def get_scheduler_status():

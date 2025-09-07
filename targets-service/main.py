@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Query
 from dotenv import load_dotenv
 
 # Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
+from shared.database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
 from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
@@ -756,6 +756,16 @@ async def health_check():
         version="2.0.0",
         checks=checks
     )
+
+@app.get("/metrics/database")
+async def database_metrics():
+    """Database connection pool metrics endpoint"""
+    metrics = get_database_metrics()
+    return {
+        "service": "targets-service",
+        "timestamp": datetime.utcnow().isoformat(),
+        "database": metrics
+    }
 
 @app.on_event("startup")
 async def startup_event():
