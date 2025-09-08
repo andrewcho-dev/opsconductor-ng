@@ -631,21 +631,8 @@ class LibraryManager:
         
         self.performance_stats['cache_misses'] += 1
         
-        # Start with core workflow steps
+        # Only use library steps (no more core steps)
         all_steps = []
-        core_steps = self._get_core_workflow_steps()
-        logger.info(f"Found {len(core_steps)} core workflow steps")
-        
-        # Filter core steps by category and library if specified
-        for step in core_steps:
-            if category and step['category'] != category:
-                logger.info(f"Skipping core step {step['name']} - category filter")
-                continue
-            if library_name and step['library'] != library_name:
-                logger.info(f"Skipping core step {step['name']} - library filter")
-                continue
-            logger.info(f"Adding core step: {step['name']}")
-            all_steps.append(step)
         
         # Get enabled libraries
         libraries = await self.db.get_libraries(enabled_only=True)
@@ -991,6 +978,61 @@ async def get_performance_stats() -> Dict[str, Any]:
         'loaded_libraries': len(library_manager.loaded_libraries),
         'timestamp': datetime.now(timezone.utc).isoformat()
     }
+
+@app.post("/api/v1/install-generic-blocks")
+async def install_generic_blocks() -> Dict[str, Any]:
+    """Install the built-in generic blocks library"""
+    try:
+        from generic_blocks_library import create_generic_blocks_library
+        
+        # Create the generic blocks library
+        generic_library = create_generic_blocks_library()
+        
+        # Get metadata and steps
+        metadata = generic_library.get_metadata()
+        step_definitions = generic_library.get_step_definitions()
+        
+        # Check if already installed
+        libraries = await library_manager.db.get_libraries()
+        existing = next((lib for lib in libraries if lib['name'] == metadata.name), None)
+        
+        if existing:
+            return {
+                "success": True,
+                "message": "Generic blocks library already installed",
+                "library_id": existing['id'],
+                "step_count": len(step_definitions)
+            }
+        
+        # Create library record
+        library_id = await library_manager.db.create_library_record(
+            metadata=metadata,
+            file_path="built-in://generic-blocks",
+            file_hash="generic-blocks-v1.0.0"
+        )
+        
+        # Create step records
+        await library_manager.db.create_step_records(library_id, step_definitions)
+        
+        # Clear cache to force reload
+        library_manager.library_cache.clear()
+        
+        logger.info(f"Generic blocks library installed with ID {library_id}, {len(step_definitions)} steps")
+        
+        return {
+            "success": True,
+            "message": "Generic blocks library installed successfully",
+            "library_id": library_id,
+            "step_count": len(step_definitions),
+            "steps": [step.name for step in step_definitions]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to install generic blocks library: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"Traceback:\n{tb}")
+        raise DatabaseError(f"Failed to install generic blocks: {str(e)}")
 
 @app.post("/api/v1/cache/clear")
 async def clear_cache() -> Dict[str, Any]:

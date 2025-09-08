@@ -1,0 +1,342 @@
+{
+  "name": "Weekly Axis Camera Maintenance",
+  "description": "Every Monday morning: autofocus, reset PTZ to home, and log maintenance",
+  "flow_version": 2,
+  "targets": [
+    {
+      "id": "camera-01",
+      "name": "Lobby Camera",
+      "hostname": "192.168.1.101",
+      "os_type": "auto",
+      "default_connection": "local",
+      "camera_api": {
+        "base_url": "http://192.168.1.101",
+        "username": "admin",
+        "password": "{{vault.camera_01_password}}",
+        "api_version": "v3"
+      }
+    },
+    {
+      "id": "camera-02", 
+      "name": "Parking Lot Camera",
+      "hostname": "192.168.1.102",
+      "os_type": "auto",
+      "default_connection": "local",
+      "camera_api": {
+        "base_url": "http://192.168.1.102",
+        "username": "admin",
+        "password": "{{vault.camera_02_password}}",
+        "api_version": "v3"
+      }
+    },
+    {
+      "id": "camera-03",
+      "name": "Entrance Camera", 
+      "hostname": "192.168.1.103",
+      "os_type": "auto",
+      "default_connection": "local",
+      "camera_api": {
+        "base_url": "http://192.168.1.103",
+        "username": "admin",
+        "password": "{{vault.camera_03_password}}",
+        "api_version": "v3"
+      }
+    },
+    {
+      "id": "log-server",
+      "name": "Log Server",
+      "hostname": "192.168.1.50",
+      "os_type": "linux",
+      "default_connection": "ssh",
+      "username": "loguser",
+      "private_key": "/path/to/logserver.key"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "schedule-trigger-1",
+      "type": "trigger.schedule",
+      "position": {"x": 100, "y": 100},
+      "config": {
+        "cron_expression": "0 8 * * MON",
+        "timezone": "America/New_York",
+        "enabled": true
+      }
+    },
+    {
+      "id": "start-1",
+      "type": "flow.start",
+      "position": {"x": 300, "y": 100},
+      "config": {
+        "name": "Camera Maintenance Start",
+        "trigger_types": ["schedule", "manual"]
+      }
+    },
+    {
+      "id": "get-camera-list-1",
+      "type": "data.transform",
+      "position": {"x": 500, "y": 100},
+      "config": {
+        "script": "// Define camera list for maintenance\nconst cameras = [\n  { id: 'camera-01', name: 'Lobby Camera', ip: '192.168.1.101' },\n  { id: 'camera-02', name: 'Parking Lot Camera', ip: '192.168.1.102' },\n  { id: 'camera-03', name: 'Entrance Camera', ip: '192.168.1.103' }\n];\n\nreturn {\n  cameras: cameras,\n  maintenance_date: new Date().toISOString(),\n  total_cameras: cameras.length\n};"
+      }
+    },
+    {
+      "id": "camera-01-autofocus",
+      "type": "action.http_request",
+      "position": {"x": 700, "y": 50},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.101/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_01_password}}"
+        },
+        "body": "autofocus=on",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "camera-01-ptz-home",
+      "type": "action.http_request",
+      "position": {"x": 900, "y": 50},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.101/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_01_password}}"
+        },
+        "body": "move=home",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "camera-02-autofocus",
+      "type": "action.http_request",
+      "position": {"x": 700, "y": 150},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.102/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_02_password}}"
+        },
+        "body": "autofocus=on",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "camera-02-ptz-home",
+      "type": "action.http_request",
+      "position": {"x": 900, "y": 150},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.102/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_02_password}}"
+        },
+        "body": "move=home",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "camera-03-autofocus",
+      "type": "action.http_request",
+      "position": {"x": 700, "y": 250},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.103/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_03_password}}"
+        },
+        "body": "autofocus=on",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "camera-03-ptz-home",
+      "type": "action.http_request",
+      "position": {"x": 900, "y": 250},
+      "config": {
+        "method": "POST",
+        "url": "http://192.168.1.103/axis-cgi/com/ptz.cgi",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "authentication": {
+          "type": "basic",
+          "username": "admin",
+          "password": "{{vault.camera_03_password}}"
+        },
+        "body": "move=home",
+        "timeout_seconds": 30
+      }
+    },
+    {
+      "id": "collect-results-1",
+      "type": "data.transform",
+      "position": {"x": 1100, "y": 150},
+      "config": {
+        "script": "// Collect all camera maintenance results\nconst results = {\n  maintenance_date: new Date().toISOString(),\n  cameras_processed: [\n    {\n      id: 'camera-01',\n      name: 'Lobby Camera',\n      autofocus_success: input.camera_01_autofocus?.success || false,\n      ptz_home_success: input.camera_01_ptz?.success || false,\n      autofocus_response: input.camera_01_autofocus?.response?.status || 'unknown',\n      ptz_response: input.camera_01_ptz?.response?.status || 'unknown'\n    },\n    {\n      id: 'camera-02',\n      name: 'Parking Lot Camera',\n      autofocus_success: input.camera_02_autofocus?.success || false,\n      ptz_home_success: input.camera_02_ptz?.success || false,\n      autofocus_response: input.camera_02_autofocus?.response?.status || 'unknown',\n      ptz_response: input.camera_02_ptz?.response?.status || 'unknown'\n    },\n    {\n      id: 'camera-03',\n      name: 'Entrance Camera',\n      autofocus_success: input.camera_03_autofocus?.success || false,\n      ptz_home_success: input.camera_03_ptz?.success || false,\n      autofocus_response: input.camera_03_autofocus?.response?.status || 'unknown',\n      ptz_response: input.camera_03_ptz?.response?.status || 'unknown'\n    }\n  ]\n};\n\n// Calculate summary\nconst totalOperations = results.cameras_processed.length * 2;\nconst successfulOperations = results.cameras_processed.reduce((count, camera) => {\n  return count + (camera.autofocus_success ? 1 : 0) + (camera.ptz_home_success ? 1 : 0);\n}, 0);\n\nresults.summary = {\n  total_operations: totalOperations,\n  successful_operations: successfulOperations,\n  failed_operations: totalOperations - successfulOperations,\n  success_rate: (successfulOperations / totalOperations * 100).toFixed(1) + '%'\n};\n\nreturn results;"
+      }
+    },
+    {
+      "id": "write-log-1",
+      "type": "action.file_operation",
+      "position": {"x": 1300, "y": 150},
+      "config": {
+        "target": "log-server",
+        "connection_method": "ssh",
+        "operation": "write",
+        "source_path": "/var/log/camera-maintenance/maintenance-{{date}}.log",
+        "create_directories": true,
+        "overwrite_existing": false,
+        "encoding": "utf-8"
+      }
+    },
+    {
+      "id": "format-log-entry-1",
+      "type": "data.transform",
+      "position": {"x": 1100, "y": 250},
+      "config": {
+        "script": "// Format log entry\nconst timestamp = new Date().toISOString();\nconst data = input.maintenance_results;\n\nlet logEntry = `\\n=== Camera Maintenance Log - ${timestamp} ===\\n`;\nlogEntry += `Total Cameras: ${data.cameras_processed.length}\\n`;\nlogEntry += `Success Rate: ${data.summary.success_rate}\\n\\n`;\n\ndata.cameras_processed.forEach(camera => {\n  logEntry += `Camera: ${camera.name} (${camera.id})\\n`;\n  logEntry += `  Autofocus: ${camera.autofocus_success ? 'SUCCESS' : 'FAILED'} (${camera.autofocus_response})\\n`;\n  logEntry += `  PTZ Home: ${camera.ptz_home_success ? 'SUCCESS' : 'FAILED'} (${camera.ptz_response})\\n`;\n  logEntry += `\\n`;\n});\n\nlogEntry += `=== End Maintenance Log ===\\n`;\n\nreturn {\n  log_content: logEntry,\n  log_filename: `maintenance-${new Date().toISOString().split('T')[0]}.log`,\n  timestamp: timestamp\n};"
+      }
+    },
+    {
+      "id": "send-summary-email-1",
+      "type": "action.notification",
+      "position": {"x": 1500, "y": 150},
+      "config": {
+        "notification_type": "email",
+        "recipients": ["security@company.com", "maintenance@company.com"],
+        "subject": "Weekly Camera Maintenance Complete - {{data.summary.success_rate}} Success Rate",
+        "message": "Camera maintenance completed on {{data.maintenance_date}}\\n\\nSummary:\\n- Total Operations: {{data.summary.total_operations}}\\n- Successful: {{data.summary.successful_operations}}\\n- Failed: {{data.summary.failed_operations}}\\n- Success Rate: {{data.summary.success_rate}}\\n\\nDetailed results logged to maintenance server.",
+        "priority": "normal"
+      }
+    },
+    {
+      "id": "end-1",
+      "type": "flow.end",
+      "position": {"x": 1700, "y": 150},
+      "config": {
+        "name": "Camera Maintenance Complete",
+        "save_result": true,
+        "result_name": "camera_maintenance_result"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": {"blockId": "schedule-trigger-1", "output": "trigger"},
+      "to": {"blockId": "start-1", "input": "schedule_trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "start-1", "output": "trigger"},
+      "to": {"blockId": "get-camera-list-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "get-camera-list-1", "output": "success"},
+      "to": {"blockId": "camera-01-autofocus", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "get-camera-list-1", "output": "success"},
+      "to": {"blockId": "camera-02-autofocus", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "get-camera-list-1", "output": "success"},
+      "to": {"blockId": "camera-03-autofocus", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-01-autofocus", "output": "success"},
+      "to": {"blockId": "camera-01-ptz-home", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-02-autofocus", "output": "success"},
+      "to": {"blockId": "camera-02-ptz-home", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-03-autofocus", "output": "success"},
+      "to": {"blockId": "camera-03-ptz-home", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-01-ptz-home", "output": "success"},
+      "to": {"blockId": "collect-results-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-02-ptz-home", "output": "success"},
+      "to": {"blockId": "collect-results-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "camera-03-ptz-home", "output": "success"},
+      "to": {"blockId": "collect-results-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "collect-results-1", "output": "success"},
+      "to": {"blockId": "format-log-entry-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "collect-results-1", "output": "output_data"},
+      "to": {"blockId": "format-log-entry-1", "input": "input_data"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "format-log-entry-1", "output": "success"},
+      "to": {"blockId": "write-log-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "format-log-entry-1", "output": "output_data"},
+      "to": {"blockId": "write-log-1", "input": "file_content"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "write-log-1", "output": "success"},
+      "to": {"blockId": "send-summary-email-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "collect-results-1", "output": "output_data"},
+      "to": {"blockId": "send-summary-email-1", "input": "message"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "send-summary-email-1", "output": "success"},
+      "to": {"blockId": "end-1", "input": "trigger"},
+      "type": "flow"
+    }
+  ]
+}

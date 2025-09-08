@@ -242,17 +242,18 @@ const Targets: React.FC = () => {
       ip_address: '',
       os_type: '',
       tags: [],
-      description: ''
+      description: '',
+      services: []
     });
   };
 
   const handleEdit = (target: EnhancedTarget) => {
     setEditingTarget(target);
     setEditTarget({
-      ip_address: target.ip_address,
+      ip_address: target.ip_address || '',
       os_type: target.os_type || '',
       tags: target.tags || [],
-      description: target.metadata?.description || '',
+      description: target.description || '',
       services: target.services || []
     });
     setAddingNew(false);
@@ -293,10 +294,10 @@ const Targets: React.FC = () => {
           .map(service => ({
             service_type: service.service_type,
             port: parseInt(service.port.toString()) || 22,
-            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : null,
+            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : undefined,
             is_secure: false,
             is_enabled: true,
-            notes: null
+            notes: undefined
           }))
       };
       
@@ -360,10 +361,10 @@ const Targets: React.FC = () => {
           .map(service => ({
             service_type: service.service_type,
             port: parseInt(service.port.toString()) || 22,
-            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : null,
+            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : undefined,
             is_secure: false,
             is_enabled: true,
-            notes: null
+            notes: undefined
           }))
       };
       

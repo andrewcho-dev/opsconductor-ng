@@ -1,0 +1,176 @@
+{
+  "name": "Service Recovery Workflow - Redesigned",
+  "description": "Automated service monitoring and recovery using generic blocks",
+  "flow_version": 2,
+  "blocks": [
+    {
+      "id": "monitor-1",
+      "type": "trigger.service_monitor",
+      "position": {"x": 100, "y": 100},
+      "config": {
+        "target": "web-server-01",
+        "service_name": "IIS",
+        "monitor_events": ["stopped", "failed"],
+        "check_interval_sec": 30
+      }
+    },
+    {
+      "id": "start-1",
+      "type": "flow.start",
+      "position": {"x": 300, "y": 100},
+      "config": {
+        "name": "Service Recovery Start",
+        "trigger_types": ["event", "manual"]
+      }
+    },
+    {
+      "id": "check-service-1",
+      "type": "action.service_control",
+      "position": {"x": 500, "y": 100},
+      "config": {
+        "target": "web-server-01",
+        "service_name": "IIS",
+        "action": "status",
+        "timeout_seconds": 10
+      }
+    },
+    {
+      "id": "condition-1",
+      "type": "logic.if",
+      "position": {"x": 700, "y": 100},
+      "config": {
+        "condition": "{{data.service_status.status}} !== 'running'"
+      }
+    },
+    {
+      "id": "restart-service-1",
+      "type": "action.service_control",
+      "position": {"x": 500, "y": 250},
+      "config": {
+        "target": "web-server-01",
+        "service_name": "IIS",
+        "action": "restart",
+        "wait_for_status": "running",
+        "timeout_seconds": 60
+      }
+    },
+    {
+      "id": "notify-success-1",
+      "type": "action.notification",
+      "position": {"x": 700, "y": 250},
+      "config": {
+        "notification_type": "email",
+        "recipients": ["ops@company.com"],
+        "subject": "Service Recovery Successful",
+        "message": "IIS service on {{trigger_info.target}} has been successfully restarted.",
+        "priority": "normal"
+      }
+    },
+    {
+      "id": "notify-failure-1",
+      "type": "action.notification",
+      "position": {"x": 900, "y": 100},
+      "config": {
+        "notification_type": "slack",
+        "channel": "#alerts",
+        "message": "🚨 CRITICAL: Failed to restart IIS service on {{trigger_info.target}}. Manual intervention required!",
+        "webhook_url": "https://hooks.slack.com/services/..."
+      }
+    },
+    {
+      "id": "create-ticket-1",
+      "type": "integration.jira",
+      "position": {"x": 900, "y": 200},
+      "config": {
+        "operation": "create_issue",
+        "jira_url": "https://company.atlassian.net",
+        "project_key": "OPS",
+        "issue_type": "Incident",
+        "summary": "Service Recovery Failed - IIS on {{trigger_info.target}}",
+        "description": "Automated service restart failed. Service: IIS, Server: {{trigger_info.target}}, Time: {{trigger_info.timestamp}}",
+        "priority": "High",
+        "assignee": "ops-team"
+      }
+    },
+    {
+      "id": "end-success-1",
+      "type": "flow.end",
+      "position": {"x": 900, "y": 250},
+      "config": {
+        "name": "Recovery Successful",
+        "save_result": true
+      }
+    },
+    {
+      "id": "end-failure-1",
+      "type": "flow.end",
+      "position": {"x": 1100, "y": 150},
+      "config": {
+        "name": "Recovery Failed",
+        "save_result": true
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": {"blockId": "monitor-1", "output": "trigger"},
+      "to": {"blockId": "start-1", "input": "event_trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "monitor-1", "output": "service_status"},
+      "to": {"blockId": "start-1", "input": "trigger_data"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "start-1", "output": "trigger"},
+      "to": {"blockId": "check-service-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "check-service-1", "output": "success"},
+      "to": {"blockId": "condition-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "check-service-1", "output": "service_status"},
+      "to": {"blockId": "condition-1", "input": "data"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "condition-1", "output": "true"},
+      "to": {"blockId": "restart-service-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "condition-1", "output": "false"},
+      "to": {"blockId": "end-success-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "restart-service-1", "output": "success"},
+      "to": {"blockId": "notify-success-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "restart-service-1", "output": "error"},
+      "to": {"blockId": "notify-failure-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "notify-success-1", "output": "success"},
+      "to": {"blockId": "end-success-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "notify-failure-1", "output": "success"},
+      "to": {"blockId": "create-ticket-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "create-ticket-1", "output": "success"},
+      "to": {"blockId": "end-failure-1", "input": "trigger"},
+      "type": "flow"
+    }
+  ]
+}

@@ -167,7 +167,7 @@ const EnhancedTargetManagement: React.FC = () => {
 
   const handleTestService = async (targetId: number, serviceId: number) => {
     try {
-      const result = await targetServiceApi.testConnection(targetId, serviceId);
+      const result = await targetServiceApi.testConnection(serviceId);
       alert(`Connection test result: ${JSON.stringify(result, null, 2)}`);
     } catch (err: any) {
       console.error('Failed to test service:', err);

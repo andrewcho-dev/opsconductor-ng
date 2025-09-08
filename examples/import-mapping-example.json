@@ -1,0 +1,128 @@
+{
+  "import_session": {
+    "workflow_name": "Automated Service Management",
+    "source_file": "service-restart-workflow.json",
+    "import_status": "mapping_required",
+    
+    "target_mapping": {
+      "PRIMARY_WEB_SERVER": {
+        "variable_info": {
+          "description": "Primary IIS web server",
+          "required_capabilities": ["service_control", "service_monitoring"],
+          "os_requirements": {"platform": "windows", "min_version": "2016"}
+        },
+        "available_targets": [
+          {
+            "id": "web-01",
+            "name": "Production Web Server 01", 
+            "type": "windows_server",
+            "capabilities": ["service_control", "service_monitoring", "file_operations"],
+            "os_info": {"platform": "windows", "version": "2019"},
+            "status": "online",
+            "compatibility": "full"
+          },
+          {
+            "id": "web-02", 
+            "name": "Production Web Server 02",
+            "type": "windows_server", 
+            "capabilities": ["service_control", "service_monitoring"],
+            "os_info": {"platform": "windows", "version": "2016"},
+            "status": "online",
+            "compatibility": "full"
+          }
+        ],
+        "selected_target": "web-01",
+        "mapping_status": "valid"
+      },
+      
+      "BACKUP_WEB_SERVER": {
+        "variable_info": {
+          "description": "Backup IIS web server",
+          "required_capabilities": ["service_control"],
+          "optional": true
+        },
+        "available_targets": [
+          {
+            "id": "web-02",
+            "name": "Production Web Server 02", 
+            "type": "windows_server",
+            "capabilities": ["service_control", "service_monitoring"],
+            "os_info": {"platform": "windows", "version": "2016"},
+            "status": "online",
+            "compatibility": "full"
+          }
+        ],
+        "selected_target": "web-02",
+        "mapping_status": "valid"
+      }
+    },
+
+    "configuration_mapping": {
+      "SERVICE_NAME": {
+        "variable_info": {
+          "type": "string",
+          "default": "IIS", 
+          "description": "Name of the service to monitor"
+        },
+        "current_value": "W3SVC",
+        "validation_status": "valid"
+      },
+      
+      "CHECK_INTERVAL": {
+        "variable_info": {
+          "type": "integer",
+          "default": 30,
+          "min": 10,
+          "max": 300,
+          "description": "Service check interval in seconds"
+        },
+        "current_value": 60,
+        "validation_status": "valid"
+      },
+      
+      "MAX_RESTART_ATTEMPTS": {
+        "variable_info": {
+          "type": "integer", 
+          "default": 3,
+          "description": "Maximum restart attempts before alerting"
+        },
+        "current_value": 5,
+        "validation_status": "valid"
+      },
+      
+      "NOTIFICATION_EMAIL": {
+        "variable_info": {
+          "type": "string",
+          "format": "email",
+          "description": "Email for failure notifications"
+        },
+        "current_value": "ops@mycompany.com",
+        "validation_status": "valid"
+      }
+    },
+
+    "validation_results": {
+      "overall_status": "ready_to_import",
+      "issues": [],
+      "warnings": [
+        {
+          "type": "configuration_change",
+          "message": "Service name changed from 'IIS' to 'W3SVC' - verify this is correct",
+          "severity": "low"
+        }
+      ],
+      "requirements_check": {
+        "platform_version": {"required": "2.0.0", "current": "2.1.3", "status": "pass"},
+        "features": {"required": ["service_monitoring", "target_management"], "status": "pass"},
+        "permissions": {"required": ["service_control", "service_monitoring"], "status": "pass"}
+      }
+    },
+
+    "preview": {
+      "blocks_count": 10,
+      "connections_count": 13,
+      "triggers_count": 1,
+      "estimated_import_time": "15 seconds"
+    }
+  }
+}

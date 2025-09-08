@@ -1,0 +1,203 @@
+{
+  "name": "Windows Directory Listing via WinRM",
+  "description": "Get directory listing from Windows C: drive using WinRM connection",
+  "flow_version": 2,
+  "targets": [
+    {
+      "id": "win-server-01",
+      "name": "Windows Server 01",
+      "hostname": "192.168.1.100",
+      "os_type": "windows",
+      "default_connection": "winrm",
+      "auth_method": "password",
+      "username": "administrator",
+      "password": "{{vault.win_server_01_password}}",
+      "winrm_port": 5985,
+      "winrm_use_ssl": false,
+      "winrm_transport": "ntlm"
+    }
+  ],
+  "blocks": [
+    {
+      "id": "start-1",
+      "type": "flow.start",
+      "position": {"x": 100, "y": 100},
+      "config": {
+        "name": "Get Windows Directory Listing",
+        "trigger_types": ["manual", "schedule"]
+      }
+    },
+    {
+      "id": "get-dir-listing-1",
+      "type": "action.command",
+      "position": {"x": 300, "y": 100},
+      "config": {
+        "target": "win-server-01",
+        "connection_method": "winrm",
+        "command": "dir C:\\ /B /A",
+        "shell": "cmd",
+        "timeout_seconds": 30,
+        "capture_output": true,
+        "winrm_options": {
+          "operation_timeout": 60,
+          "read_timeout": 90
+        }
+      }
+    },
+    {
+      "id": "parse-output-1",
+      "type": "data.transform",
+      "position": {"x": 500, "y": 100},
+      "config": {
+        "script": "// Parse directory listing output\nconst lines = input.result.stdout.split('\\n').filter(line => line.trim());\nconst directories = [];\nconst files = [];\n\nlines.forEach(line => {\n  const trimmed = line.trim();\n  if (trimmed) {\n    // This is a simple example - you'd want more sophisticated parsing\n    if (trimmed.includes('.')) {\n      files.push(trimmed);\n    } else {\n      directories.push(trimmed);\n    }\n  }\n});\n\nreturn {\n  total_items: lines.length,\n  directories: directories,\n  files: files,\n  raw_output: input.result.stdout,\n  execution_time: input.result.execution_time,\n  target: input.result.target\n};"
+      }
+    },
+    {
+      "id": "detailed-file-info-1",
+      "type": "action.command",
+      "position": {"x": 300, "y": 250},
+      "config": {
+        "target": "win-server-01",
+        "connection_method": "winrm",
+        "command": "dir C:\\ /Q /T:W",
+        "shell": "cmd",
+        "timeout_seconds": 30,
+        "capture_output": true,
+        "winrm_options": {
+          "operation_timeout": 60,
+          "read_timeout": 90
+        }
+      }
+    },
+    {
+      "id": "powershell-alternative-1",
+      "type": "action.command",
+      "position": {"x": 300, "y": 400},
+      "config": {
+        "target": "win-server-01",
+        "connection_method": "winrm",
+        "command": "Get-ChildItem -Path C:\\ | Select-Object Name, Length, LastWriteTime, Attributes | ConvertTo-Json",
+        "shell": "powershell",
+        "timeout_seconds": 30,
+        "capture_output": true,
+        "winrm_options": {
+          "operation_timeout": 60,
+          "read_timeout": 90
+        }
+      }
+    },
+    {
+      "id": "parse-powershell-1",
+      "type": "data.transform",
+      "position": {"x": 500, "y": 400},
+      "config": {
+        "script": "// Parse PowerShell JSON output\ntry {\n  const items = JSON.parse(input.result.stdout);\n  return {\n    items: items,\n    count: items.length,\n    directories: items.filter(item => item.Attributes && item.Attributes.includes('Directory')),\n    files: items.filter(item => item.Attributes && !item.Attributes.includes('Directory')),\n    target: input.result.target,\n    timestamp: new Date().toISOString()\n  };\n} catch (error) {\n  return {\n    error: 'Failed to parse PowerShell output',\n    raw_output: input.result.stdout,\n    parse_error: error.message\n  };\n}"
+      }
+    },
+    {
+      "id": "check-specific-file-1",
+      "type": "action.file_operation",
+      "position": {"x": 700, "y": 100},
+      "config": {
+        "target": "win-server-01",
+        "connection_method": "winrm",
+        "operation": "exists",
+        "source_path": "C:\\Windows\\System32\\notepad.exe"
+      }
+    },
+    {
+      "id": "get-file-info-1",
+      "type": "action.file_operation",
+      "position": {"x": 700, "y": 200},
+      "config": {
+        "target": "win-server-01",
+        "connection_method": "winrm",
+        "operation": "get_info",
+        "source_path": "C:\\Windows\\System32\\notepad.exe"
+      }
+    },
+    {
+      "id": "notify-results-1",
+      "type": "action.notification",
+      "position": {"x": 900, "y": 250},
+      "config": {
+        "notification_type": "email",
+        "recipients": ["admin@company.com"],
+        "subject": "Windows Directory Listing Complete",
+        "message": "Directory listing completed for {{target}}:\n\nTotal items: {{data.total_items}}\nDirectories: {{data.directories.length}}\nFiles: {{data.files.length}}\n\nExecution time: {{data.execution_time}}ms"
+      }
+    },
+    {
+      "id": "end-1",
+      "type": "flow.end",
+      "position": {"x": 1100, "y": 250},
+      "config": {
+        "name": "Directory Listing Complete",
+        "save_result": true,
+        "result_name": "directory_listing_result"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": {"blockId": "start-1", "output": "trigger"},
+      "to": {"blockId": "get-dir-listing-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "get-dir-listing-1", "output": "success"},
+      "to": {"blockId": "parse-output-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "get-dir-listing-1", "output": "result"},
+      "to": {"blockId": "parse-output-1", "input": "input_data"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "start-1", "output": "trigger"},
+      "to": {"blockId": "detailed-file-info-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "start-1", "output": "trigger"},
+      "to": {"blockId": "powershell-alternative-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "powershell-alternative-1", "output": "success"},
+      "to": {"blockId": "parse-powershell-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "powershell-alternative-1", "output": "result"},
+      "to": {"blockId": "parse-powershell-1", "input": "input_data"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "parse-output-1", "output": "success"},
+      "to": {"blockId": "check-specific-file-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "check-specific-file-1", "output": "success"},
+      "to": {"blockId": "get-file-info-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "parse-powershell-1", "output": "success"},
+      "to": {"blockId": "notify-results-1", "input": "trigger"},
+      "type": "flow"
+    },
+    {
+      "from": {"blockId": "parse-powershell-1", "output": "output_data"},
+      "to": {"blockId": "notify-results-1", "input": "message"},
+      "type": "data"
+    },
+    {
+      "from": {"blockId": "notify-results-1", "output": "success"},
+      "to": {"blockId": "end-1", "input": "trigger"},
+      "type": "flow"
+    }
+  ]
+}

@@ -241,8 +241,8 @@ const visualJobBuilderStyles = `
   }
 
   .step-template {
-    padding: var(--space-2);
-    margin-bottom: var(--space-2);
+    padding: var(--space-1);
+    margin-bottom: var(--space-1);
     border: 1px solid var(--neutral-200);
     border-radius: var(--radius-sm);
     cursor: grab;
@@ -263,8 +263,8 @@ const visualJobBuilderStyles = `
   .step-template-header {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    margin-bottom: var(--space-1);
+    gap: var(--space-1);
+    margin-bottom: 2px;
   }
 
   .step-template-name {
@@ -501,8 +501,8 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   const [jobName, setJobName] = useState('');
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedLibrary, setSelectedLibrary] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedLibrary, setSelectedLibrary] = useState<string>('');
   const [draggedTemplate, setDraggedTemplate] = useState<NodeTemplate | null>(null);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1090,14 +1090,14 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
     };
   }, [loadStepDefinitions, handleSave]);
 
-  // Get unique categories and libraries
-  const categories = ['all', ...Array.from(new Set(nodeTemplates.map(t => t.category)))];
-  const libraries = ['all', ...Array.from(new Set(nodeTemplates.map(t => t.library)))];
+  // Get unique categories and libraries (no "all" option)
+  const categories = Array.from(new Set(nodeTemplates.map(t => t.category)));
+  const libraries = Array.from(new Set(nodeTemplates.map(t => t.library)));
 
   // Filter templates
   const filteredTemplates = nodeTemplates.filter(template => {
-    const categoryMatch = selectedCategory === 'all' || template.category === selectedCategory;
-    const libraryMatch = selectedLibrary === 'all' || template.library === selectedLibrary;
+    const categoryMatch = !selectedCategory || template.category === selectedCategory;
+    const libraryMatch = !selectedLibrary || template.library === selectedLibrary;
     const searchMatch = searchTerm === '' || 
       template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1126,13 +1126,13 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                 onClick={() => setSelectedLibrary(lib)}
               >
                 <Package size={14} />
-                <span>{lib === 'all' ? 'All Libraries' : lib}</span>
+                <span>{lib}</span>
               </div>
             ))}
           </div>
 
           {/* Categories for selected library */}
-          {selectedLibrary !== 'all' && (
+          {selectedLibrary && (
             <div className="category-section">
               <h4 className="category-header">Categories</h4>
               <div className="category-list">
@@ -1142,7 +1142,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                     className={`category-item ${selectedCategory === cat ? 'selected' : ''}`}
                     onClick={() => setSelectedCategory(cat)}
                   >
-                    <span>{cat === 'all' ? 'All Categories' : cat}</span>
+                    <span>{cat}</span>
                   </div>
                 ))}
               </div>

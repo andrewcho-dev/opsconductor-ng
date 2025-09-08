@@ -55,11 +55,8 @@ export const getApiBaseUrl = () => {
 };
 
 export const getServiceUrl = (service: string) => {
-  const port = SERVICE_PORTS[service as keyof typeof SERVICE_PORTS];
-  if (port) {
-    return `http://127.0.0.1:${port}`;
-  }
-  return 'http://127.0.0.1';
+  // Always use the nginx proxy instead of direct service ports
+  return getApiBaseUrl();
 };
 
 // Create axios instance with dynamic baseURL
@@ -174,7 +171,7 @@ export const isAuthenticated = (): boolean => {
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await axios.post(`${getServiceUrl('auth')}/login`, credentials);
+    const response: AxiosResponse<AuthResponse> = await axios.post(`${getApiBaseUrl()}/api/v1/auth/login`, credentials);
     return response.data;
   },
 

@@ -98,7 +98,7 @@ class StepLibraryService {
       if (platform) params.append('platform', platform);
 
       const response = await axios.get(
-        `${getStepLibrariesServiceUrl()}/api/v1/steps?${params.toString()}`
+        `${getStepLibrariesServiceUrl()}/steps?${params.toString()}`
       );
 
       const data: StepLibraryResponse = response.data;
@@ -165,7 +165,7 @@ class StepLibraryService {
       }
 
       const response = await axios.post(
-        `${getStepLibrariesServiceUrl()}/api/v1/libraries/install`,
+        `${getStepLibrariesServiceUrl()}/libraries/install`,
         formData,
         {
           headers: {
@@ -193,7 +193,7 @@ class StepLibraryService {
   async uninstallLibrary(libraryId: number): Promise<void> {
     try {
       await axios.delete(
-        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}`
+        `${getStepLibrariesServiceUrl()}/libraries/${libraryId}`
       );
 
       // Clear cache after uninstallation
@@ -213,7 +213,7 @@ class StepLibraryService {
   async toggleLibrary(libraryId: number, enabled: boolean): Promise<void> {
     try {
       await axios.put(
-        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}/toggle`,
+        `${getStepLibrariesServiceUrl()}/libraries/${libraryId}/toggle`,
         null,
         {
           params: { enabled }
@@ -237,7 +237,7 @@ class StepLibraryService {
   async getLibraryDetails(libraryId: number): Promise<any> {
     try {
       const response = await axios.get(
-        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}`
+        `${getStepLibrariesServiceUrl()}/libraries/${libraryId}`
       );
       return response.data;
     } catch (error) {
