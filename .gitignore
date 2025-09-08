@@ -96,5 +96,7 @@ coverage.xml
 .sudo_as_admin_successful
 .vscode-server/
 .wget-hsts
-.zencoder/
+# Zencoder files (but allow rules directory for team sharing)
+.zencoder/*
+!.zencoder/rules/
 .zenrules
