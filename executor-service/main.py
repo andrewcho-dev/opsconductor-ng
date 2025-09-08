@@ -35,6 +35,7 @@ from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
 from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
+from shared.utils import utility_render_template, utility_render_file_paths, utility_create_error_result
 
 # Import utility modules
 from utils.utility_http_executor import HTTPExecutor
@@ -143,178 +144,172 @@ class JobExecutor:
         
         try:
             # Mark step as running
-            cursor.execute(
-                "UPDATE job_run_steps SET status = 'running', started_at = %s WHERE id = %s",
-                (datetime.utcnow(), step_id)
-            )
+            self._mark_step_as_running(step_id, job_run_id, cursor)
             
-            # Update job run status if this is the first step
-            cursor.execute(
-                "UPDATE job_runs SET status = 'running', started_at = COALESCE(started_at, %s) WHERE id = %s",
-                (datetime.utcnow(), job_run_id)
-            )
+            # Execute the step based on its type
+            result = self._route_step_execution(step)
             
-            # Execute based on step type
-            if step['type'] == 'winrm.exec':
-                result = self._execute_winrm_exec(step)
-            elif step['type'] == 'winrm.copy':
-                result = self._execute_winrm_copy(step)
-            elif step['type'] == 'windows.command':
-                result = self._execute_windows_command(step)
-            elif step['type'] == 'ssh.exec':
-                result = self._execute_ssh_exec(step)
-            elif step['type'] == 'ssh.copy':
-                result = self._execute_ssh_copy(step)
-            elif step['type'] == 'sftp.upload':
-                result = self._execute_sftp_upload(step)
-            elif step['type'] == 'sftp.download':
-                result = self._execute_sftp_download(step)
-            elif step['type'] == 'sftp.sync':
-                result = self._execute_sftp_sync(step)
-            elif step['type'] == 'http.get':
-                result = self._execute_http_get(step)
-            elif step['type'] == 'http.post':
-                result = self._execute_http_post(step)
-            elif step['type'] == 'http.put':
-                result = self._execute_http_put(step)
-            elif step['type'] == 'http.delete':
-                result = self._execute_http_delete(step)
-            elif step['type'] == 'http.patch':
-                result = self._execute_http_patch(step)
-            elif step['type'] == 'webhook.call':
-                result = self._execute_webhook_call(step)
-            elif step['type'] == 'notify.email':
-                result = self._execute_notify_email(step)
-            elif step['type'] == 'notify.slack':
-                result = self._execute_notify_slack(step)
-            elif step['type'] == 'notify.teams':
-                result = self._execute_notify_teams(step)
-            elif step['type'] == 'notify.webhook':
-                result = self._execute_notify_webhook(step)
-            elif step['type'] == 'notify.conditional':
-                result = self._execute_notify_conditional(step)
-            else:
-                result = {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': f"Unknown step type: {step['type']}"
-                }
-            
-            # Update step with results
-            cursor.execute("""
-                UPDATE job_run_steps 
-                SET status = %s, exit_code = %s, stdout = %s, stderr = %s, 
-                    finished_at = %s, metrics = %s
-                WHERE id = %s
-            """, (
-                result['status'],
-                result.get('exit_code'),
-                result.get('stdout'),
-                result.get('stderr'),
-                datetime.utcnow(),
-                json.dumps(result.get('metrics', {})),
-                step_id
-            ))
-            
-            # Check if job run is complete and send notifications
-            self._update_job_run_status(job_run_id, cursor)
-            
-            logger.info(f"Step {step_id} completed with status: {result['status']}")
+            # Update step with results and handle completion
+            self._handle_step_completion(step_id, job_run_id, result, cursor)
             
         except Exception as e:
-            # Mark step as failed
-            cursor.execute("""
-                UPDATE job_run_steps 
-                SET status = 'failed', stderr = %s, finished_at = %s
-                WHERE id = %s
-            """, (str(e), datetime.utcnow(), step_id))
-            
-            self._update_job_run_status(job_run_id, cursor)
-            
-            logger.error(f"Step {step_id} failed: {e}")
+            # Handle step failure
+            self._handle_step_failure(step_id, job_run_id, str(e), cursor)
+    
+    def _mark_step_as_running(self, step_id: int, job_run_id: int, cursor) -> None:
+        """Mark step and job run as running"""
+        cursor.execute(
+            "UPDATE job_run_steps SET status = 'running', started_at = %s WHERE id = %s",
+            (datetime.utcnow(), step_id)
+        )
+        
+        cursor.execute(
+            "UPDATE job_runs SET status = 'running', started_at = COALESCE(started_at, %s) WHERE id = %s",
+            (datetime.utcnow(), job_run_id)
+        )
+    
+    def _route_step_execution(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Route step execution to appropriate handler based on step type"""
+        step_type = step['type']
+        
+        # Step type routing map
+        execution_map = {
+            'winrm.exec': self._execute_winrm_exec,
+            'winrm.copy': self._execute_winrm_copy,
+            'windows.command': self._execute_windows_command,
+            'ssh.exec': self._execute_ssh_exec,
+            'ssh.copy': self._execute_ssh_copy,
+            'sftp.upload': self._execute_sftp_upload,
+            'sftp.download': self._execute_sftp_download,
+            'sftp.sync': self._execute_sftp_sync,
+            'http.get': self._execute_http_get,
+            'http.post': self._execute_http_post,
+            'http.put': self._execute_http_put,
+            'http.delete': self._execute_http_delete,
+            'http.patch': self._execute_http_patch,
+            'webhook.call': self._execute_webhook_call,
+            'notify.email': self._execute_notify_email,
+            'notify.slack': self._execute_notify_slack,
+            'notify.teams': self._execute_notify_teams,
+            'notify.webhook': self._execute_notify_webhook,
+            'notify.conditional': self._execute_notify_conditional,
+        }
+        
+        # Execute the appropriate handler
+        if step_type in execution_map:
+            return execution_map[step_type](step)
+        else:
+            return self._create_unknown_step_type_result(step_type)
+    
+    def _create_unknown_step_type_result(self, step_type: str) -> Dict[str, Any]:
+        """Create result for unknown step type"""
+        return {
+            'status': 'failed',
+            'exit_code': 1,
+            'stdout': '',
+            'stderr': f"Unknown step type: {step_type}"
+        }
+    
+    def _handle_step_completion(self, step_id: int, job_run_id: int, result: Dict[str, Any], cursor) -> None:
+        """Handle successful step completion"""
+        # Update step with results
+        cursor.execute("""
+            UPDATE job_run_steps 
+            SET status = %s, exit_code = %s, stdout = %s, stderr = %s, 
+                finished_at = %s, metrics = %s
+            WHERE id = %s
+        """, (
+            result['status'],
+            result.get('exit_code'),
+            result.get('stdout'),
+            result.get('stderr'),
+            datetime.utcnow(),
+            json.dumps(result.get('metrics', {})),
+            step_id
+        ))
+        
+        # Check if job run is complete and send notifications
+        self._update_job_run_status(job_run_id, cursor)
+        
+        logger.info(f"Step {step_id} completed with status: {result['status']}")
+    
+    def _handle_step_failure(self, step_id: int, job_run_id: int, error_message: str, cursor) -> None:
+        """Handle step failure"""
+        # Mark step as failed
+        cursor.execute("""
+            UPDATE job_run_steps 
+            SET status = 'failed', stderr = %s, finished_at = %s
+            WHERE id = %s
+        """, (error_message, datetime.utcnow(), step_id))
+        
+        self._update_job_run_status(job_run_id, cursor)
+        
+        logger.error(f"Step {step_id} failed: {error_message}")
     
     def _execute_winrm_exec(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute winrm.exec step"""
         try:
-            # Get target and credential info
-            target_info = self._get_target_info(step['target_id'])
-            if not target_info:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': 'Target not found or not accessible'
-                }
-            
-            credential_data = self._get_credential_data(target_info['credential_ref'])
-            if not credential_data:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': 'Credential not found or not accessible'
-                }
-            
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            # Get execution context (target, credentials, step definition)
+            context = self._prepare_execution_context(step)
+            if context['error']:
+                return context['error']
             
             # Render command template
-            command_template = Template(step_definition['command'])
-            rendered_command = command_template.render(**run_parameters)
-            
-            # Create WinRM session
-            # Use HTTP for port 5985, HTTPS for port 5986
-            protocol = 'https' if target_info['port'] == 5986 else 'http'
-            winrm_url = f"{protocol}://{target_info['hostname']}:{target_info['port']}/wsman"
-            
-            logger.info(f"Connecting to WinRM: {winrm_url} with user: {credential_data['username']}")
-            
-            session = winrm.Session(
-                target=winrm_url,
-                auth=(credential_data['username'], credential_data['password']),
-                transport='ntlm',
-                server_cert_validation='ignore'
+            rendered_command = utility_render_template(
+                context['step_definition']['command'], 
+                context['run_parameters']
             )
             
-            # Execute command
-            shell_type = step['shell'] or 'powershell'
-            timeout = step['timeoutsec'] or 60
-            
-            if shell_type == 'powershell':
-                result = session.run_ps(rendered_command)
-            else:
-                result = session.run_cmd(rendered_command)
-            
-            # Process results
-            status = 'succeeded' if result.status_code == 0 else 'failed'
-            stdout = result.std_out.decode('utf-8', errors='replace') if result.std_out else ''
-            stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else ''
-            
-            return {
-                'status': status,
-                'exit_code': result.status_code,
-                'stdout': stdout,
-                'stderr': stderr,
-                'metrics': {
-                    'target': target_info['hostname'],
-                    'shell': shell_type,
-                    'rendered_command': rendered_command
-                }
-            }
+            # Execute WinRM command
+            return self._perform_winrm_execution(
+                context['target_info'], 
+                context['credential_data'],
+                rendered_command,
+                step.get('shell', 'powershell'),
+                step.get('timeoutsec', 60)
+            )
             
         except Exception as e:
-            logger.error(f"WinRM execution error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'WinRM execution failed: {str(e)}'
+            return utility_create_error_result(f'WinRM execution failed: {str(e)}', "WinRM execution error", e)
+    
+    def _perform_winrm_execution(self, target_info: Dict[str, Any], credential_data: Dict[str, Any],
+                                rendered_command: str, shell_type: str, timeout: int) -> Dict[str, Any]:
+        """Perform the actual WinRM command execution"""
+        # Create WinRM session
+        protocol = 'https' if target_info['port'] == 5986 else 'http'
+        winrm_url = f"{protocol}://{target_info['hostname']}:{target_info['port']}/wsman"
+        
+        logger.info(f"Connecting to WinRM: {winrm_url} with user: {credential_data['username']}")
+        
+        session = winrm.Session(
+            target=winrm_url,
+            auth=(credential_data['username'], credential_data['password']),
+            transport='ntlm',
+            server_cert_validation='ignore'
+        )
+        
+        # Execute command
+        if shell_type == 'powershell':
+            result = session.run_ps(rendered_command)
+        else:
+            result = session.run_cmd(rendered_command)
+        
+        # Process results
+        status = 'succeeded' if result.status_code == 0 else 'failed'
+        stdout = result.std_out.decode('utf-8', errors='replace') if result.std_out else ''
+        stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else ''
+        
+        return {
+            'status': status,
+            'exit_code': result.status_code,
+            'stdout': stdout,
+            'stderr': stderr,
+            'metrics': {
+                'target': target_info['hostname'],
+                'shell': shell_type,
+                'rendered_command': rendered_command
             }
+        }
     
     def _execute_winrm_copy(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute winrm.copy step"""
@@ -345,9 +340,8 @@ class JobExecutor:
             # Find the step definition in job
             step_definition = job_definition['steps'][step['idx']]
             
-            # Render templates
-            dest_path_template = Template(step_definition['destPath'])
-            dest_path = dest_path_template.render(**run_parameters)
+            # Render destination path template
+            dest_path = utility_render_template(step_definition['destPath'], run_parameters)
             
             # Decode base64 content
             content = base64.b64decode(step_definition['contentB64']).decode('utf-8')
@@ -515,8 +509,7 @@ class JobExecutor:
             step_definition = job_definition['steps'][step['idx']]
             
             # Render command template
-            command_template = Template(step_definition['command'])
-            rendered_command = command_template.render(**run_parameters)
+            rendered_command = utility_render_template(step_definition['command'], run_parameters)
             
             # Use SSH port from target or default to 22
             ssh_port = target_info.get('ssh_port', 22)
@@ -563,96 +556,117 @@ class JobExecutor:
     def _execute_ssh_copy(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute ssh.copy step (SCP file transfer)"""
         try:
-            # Get target and credential info
-            target_info = self._get_target_info(step['target_id'])
-            if not target_info:
-                return {
+            # Get execution context (target, credentials, step definition)
+            context = self._prepare_execution_context(step)
+            if context['error']:
+                return context['error']
+            
+            # Render file paths
+            source_path, dest_path = utility_render_file_paths(
+                context['step_definition']['source_path'], 
+                context['step_definition']['dest_path'],
+                context['run_parameters']
+            )
+            
+            # Execute SSH file copy
+            return self._perform_ssh_copy(
+                context['target_info'], 
+                context['credential_data'],
+                source_path, 
+                dest_path
+            )
+                
+        except SSHExecutionError as e:
+            return utility_create_error_result(f'SSH copy failed: {str(e)}', "SSH copy error", e)
+        except Exception as e:
+            return utility_create_error_result(f'SSH copy failed: {str(e)}', "SSH copy error", e)
+    
+    def _prepare_execution_context(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare common execution context (target, credentials, step definition)"""
+        # Get target and credential info
+        target_info = self._get_target_info(step['target_id'])
+        if not target_info:
+            return {
+                'error': {
                     'status': 'failed',
                     'exit_code': 1,
                     'stdout': '',
                     'stderr': 'Target not found or not accessible'
                 }
-            
-            credential_data = self._get_credential_data(target_info['credential_ref'])
-            if not credential_data:
-                return {
+            }
+        
+        credential_data = self._get_credential_data(target_info['credential_ref'])
+        if not credential_data:
+            return {
+                'error': {
                     'status': 'failed',
                     'exit_code': 1,
                     'stdout': '',
                     'stderr': 'Credential not found or not accessible'
                 }
+            }
+        
+        # Get job definition and parameters for template rendering
+        job_definition = json.loads(step['job_definition'])
+        run_parameters = json.loads(step['run_parameters'])
+        step_definition = job_definition['steps'][step['idx']]
+        
+        return {
+            'target_info': target_info,
+            'credential_data': credential_data,
+            'job_definition': job_definition,
+            'run_parameters': run_parameters,
+            'step_definition': step_definition,
+            'error': None
+        }
+    
+
+    
+    def _perform_ssh_copy(self, target_info: Dict[str, Any], credential_data: Dict[str, Any], 
+                         source_path: str, dest_path: str) -> Dict[str, Any]:
+        """Perform the actual SSH file copy operation"""
+        # Use SSH port from target or default to 22
+        ssh_port = target_info.get('ssh_port', 22)
+        if ssh_port == 5985:  # Default WinRM port, use SSH default
+            ssh_port = 22
+        
+        logger.info(f"SSH copy: {source_path} -> {target_info['hostname']}:{dest_path}")
+        
+        # Execute file copy via SSH/SCP
+        with SSHExecutor() as ssh_executor:
+            # Connect to target
+            connection_info = ssh_executor.connect(
+                hostname=target_info['hostname'],
+                port=ssh_port,
+                credential_data=credential_data,
+                timeout=30
+            )
             
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            # Upload file
+            result = ssh_executor.upload_file(
+                local_path=source_path,
+                remote_path=dest_path,
+                preserve_permissions=True
+            )
             
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Render paths
-            source_template = Template(step_definition['source_path'])
-            dest_template = Template(step_definition['dest_path'])
-            
-            source_path = source_template.render(**run_parameters)
-            dest_path = dest_template.render(**run_parameters)
-            
-            # Use SSH port from target or default to 22
-            ssh_port = target_info.get('ssh_port', 22)
-            if ssh_port == 5985:  # Default WinRM port, use SSH default
-                ssh_port = 22
-            
-            logger.info(f"SSH copy: {source_path} -> {target_info['hostname']}:{dest_path}")
-            
-            # Execute file copy via SSH/SCP
-            with SSHExecutor() as ssh_executor:
-                # Connect to target
-                connection_info = ssh_executor.connect(
-                    hostname=target_info['hostname'],
-                    port=ssh_port,
-                    credential_data=credential_data,
-                    timeout=30
-                )
-                
-                # Upload file
-                result = ssh_executor.upload_file(
-                    local_path=source_path,
-                    remote_path=dest_path,
-                    preserve_permissions=True
-                )
-                
-                return {
-                    'status': 'succeeded' if result['success'] else 'failed',
-                    'exit_code': 0 if result['success'] else 1,
-                    'stdout': f"File uploaded successfully: {result['file_size_bytes']} bytes in {result['transfer_time_ms']}ms",
-                    'stderr': '',
-                    'metrics': {
-                        'target': target_info['hostname'],
-                        'port': ssh_port,
-                        'auth_method': connection_info['auth_method'],
-                        'source_path': source_path,
-                        'dest_path': dest_path,
-                        'file_size_bytes': result['file_size_bytes'],
-                        'transfer_time_ms': result['transfer_time_ms'],
-                        'transfer_rate_mbps': result['transfer_rate_mbps']
-                    }
+            return {
+                'status': 'succeeded' if result['success'] else 'failed',
+                'exit_code': 0 if result['success'] else 1,
+                'stdout': f"File uploaded successfully: {result['file_size_bytes']} bytes in {result['transfer_time_ms']}ms",
+                'stderr': '',
+                'metrics': {
+                    'target': target_info['hostname'],
+                    'port': ssh_port,
+                    'auth_method': connection_info['auth_method'],
+                    'source_path': source_path,
+                    'dest_path': dest_path,
+                    'file_size_bytes': result['file_size_bytes'],
+                    'transfer_time_ms': result['transfer_time_ms'],
+                    'transfer_rate_mbps': result['transfer_rate_mbps']
                 }
-                
-        except SSHExecutionError as e:
-            logger.error(f"SSH copy error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'SSH copy failed: {str(e)}'
             }
-        except Exception as e:
-            logger.error(f"SSH copy error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'SSH copy failed: {str(e)}'
-            }
+    
+
     
     def _execute_sftp_upload(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute sftp.upload step"""
@@ -684,11 +698,11 @@ class JobExecutor:
             step_definition = job_definition['steps'][step['idx']]
             
             # Render paths
-            local_template = Template(step_definition['local_path'])
-            remote_template = Template(step_definition['remote_path'])
-            
-            local_path = local_template.render(**run_parameters)
-            remote_path = remote_template.render(**run_parameters)
+            local_path, remote_path = utility_render_file_paths(
+                step_definition['local_path'],
+                step_definition['remote_path'],
+                run_parameters
+            )
             
             # Use SSH port from target or default to 22
             ssh_port = target_info.get('ssh_port', 22)
@@ -754,11 +768,11 @@ class JobExecutor:
             step_definition = job_definition['steps'][step['idx']]
             
             # Render paths
-            remote_template = Template(step_definition['remote_path'])
-            local_template = Template(step_definition['local_path'])
-            
-            remote_path = remote_template.render(**run_parameters)
-            local_path = local_template.render(**run_parameters)
+            remote_path, local_path = utility_render_file_paths(
+                step_definition['remote_path'],
+                step_definition['local_path'],
+                run_parameters
+            )
             
             # Use SSH port from target or default to 22
             ssh_port = target_info.get('ssh_port', 22)
@@ -1084,314 +1098,140 @@ class JobExecutor:
     def _execute_notify_email(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.email step"""
         try:
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Check send_on condition
-            if not self._should_send_notification(step, step_definition):
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Notification skipped based on send_on condition',
-                    'stderr': ''
-                }
-            
-            # Get context for template rendering
-            context = self._get_notification_context(step)
-            
-            # Render templates
-            subject = self._render_template(
-                step_definition.get('subject_template', 'OpsConductor: Job {{ job.name }} - Notification'),
-                context
-            )
-            
-            body = self._render_template(
-                step_definition.get('body_template', 'Job {{ job.name }} notification from OpsConductor'),
-                context
-            )
-            
-            # Store notification execution
-            self._store_notification_execution(
-                step['id'],
+            return self._execute_notification_step(
+                step, 
                 'email',
-                step_definition['recipients'],
-                subject,
-                body
+                default_subject='OpsConductor: Job {{ job.name }} - Notification',
+                default_body='Job {{ job.name }} notification from OpsConductor'
             )
-            
-            # Send via notification service
-            response = requests.post(
-                f"{NOTIFICATION_SERVICE_URL}/internal/notifications/send",
-                json={
-                    "channel": "email",
-                    "recipients": step_definition['recipients'],
-                    "subject": subject,
-                    "content": body,
-                    "metadata": {
-                        "job_run_id": step['job_run_id'],
-                        "step_id": step['id'],
-                        "notification_type": "step_notification"
-                    }
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': f'Email notification sent to {len(step_definition["recipients"])} recipients',
-                    'stderr': ''
-                }
-            else:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': f'Failed to send email notification: {response.text}'
-                }
-                
         except Exception as e:
-            logger.error(f"Email notification error: {e}")
+            return utility_create_error_result(f'Email notification failed: {str(e)}', "Email notification error", e)
+    
+    def _execute_notification_step(self, step: Dict[str, Any], channel: str, 
+                                  default_subject: str, default_body: str) -> Dict[str, Any]:
+        """Common notification execution logic"""
+        # Get step definition and check conditions
+        step_definition = self._get_step_definition_from_step(step)
+        
+        # Check send_on condition
+        if not self._should_send_notification(step, step_definition):
+            return self._create_notification_skipped_result()
+        
+        # Prepare notification content
+        context = self._get_notification_context(step)
+        subject, content = self._render_notification_content(
+            step_definition, context, default_subject, default_body
+        )
+        
+        # Store and send notification
+        return self._send_notification_via_service(
+            step, step_definition, channel, subject, content
+        )
+    
+    def _get_step_definition_from_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract step definition from job step"""
+        job_definition = json.loads(step['job_definition'])
+        return job_definition['steps'][step['idx']]
+    
+    def _create_notification_skipped_result(self) -> Dict[str, Any]:
+        """Create result for skipped notification"""
+        return {
+            'status': 'succeeded',
+            'exit_code': 0,
+            'stdout': 'Notification skipped based on send_on condition',
+            'stderr': ''
+        }
+    
+    def _render_notification_content(self, step_definition: Dict[str, Any], context: Dict[str, Any],
+                                   default_subject: str, default_body: str) -> tuple[str, str]:
+        """Render notification subject and content"""
+        subject = utility_render_template(
+            step_definition.get('subject_template', default_subject),
+            context
+        )
+        
+        content = utility_render_template(
+            step_definition.get('body_template', default_body),
+            context
+        )
+        
+        return subject, content
+    
+    def _send_notification_via_service(self, step: Dict[str, Any], step_definition: Dict[str, Any],
+                                     channel: str, subject: str, content: str) -> Dict[str, Any]:
+        """Send notification via notification service"""
+        # Store notification execution
+        self._store_notification_execution(
+            step['id'], channel, step_definition['recipients'], subject, content
+        )
+        
+        # Send via notification service
+        response = requests.post(
+            f"{NOTIFICATION_SERVICE_URL}/internal/notifications/send",
+            json={
+                "channel": channel,
+                "recipients": step_definition['recipients'],
+                "subject": subject,
+                "content": content,
+                "metadata": {
+                    "job_run_id": step['job_run_id'],
+                    "step_id": step['id'],
+                    "notification_type": "step_notification"
+                }
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            return {
+                'status': 'succeeded',
+                'exit_code': 0,
+                'stdout': f'{channel.title()} notification sent to {len(step_definition["recipients"])} recipients',
+                'stderr': ''
+            }
+        else:
             return {
                 'status': 'failed',
                 'exit_code': 1,
                 'stdout': '',
-                'stderr': f'Email notification failed: {str(e)}'
+                'stderr': f'Failed to send {channel} notification: {response.text}'
             }
     
     def _execute_notify_slack(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.slack step"""
         try:
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Check send_on condition
-            if not self._should_send_notification(step, step_definition):
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Notification skipped based on send_on condition',
-                    'stderr': ''
-                }
-            
-            # Get context for template rendering
-            context = self._get_notification_context(step)
-            
-            # Render message template
-            message = self._render_template(
-                step_definition.get('message_template', 'Job {{ job.name }} notification from OpsConductor'),
-                context
-            )
-            
-            # Prepare Slack payload
-            payload = {
-                "text": message,
-                "channel": step_definition.get('channel')
-            }
-            
-            # Store notification execution
-            self._store_notification_execution(
-                step['id'],
+            return self._execute_notification_step(
+                step, 
                 'slack',
-                [step_definition['webhook_url']],
-                None,
-                json.dumps(payload)
+                default_subject='',  # Slack doesn't use subject
+                default_body='Job {{ job.name }} notification from OpsConductor'
             )
-            
-            # Send to Slack webhook
-            response = requests.post(
-                step_definition['webhook_url'],
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Slack notification sent successfully',
-                    'stderr': ''
-                }
-            else:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': f'Failed to send Slack notification: {response.text}'
-                }
-                
         except Exception as e:
-            logger.error(f"Slack notification error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'Slack notification failed: {str(e)}'
-            }
+            return utility_create_error_result(f'Slack notification failed: {str(e)}', "Slack notification error", e)
     
     def _execute_notify_teams(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.teams step"""
         try:
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Check send_on condition
-            if not self._should_send_notification(step, step_definition):
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Notification skipped based on send_on condition',
-                    'stderr': ''
-                }
-            
-            # Get context for template rendering
-            context = self._get_notification_context(step)
-            
-            # Render message template
-            message = self._render_template(
-                step_definition.get('message_template', 'Job {{ job.name }} notification from OpsConductor'),
-                context
-            )
-            
-            # Prepare Teams payload
-            payload = {
-                "@type": "MessageCard",
-                "@context": "http://schema.org/extensions",
-                "summary": f"Job {context['job']['name']} notification",
-                "text": message
-            }
-            
-            # Store notification execution
-            self._store_notification_execution(
-                step['id'],
+            return self._execute_notification_step(
+                step, 
                 'teams',
-                [step_definition['webhook_url']],
-                None,
-                json.dumps(payload)
+                default_subject='',  # Teams doesn't use subject
+                default_body='Job {{ job.name }} notification from OpsConductor'
             )
-            
-            # Send to Teams webhook
-            response = requests.post(
-                step_definition['webhook_url'],
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Teams notification sent successfully',
-                    'stderr': ''
-                }
-            else:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': f'Failed to send Teams notification: {response.text}'
-                }
-                
         except Exception as e:
-            logger.error(f"Teams notification error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'Teams notification failed: {str(e)}'
-            }
+            return utility_create_error_result(f'Teams notification failed: {str(e)}', "Teams notification error", e)
     
     def _execute_notify_webhook(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.webhook step"""
         try:
-            # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Check send_on condition
-            if not self._should_send_notification(step, step_definition):
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Notification skipped based on send_on condition',
-                    'stderr': ''
-                }
-            
-            # Get context for template rendering
-            context = self._get_notification_context(step)
-            
-            # Render payload template
-            payload_str = self._render_template(
-                step_definition.get('payload_template', '{"message": "Job {{ job.name }} notification"}'),
-                context
-            )
-            
-            try:
-                payload = json.loads(payload_str)
-            except json.JSONDecodeError:
-                payload = {"message": payload_str}
-            
-            # Store notification execution
-            self._store_notification_execution(
-                step['id'],
+            return self._execute_notification_step(
+                step, 
                 'webhook',
-                [step_definition['webhook_url']],
-                None,
-                json.dumps(payload)
+                default_subject='',  # Webhook doesn't use subject
+                default_body='Job {{ job.name }} notification from OpsConductor'
             )
-            
-            # Prepare headers
-            headers = {'Content-Type': 'application/json'}
-            if 'headers' in step_definition:
-                headers.update(step_definition['headers'])
-            
-            # Send webhook
-            response = requests.post(
-                step_definition['webhook_url'],
-                json=payload,
-                headers=headers,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return {
-                    'status': 'succeeded',
-                    'exit_code': 0,
-                    'stdout': 'Webhook notification sent successfully',
-                    'stderr': ''
-                }
-            else:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': f'Failed to send webhook notification: {response.text}'
-                }
-                
         except Exception as e:
-            logger.error(f"Webhook notification error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'Webhook notification failed: {str(e)}'
-            }
+            return utility_create_error_result(f'Webhook notification failed: {str(e)}', "Webhook notification error", e)
     
     def _execute_notify_conditional(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute notify.conditional step"""
@@ -1487,94 +1327,102 @@ class JobExecutor:
         """Get context data for notification template rendering"""
         try:
             with get_db_cursor(commit=False) as cursor:
-                
                 # Get job run info with user details
-                cursor.execute("""
-                    SELECT jr.id as run_id, jr.job_id, jr.status, jr.started_at, jr.finished_at,
-                           jr.parameters, j.name as job_name, j.definition,
-                           u.username, u.email, u.id as user_id
-                    FROM job_runs jr
-                    JOIN jobs j ON jr.job_id = j.id
-                    LEFT JOIN users u ON jr.requested_by = u.id
-                    WHERE jr.id = %s
-                """, (step['job_run_id'],))
-                
-                job_info = cursor.fetchone()
+                job_info = self._get_job_run_info(cursor, step['job_run_id'])
                 if not job_info:
                     return {}
                 
                 # Get target info if step has target_id
-                target_info = None
-                if step.get('target_id'):
-                    cursor.execute("""
-                        SELECT id, name, hostname, protocol, port, tags, metadata
-                        FROM targets WHERE id = %s
-                    """, (step['target_id'],))
-                    target_info = cursor.fetchone()
+                target_info = self._get_target_info_for_context(cursor, step.get('target_id'))
                 
                 # Get step statistics
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as total_steps,
-                        COUNT(*) FILTER (WHERE status = 'succeeded') as completed_steps,
-                        COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
-                    FROM job_run_steps
-                    WHERE job_run_id = %s
-                """, (step['job_run_id'],))
+                step_stats = self._get_step_statistics(cursor, step['job_run_id'])
                 
-                step_stats = cursor.fetchone()
-                
-                # Calculate execution time
-                execution_time_ms = 0
-                if job_info['started_at'] and job_info['finished_at']:
-                    execution_time_ms = int((job_info['finished_at'] - job_info['started_at']).total_seconds() * 1000)
-                
-                # Build context
-                context = {
-                    'job': {
-                        'id': job_info['job_id'],
-                        'name': job_info['job_name'],
-                        'status': job_info['status'],
-                        'execution_time_ms': execution_time_ms,
-                        'total_steps': step_stats['total_steps'],
-                        'completed_steps': step_stats['completed_steps'],
-                        'failed_steps': step_stats['failed_steps']
-                    },
-                    'user': {
-                        'id': job_info['user_id'],
-                        'username': job_info['username'],
-                        'email': job_info['email']
-                    },
-                    'system': {
-                        'timestamp': datetime.utcnow().isoformat()
-                    }
-                }
-                
-                if target_info:
-                    context['target'] = dict(target_info)
-                
-                # Add job parameters
-                if job_info['parameters']:
-                    context.update(job_info['parameters'])
-                
-                return context
+                # Build and return context
+                return self._build_notification_context(job_info, target_info, step_stats)
             
         except Exception as e:
             logger.error(f"Error getting notification context: {e}")
             return {}
     
-    def _render_template(self, template_str: str, context: Dict[str, Any]) -> str:
-        """Render Jinja2 template with context"""
-        try:
-            env = Environment(
-                loader=BaseLoader(),
-                autoescape=select_autoescape(['html', 'xml'])
-            )
-            template = env.from_string(template_str)
-            return template.render(**context)
-        except Exception as e:
-            logger.error(f"Template rendering error: {e}")
-            return template_str  # Return original if rendering fails
+    def _get_job_run_info(self, cursor, job_run_id: int) -> Optional[Dict[str, Any]]:
+        """Get job run information with user details"""
+        cursor.execute("""
+            SELECT jr.id as run_id, jr.job_id, jr.status, jr.started_at, jr.finished_at,
+                   jr.parameters, j.name as job_name, j.definition,
+                   u.username, u.email, u.id as user_id
+            FROM job_runs jr
+            JOIN jobs j ON jr.job_id = j.id
+            LEFT JOIN users u ON jr.requested_by = u.id
+            WHERE jr.id = %s
+        """, (job_run_id,))
+        
+        return cursor.fetchone()
+    
+    def _get_target_info_for_context(self, cursor, target_id: Optional[int]) -> Optional[Dict[str, Any]]:
+        """Get target information for notification context"""
+        if not target_id:
+            return None
+            
+        cursor.execute("""
+            SELECT id, name, hostname, protocol, port, tags, metadata
+            FROM targets WHERE id = %s
+        """, (target_id,))
+        
+        return cursor.fetchone()
+    
+    def _get_step_statistics(self, cursor, job_run_id: int) -> Dict[str, Any]:
+        """Get step execution statistics"""
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_steps,
+                COUNT(*) FILTER (WHERE status = 'succeeded') as completed_steps,
+                COUNT(*) FILTER (WHERE status = 'failed') as failed_steps
+            FROM job_run_steps
+            WHERE job_run_id = %s
+        """, (job_run_id,))
+        
+        return cursor.fetchone()
+    
+    def _build_notification_context(self, job_info: Dict[str, Any], target_info: Optional[Dict[str, Any]], 
+                                   step_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the notification context from gathered data"""
+        # Calculate execution time
+        execution_time_ms = 0
+        if job_info['started_at'] and job_info['finished_at']:
+            execution_time_ms = int((job_info['finished_at'] - job_info['started_at']).total_seconds() * 1000)
+        
+        # Build context
+        context = {
+            'job': {
+                'id': job_info['job_id'],
+                'name': job_info['job_name'],
+                'status': job_info['status'],
+                'execution_time_ms': execution_time_ms,
+                'total_steps': step_stats['total_steps'],
+                'completed_steps': step_stats['completed_steps'],
+                'failed_steps': step_stats['failed_steps']
+            },
+            'user': {
+                'id': job_info['user_id'],
+                'username': job_info['username'],
+                'email': job_info['email']
+            },
+            'system': {
+                'timestamp': datetime.utcnow().isoformat()
+            }
+        }
+        
+        if target_info:
+            context['target'] = dict(target_info)
+        
+        # Add job parameters
+        if job_info['parameters']:
+            context.update(job_info['parameters'])
+        
+        return context
+    
+
     
     def _evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
         """Evaluate a simple condition string"""

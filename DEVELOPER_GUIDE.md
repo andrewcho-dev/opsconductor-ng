@@ -461,6 +461,74 @@ async def complex_function(
 - `/shared/models.py` - Common Pydantic models
 - `/shared/errors.py` - Custom error classes
 - `/shared/auth.py` - Authentication utilities
+- `/shared/utils.py` - Common utility functions (see below)
+
+#### Shared Utility Functions (`/shared/utils.py`)
+
+The shared utilities module provides cross-service functionality that should be used instead of implementing similar logic in individual services.
+
+##### Template Rendering Utilities
+
+**`utility_render_template(template_str: str, context: Dict[str, Any]) -> str`**
+- Renders Jinja2 templates with provided context
+- Used for command templates, file paths, notification content, etc.
+- Handles template errors gracefully with detailed logging
+
+```python
+from shared.utils import utility_render_template
+
+# Render a command template
+rendered_command = utility_render_template(
+    "echo 'Hello {{ user.name }}, job {{ job.id }} completed'",
+    {"user": {"name": "John"}, "job": {"id": 123}}
+)
+```
+
+**`utility_render_file_paths(source_template: str, dest_template: str, context: Dict[str, Any]) -> tuple[str, str]`**
+- Renders both source and destination file path templates
+- Returns tuple of (rendered_source_path, rendered_dest_path)
+- Commonly used in file transfer operations
+
+```python
+from shared.utils import utility_render_file_paths
+
+# Render file paths for transfer operations
+source_path, dest_path = utility_render_file_paths(
+    "/tmp/{{ job.id }}/input.txt",
+    "/opt/data/{{ user.name }}/output.txt",
+    {"job": {"id": 123}, "user": {"name": "john"}}
+)
+```
+
+##### Error Handling Utilities
+
+**`utility_create_error_result(error_message: str, log_message: str = None, exception: Exception = None, exit_code: int = 1) -> Dict[str, Any]`**
+- Creates standardized error result dictionaries
+- Ensures consistent error format across all services
+- Handles logging automatically
+
+```python
+from shared.utils import utility_create_error_result
+
+# Create standardized error response
+try:
+    # Some operation that might fail
+    result = risky_operation()
+except Exception as e:
+    return utility_create_error_result(
+        error_message="Operation failed: connection timeout",
+        log_message="Database connection failed during user lookup",
+        exception=e,
+        exit_code=1
+    )
+```
+
+**When to Use Shared Utilities:**
+- ✅ Template rendering for commands, file paths, notifications
+- ✅ Standardized error responses across services
+- ✅ Any functionality that might be reused by multiple services
+- ❌ Service-specific business logic
+- ❌ Database models or service-specific data structures
 
 ### Best Practices
 1. **Always use utility modules** instead of duplicating code

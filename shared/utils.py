@@ -366,3 +366,79 @@ async def retry_async(
             await asyncio.sleep(delay)
     
     raise last_exception
+
+# Template rendering utilities
+def utility_render_template(template_str: str, context: Dict[str, Any]) -> str:
+    """
+    Render Jinja2 template with context
+    
+    Args:
+        template_str: The template string to render
+        context: Dictionary of variables to use in template
+        
+    Returns:
+        Rendered template string
+        
+    Raises:
+        Exception: If template rendering fails
+    """
+    try:
+        from jinja2 import Template
+        template = Template(template_str)
+        return template.render(**context)
+    except Exception as e:
+        logger.error(f"Template rendering error: {e}")
+        raise Exception(f"Template rendering failed: {str(e)}")
+
+def utility_render_file_paths(source_template: str, dest_template: str, 
+                             context: Dict[str, Any]) -> tuple[str, str]:
+    """
+    Render file path templates with parameters
+    
+    Args:
+        source_template: Source file path template
+        dest_template: Destination file path template  
+        context: Dictionary of variables to use in templates
+        
+    Returns:
+        Tuple of (rendered_source_path, rendered_dest_path)
+        
+    Raises:
+        Exception: If template rendering fails
+    """
+    try:
+        rendered_source = utility_render_template(source_template, context)
+        rendered_dest = utility_render_template(dest_template, context)
+        return rendered_source, rendered_dest
+    except Exception as e:
+        logger.error(f"File path rendering error: {e}")
+        raise Exception(f"File path rendering failed: {str(e)}")
+
+# Error handling utilities
+def utility_create_error_result(error_message: str, log_message: str = None, 
+                               exception: Exception = None, exit_code: int = 1) -> Dict[str, Any]:
+    """
+    Create standardized error result dictionary
+    
+    Args:
+        error_message: Error message to include in stderr
+        log_message: Optional message to log (defaults to error_message)
+        exception: Optional exception to log
+        exit_code: Exit code to return (defaults to 1)
+        
+    Returns:
+        Standardized error result dictionary
+    """
+    if log_message and exception:
+        logger.error(f"{log_message}: {exception}")
+    elif log_message:
+        logger.error(log_message)
+    elif exception:
+        logger.error(f"Error: {exception}")
+    
+    return {
+        'status': 'failed',
+        'exit_code': exit_code,
+        'stdout': '',
+        'stderr': error_message
+    }
