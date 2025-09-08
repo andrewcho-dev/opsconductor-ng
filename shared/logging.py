@@ -12,6 +12,7 @@ import logging.config
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 import time
 
 class StructuredFormatter(logging.Formatter):
@@ -138,16 +139,17 @@ def get_logger(name: str) -> logging.Logger:
     """
     return logging.getLogger(name)
 
-class RequestLoggingMiddleware:
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Middleware for logging HTTP requests and responses
     """
     
-    def __init__(self, service_name: str):
+    def __init__(self, app, service_name: str):
+        super().__init__(app)
         self.service_name = service_name
         self.logger = get_logger(f"{service_name}.requests")
     
-    async def __call__(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next):
         # Generate request ID
         request_id = f"{self.service_name}-{int(time.time() * 1000)}"
         

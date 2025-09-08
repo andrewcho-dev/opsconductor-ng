@@ -13,11 +13,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY executor-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code first
+COPY executor-service .
+
+# Copy shared modules (this will not overwrite the app files)
+COPY shared ./shared
 
 # Create non-root user
 RUN addgroup --gid 1001 --system python
@@ -26,6 +29,9 @@ RUN adduser --system --uid 1001 --gid 1001 python
 # Change ownership of the app directory
 RUN chown -R python:python /app
 USER python
+
+# Set Python path to include /app
+ENV PYTHONPATH=/app
 
 # Expose port
 EXPOSE 3007

@@ -36,7 +36,7 @@ from .errors import (
     ServiceCommunicationError, DatabaseError
 )
 from .logging import get_logger
-import utility_service_auth as service_auth_utility
+from . import utility_service_auth as service_auth_utility
 
 # Global configuration
 CONFIG = {}

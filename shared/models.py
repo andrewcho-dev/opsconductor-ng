@@ -155,7 +155,7 @@ class PaginationParams(BaseModel):
 class SortParams(BaseModel):
     """Common sorting parameters"""
     sort_by: Optional[str] = Field(None, description="Field to sort by")
-    sort_order: str = Field("asc", regex="^(asc|desc)$", description="Sort order: asc or desc")
+    sort_order: str = Field("asc", pattern="^(asc|desc)$", description="Sort order: asc or desc")
 
 class FilterParams(BaseModel):
     """Common filtering parameters"""
