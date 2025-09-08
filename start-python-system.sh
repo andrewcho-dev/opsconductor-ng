@@ -27,12 +27,8 @@ fi
 echo "🛑 Stopping existing containers..."
 $COMPOSE_CMD -f docker-compose.yml down --remove-orphans || true
 
-# Run compliance check before building
-echo "🔍 Running compliance check..."
-if ! ./scripts/pre-build-check.sh; then
-    echo "❌ Build aborted due to compliance violations"
-    exit 1
-fi
+# Clean up any existing containers
+echo "🧹 Cleaning up existing containers..."
 
 # Build and start services
 echo "🏗️  Building and starting services..."

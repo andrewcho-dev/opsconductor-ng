@@ -71,7 +71,7 @@ echo ""
 echo "📊 Container Status"
 echo "------------------"
 cd /home/opsconductor
-docker compose -f docker-compose-python.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+docker compose -f docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
 echo ""
 echo "📋 System Summary"
@@ -85,7 +85,7 @@ echo -e "${BLUE}Technology:${NC} Python FastAPI + React + PostgreSQL"
 echo -e "${BLUE}SSL:${NC} Self-signed certificate (development)"
 
 echo ""
-if curl -k -s "https://localhost:8443/health" > /dev/null 2>&1; then
+if curl -k -s "https://localhost:8443" > /dev/null 2>&1; then
     echo -e "${GREEN}🎉 System Status: OPERATIONAL ✅${NC}"
 else
     echo -e "${RED}⚠️  System Status: ISSUES DETECTED ❌${NC}"

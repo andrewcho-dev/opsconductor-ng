@@ -111,7 +111,7 @@ api.interceptors.response.use(
       if (currentRefreshToken) {
         try {
           console.log('Refreshing token with refresh_token');
-          const response = await axios.post(`${API_BASE_URL}/refresh`, {
+          const response = await axios.post(`${getApiBaseUrl()}/refresh`, {
             refresh_token: currentRefreshToken
           });
 
@@ -122,7 +122,7 @@ api.interceptors.response.use(
           
           // Update user data in AuthContext
           try {
-            const userResponse = await axios.get(`${API_BASE_URL}/verify`, {
+            const userResponse = await axios.get(`${getApiBaseUrl()}/verify`, {
               headers: { Authorization: `Bearer ${access_token}` }
             });
             if (userResponse.data?.user) {

@@ -1,348 +1,333 @@
-# OpsConductor Microservices Architecture
+# OpsConductor Architecture
 
-## Overview
+## 🏗️ System Overview
 
-OpsConductor is a comprehensive job orchestration and automation platform built using a microservices architecture. The system consists of multiple specialized services that work together to provide job scheduling, execution, target management, user authentication, and more.
+OpsConductor is a production-ready microservices architecture built with Python FastAPI, React TypeScript, PostgreSQL, Docker, and NGINX. The system provides comprehensive automation capabilities through modern microservice patterns with enterprise-grade security and scalability.
 
-## Shared Modules Architecture
+## 📊 Architecture Diagram
 
-### Core Philosophy
-All Python services in OpsConductor follow a unified architecture pattern using shared modules to ensure consistency, maintainability, and code reuse across the entire system.
-
-### Shared Module Structure (`/shared/`)
-
-#### 1. **Database Module** (`shared/database.py`)
-- **Connection Pooling**: Centralized PostgreSQL connection management with automatic pooling
-- **Health Monitoring**: Database connectivity health checks with response time metrics
-- **Transaction Management**: Consistent transaction handling across all services
-- **Key Functions**:
-  - `get_db_cursor()` - Get database cursor with automatic connection management
-  - `check_database_health()` - Health check with response time metrics
-  - `cleanup_database_pool()` - Proper connection cleanup on shutdown
-
-#### 2. **Logging Module** (`shared/logging.py`)
-- **Structured Logging**: JSON-formatted logs with consistent fields across all services
-- **Service Context**: Automatic service name, version, and request ID injection
-- **Log Levels**: Configurable logging levels via environment variables
-- **Key Functions**:
-  - `setup_service_logging(service_name, level)` - Initialize structured logging
-  - `get_logger(name)` - Get configured logger instance
-  - `log_startup(service, version, port)` - Standardized startup logging
-  - `log_shutdown(service)` - Standardized shutdown logging
-
-#### 3. **Middleware Module** (`shared/middleware.py`)
-- **CORS Handling**: Standardized CORS configuration for all services
-- **Request Logging**: Automatic request/response logging with timing
-- **Error Handling**: Global exception handling with proper error responses
-- **Security Headers**: Standard security headers applied to all responses
-- **Key Functions**:
-  - `add_standard_middleware(app, service_name, version)` - Apply all standard middleware
-
-#### 4. **Models Module** (`shared/models.py`)
-- **Response Models**: Standardized Pydantic models for consistent API responses
-- **Health Check Models**: Unified health check response format
-- **Pagination Models**: Consistent pagination across all services
-- **Key Models**:
-  - `HealthResponse` - Standard health check response
-  - `HealthCheck` - Individual health check component
-  - `PaginatedResponse` - Paginated list responses
-  - `create_success_response()` - Helper for success responses
-
-#### 5. **Error Handling Module** (`shared/errors.py`)
-- **Standardized Exception Classes**: Complete replacement of HTTPException with domain-specific errors
-- **Consistent HTTP Status Mapping**: Automatic mapping of custom exceptions to appropriate HTTP status codes
-- **Rich Error Context**: Detailed error information with field-level validation context
-- **Global Exception Handler**: Centralized error handling with proper logging and response formatting
-- **Key Classes**:
-  - `DatabaseError` - Database operation failures (500 status)
-  - `ValidationError` - Input validation failures with field context (400 status)
-  - `NotFoundError` - Resource not found errors (404 status)
-  - `AuthError` - Authentication failures (401 status)
-  - `PermissionError` - Authorization failures (403 status)
-  - `ServiceCommunicationError` - Inter-service communication failures (503 status)
-- **Key Functions**:
-  - `setup_error_handlers(app)` - Configure global exception handlers
-  - `handle_database_error()` - Centralized database error handling
-- **Migration Status**: All 129 HTTPException instances across services have been standardized
-
-#### 6. **Authentication Module** (`shared/auth.py`)
-- **JWT Token Validation**: Centralized token verification
-- **Role-Based Access Control**: Consistent permission checking
-- **Service-to-Service Auth**: Internal service authentication
-- **Key Functions**:
-  - `get_current_user()` - Extract and validate user from JWT
-  - `require_admin()` - Admin role requirement decorator
-  - `verify_service_token()` - Internal service authentication
-
-#### 7. **Utilities Module** (`shared/utils.py`)
-- **HTTP Client**: Configured HTTP client for service-to-service communication
-- **Common Helpers**: Shared utility functions used across services
-- **Configuration**: Environment variable handling and defaults
-- **Key Functions**:
-  - `get_service_client()` - Configured HTTP client for internal calls
-  - `validate_email()` - Email validation utility
-  - `generate_secure_token()` - Secure token generation
-
-## Service Architecture Pattern
-
-### Standard Service Structure
-Every Python service follows this consistent pattern:
-
-```python
-#!/usr/bin/env python3
-
-import sys
-sys.path.append('/home/opsconductor')
-
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-
-# Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
-from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
-from shared.middleware import add_standard_middleware
-from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError
-from shared.auth import get_current_user, require_admin
-from shared.utils import get_service_client
-
-# Setup structured logging
-setup_service_logging("service-name", level=os.getenv("LOG_LEVEL", "INFO"))
-logger = get_logger("service-name")
-
-app = FastAPI(
-    title="Service Name",
-    version="1.0.0",
-    description="Service description"
-)
-
-# Add standard middleware
-add_standard_middleware(app, "service-name", version="1.0.0")
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Standard health check endpoint"""
-    db_health = check_database_health()
-    
-    checks = [
-        HealthCheck(
-            name="database",
-            status=db_health["status"],
-            message=db_health.get("message", "Database connection check"),
-            duration_ms=db_health.get("response_time_ms")
-        )
-    ]
-    
-    overall_status = "healthy" if db_health["status"] == "healthy" else "unhealthy"
-    
-    return HealthResponse(
-        service="service-name",
-        status=overall_status,
-        version="1.0.0",
-        checks=checks
-    )
-
-@app.on_event("startup")
-async def startup_event():
-    """Standard startup event"""
-    log_startup("service-name", "1.0.0", port)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Standard shutdown event"""
-    log_shutdown("service-name")
-    cleanup_database_pool()
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     EXTERNAL ACCESS                             │
+│  Browser/Client → https://localhost:8443 (SSL/TLS)             │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    NGINX GATEWAY                                │
+│  • SSL Termination (HTTPS → HTTP)                              │
+│  • Request Routing & Load Balancing                            │
+│  • Security Headers & Rate Limiting                            │
+│  Ports: 8080 (HTTP), 8443 (HTTPS)                             │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                    ┌───────────┼───────────┐
+                    ▼           ▼           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                 MICROSERVICES LAYER                             │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │  Frontend   │  │    Auth     │  │    User     │              │
+│  │  (React)    │  │  Service    │  │  Service    │              │
+│  │             │  │             │  │             │              │
+│  │ • React UI  │  │ • Login     │  │ • User CRUD │              │
+│  │ • TypeScript│  │ • JWT Auth  │  │ • Profile   │              │
+│  │ • Routing   │  │ • Token Val │  │ • Search    │              │
+│  │             │  │             │  │ • Roles     │              │
+│  │ Port: 3000  │  │ Port: 3001  │  │ Port: 3002  │              │
+│  │ React/TS    │  │ FastAPI     │  │ FastAPI     │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │Credentials  │  │  Targets    │  │    Jobs     │              │
+│  │  Service    │  │  Service    │  │  Service    │              │
+│  │             │  │             │  │             │              │
+│  │ • Cred CRUD │  │ • Target Mgmt│  │ • Job Defn  │              │
+│  │ • Encryption│  │ • WinRM Cfg │  │ • Job Runs  │              │
+│  │ • Security  │  │ • SSH Cfg   │  │ • History   │              │
+│  │             │  │             │  │             │              │
+│  │ Port: 3004  │  │ Port: 3005  │  │ Port: 3006  │              │
+│  │ FastAPI     │  │ FastAPI     │  │ FastAPI     │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │  Executor   │  │ Scheduler   │  │Notification │              │
+│  │  Service    │  │  Service    │  │  Service    │              │
+│  │             │  │             │  │             │              │
+│  │ • Job Exec  │  │ • Cron Jobs │  │ • Email     │              │
+│  │ • WinRM     │  │ • Triggers  │  │ • SMTP      │              │
+│  │ • SSH       │  │ • Queue     │  │ • Templates │              │
+│  │             │  │             │  │             │              │
+│  │ Port: 3007  │  │ Port: 3008  │  │ Port: 3009  │              │
+│  │ FastAPI     │  │ FastAPI     │  │ FastAPI     │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐                               │
+│  │ Discovery   │  │Step Libraries│                              │
+│  │  Service    │  │  Service    │                               │
+│  │             │  │             │                               │
+│  │ • Network   │  │ • Libraries │                               │
+│  │ • Scanning  │  │ • Modules   │                               │
+│  │ • Import    │  │ • Catalog   │                               │
+│  │             │  │             │                               │
+│  │ Port: 3010  │  │ Port: 3011  │                               │
+│  │ FastAPI     │  │ FastAPI     │                               │
+│  └─────────────┘  └─────────────┘                               │
+└─────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DATABASE LAYER                               │
+│                                                                 │
+│                    ┌─────────────────────────────┐              │
+│                    │      PostgreSQL Database    │              │
+│                    │                             │              │
+│                    │ • Users & Authentication    │              │
+│                    │ • Credentials (Encrypted)   │              │
+│                    │ • Targets & Configuration   │              │
+│                    │ • Jobs & Execution History  │              │
+│                    │ • Schedules & Triggers      │              │
+│                    │ • Notifications & Templates │              │
+│                    │ • Discovery & Libraries     │              │
+│                    │                             │              │
+│                    │ Port: 5432                  │              │
+│                    └─────────────────────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Microservices Overview
+## 🔧 Microservices Architecture
 
-### 1. **Authentication Service** (`auth-service:3001`)
-- **Purpose**: User authentication, JWT token management, session handling
-- **Key Features**: Login/logout, token validation, password reset, session management
-- **Database Tables**: `users`, `user_sessions`, `password_reset_tokens`
-- **Special Features**: Custom `AuthError` exception class for authentication failures
+### 1. Frontend Service (Port 3000)
+**Technology**: React 18 + TypeScript
+- Modern React application with responsive design
+- JWT token management and authentication
+- Component-based architecture with reusable components
+- Real-time updates and WebSocket support
+- Visual job builder with drag-and-drop interface
 
-### 2. **User Service** (`user-service:3002`)
-- **Purpose**: User management, profile operations, user administration
-- **Key Features**: User CRUD operations, profile management, role assignment
-- **Database Tables**: `users`, `user_profiles`, `user_roles`
-- **Special Features**: Comprehensive user validation and role-based access control
+### 2. Auth Service (Port 3001)
+**Technology**: Python FastAPI
+- JWT token generation and validation
+- Password hashing with bcrypt
+- Token refresh and revocation mechanisms
+- Role-based access control (admin, operator, viewer)
+- Session management and security
 
-### 3. **Credentials Service** (`credentials-service:3004`)
-- **Purpose**: Secure credential storage and management with encryption
-- **Key Features**: Encrypted credential storage, credential sharing, access control
-- **Database Tables**: `credentials`, `credential_access_logs`
-- **Special Features**: AES encryption for sensitive data, audit logging
+### 3. User Service (Port 3002)
+**Technology**: Python FastAPI
+- Complete user CRUD operations
+- Role management and permissions
+- User profile management
+- Search and pagination capabilities
+- User preference management
 
-### 4. **Notification Service** (`notification-service:3009`)
-- **Purpose**: Multi-channel notification delivery (email, Slack, webhooks)
-- **Key Features**: Template-based notifications, delivery tracking, retry logic
-- **Database Tables**: `notification_templates`, `notification_logs`, `notification_channels`
-- **Special Features**: Background worker for async delivery, health monitoring of worker status
+### 4. Credentials Service (Port 3004)
+**Technology**: Python FastAPI
+- AES-GCM encryption for sensitive data
+- Multiple credential types (WinRM, SSH, API keys)
+- Secure credential storage and retrieval
+- Credential rotation capabilities
+- Access control and audit logging
 
-### 5. **Jobs Service** (`jobs-service:3005`)
-- **Purpose**: Job definition, management, and workflow orchestration
-- **Key Features**: Visual job builder, step management, job templates, execution history
-- **Database Tables**: `jobs`, `job_steps`, `job_runs`, `job_run_steps`, `job_templates`
-- **Special Features**: Complex job workflow management, step dependency resolution
+### 5. Targets Service (Port 3005)
+**Technology**: Python FastAPI
+- Windows and Linux target management
+- WinRM and SSH configuration
+- Target health monitoring and connection testing
+- Target groups with many-to-many relationships
+- OS type detection and management
 
-### 6. **Targets Service** (`targets-service:3003`)
-- **Purpose**: Target system management and organization
-- **Key Features**: Target CRUD, grouping, credential assignment, connection testing
-- **Database Tables**: `targets`, `target_groups`, `target_group_memberships`
-- **Special Features**: Multi-protocol support (WinRM, SSH, RDP), connection validation
+### 6. Jobs Service (Port 3006)
+**Technology**: Python FastAPI
+- Job definition and management
+- Visual job builder integration
+- Job execution tracking and history
+- Parameter validation and templating
+- Job templates and reusable components
 
-### 7. **Scheduler Service** (`scheduler-service:3008`)
-- **Purpose**: Cron-based job scheduling and execution triggering
-- **Key Features**: Cron expression parsing, job queuing, schedule management
-- **Database Tables**: `job_schedules`, `schedule_executions`
-- **Special Features**: Background scheduler worker, croniter integration, health monitoring of scheduler status
+### 7. Executor Service (Port 3007)
+**Technology**: Python FastAPI
+- Multi-protocol job execution (WinRM, SSH, HTTP, SFTP)
+- Step-by-step execution tracking
+- Real-time execution monitoring
+- Integration with credentials and targets
+- File transfer capabilities
 
-### 8. **Executor Service** (`executor-service:3007`)
-- **Purpose**: Job execution engine with multi-protocol support
-- **Key Features**: WinRM/SSH execution, step processing, result collection, webhook delivery
-- **Database Tables**: `job_run_steps`, `execution_logs`, `winrm_executions`, `ssh_executions`, `webhook_executions`
-- **Special Features**: Background execution worker, multi-protocol support, comprehensive execution logging
+### 8. Scheduler Service (Port 3008)
+**Technology**: Python FastAPI
+- Cron-based job scheduling
+- Schedule management and triggers
+- Job queue management
+- Recurring job execution
+- Timezone support and validation
 
-### 9. **Discovery Service** (`discovery-service:3010`)
-- **Purpose**: Automated network discovery and target identification
-- **Key Features**: Network scanning, OS detection, service discovery, target import
-- **Database Tables**: `discovery_jobs`, `discovered_targets`
-- **Special Features**: Nmap integration, automated target classification, bulk import capabilities
+### 9. Notification Service (Port 3009)
+**Technology**: Python FastAPI
+- Multi-channel notifications (Email, Slack, Teams, Webhooks)
+- Template-based notification system
+- Delivery tracking and retry logic
+- SMTP configuration management
+- Background worker for async delivery
 
-### 10. **Step Libraries Service** (`step-libraries-service:3011`)
-- **Purpose**: Modular step library management for the visual job builder
-- **Key Features**: Dynamic library installation, version management, step catalog
-- **Database Tables**: `step_libraries`, `library_steps`, `library_versions`
-- **Special Features**: Hot-swappable libraries, performance optimization, premium addon support
+### 10. Discovery Service (Port 3010)
+**Technology**: Python FastAPI
+- Automated network discovery with nmap
+- Service detection (WinRM, SSH, RDP)
+- Bulk target import capabilities
+- Discovery job scheduling
+- Target classification and validation
 
-## Database Architecture
+### 11. Step Libraries Service (Port 3011)
+**Technology**: Python FastAPI
+- Modular step library management
+- Dynamic library installation and updates
+- Version management and compatibility
+- Step catalog and documentation
+- Performance optimization and caching
 
-### Connection Management
-- **Pooling**: All services use shared connection pooling for optimal performance
-- **Health Monitoring**: Continuous database health monitoring with metrics
-- **Transaction Safety**: Proper transaction handling with rollback support
-- **Connection Cleanup**: Automatic cleanup on service shutdown
+## 🗄️ Database Architecture
 
-### Schema Organization
-- **Service Isolation**: Each service manages its own database tables
-- **Shared Tables**: Common tables like `users` are accessed by multiple services
-- **Migration Management**: Database migrations handled per service
-- **Referential Integrity**: Foreign key relationships maintained across service boundaries
+### PostgreSQL Database Design
+All services share a unified PostgreSQL database with optimized schemas:
 
-## Service Communication
-
-### Internal Communication
-- **HTTP/REST**: Services communicate via HTTP REST APIs
-- **Authentication**: Service-to-service authentication using shared tokens
-- **Circuit Breakers**: Resilient communication with failure handling
-- **Load Balancing**: Services can be horizontally scaled
-
-### External APIs
-- **Consistent Responses**: All services return standardized response formats
-- **Error Handling**: Unified error response structure across all services
-- **Documentation**: Auto-generated OpenAPI documentation for all services
-- **Versioning**: API versioning support for backward compatibility
-
-## Deployment Architecture
-
-### Container Strategy
-- **Docker**: Each service runs in its own Docker container
-- **Multi-stage Builds**: Optimized container images with minimal footprint
-- **Health Checks**: Container health checks using the `/health` endpoint
-- **Resource Limits**: Proper resource allocation and limits
-
-### Service Discovery
-- **DNS-based**: Services discover each other via DNS names
-- **Environment Variables**: Service URLs configured via environment variables
-- **Health Monitoring**: Continuous health monitoring of all services
-- **Graceful Degradation**: Services handle dependency failures gracefully
-
-## Security Architecture
-
-### Authentication & Authorization
-- **JWT Tokens**: Stateless authentication using JWT tokens
-- **Role-Based Access**: Granular role-based access control
-- **Service Authentication**: Secure service-to-service communication
-- **Token Validation**: Centralized token validation logic
+#### Core Tables
+- **users** - User accounts, profiles, and authentication
+- **credentials** - Encrypted credential storage with access control
+- **targets** - Target server configurations and groups
+- **target_groups** - Logical target organization
+- **target_group_memberships** - Many-to-many target-group relationships
+- **jobs** - Job definitions and metadata
+- **job_runs** - Job execution history and status
+- **job_run_steps** - Individual step execution tracking
+- **schedules** - Job scheduling configuration
+- **notifications** - Notification history and templates
+- **discovery_jobs** - Network discovery configurations
+- **step_libraries** - Modular automation libraries
 
 ### Data Security
-- **Encryption**: Sensitive data encrypted at rest (credentials service)
-- **Secure Communication**: HTTPS/TLS for all service communication
-- **Input Validation**: Comprehensive input validation across all services
-- **Audit Logging**: Security events logged for compliance
+- **AES-GCM encryption** for sensitive credential data
+- **bcrypt password hashing** for user passwords
+- **JWT tokens** for stateless authentication
+- **Input validation** and SQL injection prevention
+- **Audit logging** for security events
 
-## Monitoring & Observability
+## 🔐 Security Architecture
 
-### Logging
-- **Structured Logging**: JSON-formatted logs with consistent fields
-- **Correlation IDs**: Request tracing across service boundaries
-- **Log Aggregation**: Centralized log collection and analysis
-- **Performance Metrics**: Request timing and performance data
+### Multi-Layer Security
+1. **Network Security**
+   - Docker network isolation
+   - SSL/TLS encryption for all external communication
+   - No direct database access from outside
+   - NGINX security headers and rate limiting
 
-### Health Monitoring
-- **Health Endpoints**: Standardized `/health` endpoints on all services
-- **Dependency Checks**: Health checks include dependency status
-- **Metrics Collection**: Performance and health metrics collection
-- **Alerting**: Automated alerting on service health issues
+2. **Authentication & Authorization**
+   - JWT-based stateless authentication
+   - Role-based access control (admin, operator, viewer)
+   - Token expiration and refresh mechanisms
+   - Service-to-service authentication
 
-## Development Guidelines
+3. **Data Protection**
+   - AES-GCM encryption for credentials
+   - bcrypt password hashing
+   - Secure key derivation with PBKDF2
+   - Encrypted communication between services
 
-### Code Standards
-- **Consistent Patterns**: All services follow the same architectural patterns
-- **Shared Modules**: Leverage shared modules for common functionality
-- **Error Handling**: Use standardized error classes and handling
-- **Documentation**: Comprehensive code documentation and API docs
+4. **Input Validation**
+   - Server-side validation on all endpoints
+   - Parameterized queries to prevent SQL injection
+   - XSS prevention in frontend
+   - CSRF protection
 
-### Testing Strategy
-- **Unit Tests**: Comprehensive unit test coverage for all services
-- **Integration Tests**: Service integration testing
-- **Health Check Tests**: Automated health check validation
-- **Performance Tests**: Load and performance testing
+## 🚀 Deployment Architecture
 
-### Deployment Process
-- **CI/CD Pipeline**: Automated build, test, and deployment pipeline
-- **Rolling Updates**: Zero-downtime deployments with rolling updates
-- **Rollback Strategy**: Quick rollback capabilities for failed deployments
-- **Environment Promotion**: Consistent promotion through dev/staging/prod
+### Container Orchestration
+- **Docker Compose** manages all services
+- **Multi-stage builds** for optimized container images
+- **Persistent volumes** for database data and SSL certificates
+- **Custom network** for service communication
+- **Environment variable** configuration
+- **Health checks** on all containers
 
-## Migration History
+### Service Discovery
+- **Docker DNS** for service-to-service communication
+- **Environment variables** for service URLs
+- **Health endpoints** on all services (`/health`)
+- **Graceful shutdown** handling
+- **Circuit breakers** for resilient communication
 
-### Shared Modules Migration (Completed)
-All 10 Python services have been successfully migrated to use the shared modules architecture:
+### Load Balancing & Scaling
+- **NGINX reverse proxy** with load balancing
+- **Horizontal scaling** support for stateless services
+- **Connection pooling** for database efficiency
+- **Caching strategies** for performance optimization
 
-1. ✅ **auth-service** - Complete with AuthError integration
-2. ✅ **user-service** - Complete with comprehensive validation
-3. ✅ **credentials-service** - Complete with encryption support
-4. ✅ **notification-service** - Complete with worker monitoring
-5. ✅ **jobs-service** - Complete with workflow management
-6. ✅ **targets-service** - Complete with multi-protocol support
-7. ✅ **scheduler-service** - Complete with scheduler worker monitoring
-8. ✅ **executor-service** - Complete with execution worker monitoring
-9. ✅ **discovery-service** - Complete with discovery capabilities
-10. ✅ **step-libraries-service** - Complete with library management
+## 📈 Performance & Scalability
 
-### Benefits Achieved
-- **Consistency**: Unified patterns and standards across all services
-- **Maintainability**: Reduced code duplication and easier updates
-- **Observability**: Structured logging and standardized health checks
-- **Error Handling**: Consistent error responses across all services
-- **Security**: Centralized authentication and authorization
-- **Performance**: Optimized database connection pooling
-- **Monitoring**: Standardized health endpoints for all services
+### Performance Features
+- **Async FastAPI** for high-performance APIs
+- **Connection pooling** for database efficiency
+- **Stateless services** for easy horizontal scaling
+- **Caching strategies** for frequently accessed data
+- **Background workers** for async processing
 
-## Future Considerations
+### Monitoring & Observability
+- **Structured logging** with JSON format
+- **Health check endpoints** on all services
+- **Performance metrics** collection
+- **Request tracing** across service boundaries
+- **Error tracking** and alerting
 
-### Scalability
-- **Horizontal Scaling**: Services designed for horizontal scaling
-- **Load Balancing**: Load balancer integration for high availability
-- **Caching**: Redis integration for performance optimization
-- **Database Sharding**: Database scaling strategies for growth
+### Scaling Options
+- **Horizontal scaling** - Multiple instances of services
+- **Load balancing** - NGINX distributes requests
+- **Database optimization** - Indexing and query optimization
+- **Container orchestration** - Docker Compose or Kubernetes
 
-### Technology Evolution
-- **Framework Updates**: Regular updates to FastAPI and dependencies
-- **Python Versions**: Migration strategy for Python version updates
-- **Database Migrations**: Schema evolution and migration strategies
-- **Container Optimization**: Continuous container image optimization
+## 🔄 Service Communication
 
-This architecture provides a solid foundation for the OpsConductor platform, ensuring scalability, maintainability, and consistency across all services while providing the flexibility to evolve and grow with changing requirements.
+### Internal Communication
+- **HTTP/REST APIs** for service-to-service communication
+- **Standardized response formats** across all services
+- **Service authentication** using shared tokens
+- **Circuit breakers** for failure handling
+- **Retry logic** with exponential backoff
+
+### External APIs
+- **OpenAPI/Swagger** documentation for all services
+- **Consistent error responses** with proper HTTP status codes
+- **API versioning** support for backward compatibility
+- **Rate limiting** and throttling
+
+## 🛠️ Development Architecture
+
+### Shared Modules System
+All services use shared modules from `/shared/` directory:
+
+- **database.py** - Connection pooling and health monitoring
+- **logging.py** - Structured logging with service context
+- **middleware.py** - CORS, request logging, error handling
+- **models.py** - Standardized Pydantic response models
+- **errors.py** - Custom exception classes (replaces HTTPException)
+- **auth.py** - JWT validation and role-based access control
+- **utils.py** - Common utility functions and HTTP clients
+
+### Service Architecture Pattern
+Every service follows a consistent structure:
+- Shared module imports
+- Structured logging setup
+- Standard middleware configuration
+- Health check endpoints
+- Standardized error handling
+- Proper startup/shutdown lifecycle
+
+### Code Quality Standards
+- **Type hints** for all functions
+- **Comprehensive documentation** with docstrings
+- **Unit and integration tests** for all components
+- **Error handling** with custom exception classes
+- **Logging** for debugging and monitoring
+- **Code consistency** across all services
+
+---
+
+**OpsConductor Architecture** - Modern, scalable, and secure microservices platform for enterprise automation.
