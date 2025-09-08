@@ -33,8 +33,15 @@ from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
 from shared.auth import get_current_user, require_admin
 
+# Import utility modules
+import utility_email_sender as email_sender_utility
+import utility_webhook_sender as webhook_sender_utility
+import utility_notification_processor as notification_processor_utility
+import utility_user_preferences as user_preferences_utility
+import utility_template_renderer as template_renderer_utility
+
 # Setup structured logging
-setup_service_logging("notification-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
+setup_service_logging("notification-service", level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("notification-service")
 
 app = FastAPI(
@@ -64,6 +71,11 @@ SMTP_CONFIG = {
 # Global notification worker state
 notification_worker_running = False
 notification_worker_task = None
+
+# Initialize utility modules
+email_sender_utility.set_smtp_config(SMTP_CONFIG)
+user_preferences_utility.set_db_cursor_func(get_db_cursor)
+notification_processor_utility.set_db_cursor_func(get_db_cursor)
 
 
 
@@ -190,7 +202,7 @@ class SMTPTestResponse(BaseModel):
     message: str
 
 # Auth verification
-async def verify_token_with_auth_service(authorization -> Dict[str, Any]: str = None) -> Dict[str, Any]:
+async def verify_token_with_auth_service(authorization: str = None) -> Dict[str, Any]:
     """Verify JWT token with auth service"""
     if not authorization or not authorization.startswith("Bearer "):
         raise AuthError("Missing or invalid authorization header")
@@ -211,7 +223,7 @@ async def verify_token_with_auth_service(authorization -> Dict[str, Any]: str = 
     except httpx.RequestError:
         raise ServiceCommunicationError("unknown", "Auth service unavailable")
 
-async def verify_token(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def verify_token(request: Request) -> Dict[str, Any]:
     """Dependency for token verification"""
     authorization = request.headers.get("authorization")
     return await verify_token_with_auth_service(authorization)
@@ -283,308 +295,32 @@ def should_notify(preferences: Dict[str, Any], event_type: str) -> bool:
     return True
 
 def render_template(template_content: str, payload: Dict[str, Any]) -> str:
-    """Render Jinja2 template with payload data"""
-    try:
-        template = Template(template_content)
-        return template.render(**payload)
-    except Exception as e:
-        logger.error(f"Template rendering error: {e}")
-        return template_content
+    """Render Jinja2 template with payload data using utility module"""
+    return template_renderer_utility.render_template(template_content, payload)
 
-async def send_email_notification(notification_id -> Dict[str, Any]: int, dest -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Send email notification with template support"""
-    try:
-        # Use template if provided, otherwise fall back to basic template
-        if template:
-            subject = render_template(template.get('subject_template', 'OpsConductor Notification'), payload)
-            html_content = render_template(template['body_template'], payload)
-        else:
-            # Fallback to basic template
-            job_status = payload.get("status", "unknown")
-            subject = f"OpsConductor: Job {payload.get('job_name', 'Unknown')} - {job_status.title()}"
-            html_content = f"<html><body><h2>Job {job_status.title()}</h2><p>Job details: {json.dumps(payload, indent=2)}</p></body></html>"
-        
-        # Create email message
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"{SMTP_CONFIG['from_name']} <{SMTP_CONFIG['from_email']}>"
-        msg["To"] = dest
-        
-        # Add HTML content
-        html_part = MIMEText(html_content, "html")
-        msg.attach(html_part)
-        
-        # Send email
-        with smtplib.SMTP(SMTP_CONFIG["host"], SMTP_CONFIG["port"]) as server:
-            if SMTP_CONFIG["use_tls"]:
-                server.starttls()
-            
-            if SMTP_CONFIG["username"] and SMTP_CONFIG["password"]:
-                server.login(SMTP_CONFIG["username"], SMTP_CONFIG["password"])
-            
-            server.send_message(msg)
-        
-        logger.info(f"Email notification {notification_id} sent successfully to {dest}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to send email notification {notification_id}: {e}")
-        return False
+async def send_email_notification(notification_id: int, dest: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None) -> bool:
+    """Send email notification using utility module"""
+    return await email_sender_utility.send_email_notification(notification_id, dest, payload, template)
 
-async def send_slack_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Send Slack notification"""
-    try:
-        if template:
-            slack_payload = json.loads(render_template(template['body_template'], payload))
-        else:
-            # Fallback Slack message
-            job_status = payload.get("status", "unknown")
-            emoji = "✅" if job_status == "succeeded" else "❌"
-            slack_payload = {
-                "text": f"{emoji} Job {payload.get('job_name', 'Unknown')} - {job_status.title()}",
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"*Job {payload.get('job_name', 'Unknown')}* has {job_status}"
-                        }
-                    }
-                ]
-            }
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                webhook_url,
-                json=slack_payload,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code < 400:
-                logger.info(f"Slack notification {notification_id} sent successfully")
-                return True
-            else:
-                logger.error(f"Slack notification {notification_id} failed with status {response.status_code}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"Failed to send Slack notification {notification_id}: {e}")
-        return False
+async def send_slack_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None) -> bool:
+    """Send Slack notification using utility module"""
+    return await webhook_sender_utility.send_slack_notification(notification_id, webhook_url, payload, template)
 
-async def send_teams_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Send Microsoft Teams notification"""
-    try:
-        if template:
-            teams_payload = json.loads(render_template(template['body_template'], payload))
-        else:
-            # Fallback Teams message
-            job_status = payload.get("status", "unknown")
-            color = "00FF00" if job_status == "succeeded" else "FF0000"
-            teams_payload = {
-                "@type": "MessageCard",
-                "@context": "http://schema.org/extensions",
-                "themeColor": color,
-                "summary": f"Job {payload.get('job_name', 'Unknown')} {job_status}",
-                "sections": [{
-                    "activityTitle": f"Job {job_status.title()}",
-                    "activitySubtitle": payload.get('job_name', 'Unknown'),
-                    "facts": [
-                        {"name": "Job ID", "value": str(payload.get('job_id', 'N/A'))},
-                        {"name": "Status", "value": job_status.title()}
-                    ]
-                }]
-            }
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                webhook_url,
-                json=teams_payload,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code < 400:
-                logger.info(f"Teams notification {notification_id} sent successfully")
-                return True
-            else:
-                logger.error(f"Teams notification {notification_id} failed with status {response.status_code}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"Failed to send Teams notification {notification_id}: {e}")
-        return False
+async def send_teams_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None) -> bool:
+    """Send Microsoft Teams notification using utility module"""
+    return await webhook_sender_utility.send_teams_notification(notification_id, webhook_url, payload, template)
 
-async def send_webhook_notification(notification_id -> Dict[str, Any]: int, webhook_url -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template -> Dict[str, Any]: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Send generic webhook notification"""
-    try:
-        if template:
-            webhook_payload = json.loads(render_template(template['body_template'], payload))
-        else:
-            # Use payload as-is for generic webhooks
-            webhook_payload = payload
-        
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                webhook_url,
-                json=webhook_payload,
-                headers={"Content-Type": "application/json"}
-            )
-            
-            if response.status_code < 400:
-                logger.info(f"Webhook notification {notification_id} sent successfully")
-                return True
-            else:
-                logger.error(f"Webhook notification {notification_id} failed with status {response.status_code}")
-                return False
-                
-    except Exception as e:
-        logger.error(f"Failed to send webhook notification {notification_id}: {e}")
-        return False
+async def send_webhook_notification(notification_id: int, webhook_url: str, payload: Dict[str, Any], template: Optional[Dict[str, Any]] = None) -> bool:
+    """Send generic webhook notification using utility module"""
+    return await webhook_sender_utility.send_webhook_notification(notification_id, webhook_url, payload, template)
 
-async def process_notification(notification_id -> Dict[str, Any]: int, channel -> Dict[str, Any]: str, dest -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], template_id -> Dict[str, Any]: Optional[int] = None) -> Dict[str, Any]:
-    """Process a single notification with template support"""
-    success = False
-    template = None
-    
-    # Get template if specified
-    if template_id:
-        try:
-            with get_db_cursor(commit=False) as cursor:
-                cursor.execute("SELECT * FROM notification_templates WHERE id = %s", (template_id,))
-                template = cursor.fetchone()
-        except Exception as e:
-            logger.error(f"Error getting template {template_id}: {e}")
-    
-    # Send notification based on channel
-    if channel == "email":
-        success = await send_email_notification(notification_id, dest, payload, template)
-    elif channel == "slack":
-        success = await send_slack_notification(notification_id, dest, payload, template)
-    elif channel == "teams":
-        success = await send_teams_notification(notification_id, dest, payload, template)
-    elif channel == "webhook":
-        success = await send_webhook_notification(notification_id, dest, payload, template)
-    else:
-        logger.error(f"Unknown notification channel: {channel}")
-        return False
-    
-    # Update notification status in database
-    try:
-        with get_db_cursor() as cursor:
-            if success:
-                cursor.execute("""
-                    UPDATE notifications 
-                    SET status = 'sent', sent_at = %s 
-                    WHERE id = %s
-                """, (datetime.now(timezone.utc), notification_id))
-            else:
-                cursor.execute("""
-                    UPDATE notifications 
-                    SET retries = retries + 1 
-                    WHERE id = %s
-                """, (notification_id,))
-                
-                # Mark as failed after 3 retries
-                cursor.execute("""
-                    UPDATE notifications 
-                    SET status = 'failed' 
-                    WHERE id = %s AND retries >= 3
-                """, (notification_id,))
-        
-    except Exception as e:
-        logger.error(f"Failed to update notification {notification_id} status: {e}")
-    
-    return success
+async def process_notification(notification_id: int, channel: str, dest: str, payload: Dict[str, Any], template_id: Optional[int] = None) -> bool:
+    """Process a single notification using utility module"""
+    return await notification_processor_utility.process_notification(notification_id, channel, dest, payload, template_id)
 
-async def create_notifications_for_job_run(job_run_id -> Dict[str, Any]: int, event_type -> Dict[str, Any]: str, payload -> Dict[str, Any]: Dict[str, Any], user_id -> Dict[str, Any]: Optional[int] = None) -> Dict[str, Any]:
-    """Create notifications for a job run based on user preferences"""
-    try:
-        with get_db_cursor() as cursor:
-            # If user_id is provided, get their preferences
-            if user_id:
-                preferences = get_user_notification_preferences(user_id)
-                if not preferences or not should_notify(preferences, event_type):
-                    logger.info(f"User {user_id} preferences indicate no notification needed for {event_type}")
-                    return []
-            else:
-                # Get job run details to find the user
-                cursor.execute("""
-                    SELECT requested_by FROM job_runs WHERE id = %s
-                """, (job_run_id,))
-                job_run = cursor.fetchone()
-                if job_run and job_run['requested_by']:
-                    user_id = job_run['requested_by']
-                    preferences = get_user_notification_preferences(user_id)
-                    if not preferences or not should_notify(preferences, event_type):
-                        logger.info(f"User {user_id} preferences indicate no notification needed for {event_type}")
-                        return []
-                else:
-                    # No user found, use default admin notification
-                    preferences = None
-            
-            notifications_created = []
-            
-            if preferences:
-                # Create notifications based on user preferences
-                channels_to_notify = []
-                
-                if preferences.get('email_enabled', True):
-                    email_addr = preferences.get('notification_email') or preferences.get('user_email')
-                    if email_addr:
-                        template = get_notification_template('email', event_type)
-                        cursor.execute("""
-                            INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            RETURNING id
-                        """, (job_run_id, user_id, 'email', email_addr, json.dumps(payload), template['id'] if template else None))
-                        notification_id = cursor.fetchone()['id']
-                        notifications_created.append(notification_id)
-                
-                if preferences.get('slack_enabled', False) and preferences.get('slack_webhook_url'):
-                    template = get_notification_template('slack', event_type)
-                    cursor.execute("""
-                        INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (job_run_id, user_id, 'slack', preferences['slack_webhook_url'], json.dumps(payload), template['id'] if template else None))
-                    notification_id = cursor.fetchone()['id']
-                    notifications_created.append(notification_id)
-                
-                if preferences.get('teams_enabled', False) and preferences.get('teams_webhook_url'):
-                    template = get_notification_template('teams', event_type)
-                    cursor.execute("""
-                        INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (job_run_id, user_id, 'teams', preferences['teams_webhook_url'], json.dumps(payload), template['id'] if template else None))
-                    notification_id = cursor.fetchone()['id']
-                    notifications_created.append(notification_id)
-                
-                if preferences.get('webhook_enabled', False) and preferences.get('webhook_url'):
-                    template = get_notification_template('webhook', event_type)
-                    cursor.execute("""
-                        INSERT INTO notifications (job_run_id, user_id, channel, dest, payload, template_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """, (job_run_id, user_id, 'webhook', preferences['webhook_url'], json.dumps(payload), template['id'] if template else None))
-                    notification_id = cursor.fetchone()['id']
-                    notifications_created.append(notification_id)
-            else:
-                # Default notification to admin email
-                template = get_notification_template('email', event_type)
-                cursor.execute("""
-                    INSERT INTO notifications (job_run_id, channel, dest, payload, template_id)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (job_run_id, 'email', 'admin@opsconductor.local', json.dumps(payload), template['id'] if template else None))
-                notification_id = cursor.fetchone()['id']
-                notifications_created.append(notification_id)
-            
-            logger.info(f"Created {len(notifications_created)} notifications for job run {job_run_id}")
-            return notifications_created
-        
-    except Exception as e:
-        logger.error(f"Error creating notifications for job run {job_run_id}: {e}")
-        return []
+async def create_notifications_for_job_run(job_run_id: int, event_type: str, payload: Dict[str, Any], user_id: Optional[int] = None) -> List[int]:
+    """Create notifications for a job run using utility module"""
+    return await notification_processor_utility.create_notifications_for_job_run(job_run_id, event_type, payload, user_id)
 
 async def notification_worker() -> Dict[str, Any]:
     """Enhanced background worker that processes pending notifications"""
@@ -665,90 +401,43 @@ async def get_notification_status() -> Dict[str, Any]:
 # User Notification Preferences Endpoints
 
 @app.get("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
-async def get_user_preferences(user_id -> Dict[str, Any]: int, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
-    """Get user notification preferences"""
+async def get_user_preferences(user_id: int, request: Request) -> Dict[str, Any]:
+    """Get user notification preferences using utility module"""
     await verify_token(request)
     
-    try:
-        with get_db_cursor(commit=False) as cursor:
-            cursor.execute("""
-                SELECT * FROM user_notification_preferences WHERE user_id = %s
-            """, (user_id,))
-            
-            preferences = cursor.fetchone()
-            if not preferences:
-                # Return default preferences
-                return NotificationPreferencesResponse(
-                    id=0,
-                user_id=user_id,
-                email_enabled=True,
-                webhook_enabled=False,
-                slack_enabled=False,
-                teams_enabled=False,
-                notify_on_success=True,
-                notify_on_failure=True,
-                notify_on_start=False,
-                quiet_hours_enabled=False,
-                quiet_hours_timezone="America/Los_Angeles",
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc)
-            )
-            
-            return NotificationPreferencesResponse(**preferences)
-        
-    except Exception as e:
-        logger.error(f"Error getting user preferences: {e}")
-        raise DatabaseError("Failed to get user preferences")
+    preferences = await user_preferences_utility.get_user_preferences(user_id)
+    if not preferences:
+        # Return default preferences
+        return NotificationPreferencesResponse(
+            id=0,
+            user_id=user_id,
+            email_enabled=True,
+            webhook_enabled=False,
+            slack_enabled=False,
+            teams_enabled=False,
+            notify_on_success=True,
+            notify_on_failure=True,
+            notify_on_start=False,
+            quiet_hours_enabled=False,
+            quiet_hours_timezone="America/Los_Angeles",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
+        )
+    
+    return NotificationPreferencesResponse(**preferences)
 
 @app.put("/preferences/{user_id}", response_model=NotificationPreferencesResponse)
-async def update_user_preferences(user_id -> Dict[str, Any]: int, preferences -> Dict[str, Any]: NotificationPreferences, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
-    """Update user notification preferences"""
+async def update_user_preferences(user_id: int, preferences: NotificationPreferences, request: Request) -> Dict[str, Any]:
+    """Update user notification preferences using utility module"""
     await verify_token(request)
     
     try:
-        with get_db_cursor() as cursor:
-            # Upsert preferences
-            cursor.execute("""
-                INSERT INTO user_notification_preferences (
-                    user_id, email_enabled, email_address, webhook_enabled, webhook_url,
-                    slack_enabled, slack_webhook_url, slack_channel, teams_enabled, teams_webhook_url,
-                    notify_on_success, notify_on_failure, notify_on_start,
-                    quiet_hours_enabled, quiet_hours_start, quiet_hours_end, quiet_hours_timezone,
-                    updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    email_enabled = EXCLUDED.email_enabled,
-                    email_address = EXCLUDED.email_address,
-                    webhook_enabled = EXCLUDED.webhook_enabled,
-                    webhook_url = EXCLUDED.webhook_url,
-                    slack_enabled = EXCLUDED.slack_enabled,
-                    slack_webhook_url = EXCLUDED.slack_webhook_url,
-                    slack_channel = EXCLUDED.slack_channel,
-                    teams_enabled = EXCLUDED.teams_enabled,
-                    teams_webhook_url = EXCLUDED.teams_webhook_url,
-                    notify_on_success = EXCLUDED.notify_on_success,
-                    notify_on_failure = EXCLUDED.notify_on_failure,
-                    notify_on_start = EXCLUDED.notify_on_start,
-                    quiet_hours_enabled = EXCLUDED.quiet_hours_enabled,
-                    quiet_hours_start = EXCLUDED.quiet_hours_start,
-                    quiet_hours_end = EXCLUDED.quiet_hours_end,
-                    quiet_hours_timezone = EXCLUDED.quiet_hours_timezone,
-                    updated_at = EXCLUDED.updated_at
-                RETURNING *
-            """, (
-                user_id, preferences.email_enabled, preferences.email_address,
-                preferences.webhook_enabled, preferences.webhook_url,
-                preferences.slack_enabled, preferences.slack_webhook_url, preferences.slack_channel,
-                preferences.teams_enabled, preferences.teams_webhook_url,
-                preferences.notify_on_success, preferences.notify_on_failure, preferences.notify_on_start,
-                preferences.quiet_hours_enabled, preferences.quiet_hours_start, preferences.quiet_hours_end,
-                preferences.quiet_hours_timezone, datetime.now(timezone.utc)
-            ))
-            
-            updated_preferences = cursor.fetchone()
-            
-            logger.info(f"Updated notification preferences for user {user_id}")
-            return NotificationPreferencesResponse(**updated_preferences)
+        # Convert Pydantic model to dict for utility
+        preferences_dict = preferences.dict()
+        updated_preferences = await user_preferences_utility.update_user_preferences(user_id, preferences_dict)
+        
+        logger.info(f"Updated notification preferences for user {user_id}")
+        return NotificationPreferencesResponse(**updated_preferences)
         
     except Exception as e:
         logger.error(f"Error updating user preferences: {e}")
@@ -757,7 +446,7 @@ async def update_user_preferences(user_id -> Dict[str, Any]: int, preferences ->
 # Notification Channels Endpoints
 
 @app.get("/channels", response_model=List[NotificationChannelResponse])
-async def get_notification_channels(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def get_notification_channels(request: Request) -> Dict[str, Any]:
     """Get available notification channels"""
     await verify_token(request)
     
@@ -776,8 +465,8 @@ async def get_notification_channels(request -> Dict[str, Any]: Request) -> Dict[
 
 @app.post("/notifications/enhanced", response_model=List[NotificationResponse])
 async def create_enhanced_notification(
-    notification_data -> Dict[str, Any]: EnhancedNotificationCreate,
-    request -> Dict[str, Any]: Request
+    notification_data: EnhancedNotificationCreate,
+    request: Request
 ) -> Dict[str, Any]:
     """Create enhanced notifications with user preferences and templates"""
     await verify_token(request)
@@ -811,7 +500,7 @@ async def create_enhanced_notification(
 
 # Internal endpoint for service-to-service communication
 @app.post("/internal/notifications/enhanced")
-async def create_internal_enhanced_notification(notification -> Dict[str, Any]: EnhancedNotificationCreate) -> Dict[str, Any]:
+async def create_internal_enhanced_notification(notification: EnhancedNotificationCreate) -> Dict[str, Any]:
     """Create enhanced notifications (internal service endpoint - no auth required)"""
     notification_ids = await create_notifications_for_job_run(
         notification.job_run_id,
@@ -825,7 +514,7 @@ async def create_internal_enhanced_notification(notification -> Dict[str, Any]: 
 # Worker control endpoints
 
 @app.post("/worker/start")
-async def start_notification_worker(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def start_notification_worker(request: Request) -> Dict[str, Any]:
     """Start the notification worker"""
     await verify_token(request)
     
@@ -847,7 +536,7 @@ async def start_notification_worker(request -> Dict[str, Any]: Request) -> Dict[
     )
 
 @app.post("/worker/stop")
-async def stop_notification_worker(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def stop_notification_worker(request: Request) -> Dict[str, Any]:
     """Stop the notification worker"""
     await verify_token(request)
     
@@ -878,9 +567,9 @@ async def stop_notification_worker(request -> Dict[str, Any]: Request) -> Dict[s
 # Legacy endpoints for backward compatibility
 @app.get("/notifications", response_model=NotificationListResponse)
 async def get_notifications(
-    request -> Dict[str, Any]: Request,
-    limit -> Dict[str, Any]: int = 50,
-    offset -> Dict[str, Any]: int = 0
+    request: Request,
+    limit: int = 50,
+    offset: int = 0
 ) -> Dict[str, Any]:
     """Get notifications with pagination"""
     await verify_token(request)
@@ -934,7 +623,7 @@ def get_smtp_settings_from_db() -> Any:
         logger.error(f"Error getting SMTP settings from DB: {e}")
         return {}
 
-def save_smtp_settings_to_db(settings -> Any: SMTPSettings) -> Any:
+def save_smtp_settings_to_db(settings: SMTPSettings) -> None:
     """Save SMTP settings to database"""
     try:
         with get_db_cursor() as cursor:
@@ -973,7 +662,7 @@ def save_smtp_settings_to_db(settings -> Any: SMTPSettings) -> Any:
         logger.error(f"Error saving SMTP settings to DB: {e}")
         raise
 
-def update_smtp_config(settings -> Any: SMTPSettings) -> Any:
+def update_smtp_config(settings: SMTPSettings) -> None:
     """Update global SMTP_CONFIG with new settings"""
     global SMTP_CONFIG
     SMTP_CONFIG.update({
@@ -988,7 +677,7 @@ def update_smtp_config(settings -> Any: SMTPSettings) -> Any:
     logger.info("SMTP configuration updated in memory")
 
 @app.get("/smtp/settings", response_model=SMTPSettingsResponse)
-async def get_smtp_settings(request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def get_smtp_settings(request: Request) -> Dict[str, Any]:
     """Get SMTP settings"""
     await verify_token(request)
     
@@ -1019,7 +708,7 @@ async def get_smtp_settings(request -> Dict[str, Any]: Request) -> Dict[str, Any
         )
 
 @app.post("/smtp/settings", response_model=SMTPSettingsResponse)
-async def update_smtp_settings(settings -> Dict[str, Any]: SMTPSettings, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def update_smtp_settings(settings: SMTPSettings, request: Request) -> Dict[str, Any]:
     """Update SMTP settings"""
     await verify_token(request)
     
@@ -1046,7 +735,7 @@ async def update_smtp_settings(settings -> Dict[str, Any]: SMTPSettings, request
         raise DatabaseError("Failed to update SMTP settings")
 
 @app.post("/smtp/test", response_model=SMTPTestResponse)
-async def test_smtp_settings(test_request -> Dict[str, Any]: SMTPTestRequest, request -> Dict[str, Any]: Request) -> Dict[str, Any]:
+async def test_smtp_settings(test_request: SMTPTestRequest, request: Request) -> Dict[str, Any]:
     """Test SMTP configuration"""
     await verify_token(request)
     
