@@ -14,7 +14,8 @@ from datetime import datetime
 sys.path.append('/home/opsconductor')
 
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
-from fastapi import FastAPI, HTTPException, Depends, status
+from shared.errors import DatabaseError, ValidationError, NotFoundError, AuthError
+from fastapi import FastAPI, Depends, status
 from fastapi.security import HTTPBearer
 from pydantic import BaseModel
 import jwt
@@ -60,9 +61,9 @@ async def verify_token(token: str = Depends(security)):
         payload = jwt.decode(token.credentials, JWT_SECRET_KEY, algorithms=["HS256"])
         return payload
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        raise AuthError("Token expired")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise AuthError("Invalid token")
 
 # Health check endpoint (no auth required)
 @app.get("/health")
@@ -90,7 +91,7 @@ async def get_items(user: dict = Depends(verify_token)):
         return items
     except Exception as e:
         logger.error(f"Error fetching items: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch items")
+        raise DatabaseError("Failed to fetch items")
 
 @app.get("/items/{item_id}", response_model=ItemResponse)
 async def get_item(item_id: int, user: dict = Depends(verify_token)):
@@ -105,14 +106,14 @@ async def get_item(item_id: int, user: dict = Depends(verify_token)):
             item = cursor.fetchone()
         
         if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise NotFoundError("Item not found")
         
         return item
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching item {item_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch item")
+        raise DatabaseError("Failed to fetch item")
 
 @app.post("/items", response_model=ItemResponse)
 async def create_item(item: ItemCreate, user: dict = Depends(verify_token)):
@@ -130,7 +131,7 @@ async def create_item(item: ItemCreate, user: dict = Depends(verify_token)):
         return new_item
     except Exception as e:
         logger.error(f"Error creating item: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create item")
+        raise DatabaseError("Failed to create item")
 
 @app.put("/items/{item_id}", response_model=ItemResponse)
 async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verify_token)):
@@ -150,7 +151,7 @@ async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verif
                 values.append(item.description)
             
             if not update_fields:
-                raise HTTPException(status_code=400, detail="No fields to update")
+                raise ValidationError("No fields to update")
             
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
             values.append(item_id)
@@ -165,7 +166,7 @@ async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verif
             updated_item = cursor.fetchone()
         
         if not updated_item:
-            raise HTTPException(status_code=404, detail="Item not found")
+            raise NotFoundError("Item not found")
         
         logger.info(f"Updated item: {item_id}")
         return updated_item
@@ -173,7 +174,7 @@ async def update_item(item_id: int, item: ItemUpdate, user: dict = Depends(verif
         raise
     except Exception as e:
         logger.error(f"Error updating item {item_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update item")
+        raise DatabaseError("Failed to update item")
 
 @app.delete("/items/{item_id}")
 async def delete_item(item_id: int, user: dict = Depends(verify_token)):
@@ -182,7 +183,7 @@ async def delete_item(item_id: int, user: dict = Depends(verify_token)):
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM items WHERE id = %s", (item_id,))
             if cursor.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Item not found")
+                raise NotFoundError("Item not found")
         
         logger.info(f"Deleted item: {item_id}")
         return {"message": "Item deleted successfully"}
@@ -190,7 +191,7 @@ async def delete_item(item_id: int, user: dict = Depends(verify_token)):
         raise
     except Exception as e:
         logger.error(f"Error deleting item {item_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete item")
+        raise DatabaseError("Failed to delete item")
 
 if __name__ == "__main__":
     import uvicorn

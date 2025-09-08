@@ -13,7 +13,8 @@ from typing import Optional, Dict, Any
 import psycopg2
 import psycopg2.extras
 from psycopg2 import pool
-from fastapi import HTTPException, status
+from fastapi import status
+from .errors import DatabaseError, ServiceCommunicationError
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +84,7 @@ class DatabasePool:
         """Get a connection from the pool with enhanced monitoring"""
         if not self._pool:
             self._metrics['connection_errors'] += 1
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Database pool not initialized"
-            )
+            raise DatabaseError("Database pool not initialized")
         
         # Check for pool exhaustion and warn if necessary
         self._check_pool_exhaustion()
@@ -106,17 +104,11 @@ class DatabasePool:
                 return conn
             else:
                 self._metrics['connection_errors'] += 1
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="No database connections available"
-                )
+                raise ServiceCommunicationError("database", "No database connections available")
         except Exception as e:
             self._metrics['connection_errors'] += 1
             logger.error(f"Failed to get database connection: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Database connection failed"
-            )
+            raise DatabaseError("Database connection failed")
     
     def return_connection(self, conn):
         """Return a connection to the pool with metrics tracking"""
