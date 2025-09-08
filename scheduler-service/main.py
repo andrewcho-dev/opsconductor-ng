@@ -21,13 +21,13 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
 from shared.utils import get_service_client
 import shared.utility_service_auth as service_auth_utility
 import shared.utility_service_clients as service_clients_utility
 
 # Setup structured logging
-setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
+setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("scheduler-service")
 
 app = FastAPI(

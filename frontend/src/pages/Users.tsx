@@ -72,7 +72,7 @@ const Users: React.FC = () => {
   const fetchUsers = async () => {
     try {
       const response = await userApi.list();
-      setUsers(response.users || []);
+      setUsers(response.data || []);
     } catch (error) {
       console.error('Failed to fetch users:', error);
       setUsers([]);

@@ -31,7 +31,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, AuthError, ServiceCommunicationError
-from shared.auth import get_current_user, require_admin, verify_token_from_request
+from shared.auth import verify_token_with_auth_service, require_admin_role, verify_token_from_request
 
 # Import utility modules
 import utility_email_sender as email_sender_utility

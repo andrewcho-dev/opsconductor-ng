@@ -7,10 +7,10 @@ Handles authentication, JWT tokens, and user session management
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # Add shared module to path
-sys.path.append('/home/opsconductor', Dict, Any)
+sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -98,7 +98,7 @@ def get_password_hash(password: str) -> str:
     """Hash a password"""
     return pwd_context.hash(password)
 
-def create_access_token(data -> Any: dict, expires_delta -> Any: Optional[timedelta] = None) -> Any:
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -110,7 +110,7 @@ def create_access_token(data -> Any: dict, expires_delta -> Any: Optional[timede
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def create_refresh_token(data -> Any: dict, expires_delta -> Any: Optional[timedelta] = None) -> Any:
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
     if expires_delta:
@@ -183,7 +183,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
 
 # API Endpoints
 @app.post("/login", response_model=TokenResponse)
-async def login(login_request -> Dict[str, Any]: LoginRequest) -> Dict[str, Any]:
+async def login(login_request: LoginRequest) -> Dict[str, Any]:
     """Login endpoint - authenticate user and return tokens"""
     try:
         user = authenticate_user(login_request.username, login_request.password)
@@ -226,7 +226,7 @@ async def login(login_request -> Dict[str, Any]: LoginRequest) -> Dict[str, Any]
     )
 
 @app.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_request -> Dict[str, Any]: RefreshRequest) -> Dict[str, Any]:
+async def refresh_token(refresh_request: RefreshRequest) -> Dict[str, Any]:
     """Refresh token endpoint"""
     try:
         payload = jwt.decode(refresh_request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])

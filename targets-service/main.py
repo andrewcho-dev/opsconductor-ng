@@ -22,7 +22,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_role
 from shared.utils import get_service_client
 
 # Import our enhanced models
@@ -55,7 +55,7 @@ add_standard_middleware(app, "targets-service", version="2.0.0")
 
 # Database connection is now handled by shared.database module
 
-async def require_admin_or_operator_role(current_user: dict = Depends(get_current_user)):
+async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
     """Require admin or operator role"""
     user_role = current_user.get("role")
     if user_role not in ["admin", "operator"]:

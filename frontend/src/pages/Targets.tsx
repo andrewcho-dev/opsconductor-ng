@@ -352,7 +352,7 @@ const Targets: React.FC = () => {
         name: newTarget.ip_address,
         hostname: newTarget.ip_address,
         ip_address: newTarget.ip_address,
-        os_type: newTarget.os_type || 'other',
+        os_type: (newTarget.os_type as 'windows' | 'linux' | 'unix' | 'macos' | 'other') || 'other',
         tags: newTarget.tags,
         description: newTarget.description,
         services: newTarget.services
@@ -1482,7 +1482,7 @@ const Targets: React.FC = () => {
                         <label className="form-label">Description</label>
                         <input
                           type="text"
-                          value={selectedTarget.metadata?.description || ''}
+                          value={selectedTarget.description || ''}
                           className="subtle-input readonly-input"
                           readOnly
                         />

@@ -7,10 +7,10 @@ Full CRUD operations for user management
 import os
 import sys
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 # Add shared module to path
-sys.path.append('/home/opsconductor', Dict, Any)
+sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.responses import JSONResponse
@@ -24,7 +24,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_dependency, get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_self_access
 from shared.utils import get_service_client
 
 # Load environment variables
@@ -98,7 +98,7 @@ def get_password_hash(password: str) -> str:
 
 # CRUD Operations
 @app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user_data: UserCreate, current_user: dict = Depends(require_admin)):
+async def create_user(user_data: UserCreate, current_user: dict = Depends(require_admin_role)):
     """Create a new user - ADMIN ONLY"""
     try:
         with get_db_cursor() as cursor:
@@ -136,7 +136,7 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
 async def list_users(
     skip: int = 0,
     limit: int = 100,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """List all users with pagination"""
     # Non-admin users can only see their own profile
@@ -163,15 +163,14 @@ async def list_users(
                     'telephone': user_data.get('telephone'),
                     'title': user_data.get('title')
                 }
-                return PaginatedResponse(
-                    data=[UserResponse(**response_data)],
-                    total=1,
+                return PaginatedResponse.create(
+                    items=[UserResponse(**response_data)],
                     page=1,
                     per_page=1,
-                    pages=1
+                    total_items=1
                 )
             else:
-                return PaginatedResponse(data=[], total=0, page=1, per_page=limit, pages=0)
+                return PaginatedResponse.create(items=[], page=1, per_page=limit, total_items=0)
         except Exception as e:
             logger.error(f"Error fetching user profile: {e}", exc_info=True)
             raise handle_database_error(e, "user profile fetch")
@@ -214,12 +213,11 @@ async def list_users(
         pages = (total + limit - 1) // limit
         current_page = (skip // limit) + 1
         
-        return PaginatedResponse(
-            data=user_responses,
-            total=total,
+        return PaginatedResponse.create(
+            items=user_responses,
             page=current_page,
             per_page=limit,
-            pages=pages
+            total_items=total
         )
             
     except Exception as e:
@@ -227,7 +225,7 @@ async def list_users(
         raise handle_database_error(e, "user listing")
 
 @app.get("/users/{user_id}")
-async def get_user(user_id: int, current_user: dict = Depends(get_current_user)):
+async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
     """Get user by ID"""
     # Non-admin users can only access their own profile
     if current_user["role"] != "admin" and current_user["id"] != user_id:
@@ -269,7 +267,7 @@ async def get_user(user_id: int, current_user: dict = Depends(get_current_user))
 async def update_user(
     user_id: int, 
     user_data: UserUpdate, 
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(verify_token_with_auth_service)
 ):
     """Update user by ID"""
     # Non-admin users can only update their own profile (and not change role)

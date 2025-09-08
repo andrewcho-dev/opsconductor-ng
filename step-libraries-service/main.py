@@ -40,7 +40,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
 from shared.utils import get_service_client
 
 # Setup structured logging
@@ -194,7 +194,7 @@ class DatabaseManager:
             library_id = cur.fetchone()['id']
             return library_id
     
-    async def create_step_records(self, library_id -> Dict[str, Any]: int, steps -> Dict[str, Any]: List[StepDefinition]) -> Dict[str, Any]:
+    async def create_step_records(self, library_id: int, steps: List[StepDefinition]) -> Dict[str, Any]:
         """Create step definition records"""
         with get_db_cursor() as cur:
             for step in steps:
@@ -755,7 +755,7 @@ class LibraryManager:
 library_manager = LibraryManager()
 
 @asynccontextmanager
-async def lifespan(app -> Dict[str, Any]: FastAPI) -> Dict[str, Any]:
+async def lifespan(app: FastAPI):
     """Application lifespan management"""
     log_startup("step-libraries-service", "1.0.0", 3011)
     
@@ -818,7 +818,7 @@ async def database_metrics() -> Dict[str, Any]:
     }
 
 @app.get("/api/v1/libraries", response_model=List[LibraryResponse])
-async def get_libraries(enabled_only -> Dict[str, Any]: bool = False) -> Dict[str, Any]:
+async def get_libraries(enabled_only: bool = False):
     """Get all installed libraries"""
     try:
         libraries = await library_manager.db.get_libraries(enabled_only=enabled_only)
@@ -849,7 +849,7 @@ async def get_libraries(enabled_only -> Dict[str, Any]: bool = False) -> Dict[st
         raise DatabaseError(str(e))
 
 @app.get("/api/v1/libraries/{library_id}")
-async def get_library(library_id -> Dict[str, Any]: int) -> Dict[str, Any]:
+async def get_library(library_id: int):
     """Get specific library details"""
     try:
         libraries = await library_manager.db.get_libraries()
@@ -895,7 +895,7 @@ async def install_library(
         raise DatabaseError(str(e))
 
 @app.delete("/api/v1/libraries/{library_id}")
-async def uninstall_library(library_id -> Dict[str, Any]: int) -> Dict[str, Any]:
+async def uninstall_library(library_id: int):
     """Uninstall a step library"""
     try:
         result = await library_manager.uninstall_library(library_id)
@@ -912,7 +912,7 @@ async def uninstall_library(library_id -> Dict[str, Any]: int) -> Dict[str, Any]
         raise DatabaseError(str(e))
 
 @app.put("/api/v1/libraries/{library_id}/toggle")
-async def toggle_library(library_id -> Dict[str, Any]: int, enabled -> Dict[str, Any]: bool) -> Dict[str, Any]:
+async def toggle_library(library_id: int, enabled: bool):
     """Enable or disable a library"""
     try:
         success = await library_manager.db.toggle_library(library_id, enabled)
@@ -937,10 +937,10 @@ async def toggle_library(library_id -> Dict[str, Any]: int, enabled -> Dict[str,
 
 @app.get("/api/v1/steps")
 async def get_available_steps(
-    category -> Dict[str, Any]: Optional[str] = None,
-    library -> Dict[str, Any]: Optional[str] = None,
-    platform -> Dict[str, Any]: Optional[str] = None
-) -> Dict[str, Any]:
+    category: Optional[str] = None,
+    library: Optional[str] = None,
+    platform: Optional[str] = None
+):
     """Get all available steps with optional filtering"""
     try:
         steps = await library_manager.get_available_steps(category, library)

@@ -4,9 +4,9 @@
  */
 
 import axios from 'axios';
+import { getApiBaseUrl } from './api';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost';
-const STEP_LIBRARIES_SERVICE_URL = `${API_BASE_URL}:3011`;
+const getStepLibrariesServiceUrl = () => `${getApiBaseUrl()}/api/v1/step-libraries`;
 
 // Types
 export interface StepParameter {
@@ -98,7 +98,7 @@ class StepLibraryService {
       if (platform) params.append('platform', platform);
 
       const response = await axios.get(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/steps?${params.toString()}`
+        `${getStepLibrariesServiceUrl()}/api/v1/steps?${params.toString()}`
       );
 
       const data: StepLibraryResponse = response.data;
@@ -135,7 +135,7 @@ class StepLibraryService {
     try {
       const params = enabledOnly ? '?enabled_only=true' : '';
       const response = await axios.get(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/libraries${params}`
+        `${getStepLibrariesServiceUrl()}/libraries${params}`
       );
 
       const data: LibraryInfo[] = response.data;
@@ -165,7 +165,7 @@ class StepLibraryService {
       }
 
       const response = await axios.post(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/libraries/install`,
+        `${getStepLibrariesServiceUrl()}/api/v1/libraries/install`,
         formData,
         {
           headers: {
@@ -193,7 +193,7 @@ class StepLibraryService {
   async uninstallLibrary(libraryId: number): Promise<void> {
     try {
       await axios.delete(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/libraries/${libraryId}`
+        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}`
       );
 
       // Clear cache after uninstallation
@@ -213,7 +213,7 @@ class StepLibraryService {
   async toggleLibrary(libraryId: number, enabled: boolean): Promise<void> {
     try {
       await axios.put(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/libraries/${libraryId}/toggle`,
+        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}/toggle`,
         null,
         {
           params: { enabled }
@@ -237,7 +237,7 @@ class StepLibraryService {
   async getLibraryDetails(libraryId: number): Promise<any> {
     try {
       const response = await axios.get(
-        `${STEP_LIBRARIES_SERVICE_URL}/api/v1/libraries/${libraryId}`
+        `${getStepLibrariesServiceUrl()}/api/v1/libraries/${libraryId}`
       );
       return response.data;
     } catch (error) {
@@ -411,7 +411,7 @@ class StepLibraryService {
    */
   async checkServiceHealth(): Promise<boolean> {
     try {
-      const response = await axios.get(`${STEP_LIBRARIES_SERVICE_URL}/health`, {
+      const response = await axios.get(`${getStepLibrariesServiceUrl()}/health`, {
         timeout: 5000
       });
       return response.status === 200;

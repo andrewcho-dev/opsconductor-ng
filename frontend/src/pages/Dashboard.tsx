@@ -42,7 +42,15 @@ const Dashboard: React.FC = () => {
         schedulerStatusRes
       ] = await Promise.allSettled(requests);
 
-      const getTotal = (res: any) => (res.status === 'fulfilled' ? (res.value?.total ?? 0) : 0);
+      const getTotal = (res: any) => {
+        if (res.status !== 'fulfilled') return 0;
+        // Handle new API response format with meta.total_items
+        if (res.value?.meta?.total_items !== undefined) {
+          return res.value.meta.total_items;
+        }
+        // Handle old API response format with total
+        return res.value?.total ?? 0;
+      };
       const getSchedulerRunning = (res: any) => (res.status === 'fulfilled' ? !!res.value?.scheduler_running : false);
 
       // Log failures for debugging but keep dashboard rendering

@@ -62,11 +62,8 @@ export const getServiceUrl = (service: string) => {
   return 'http://127.0.0.1';
 };
 
-export const API_BASE_URL = getApiBaseUrl();
-
-// Create axios instance
+// Create axios instance with dynamic baseURL
 const api = axios.create({
-  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -75,12 +72,16 @@ const api = axios.create({
 // Token management  
 let refreshToken: string | null = localStorage.getItem('refresh_token');
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and set dynamic baseURL
 api.interceptors.request.use(
   (config) => {
+    // Set dynamic baseURL for each request
+    config.baseURL = getApiBaseUrl();
+    
     // Always get fresh token from localStorage
     const currentToken = localStorage.getItem('access_token');
     console.log('API Request Interceptor:', { 
+      baseURL: config.baseURL,
       url: config.url, 
       hasToken: !!currentToken,
       tokenPreview: currentToken ? currentToken.substring(0, 20) + '...' : null

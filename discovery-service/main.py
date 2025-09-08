@@ -20,6 +20,7 @@ import httpx
 sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import jwt
 import nmap
@@ -30,7 +31,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, AuthError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
 from shared.utils import get_service_client
 
 # Import utility modules
@@ -39,7 +40,7 @@ from utils.utility_discovery_job import DiscoveryJobUtility
 from utils.utility_network_range_parser import NetworkRangeParserUtility
 
 # Setup structured logging
-setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
+setup_service_logging("discovery-service", level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("discovery-service")
 
 app = FastAPI(
@@ -52,6 +53,9 @@ app = FastAPI(
 add_standard_middleware(app, "discovery-service", version="1.0.0")
 
 # Database configuration is now handled by shared.database module
+
+# Security
+security = HTTPBearer()
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
 

@@ -226,8 +226,15 @@ export interface SSHTestResult {
 
 // List Response Types
 export interface UserListResponse {
-  users: User[];
-  total: number;
+  data: User[];
+  meta: {
+    page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
 }
 
 export interface CredentialListResponse {

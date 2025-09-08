@@ -67,6 +67,7 @@ services:
       - opsconductor-net
     volumes:
       - ./auth-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -88,6 +89,7 @@ services:
       DB_PASSWORD: postgres123
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +97,7 @@ services:
       - opsconductor-net
     volumes:
       - ./user-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 30s
@@ -117,6 +120,7 @@ services:
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
       ENCRYPTION_KEY: your-encryption-key-here
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,6 +128,7 @@ services:
       - opsconductor-net
     volumes:
       - ./credentials-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
       interval: 30s
@@ -153,6 +158,7 @@ services:
       - opsconductor-net
     volumes:
       - ./targets-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
@@ -174,6 +180,7 @@ services:
       DB_PASSWORD: postgres123
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,6 +188,7 @@ services:
       - opsconductor-net
     volumes:
       - ./jobs-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
       interval: 30s
@@ -233,6 +241,7 @@ services:
       DB_PASSWORD: postgres123
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -240,6 +249,7 @@ services:
       - opsconductor-net
     volumes:
       - ./scheduler-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
       interval: 30s
@@ -261,6 +271,7 @@ services:
       DB_PASSWORD: postgres123
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
+      AUTH_SERVICE_URL: http://auth-service:3001
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
       SMTP_USERNAME: your-email@gmail.com
@@ -272,6 +283,7 @@ services:
       - opsconductor-net
     volumes:
       - ./notification-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3009/health"]
       interval: 30s
@@ -301,6 +313,7 @@ services:
       - opsconductor-net
     volumes:
       - ./discovery-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
       interval: 30s
@@ -329,6 +342,7 @@ services:
       - opsconductor-net
     volumes:
       - ./step-libraries-service:/app
+      - ./shared:/app/shared
       - step_libraries_data:/app/libraries
       - step_libraries_cache:/app/cache
     healthcheck:
@@ -346,7 +360,6 @@ services:
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
       - FAST_REFRESH=true
-      - REACT_APP_API_URL=http://localhost
     ports:
       - "3000:3000"
     networks:

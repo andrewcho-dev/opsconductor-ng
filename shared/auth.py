@@ -40,7 +40,10 @@ def verify_token_with_auth_service(credentials: HTTPAuthorizationCredentials = D
         if response.status_code != 200:
             raise AuthError("Invalid or expired token")
         
-        return response.json()["user"]
+        response_data = response.json()
+        if "data" in response_data and "user" in response_data["data"]:
+            return response_data["data"]["user"]
+        return response_data.get("user", response_data)
         
     except requests.RequestException as e:
         logger.error(f"Auth service communication error: {e}")
@@ -72,7 +75,10 @@ async def verify_token_with_auth_service_async(authorization: Optional[str] = No
         if response.status_code != 200:
             raise AuthError("Invalid or expired token")
         
-        return response.json()["user"]
+        response_data = response.json()
+        if "data" in response_data and "user" in response_data["data"]:
+            return response_data["data"]["user"]
+        return response_data.get("user", response_data)
         
     except requests.RequestException as e:
         logger.error(f"Auth service communication error: {e}")
