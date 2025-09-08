@@ -141,6 +141,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ## 📚 Documentation
 
+- [Developer Guide](DEVELOPER_GUIDE.md) - **Essential reading for developers**
 - [System Overview](SYSTEM_OVERVIEW.md)
 - [Add New Service Guide](ADD_NEW_SERVICE_GUIDE.md)
 
@@ -194,11 +195,42 @@ docker-compose -f docker-compose-python.yml logs -f notification-service
 
 ## 🚀 Development
 
+### Essential Developer Resources
+- **[Developer Guide](DEVELOPER_GUIDE.md)** - Complete development documentation
+- **Utility Modules** - Always check for existing `utility_*.py` modules before writing new code
+- **Error Handling** - Use custom error classes, not `HTTPException`
+
 ### Adding New Services
 1. Follow the [Add New Service Guide](ADD_NEW_SERVICE_GUIDE.md)
 2. Use the service template in `service-template/`
 3. Update docker-compose configuration
 4. Add routing in nginx configuration
+
+### Utility Modules System
+OpsConductor uses a comprehensive utility module system to avoid code duplication:
+
+```python
+# Always check for existing utilities first
+import utility_email_sender as email_utility
+import utility_webhook_sender as webhook_utility
+import utility_notification_processor as notification_utility
+
+# Initialize utilities
+email_utility.set_smtp_config(SMTP_CONFIG)
+notification_utility.set_db_cursor_func(get_db_cursor)
+
+# Use in your endpoints
+success = await email_utility.send_email_notification(id, dest, payload)
+```
+
+**Key Utility Modules:**
+- `utility_email_sender.py` - Email notifications
+- `utility_webhook_sender.py` - Slack, Teams, webhook notifications  
+- `utility_template_renderer.py` - Jinja2 template rendering
+- `utility_user_preferences.py` - User preference management
+- `utility_notification_processor.py` - Notification processing
+
+See [Developer Guide](DEVELOPER_GUIDE.md) for complete documentation.
 
 ### Frontend Development
 ```bash
