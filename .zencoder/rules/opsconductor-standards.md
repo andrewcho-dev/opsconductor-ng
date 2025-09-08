@@ -7,13 +7,16 @@ alwaysApply: true
 
 ## 🏗️ Architecture Overview
 
-OpsConductor is a microservices-based Windows management system with:
-- **8 independent services** with clear separation of concerns
-- **Shared utility modules** to prevent code duplication
+OpsConductor is a comprehensive microservices-based automation platform with:
+- **10 independent microservices** with clear separation of concerns
+- **Shared utility modules** to prevent code duplication and ensure consistency
 - **Standardized error handling** with custom error classes
-- **PostgreSQL database** with shared connection patterns
-- **FastAPI framework** for all backend services
-- **React TypeScript** frontend with responsive design
+- **PostgreSQL 16 database** with shared connection patterns and comprehensive schema
+- **FastAPI framework** for all backend services with structured logging
+- **React TypeScript** frontend with responsive design and advanced UI features
+- **RabbitMQ message queue** for asynchronous job execution
+- **Multi-platform support** for Windows (WinRM) and Linux (SSH) automation
+- **Enterprise security** with AES-GCM encryption and JWT authentication
 
 ## 📁 Project Structure
 
@@ -29,7 +32,7 @@ opsconductor/
 │   ├── utility_*.py      # Service-specific utilities
 │   ├── models.py         # Pydantic models
 │   └── ...
-├── DEVELOPER_GUIDE.md    # Essential development documentation
+├── DEVELOPERS_GUIDE.md   # Essential development documentation
 └── README.md             # Project overview
 ```
 
@@ -84,9 +87,10 @@ async def endpoint_function(request: Request) -> Dict[str, Any]:
 ## 📚 Required Reading
 
 Before any development work:
-1. **[Developer Guide](DEVELOPER_GUIDE.md)** - Complete development documentation
-2. **[README.md](README.md)** - Project overview and setup
-3. **Service-specific READMEs** - Individual service documentation
+1. **[Developers Guide](DEVELOPERS_GUIDE.md)** - Complete development documentation
+2. **[Implementation Plan](implementation_plan.md)** - Current project status and roadmap
+3. **[README.md](README.md)** - Project overview and setup
+4. **Service-specific READMEs** - Individual service documentation
 
 ## 🔍 Code Quality Standards
 
@@ -135,22 +139,25 @@ except Exception as e:
 ## 📦 Service Dependencies
 
 ### Core Services
-- **auth-service** (3001) - JWT authentication
-- **user-service** (3002) - User management
-- **credentials-service** (3004) - Secure credential storage
-- **targets-service** (3005) - Windows target management
-- **jobs-service** (3006) - Job definition
-- **executor-service** (3007) - Job execution
-- **scheduler-service** (3008) - Job scheduling
-- **notification-service** (3009) - Multi-channel notifications
+- **auth-service** (3001) - JWT authentication and authorization
+- **user-service** (3002) - User management and profiles
+- **credentials-service** (3004) - Secure credential storage with AES-GCM encryption
+- **targets-service** (3005) - Windows/Linux target management with groups
+- **jobs-service** (3006) - Job definition and management
+- **executor-service** (3007) - Job execution via WinRM/SSH with file operations
+- **scheduler-service** (3008) - Cron-based job scheduling with timezone support
+- **notification-service** (3009) - Multi-channel notifications (Email, Slack, Teams, Webhooks)
+- **discovery-service** (3010) - Network scanning and automated target discovery
+- **step-libraries-service** (3011) - Reusable automation step libraries
 
 ### Infrastructure
-- **PostgreSQL** (5432) - Primary database
-- **nginx** (8080/8443) - Reverse proxy and SSL
+- **PostgreSQL 16** (5432) - Primary database with comprehensive schema
+- **RabbitMQ** (5672/15672) - Message queue for job execution
+- **nginx** (80/443) - Reverse proxy and SSL termination
 
 ## 🔄 Development Workflow
 
-1. **Plan** - Check Developer Guide and existing solutions
+1. **Plan** - Check Developers Guide, Implementation Plan, and existing solutions
 2. **Design** - Follow established patterns
 3. **Implement** - Use utility modules and proper error handling
 4. **Test** - Comprehensive testing with mocks
@@ -161,7 +168,7 @@ except Exception as e:
 
 - ❌ Using `HTTPException` instead of custom error classes
 - ❌ Duplicating functionality that exists in utility modules
-- ❌ Not reading the Developer Guide before starting
+- ❌ Not reading the Developers Guide and Implementation Plan before starting
 - ❌ Skipping error handling or logging
 - ❌ Not using type hints
 - ❌ Creating utilities without proper initialization patterns

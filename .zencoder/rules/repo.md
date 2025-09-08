@@ -6,22 +6,23 @@ alwaysApply: true
 # OpsConductor Microservice System Information
 
 ## Repository Summary
-A comprehensive microservices-based system for managing Windows and Linux environments, job scheduling, and automation tasks. The system follows a modern architecture with multiple independent services, each with a specific responsibility, and supports both Windows (via WinRM) and Linux (via SSH) target management.
+A comprehensive microservices-based automation platform for managing Windows and Linux environments, job scheduling, execution, and monitoring. The system follows a modern architecture with 10 independent microservices, each with specific responsibilities, supporting both Windows (via WinRM) and Linux (via SSH) target management with enterprise-grade security and scalability.
 
 ## Repository Structure
 - **auth-service**: JWT authentication and authorization (Port 3001)
 - **user-service**: User management and profiles (Port 3002)
-- **credentials-service**: Secure credential storage (Port 3004)
-- **targets-service**: Windows/Linux target management (Port 3005)
+- **credentials-service**: Secure credential storage with AES-GCM encryption (Port 3004)
+- **targets-service**: Windows/Linux target management with groups (Port 3005)
 - **jobs-service**: Job definition and management (Port 3006)
-- **executor-service**: Job execution via WinRM/SSH (Port 3007)
-- **scheduler-service**: Job scheduling system (Port 3008)
-- **notification-service**: Email notifications (Port 3009)
-- **discovery-service**: Target discovery service (Port 3010)
-- **step-libraries-service**: Reusable automation steps (Port 3011)
-- **frontend**: React TypeScript UI (Port 3000)
+- **executor-service**: Job execution via WinRM/SSH with file operations (Port 3007)
+- **scheduler-service**: Cron-based job scheduling with timezone support (Port 3008)
+- **notification-service**: Multi-channel notifications (Email, Slack, Teams, Webhooks) (Port 3009)
+- **discovery-service**: Network scanning and automated target discovery (Port 3010)
+- **step-libraries-service**: Reusable automation step libraries (Port 3011)
+- **frontend**: React TypeScript UI with responsive design (Port 3000)
 - **nginx**: Reverse proxy and SSL termination (Ports 80/443)
-- **database**: PostgreSQL database initialization scripts
+- **database**: PostgreSQL 16 with comprehensive schema
+- **rabbitmq**: Message queue for job execution (Ports 5672/15672)
 
 ## Projects
 
@@ -139,3 +140,16 @@ docker-compose up -d
 - Health check endpoints on all services
 - System status script: ./system-status.sh
 - Service dependency management in docker-compose
+- RabbitMQ management UI at http://localhost:15672
+
+## Current System Status
+**Phase 11 Complete**: Target Groups & UI Improvements with Advanced Scheduler Removal
+- ✅ 10 microservices operational with health monitoring
+- ✅ Multi-platform support (Windows WinRM, Linux SSH)
+- ✅ Target groups with logical organization
+- ✅ Network discovery and automated target onboarding
+- ✅ Multi-channel notification system
+- ✅ Visual job builder with drag-and-drop interface
+- ✅ Enterprise security (AES-GCM encryption, JWT authentication)
+- ✅ Production deployment with HTTPS and SSL
+- ✅ Comprehensive testing suite with Playwright

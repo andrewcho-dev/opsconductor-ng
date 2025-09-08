@@ -143,17 +143,22 @@ def test_main_function(setup_utility):
 
 ## 🔍 Before Creating New Utilities
 
-1. **Search existing utilities**: `find . -name "utility_*.py"`
-2. **Check other services**: Look for similar functionality
-3. **Review shared modules**: Check `/shared/` directory
-4. **Plan the interface**: Design clear, reusable functions
+1. **Search existing utilities**: Check all services for `utility_*.py` files
+2. **Review current utilities**:
+   - **Notification Service**: email_sender, webhook_sender, template_renderer, user_preferences, notification_processor
+   - **Executor Service**: command_builder, http_executor, sftp_executor, webhook_executor, notification_utils
+   - **Discovery Service**: network_scanner, network_range_parser, discovery_job
+   - **Shared Utilities**: event_consumer, event_publisher, message_queue, service_auth, service_clients
+3. **Check shared modules**: Review `/shared/` directory for existing functionality
+4. **Plan the interface**: Design clear, reusable functions that follow established patterns
 
 ## 📚 Documentation Requirements
 
 - **Module docstring**: Purpose, dependencies, usage examples
 - **Function docstrings**: Parameters, returns, raises, examples
-- **Update Developer Guide**: Add new utilities to the guide
+- **Update Developers Guide**: Add new utilities to the comprehensive guide
 - **README updates**: Update service README if needed
+- **Implementation Plan**: Note new utilities in current phase documentation
 
 ---
 

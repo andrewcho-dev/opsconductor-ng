@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## 🚨 CRITICAL: Required Reading
 
-**BEFORE starting any development work on OpsConductor, you MUST read and follow the [Developer Guide](DEVELOPER_GUIDE.md).**
+**BEFORE starting any development work on OpsConductor, you MUST read and follow the [Developers Guide](DEVELOPERS_GUIDE.md) and [Implementation Plan](implementation_plan.md).**
 
 This is not optional - it contains essential information that prevents code duplication and ensures consistency across the project.
 
@@ -15,11 +15,12 @@ This is not optional - it contains essential information that prevents code dupl
 
 Before writing any new code, you MUST:
 
-1. ✅ **Read the complete [Developer Guide](DEVELOPER_GUIDE.md)**
-2. ✅ **Check for existing utility modules** with `utility_` prefix
-3. ✅ **Review shared modules** in `/shared/` directory
-4. ✅ **Search other services** for similar functionality
-5. ✅ **Use custom error classes** instead of `HTTPException`
+1. ✅ **Read the complete [Developers Guide](DEVELOPERS_GUIDE.md)**
+2. ✅ **Review the [Implementation Plan](implementation_plan.md)** for current project status
+3. ✅ **Check for existing utility modules** with `utility_` prefix
+4. ✅ **Review shared modules** in `/shared/` directory
+5. ✅ **Search other services** for similar functionality
+6. ✅ **Use custom error classes** instead of `HTTPException`
 
 ## 🔧 Utility Modules System
 
@@ -64,9 +65,10 @@ success = await email_utility.send_email_notification(id, dest, payload)
 ## 📚 Required Documentation
 
 ### Primary Documents
-1. **[Developer Guide](DEVELOPER_GUIDE.md)** - Complete development documentation
-2. **[README.md](README.md)** - Project overview and quick start
-3. **Service-specific READMEs** - Individual service documentation
+1. **[Developers Guide](DEVELOPERS_GUIDE.md)** - Complete development documentation
+2. **[Implementation Plan](implementation_plan.md)** - Current project status and roadmap
+3. **[README.md](README.md)** - Project overview and quick start
+4. **Service-specific READMEs** - Individual service documentation
 
 ### Error Handling Standards
 ```python
@@ -82,11 +84,11 @@ from shared.errors import (
 
 ## 🔄 Development Workflow
 
-1. **Plan** - Check Developer Guide for existing solutions
+1. **Plan** - Check Developers Guide and Implementation Plan for existing solutions
 2. **Design** - Follow established patterns and naming conventions
 3. **Implement** - Use utility modules and proper error handling
 4. **Test** - Comprehensive unit and integration tests
-5. **Document** - Update Developer Guide if adding new utilities
+5. **Document** - Update Developers Guide if adding new utilities
 6. **Review** - Ensure compliance with this checklist
 
 ## 🎯 Key Principles
@@ -100,11 +102,12 @@ from shared.errors import (
 ## 📞 Support
 
 If you have questions about:
-- **Utility modules** - Check the Developer Guide examples
+- **Utility modules** - Check the Developers Guide examples
 - **Error handling** - Use custom error classes as documented
 - **Patterns** - Follow notification service as reference
-- **Architecture** - Review the Developer Guide architecture section
+- **Architecture** - Review the Developers Guide architecture section
+- **Current status** - Check the Implementation Plan for latest updates
 
 ---
 
-**Remember**: The Developer Guide is your primary resource. Reading it thoroughly will save time and ensure your code follows OpsConductor standards.
+**Remember**: The Developers Guide and Implementation Plan are your primary resources. Reading them thoroughly will save time and ensure your code follows OpsConductor standards and aligns with the current project direction.
