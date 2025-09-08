@@ -17,7 +17,7 @@ from email.mime.multipart import MIMEMultipart
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-import httpx
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Request
@@ -30,8 +30,8 @@ from shared.database import get_db_cursor, check_database_health, cleanup_databa
 from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
-from shared.auth import get_current_user, require_admin
+from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, AuthError, ServiceCommunicationError
+from shared.auth import get_current_user, require_admin, verify_token_from_request
 
 # Import utility modules
 import utility_email_sender as email_sender_utility
@@ -201,32 +201,10 @@ class SMTPTestResponse(BaseModel):
     success: bool
     message: str
 
-# Auth verification
-async def verify_token_with_auth_service(authorization: str = None) -> Dict[str, Any]:
-    """Verify JWT token with auth service"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise AuthError("Missing or invalid authorization header")
-    
-    token = authorization.split(" ")[1]
-    
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                f"{AUTH_SERVICE_URL}/verify",
-                headers={"Authorization": f"Bearer {token}"}
-            )
-            
-            if response.status_code != 200:
-                raise AuthError("Invalid token")
-            
-            return response.json()
-    except httpx.RequestError:
-        raise ServiceCommunicationError("unknown", "Auth service unavailable")
-
+# Auth verification now handled by shared modules
 async def verify_token(request: Request) -> Dict[str, Any]:
     """Dependency for token verification"""
-    authorization = request.headers.get("authorization")
-    return await verify_token_with_auth_service(authorization)
+    return await verify_token_from_request(request)
 
 # Enhanced notification processing functions
 

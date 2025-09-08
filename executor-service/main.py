@@ -27,15 +27,18 @@ from jinja2 import Template, Environment, BaseLoader, select_autoescape
 from ssh_executor import SSHExecutor, SFTPExecutor, SSHExecutionError
 import aiohttp
 import asyncio
+import requests
 
 # Import shared modules
 from shared.database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
 from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error
+from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, ServiceCommunicationError
 from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
 from shared.utils import utility_render_template, utility_render_file_paths, utility_create_error_result
+import shared.utility_service_auth as service_auth_utility
+import shared.utility_service_clients as service_clients_utility
 
 # Import utility modules
 from utils.utility_http_executor import HTTPExecutor
@@ -62,10 +65,9 @@ app = FastAPI(
 add_standard_middleware(app, "executor-service", version="1.0.0")
 
 # Configuration
-CREDENTIALS_SERVICE_URL = os.getenv("CREDENTIALS_SERVICE_URL", "http://credentials-service:3004")
-NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:3009")
 WORKER_POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "5"))  # seconds
 WORKER_ENABLED = os.getenv("WORKER_ENABLED", "true").lower() == "true"
+# Service URLs now handled by utility modules
 
 # Database connection handled by shared module
 
@@ -314,88 +316,80 @@ class JobExecutor:
     def _execute_winrm_copy(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute winrm.copy step"""
         try:
-            # Get target and credential info
-            target_info = self._get_target_info(step['target_id'])
-            if not target_info:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': 'Target not found or not accessible'
-                }
+            # Get execution context (target, credentials, step definition)
+            context = self._prepare_execution_context(step)
+            if context['error']:
+                return context['error']
             
-            credential_data = self._get_credential_data(target_info['credential_ref'])
-            if not credential_data:
-                return {
-                    'status': 'failed',
-                    'exit_code': 1,
-                    'stdout': '',
-                    'stderr': 'Credential not found or not accessible'
-                }
-            
-            # Get job definition and parameters
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
-            
-            # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
-            
-            # Render destination path template
-            dest_path = utility_render_template(step_definition['destPath'], run_parameters)
-            
-            # Decode base64 content
-            content = base64.b64decode(step_definition['contentB64']).decode('utf-8')
-            
-            # Create WinRM session
-            # Use HTTP for port 5985, HTTPS for port 5986
-            protocol = 'https' if target_info['port'] == 5986 else 'http'
-            winrm_url = f"{protocol}://{target_info['hostname']}:{target_info['port']}/wsman"
-            
-            logger.info(f"Connecting to WinRM: {winrm_url} with user: {credential_data['username']}")
-            
-            session = winrm.Session(
-                target=winrm_url,
-                auth=(credential_data['username'], credential_data['password']),
-                transport='ntlm',
-                server_cert_validation='ignore'
+            # Prepare file copy data
+            dest_path, content = self._prepare_winrm_copy_data(
+                context['step_definition'], 
+                context['run_parameters']
             )
             
-            # Write file using PowerShell
-            ps_command = f"""
-            $content = @'
-{content}
-'@
-            $content | Out-File -FilePath "{dest_path}" -Encoding UTF8
-            Write-Output "File written to {dest_path}"
-            """
-            
-            result = session.run_ps(ps_command)
-            
-            # Process results
-            status = 'succeeded' if result.status_code == 0 else 'failed'
-            stdout = result.std_out.decode('utf-8', errors='replace') if result.std_out else ''
-            stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else ''
-            
-            return {
-                'status': status,
-                'exit_code': result.status_code,
-                'stdout': stdout,
-                'stderr': stderr,
-                'metrics': {
-                    'target': target_info['hostname'],
-                    'dest_path': dest_path,
-                    'content_size': len(content)
-                }
-            }
+            # Execute WinRM file copy
+            return self._perform_winrm_file_copy(
+                context['target_info'], 
+                context['credential_data'],
+                dest_path, 
+                content
+            )
             
         except Exception as e:
-            logger.error(f"WinRM copy error: {e}")
-            return {
-                'status': 'failed',
-                'exit_code': 1,
-                'stdout': '',
-                'stderr': f'WinRM copy failed: {str(e)}'
+            return utility_create_error_result(f'WinRM copy failed: {str(e)}', "WinRM copy error", e)
+    
+    def _prepare_winrm_copy_data(self, step_definition: Dict[str, Any], 
+                                run_parameters: Dict[str, Any]) -> tuple[str, str]:
+        """Prepare destination path and content for WinRM file copy"""
+        # Render destination path template
+        dest_path = utility_render_template(step_definition['destPath'], run_parameters)
+        
+        # Decode base64 content
+        content = base64.b64decode(step_definition['contentB64']).decode('utf-8')
+        
+        return dest_path, content
+    
+    def _perform_winrm_file_copy(self, target_info: Dict[str, Any], credential_data: Dict[str, Any],
+                                dest_path: str, content: str) -> Dict[str, Any]:
+        """Perform the actual WinRM file copy operation"""
+        # Create WinRM session
+        session = self._create_winrm_session(target_info, credential_data)
+        
+        # Write file using PowerShell
+        ps_command = self._build_winrm_copy_command(dest_path, content)
+        result = session.run_ps(ps_command)
+        
+        # Process and return results
+        return self._process_winrm_result(result, target_info, dest_path, content)
+    
+    def _build_winrm_copy_command(self, dest_path: str, content: str) -> str:
+        """Build PowerShell command for file copy operation"""
+        return f"""
+        $content = @'
+{content}
+'@
+        $content | Out-File -FilePath "{dest_path}" -Encoding UTF8
+        Write-Output "File written to {dest_path}"
+        """
+    
+    def _process_winrm_result(self, result, target_info: Dict[str, Any], 
+                             dest_path: str, content: str) -> Dict[str, Any]:
+        """Process WinRM execution result and return standardized response"""
+        status = 'succeeded' if result.status_code == 0 else 'failed'
+        stdout = result.std_out.decode('utf-8', errors='replace') if result.std_out else ''
+        stderr = result.std_err.decode('utf-8', errors='replace') if result.std_err else ''
+        
+        return {
+            'status': status,
+            'exit_code': result.status_code,
+            'stdout': stdout,
+            'stderr': stderr,
+            'metrics': {
+                'target': target_info['hostname'],
+                'dest_path': dest_path,
+                'content_size': len(content)
             }
+        }
     
     def _execute_windows_command(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Execute windows.command step"""
@@ -1029,18 +1023,20 @@ class JobExecutor:
     def _get_credential_data(self, credential_ref: int) -> Optional[Dict[str, Any]]:
         """Get decrypted credential data from credentials service"""
         try:
-            # Call credentials service internal decrypt endpoint
-            response = requests.post(
-                f"{CREDENTIALS_SERVICE_URL}/internal/decrypt/{credential_ref}",
-                timeout=10
-            )
+            # Use credentials service client
+            credentials_client = service_clients_utility.get_credentials_client()
             
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Failed to get credential {credential_ref}: {response.status_code}")
-                return None
+            # Note: This assumes the credentials service has a get_credential method
+            # If it uses a different endpoint, we may need to add a custom method
+            credential_data = asyncio.run(credentials_client.get_credential(credential_ref))
+            return credential_data
                 
+        except NotFoundError:
+            logger.error(f"Credential {credential_ref} not found")
+            return None
+        except ServiceCommunicationError as e:
+            logger.error(f"Failed to communicate with credentials service: {e}")
+            return None
         except Exception as e:
             logger.error(f"Error getting credential data: {e}")
             return None
@@ -1165,36 +1161,53 @@ class JobExecutor:
             step['id'], channel, step_definition['recipients'], subject, content
         )
         
-        # Send via notification service
-        response = requests.post(
-            f"{NOTIFICATION_SERVICE_URL}/internal/notifications/send",
-            json={
-                "channel": channel,
-                "recipients": step_definition['recipients'],
-                "subject": subject,
-                "content": content,
-                "metadata": {
-                    "job_run_id": step['job_run_id'],
-                    "step_id": step['id'],
-                    "notification_type": "step_notification"
+        # Send via notification service using standardized client
+        try:
+            notification_client = service_clients_utility.get_notification_client()
+            
+            notification_data = {
+                "type": channel,
+                "destination": step_definition['recipients'],
+                "payload": {
+                    "subject": subject,
+                    "content": content,
+                    "metadata": {
+                        "job_run_id": step['job_run_id'],
+                        "step_id": step['id'],
+                        "notification_type": "step_notification"
+                    }
                 }
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
+            }
+            
+            result = asyncio.run(notification_client.send_notification(notification_data))
+            
             return {
                 'status': 'succeeded',
                 'exit_code': 0,
                 'stdout': f'{channel.title()} notification sent to {len(step_definition["recipients"])} recipients',
                 'stderr': ''
             }
-        else:
+            
+        except ValidationError as e:
             return {
                 'status': 'failed',
                 'exit_code': 1,
                 'stdout': '',
-                'stderr': f'Failed to send {channel} notification: {response.text}'
+                'stderr': f'Invalid notification data: {str(e)}'
+            }
+        except ServiceCommunicationError as e:
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Failed to communicate with notification service: {str(e)}'
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': f'Failed to send {channel} notification: {str(e)}'
             }
     
     def _execute_notify_slack(self, step: Dict[str, Any]) -> Dict[str, Any]:
@@ -1491,6 +1504,18 @@ async def health_check() -> HealthResponse:
 async def startup_event() -> None:
     """Start the executor worker on startup"""
     log_startup("executor-service", "1.0.0", 3007)
+    
+    # Initialize service utilities
+    service_clients_utility.set_service_name("executor-service")
+    service_auth_utility.set_config({
+        "auth_service_url": os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001"),
+        "service_credentials": {
+            "username": os.getenv("EXECUTOR_SERVICE_USERNAME", "admin"),
+            "password": os.getenv("EXECUTOR_SERVICE_PASSWORD", "admin123")
+        }
+    })
+    
+    logger.info("Service utilities initialized")
     executor.start_worker()
 
 @app.on_event("shutdown")

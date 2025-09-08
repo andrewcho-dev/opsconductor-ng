@@ -4,7 +4,7 @@ Handles job completion notifications with formatting and delivery
 """
 
 import json
-import requests
+
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import sys
@@ -13,6 +13,8 @@ import os
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 from shared.logging import get_logger
+from shared.errors import ServiceCommunicationError, ValidationError
+import shared.utility_service_clients as service_clients_utility
 
 logger = get_logger("executor.notifications")
 
@@ -230,19 +232,22 @@ class NotificationUtils:
     def _send_notification_request(self, notification_data: Dict[str, Any]) -> None:
         """Send notification request to notification service"""
         try:
-            response = requests.post(
-                f"{self.notification_service_url}/notifications",
-                json=notification_data,
-                timeout=10,
-                headers={'Content-Type': 'application/json'}
-            )
+            # Use standardized notification client
+            notification_client = service_clients_utility.get_notification_client()
             
-            if response.status_code not in [200, 201, 202]:
-                logger.warning(f"Notification service returned status {response.status_code}: {response.text}")
-            else:
-                logger.debug("Notification request sent successfully")
+            # Convert to the expected format for our service client
+            import asyncio
+            result = asyncio.run(notification_client.send_notification(notification_data))
+            
+            logger.debug("Notification request sent successfully")
                 
-        except requests.RequestException as e:
+        except ValidationError as e:
+            logger.error(f"Invalid notification data: {e}")
+            raise
+        except ServiceCommunicationError as e:
+            logger.error(f"Failed to communicate with notification service: {e}")
+            raise
+        except Exception as e:
             logger.error(f"Failed to send notification request: {e}")
             raise
     
@@ -337,18 +342,17 @@ class NotificationUtils:
             Dict containing notification preferences
         """
         try:
-            response = requests.get(
-                f"{self.notification_service_url}/users/{user_id}/preferences",
-                timeout=5
-            )
+            # Use standardized user service client
+            user_client = service_clients_utility.get_user_client()
             
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.warning(f"Failed to get notification preferences for user {user_id}")
-                return self._get_default_preferences()
+            import asyncio
+            preferences = asyncio.run(user_client.get_user_preferences(user_id))
+            return preferences
                 
-        except requests.RequestException as e:
+        except ServiceCommunicationError as e:
+            logger.warning(f"Error getting notification preferences: {e}")
+            return self._get_default_preferences()
+        except Exception as e:
             logger.warning(f"Error getting notification preferences: {e}")
             return self._get_default_preferences()
     

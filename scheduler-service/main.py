@@ -5,7 +5,7 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
-import httpx
+
 import pytz
 from croniter import croniter
 
@@ -23,6 +23,8 @@ from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
 from shared.auth import get_current_user, require_admin
 from shared.utils import get_service_client
+import shared.utility_service_auth as service_auth_utility
+import shared.utility_service_clients as service_clients_utility
 
 # Setup structured logging
 setup_service_logging("scheduler-service", level=os.getenv("LOG_LEVEL", "INFO", get_database_metrics))
@@ -37,8 +39,7 @@ app = FastAPI(
 # Add standard middleware
 add_standard_middleware(app, "scheduler-service", version="1.0.0")
 
-# Service URLs
-JOBS_SERVICE_URL = os.getenv("JOBS_SERVICE_URL", "http://jobs-service:3006")
+# Service configuration now handled by utility modules
 
 # Global scheduler state
 scheduler_running = False
@@ -92,36 +93,33 @@ def calculate_next_run(cron_expr: str, timezone_str: str) -> datetime:
         logger.error(f"Error calculating next run: {e}")
         raise ValueError(f"Invalid cron expression or timezone: {e}")
 
-async def execute_scheduled_job(job_id -> Dict[str, Any]: int, schedule_id -> Dict[str, Any]: int) -> Dict[str, Any]:
+async def execute_scheduled_job(job_id: int, schedule_id: int) -> Dict[str, Any]:
     """Execute a scheduled job by calling the jobs service"""
     try:
-        async with httpx.AsyncClient() as client:
-            # Get admin token for service-to-service communication
-            auth_response = await client.post(
-                f"{AUTH_SERVICE_URL}/login",
-                json={"username": "admin", "password": "admin123"}
-            )
-            
-            if auth_response.status_code != 200:
-                logger.error("Failed to get admin token for scheduled job execution")
-                return
-            
-            token = auth_response.json()["access_token"]
-            
-            # Execute the job
-            job_response = await client.post(
-                f"{JOBS_SERVICE_URL}/jobs/{job_id}/run",
-                headers={"Authorization": f"Bearer {token}"},
-                json={"scheduled": True, "schedule_id": schedule_id}
-            )
-            
-            if job_response.status_code == 200:
-                logger.info(f"Successfully executed scheduled job {job_id}")
-            else:
-                logger.error(f"Failed to execute scheduled job {job_id}: {job_response.text}")
-                
+        # Get jobs service client
+        jobs_client = service_clients_utility.get_jobs_client()
+        
+        # Execute the job with standardized client
+        result = await jobs_client.execute_job(job_id, {
+            "scheduled": True,
+            "schedule_id": schedule_id
+        })
+        
+        logger.info(f"Successfully executed scheduled job {job_id}")
+        return result
+        
+    except NotFoundError:
+        logger.error(f"Job {job_id} not found")
+        return {"error": "Job not found"}
+    except ValidationError as e:
+        logger.error(f"Invalid job data for {job_id}: {e}")
+        return {"error": f"Invalid job data: {str(e)}"}
+    except ServiceCommunicationError as e:
+        logger.error(f"Failed to communicate with jobs service for job {job_id}: {e}")
+        return {"error": f"Service communication failed: {str(e)}"}
     except Exception as e:
-        logger.error(f"Error executing scheduled job {job_id}: {e}")
+        logger.error(f"Unexpected error executing scheduled job {job_id}: {e}")
+        return {"error": f"Unexpected error: {str(e)}"}
 
 async def scheduler_worker() -> Dict[str, Any]:
     """Background worker that checks for scheduled jobs"""
@@ -532,6 +530,18 @@ async def startup_event() -> None:
     
     # Log service startup
     log_startup("scheduler-service", "1.0.0", 3008)
+    
+    # Initialize service utilities
+    service_clients_utility.set_service_name("scheduler-service")
+    service_auth_utility.set_config({
+        "auth_service_url": os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001"),
+        "service_credentials": {
+            "username": os.getenv("SCHEDULER_SERVICE_USERNAME", "admin"),
+            "password": os.getenv("SCHEDULER_SERVICE_PASSWORD", "admin123")
+        }
+    })
+    
+    logger.info("Service utilities initialized")
     
     # Auto-start scheduler
     scheduler_running = True
