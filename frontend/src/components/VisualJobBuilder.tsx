@@ -589,7 +589,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
       const startTemplate = nodeTemplates.find(t => t.type === 'flow.start');
       if (startTemplate) {
         const startNode: FlowNode = {
-          id: 'start-' + Date.now(),
+          id: 'start_' + Date.now(),
           type: startTemplate.type,
           name: startTemplate.name,
           x: 100,
@@ -683,8 +683,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
-    setIsConnecting(false);
-    setConnectionStart(null);
+    // Don't cancel connection on mouse up - let port clicks handle connection completion
+    // setIsConnecting(false);
+    // setConnectionStart(null);
   }, []);
 
   useEffect(() => {
@@ -737,7 +738,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
       const virtualPos = transformPoint(viewportX, viewportY);
       
       const newNode: FlowNode = {
-        id: `${draggedTemplate.type}-${Date.now()}`,
+        id: `${draggedTemplate.type.replace(/\./g, '_')}_${Date.now()}`,
         type: draggedTemplate.type,
         name: draggedTemplate.name,
         x: Math.max(0, virtualPos.x - 60),
@@ -800,22 +801,43 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
 
   const handlePortClick = (nodeId: string, port: number, isOutput: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log('Port clicked:', { nodeId, port, isOutput, isConnecting, connectionStart });
     
     if (isConnecting && connectionStart) {
       if (connectionStart.nodeId !== nodeId) {
+        // Check for duplicate connections
+        const connectionId = `conn_${connectionStart.nodeId}_${connectionStart.port}_${nodeId}_${port}`;
+        const existingConnection = connections.find(conn => 
+          conn.sourceNodeId === connectionStart.nodeId && 
+          conn.targetNodeId === nodeId
+        );
+        
+        if (existingConnection) {
+          console.log('Connection already exists:', existingConnection);
+          setIsConnecting(false);
+          setConnectionStart(null);
+          return;
+        }
+        
         const newConnection: Connection = {
-          id: `${connectionStart.nodeId}-${connectionStart.port}-${nodeId}-${port}`,
+          id: connectionId,
           sourceNodeId: connectionStart.nodeId,
           sourcePort: connectionStart.port,
           targetNodeId: nodeId,
           targetPort: port
         };
         
-        setConnections(prev => [...prev, newConnection]);
+        console.log('Creating new connection:', newConnection);
+        setConnections(prev => {
+          const updated = [...prev, newConnection];
+          console.log('Updated connections:', updated);
+          return updated;
+        });
       }
       setIsConnecting(false);
       setConnectionStart(null);
     } else if (isOutput) {
+      console.log('Starting connection from output port');
       setIsConnecting(true);
       setConnectionStart({ nodeId, port });
     }
@@ -871,15 +893,18 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
       name: jobName,
       definition: {
         name: jobName,
-        version: 1,
         description: "",
+        version: 1,
         metadata: {},
         parameters: {},
         nodes: nodes.map(node => ({
           id: node.id,
           type: node.type,
           position: { x: node.x, y: node.y },
-          data: node.config || {}
+          data: {
+            name: node.config?.name || node.name,
+            ...node.config
+          }
         })),
         edges: connections.map(conn => ({
           id: conn.id,
@@ -887,8 +912,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
           target: conn.targetNodeId,
           condition: conn.condition || 'always'
         }))
-      },
-      is_active: true
+      }
     };
 
     onJobCreate(jobData);
@@ -957,6 +981,14 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
 
   // Canvas pan handlers
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    // Cancel any active connection when clicking on empty canvas
+    if (isConnecting) {
+      console.log('Canceling connection - clicked on empty canvas');
+      setIsConnecting(false);
+      setConnectionStart(null);
+      return;
+    }
+    
     if (canvasTool === 'hand' || e.button === 1) { // Middle mouse button
       setIsPanning(true);
       setPanStart({ x: e.clientX - canvasTransform.x, y: e.clientY - canvasTransform.y });
@@ -979,7 +1011,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
       
       e.preventDefault();
     }
-  }, [canvasTool, canvasTransform, transformPoint]);
+  }, [canvasTool, canvasTransform, transformPoint, isConnecting]);
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
     if (isPanning) {
@@ -1467,15 +1499,31 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
             })}
             
             {/* Active connection line */}
-            {isConnecting && connectionStart && (
-              <path
-                d={`M ${nodes.find(n => n.id === connectionStart.nodeId)?.x! + 120} ${nodes.find(n => n.id === connectionStart.nodeId)?.y! + 30} L ${mousePos.x - (canvasRef.current?.getBoundingClientRect().left || 0)} ${mousePos.y - (canvasRef.current?.getBoundingClientRect().top || 0)}`}
-                stroke="#007bff"
-                strokeWidth="2"
-                strokeDasharray="5,5"
-                fill="none"
-              />
-            )}
+            {isConnecting && connectionStart && (() => {
+              const sourceNode = nodes.find(n => n.id === connectionStart.nodeId);
+              if (!sourceNode || !canvasRef.current) return null;
+              
+              const rect = canvasRef.current.getBoundingClientRect();
+              const viewportMouseX = mousePos.x - rect.left;
+              const viewportMouseY = mousePos.y - rect.top;
+              
+              // Transform mouse position to canvas coordinates
+              const canvasMouseX = (viewportMouseX - canvasTransform.x) / canvasTransform.scale;
+              const canvasMouseY = (viewportMouseY - canvasTransform.y) / canvasTransform.scale;
+              
+              const sourceX = sourceNode.x + sourceNode.width;
+              const sourceY = sourceNode.y + sourceNode.height / 2;
+              
+              return (
+                <path
+                  d={`M ${sourceX} ${sourceY} L ${canvasMouseX} ${canvasMouseY}`}
+                  stroke="#007bff"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                  fill="none"
+                />
+              );
+            })()}
           </svg>
 
           {/* Nodes */}
@@ -1550,10 +1598,13 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                       top: 20 + i * 15,
                       width: 12,
                       height: 12,
-                      backgroundColor: '#28a745',
+                      backgroundColor: isConnecting ? '#20c997' : '#28a745',
                       borderRadius: '50%',
                       cursor: 'pointer',
-                      border: '2px solid white'
+                      border: '2px solid white',
+                      boxShadow: isConnecting ? '0 0 8px rgba(32, 201, 151, 0.6)' : 'none',
+                      transform: isConnecting ? 'scale(1.2)' : 'scale(1)',
+                      transition: 'all 0.2s ease'
                     }}
                     onClick={(e) => handlePortClick(node.id, i, false, e)}
                   />
@@ -1569,10 +1620,16 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
                       top: 20 + i * 15,
                       width: 12,
                       height: 12,
-                      backgroundColor: '#dc3545',
+                      backgroundColor: (isConnecting && connectionStart?.nodeId === node.id && connectionStart?.port === i) 
+                        ? '#ff6b6b' : '#dc3545',
                       borderRadius: '50%',
                       cursor: 'pointer',
-                      border: '2px solid white'
+                      border: '2px solid white',
+                      boxShadow: (isConnecting && connectionStart?.nodeId === node.id && connectionStart?.port === i)
+                        ? '0 0 12px rgba(255, 107, 107, 0.8)' : 'none',
+                      transform: (isConnecting && connectionStart?.nodeId === node.id && connectionStart?.port === i)
+                        ? 'scale(1.3)' : 'scale(1)',
+                      transition: 'all 0.2s ease'
                     }}
                     onClick={(e) => handlePortClick(node.id, i, true, e)}
                   />

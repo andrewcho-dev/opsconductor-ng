@@ -75,10 +75,59 @@ const Jobs: React.FC = () => {
     }
   };
 
-  const handleJobSaved = () => {
-    fetchJobs();
-    setShowCreateForm(false);
-    navigate('/job-management');
+  const handleJobSaved = async (jobData: any) => {
+    try {
+      console.log('Saving job with data:', JSON.stringify(jobData, null, 2));
+      
+      if (isEditing && selectedJob) {
+        // Update existing job
+        await jobApi.update(selectedJob.id, jobData);
+        console.log('Job updated successfully');
+      } else {
+        // Create new job
+        await jobApi.create(jobData);
+        console.log('Job created successfully');
+      }
+      
+      // Refresh jobs list and navigate back
+      await fetchJobs();
+      setShowCreateForm(false);
+      navigate('/job-management');
+    } catch (error: any) {
+      console.error('Failed to save job:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error response (stringified):', JSON.stringify(error.response?.data, null, 2));
+      console.error('Error status:', error.response?.status);
+      console.error('Error headers:', error.response?.headers);
+      
+      // Try to extract the actual error message
+      let errorMessage = 'Unknown error';
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData.error) {
+          if (typeof errorData.error === 'string') {
+            errorMessage = errorData.error;
+          } else if (errorData.error.message) {
+            errorMessage = errorData.error.message;
+          } else {
+            errorMessage = JSON.stringify(errorData.error);
+          }
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else {
+          errorMessage = JSON.stringify(errorData);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
+      alert('Failed to save job: ' + errorMessage);
+    }
   };
 
   const handleJobSelect = (job: Job) => {

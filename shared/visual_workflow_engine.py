@@ -341,14 +341,23 @@ class VisualWorkflowEngine:
         # Resolve target_id from target_host
         target_id = self._resolve_target_id(target_host)
         
+        # Determine step type based on connection type
+        connection_type = data.get('connection_type', 'ssh')
+        if connection_type == 'winrm':
+            step_type = 'winrm.exec'
+        elif connection_type == 'ssh':
+            step_type = 'ssh.exec'
+        else:
+            step_type = 'shell'  # fallback
+        
         return ExecutionStep(
             id=node.id,
-            type='shell',
+            type=step_type,
             order=order,
             target_id=target_id,
             command=command,
             timeout=data.get('timeout', 60),
-            connection_type=data.get('connection_type', 'ssh'),
+            connection_type=connection_type,
             parameters={
                 'working_directory': data.get('working_directory'),
                 'environment_variables': data.get('environment_variables', {}),

@@ -108,7 +108,7 @@ api.interceptors.response.use(
       if (currentRefreshToken) {
         try {
           console.log('Refreshing token with refresh_token');
-          const response = await axios.post(`${getApiBaseUrl()}/refresh`, {
+          const response = await axios.post(`${getApiBaseUrl()}/api/v1/refresh`, {
             refresh_token: currentRefreshToken
           });
 
@@ -119,7 +119,7 @@ api.interceptors.response.use(
           
           // Update user data in AuthContext
           try {
-            const userResponse = await axios.get(`${getApiBaseUrl()}/verify`, {
+            const userResponse = await axios.get(`${getApiBaseUrl()}/api/v1/auth/verify`, {
               headers: { Authorization: `Bearer ${access_token}` }
             });
             if (userResponse.data?.user) {
@@ -626,6 +626,24 @@ export const discoveryApi = {
   // Network Range Validation
   validateNetworkRanges: async (ranges: { ranges: string[] }): Promise<any> => {
     const response = await api.post('/api/v1/discovery/validate-network-ranges', ranges);
+    return response.data;
+  }
+};
+
+// Celery Monitoring API
+export const celeryApi = {
+  getStatus: async (): Promise<any> => {
+    const response = await api.get('/api/v1/executor/celery/status');
+    return response.data;
+  },
+
+  getMetrics: async (): Promise<any> => {
+    const response = await api.get('/api/v1/executor/celery/metrics');
+    return response.data;
+  },
+
+  getQueues: async (): Promise<any> => {
+    const response = await api.get('/api/v1/executor/celery/queues');
     return response.data;
   }
 };

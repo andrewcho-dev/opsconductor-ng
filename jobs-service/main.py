@@ -928,6 +928,114 @@ def _convert_visual_workflow_to_steps_basic(workflow_definition: dict, parameter
     
     return steps
 
+# Job Runs API endpoints
+@app.get("/runs")
+async def list_job_runs(
+    skip: int = 0, 
+    limit: int = 100, 
+    job_id: Optional[int] = None,
+    user_info: dict = Depends(verify_token_with_auth_service)
+):
+    """List job runs with pagination and optional filtering by job_id"""
+    try:
+        with get_db_cursor() as cursor:
+            # Build query based on filters
+            where_conditions = []
+            params = []
+            
+            if job_id is not None:
+                where_conditions.append("job_id = %s")
+                params.append(job_id)
+            
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            
+            # Get total count
+            count_query = f"SELECT COUNT(*) FROM job_runs {where_clause}"
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()['count']
+            
+            # Get runs with pagination
+            query = f"""
+                SELECT jr.*, j.name as job_name
+                FROM job_runs jr
+                LEFT JOIN jobs j ON jr.job_id = j.id
+                {where_clause}
+                ORDER BY jr.queued_at DESC
+                LIMIT %s OFFSET %s
+            """
+            params.extend([limit, skip])
+            cursor.execute(query, params)
+            runs = cursor.fetchall()
+            
+            # Calculate page number from skip/limit
+            page = (skip // limit) + 1 if limit > 0 else 1
+            
+            return PaginatedResponse.create(
+                items=runs,
+                page=page,
+                per_page=limit,
+                total_items=total
+            )
+            
+    except Exception as e:
+        logger.error(f"Error listing job runs: {e}")
+        raise handle_database_error(e)
+
+@app.get("/runs/{run_id}")
+async def get_job_run(
+    run_id: int,
+    user_info: dict = Depends(verify_token_with_auth_service)
+):
+    """Get a specific job run by ID"""
+    try:
+        with get_db_cursor() as cursor:
+            query = """
+                SELECT jr.*, j.name as job_name, j.definition as job_definition
+                FROM job_runs jr
+                LEFT JOIN jobs j ON jr.job_id = j.id
+                WHERE jr.id = %s
+            """
+            cursor.execute(query, [run_id])
+            run = cursor.fetchone()
+            
+            if not run:
+                raise NotFoundError(f"Job run {run_id} not found")
+            
+            return run
+            
+    except Exception as e:
+        logger.error(f"Error getting job run {run_id}: {e}")
+        raise handle_database_error(e)
+
+@app.get("/runs/{run_id}/steps")
+async def get_job_run_steps(
+    run_id: int,
+    user_info: dict = Depends(verify_token_with_auth_service)
+):
+    """Get all steps for a specific job run"""
+    try:
+        with get_db_cursor() as cursor:
+            # First verify the run exists
+            cursor.execute("SELECT id FROM job_runs WHERE id = %s", [run_id])
+            if not cursor.fetchone():
+                raise NotFoundError(f"Job run {run_id} not found")
+            
+            # Get all steps for this run
+            query = """
+                SELECT *
+                FROM job_run_steps
+                WHERE run_id = %s
+                ORDER BY step_number ASC
+            """
+            cursor.execute(query, [run_id])
+            steps = cursor.fetchall()
+            
+            return steps
+            
+    except Exception as e:
+        logger.error(f"Error getting steps for job run {run_id}: {e}")
+        raise handle_database_error(e)
+
 # Startup and shutdown events
 @app.on_event("startup")
 async def startup_event():

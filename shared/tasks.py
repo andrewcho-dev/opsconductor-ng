@@ -74,11 +74,10 @@ def execute_job_run(self, job_run_id: int, job_config: Dict[str, Any]) -> Dict[s
             try:
                 logger.info(f"Executing step {step['idx']} (ID: {step['id']}) for job run {job_run_id}")
                 
-                # Dispatch step execution to dedicated task
-                step_result = execute_job_step.apply_async(
-                    args=[job_run_id, step['id'], step],
-                    queue='execution'
-                ).get(timeout=step.get('timeoutsec', 60) + 30)  # Add buffer to timeout
+                # Execute step directly using JobExecutor (avoid Celery deadlock)
+                from main import JobExecutor
+                executor = JobExecutor()
+                step_result = executor.execute_step(job_run_id, step['id'])
                 
                 step_results.append(step_result)
                 
@@ -214,7 +213,7 @@ def execute_job_step(self, job_run_id: int, step_id: int, step_config: Dict[str,
             """, (step_start, step_id))
         
         # Import executor dynamically to avoid circular imports
-        from executor_service.main import JobExecutor
+        from main import JobExecutor
         
         # Execute the step using the job executor
         executor = JobExecutor()

@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import JobTargetSelector from './JobTargetSelector';
-import { X, Info } from 'lucide-react';
+import CredentialSelector from './CredentialSelector';
+import TargetFieldSelector from './TargetFieldSelector';
+import ConnectionTypeSelector from './ConnectionTypeSelector';
+import { targetApi } from '../services/api';
+import { Target } from '../types';
+import { X, Info, ChevronDown, ChevronRight, Settings, User, Lock } from 'lucide-react';
 
 interface StepConfigModalProps {
   isOpen: boolean;
@@ -21,12 +26,28 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
   stepNode
 }) => {
   const [config, setConfig] = useState<any>({});
+  const [targets, setTargets] = useState<Target[]>([]);
+  const [showConnectionOverride, setShowConnectionOverride] = useState(false);
+  const [showCredentialOverride, setShowCredentialOverride] = useState(false);
 
   useEffect(() => {
     if (stepNode) {
       setConfig({ ...stepNode.config });
     }
   }, [stepNode]);
+
+  useEffect(() => {
+    fetchTargets();
+  }, []);
+
+  const fetchTargets = async () => {
+    try {
+      const response = await targetApi.list(0, 1000);
+      setTargets(response.targets || []);
+    } catch (err) {
+      console.error('Failed to fetch targets:', err);
+    }
+  };
 
   const handleSave = () => {
     onSave(config);
@@ -38,6 +59,277 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
       ...prev,
       [key]: value
     }));
+  };
+
+  const handleTargetSelection = (targetNames: string[]) => {
+    const targetName = targetNames[0];
+    if (!targetName) return;
+
+    // Find the selected target
+    const selectedTarget = targets.find(t => t.name === targetName);
+    if (!selectedTarget) return;
+
+    // Auto-populate fields based on target configuration
+    const updates: any = {
+      target: targetName,
+      target_host: selectedTarget.hostname || selectedTarget.ip_address || targetName
+    };
+
+    // Auto-populate connection method based on target OS and available methods
+    if (selectedTarget.os_type) {
+      switch (selectedTarget.os_type.toLowerCase()) {
+        case 'windows':
+          updates.connection_method = 'winrm';
+          updates.connection_type = 'winrm'; // Keep both for compatibility
+          break;
+        case 'linux':
+        case 'unix':
+          updates.connection_method = 'ssh';
+          updates.connection_type = 'ssh'; // Keep both for compatibility
+          break;
+        default:
+          updates.connection_method = 'ssh';
+          updates.connection_type = 'ssh'; // Keep both for compatibility
+      }
+    }
+
+    // Auto-populate port if available
+    if (selectedTarget.port) {
+      updates.port = selectedTarget.port;
+    }
+
+    // Auto-populate credentials if target has associated credentials
+    if (selectedTarget.credential_id) {
+      // You could fetch credential details here and populate username
+      updates.username = `{{credential:${selectedTarget.credential_id}:username}}`;
+      updates.password = `{{credential:${selectedTarget.credential_id}:password}}`;
+    }
+
+    // Apply all updates at once
+    setConfig((prev: any) => ({
+      ...prev,
+      ...updates
+    }));
+  };
+
+  // Compact Target Selector Component
+  const CompactTargetSelector = ({ selectedTargets, onTargetChange }: { 
+    selectedTargets: string[], 
+    onTargetChange: (targets: string[]) => void 
+  }) => {
+    return (
+      <select
+        multiple
+        value={selectedTargets}
+        onChange={(e) => {
+          const selected = Array.from(e.target.selectedOptions, option => option.value);
+          onTargetChange(selected);
+        }}
+        style={{
+          width: '100%',
+          height: '120px',
+          padding: '4px',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          fontSize: '12px',
+          backgroundColor: 'white',
+          cursor: 'pointer',
+          overflowY: 'auto',
+          outline: 'none'
+        }}
+        title="Hold Ctrl/Cmd or Shift to select multiple targets"
+      >
+          {targets.map(target => (
+            <option 
+              key={target.name} 
+              value={target.name}
+              style={{
+                padding: '3px 6px',
+                fontSize: '12px',
+                lineHeight: '1.3',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {target.name} ({target.hostname || target.ip_address}) - {target.os_type || 'Unknown'}
+            </option>
+          ))}
+        </select>
+    );
+  };
+
+  // Collapsible Section Component
+  const CollapsibleSection = ({ 
+    title, 
+    icon, 
+    isOpen, 
+    onToggle, 
+    children 
+  }: { 
+    title: string, 
+    icon: React.ReactNode, 
+    isOpen: boolean, 
+    onToggle: () => void, 
+    children: React.ReactNode 
+  }) => {
+    return (
+      <div style={{ marginBottom: '10px' }}>
+        <button
+          type="button"
+          onClick={onToggle}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            width: '100%',
+            padding: '6px 8px',
+            backgroundColor: '#f8f9fa',
+            border: '1px solid #e9ecef',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: '#495057',
+            cursor: 'pointer',
+            textAlign: 'left'
+          }}
+        >
+          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          {icon}
+          <span>{title}</span>
+        </button>
+        {isOpen && (
+          <div style={{ 
+            padding: '10px', 
+            border: '1px solid #e9ecef', 
+            borderTop: 'none',
+            borderRadius: '0 0 4px 4px',
+            backgroundColor: '#fafbfc'
+          }}>
+            {children}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Function to determine field type and render appropriate selector
+  const renderFieldInput = (key: string, value: any) => {
+    const lowerKey = key.toLowerCase();
+    
+    // Target-related fields
+    if (lowerKey.includes('target') && (lowerKey.includes('host') || lowerKey.includes('hostname') || lowerKey.includes('ip') || lowerKey.includes('address'))) {
+      return (
+        <TargetFieldSelector
+          value={String(value)}
+          onChange={(newValue) => updateConfig(key, newValue)}
+          placeholder={`Enter ${key.replace(/_/g, ' ')}`}
+        />
+      );
+    }
+    
+    // Username fields
+    if (lowerKey.includes('username') || lowerKey.includes('user') || lowerKey === 'login') {
+      return (
+        <CredentialSelector
+          value={String(value)}
+          onChange={(newValue) => updateConfig(key, newValue)}
+          fieldType="username"
+          placeholder={`Select credential or enter ${key.replace(/_/g, ' ')}`}
+        />
+      );
+    }
+    
+    // Password fields
+    if (lowerKey.includes('password') || lowerKey.includes('passwd') || lowerKey.includes('secret')) {
+      return (
+        <CredentialSelector
+          value={String(value)}
+          onChange={(newValue) => updateConfig(key, newValue)}
+          fieldType="password"
+          placeholder={`Select credential or enter ${key.replace(/_/g, ' ')}`}
+        />
+      );
+    }
+    
+    // Connection type fields
+    if (lowerKey.includes('connection') && (lowerKey.includes('type') || lowerKey.includes('method') || lowerKey.includes('protocol'))) {
+      return (
+        <ConnectionTypeSelector
+          value={String(value)}
+          onChange={(newValue) => updateConfig(key, newValue)}
+          targetType={config.os_type || config.target_type}
+        />
+      );
+    }
+    
+    // Port fields
+    if (lowerKey.includes('port') && typeof value === 'number') {
+      return (
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => updateConfig(key, parseInt(e.target.value) || 0)}
+          min="1"
+          max="65535"
+          style={{
+            width: '100%',
+            padding: '8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px'
+          }}
+        />
+      );
+    }
+    
+    // Boolean fields
+    if (typeof value === 'boolean') {
+      return (
+        <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={value}
+            onChange={(e) => updateConfig(key, e.target.checked)}
+            style={{ marginRight: '8px' }}
+          />
+          <span style={{ fontSize: '14px' }}>
+            {value ? 'Enabled' : 'Disabled'}
+          </span>
+        </label>
+      );
+    }
+    
+    // Number fields
+    if (typeof value === 'number') {
+      return (
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => updateConfig(key, parseInt(e.target.value) || 0)}
+          style={{
+            width: '100%',
+            padding: '8px',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            fontSize: '14px'
+          }}
+        />
+      );
+    }
+    
+    // Default text input
+    return (
+      <input
+        type="text"
+        value={String(value)}
+        onChange={(e) => updateConfig(key, e.target.value)}
+        style={{
+          width: '100%',
+          padding: '8px',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          fontSize: '14px'
+        }}
+      />
+    );
   };
 
   if (!isOpen || !stepNode) {
@@ -219,10 +511,172 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
           </div>
         )}
 
+        {/* Core Workflow Configuration */}
+        {(stepNode.type.includes('core') || stepNode.type.includes('workflow') || 
+          stepNode.type.startsWith('action.') ||
+          ['powershell', 'bash', 'cmd', 'ssh', 'winrm'].some(t => stepNode.type.includes(t))) && (
+          <div style={{ marginBottom: '15px' }}>
+            {/* Compact Target Selection */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '4px', 
+                fontSize: '12px',
+                fontWeight: 'bold',
+                color: '#333'
+              }}>
+                Target(s):
+              </label>
+              <CompactTargetSelector
+                selectedTargets={
+                  config.targets ? config.targets : 
+                  config.target ? [config.target] : []
+                }
+                onTargetChange={(targets) => {
+                  // Store multiple targets
+                  updateConfig('targets', targets);
+                  // Also set the first target as primary for backward compatibility
+                  if (targets.length > 0) {
+                    updateConfig('target', targets[0]);
+                    handleTargetSelection(targets);
+                  } else {
+                    updateConfig('target', '');
+                  }
+                }}
+              />
+            </div>
+
+            {/* Command Field - Larger */}
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '4px', 
+                fontSize: '12px',
+                fontWeight: 'bold',
+                color: '#333'
+              }}>
+                Command:
+              </label>
+              <textarea
+                value={config.command || ''}
+                onChange={(e) => updateConfig('command', e.target.value)}
+                placeholder="Enter command to execute..."
+                rows={2}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                  resize: 'vertical',
+                  minHeight: '50px'
+                }}
+              />
+            </div>
+
+            {/* Collapsible Connection Override */}
+            <CollapsibleSection
+              title="Connection Override"
+              icon={<Settings size={12} />}
+              isOpen={showConnectionOverride}
+              onToggle={() => setShowConnectionOverride(!showConnectionOverride)}
+            >
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '11px',
+                  color: '#666'
+                }}>
+                  Connection Method:
+                </label>
+                <ConnectionTypeSelector
+                  value={config.connection_method || config.connection_type || ''}
+                  onChange={(value) => {
+                    updateConfig('connection_method', value);
+                    updateConfig('connection_type', value);
+                  }}
+                />
+              </div>
+              
+              {config.port !== undefined && (
+                <div>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '4px', 
+                    fontSize: '11px',
+                    color: '#666'
+                  }}>
+                    Port:
+                  </label>
+                  <input
+                    type="number"
+                    value={config.port || ''}
+                    onChange={(e) => updateConfig('port', parseInt(e.target.value) || 22)}
+                    min="1"
+                    max="65535"
+                    placeholder="22 (SSH) or 5985 (WinRM)"
+                    style={{
+                      width: '80px',
+                      padding: '4px 6px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '12px'
+                    }}
+                  />
+                </div>
+              )}
+            </CollapsibleSection>
+
+            {/* Collapsible Credential Override */}
+            <CollapsibleSection
+              title="Credential Override"
+              icon={<User size={12} />}
+              isOpen={showCredentialOverride}
+              onToggle={() => setShowCredentialOverride(!showCredentialOverride)}
+            >
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '11px',
+                  color: '#666'
+                }}>
+                  Username:
+                </label>
+                <CredentialSelector
+                  value={config.username || ''}
+                  onChange={(value) => updateConfig('username', value)}
+                  fieldType="username"
+                  placeholder="Override username"
+                />
+              </div>
+              
+              <div>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '4px', 
+                  fontSize: '11px',
+                  color: '#666'
+                }}>
+                  Password:
+                </label>
+                <CredentialSelector
+                  value={config.password || ''}
+                  onChange={(value) => updateConfig('password', value)}
+                  fieldType="password"
+                  placeholder="Override password"
+                />
+              </div>
+            </CollapsibleSection>
+          </div>
+        )}
+
         {/* Other step configurations */}
         {Object.entries(config).map(([key, value]) => {
           // Skip already handled fields
-          if (['name', 'target_names', 'selection_mode', 'target_tags'].includes(key)) {
+          if (['name', 'target_names', 'selection_mode', 'target_tags', 'target', 'target_host', 'connection_type', 'connection_method', 'username', 'password', 'port', 'command', 'timeout', 'timeout_seconds'].includes(key)) {
             return null;
           }
 
@@ -237,45 +691,7 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
                 {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:
               </label>
               
-              {typeof value === 'boolean' ? (
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={value}
-                    onChange={(e) => updateConfig(key, e.target.checked)}
-                    style={{ marginRight: '8px' }}
-                  />
-                  <span style={{ fontSize: '14px' }}>
-                    {value ? 'Enabled' : 'Disabled'}
-                  </span>
-                </label>
-              ) : typeof value === 'number' ? (
-                <input
-                  type="number"
-                  value={value}
-                  onChange={(e) => updateConfig(key, parseInt(e.target.value) || 0)}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={String(value)}
-                  onChange={(e) => updateConfig(key, e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px'
-                  }}
-                />
-              )}
+              {renderFieldInput(key, value)}
             </div>
           );
         })}
@@ -283,40 +699,78 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
         {/* Footer */}
         <div style={{
           display: 'flex',
-          justifyContent: 'flex-end',
-          gap: '10px',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           marginTop: '20px',
           paddingTop: '15px',
           borderTop: '1px solid #eee'
         }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px'
-            }}
-          >
-            Save Configuration
-          </button>
+          {/* Compact Timeout Field */}
+          {(stepNode.type.includes('core') || stepNode.type.includes('workflow') || 
+            stepNode.type.startsWith('action.') ||
+            ['powershell', 'bash', 'cmd', 'ssh', 'winrm'].some(t => stepNode.type.includes(t))) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ 
+                fontSize: '11px',
+                color: '#666',
+                whiteSpace: 'nowrap'
+              }}>
+                Timeout:
+              </label>
+              <input
+                type="number"
+                value={config.timeout_seconds || config.timeout || 60}
+                onChange={(e) => {
+                  const timeout = parseInt(e.target.value) || 60;
+                  updateConfig('timeout_seconds', timeout);
+                  updateConfig('timeout', timeout); // Keep both for compatibility
+                }}
+                min="1"
+                max="3600"
+                style={{
+                  width: '50px',
+                  padding: '2px 4px',
+                  border: '1px solid #ddd',
+                  borderRadius: '3px',
+                  fontSize: '11px',
+                  textAlign: 'center'
+                }}
+              />
+              <span style={{ fontSize: '11px', color: '#666' }}>sec</span>
+            </div>
+          )}
+          
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={onClose}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '13px'
+              }}
+            >
+              Save Configuration
+            </button>
+          </div>
         </div>
       </div>
     </div>
