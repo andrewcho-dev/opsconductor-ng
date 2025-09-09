@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Job } from '../types';
 import { jobApi } from '../services/api';
 import VisualJobBuilder from '../components/VisualJobBuilder';
-import { Plus, Play, Edit, Trash2, History, X, RefreshCw, Save } from 'lucide-react';
+import { Plus, Play, Edit, Trash2, History, X, RefreshCw, Save, Download, Upload } from 'lucide-react';
 
 const Jobs: React.FC = () => {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ const Jobs: React.FC = () => {
     try {
       setLoading(true);
       const response = await jobApi.list();
-      setJobs(response.jobs || []);
+      setJobs(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch jobs:', error);
       setError(error.message || 'Failed to load jobs');
@@ -83,6 +83,50 @@ const Jobs: React.FC = () => {
 
   const handleJobSelect = (job: Job) => {
     setSelectedJob(job);
+  };
+
+  const handleExportJobs = async () => {
+    try {
+      const response = await jobApi.export();
+      const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `jobs-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      console.error('Failed to export jobs:', error);
+      setError(error.message || 'Failed to export jobs');
+    }
+  };
+
+  const handleImportJobs = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const importData = JSON.parse(text);
+        const result = await jobApi.import(importData);
+        
+        // Show success message
+        alert(`Import completed: ${result.imported_count} jobs imported, ${result.failed_count} failed`);
+        
+        // Refresh the jobs list
+        fetchJobs();
+      } catch (error: any) {
+        console.error('Failed to import jobs:', error);
+        setError(error.message || 'Failed to import jobs');
+      }
+    };
+    input.click();
   };
 
   const getJobStatusBadge = (status: string) => {
@@ -476,6 +520,20 @@ const Jobs: React.FC = () => {
         </div>
         <div className="header-actions">
           <button 
+            className="btn-icon btn-info"
+            onClick={handleImportJobs}
+            title="Import jobs"
+          >
+            <Download size={16} />
+          </button>
+          <button 
+            className="btn-icon btn-info"
+            onClick={handleExportJobs}
+            title="Export jobs"
+          >
+            <Upload size={16} />
+          </button>
+          <button 
             className="btn-icon btn-success"
             onClick={() => {
               setShowCreateForm(true);
@@ -506,16 +564,32 @@ const Jobs: React.FC = () => {
         <div className="dashboard-section">
           <div className="section-header">
             Jobs ({jobs.length})
-            <button 
-              className="btn-icon btn-success"
-              onClick={() => {
-                setShowCreateForm(true);
-                navigate('/job-management/create');
-              }}
-              title="Create new job"
-            >
-              <Plus size={14} />
-            </button>
+            <div style={{ display: 'flex', gap: '2px' }}>
+              <button 
+                className="btn-icon btn-info"
+                onClick={handleImportJobs}
+                title="Import jobs"
+              >
+                <Download size={14} />
+              </button>
+              <button 
+                className="btn-icon btn-info"
+                onClick={handleExportJobs}
+                title="Export jobs"
+              >
+                <Upload size={14} />
+              </button>
+              <button 
+                className="btn-icon btn-success"
+                onClick={() => {
+                  setShowCreateForm(true);
+                  navigate('/job-management/create');
+                }}
+                title="Create new job"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
           </div>
           <div className="compact-content">
             {jobs.length === 0 ? (

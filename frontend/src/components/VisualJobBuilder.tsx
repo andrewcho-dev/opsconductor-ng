@@ -471,6 +471,7 @@ interface Connection {
   sourcePort: number;
   targetNodeId: string;
   targetPort: number;
+  condition?: string;
 }
 
 interface NodeTemplate {
@@ -583,8 +584,8 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   }, [loadStepDefinitions]);
 
   useEffect(() => {
-    // Add default start node if no nodes exist
-    if (nodes.length === 0 && nodeTemplates.length > 0) {
+    // Add default start node if no nodes exist and we're not editing a job
+    if (nodes.length === 0 && nodeTemplates.length > 0 && !editingJob) {
       const startTemplate = nodeTemplates.find(t => t.type === 'flow.start');
       if (startTemplate) {
         const startNode: FlowNode = {
@@ -604,17 +605,52 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         setNodes([startNode]);
       }
     }
-  }, [nodeTemplates, nodes.length]);
+  }, [nodeTemplates, nodes.length, editingJob]);
 
   useEffect(() => {
     if (editingJob) {
       setJobName(editingJob.name);
-      if (editingJob.definition?.flow?.nodes) {
-        setNodes(editingJob.definition.flow.nodes);
+      if (editingJob.definition?.nodes) {
+        // Convert from API format to internal format
+        const convertedNodes = editingJob.definition.nodes.map((node: any) => ({
+          id: node.id,
+          type: node.type,
+          name: node.data?.name || node.type,
+          x: node.position?.x || 0,
+          y: node.position?.y || 0,
+          width: 120,
+          height: 60,
+          config: node.data || {},
+          inputs: 1,
+          outputs: 1,
+          category: node.data?.category || 'workflow',
+          library: node.data?.library || 'core'
+        }));
+        setNodes(convertedNodes);
+      } else {
+        // If no nodes in definition, clear nodes to trigger default start node creation
+        setNodes([]);
       }
-      if (editingJob.definition?.flow?.connections) {
-        setConnections(editingJob.definition.flow.connections);
+      if (editingJob.definition?.edges) {
+        // Convert from API format to internal format
+        const convertedConnections = editingJob.definition.edges.map((edge: any) => ({
+          id: edge.id,
+          sourceNodeId: edge.source,
+          sourcePort: 0,
+          targetNodeId: edge.target,
+          targetPort: 0,
+          condition: edge.condition || 'always'
+        }));
+        setConnections(convertedConnections);
+      } else {
+        // If no edges in definition, clear connections
+        setConnections([]);
       }
+    } else {
+      // When not editing, reset to default state
+      setJobName('');
+      setNodes([]);
+      setConnections([]);
     }
   }, [editingJob]);
 
@@ -833,16 +869,24 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
 
     const jobData = {
       name: jobName,
-      version: 1,
       definition: {
         name: jobName,
         version: 1,
+        description: "",
+        metadata: {},
         parameters: {},
-        steps: steps,
-        flow: {
-          nodes: nodes,
-          connections: connections
-        }
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          position: { x: node.x, y: node.y },
+          data: node.config || {}
+        })),
+        edges: connections.map(conn => ({
+          id: conn.id,
+          source: conn.sourceNodeId,
+          target: conn.targetNodeId,
+          condition: conn.condition || 'always'
+        }))
       },
       is_active: true
     };

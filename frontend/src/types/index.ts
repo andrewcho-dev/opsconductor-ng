@@ -248,8 +248,15 @@ export interface TargetListResponse {
 }
 
 export interface JobListResponse {
-  jobs: Job[];
-  total: number;
+  data: Job[];
+  meta: {
+    page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
 }
 
 export interface JobRunListResponse {

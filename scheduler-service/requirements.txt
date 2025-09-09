@@ -10,4 +10,3 @@ requests==2.31.0
 requests>=2.25.0
 httpx>=0.24.0
 jinja2>=3.0.0
-aio-pika>=9.0.0

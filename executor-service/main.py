@@ -46,8 +46,7 @@ from utils.utility_command_builder import CommandBuilder
 from utils.utility_sftp_executor import SFTPExecutor
 from utils.utility_notification_utils import NotificationUtils
 
-# Import RabbitMQ job consumer
-from rabbitmq_job_consumer import start_rabbitmq_job_consumer, stop_rabbitmq_job_consumer
+# RabbitMQ removed - now using Celery for job processing
 
 # Load environment variables
 load_dotenv()
@@ -89,9 +88,7 @@ class JobExecutor:
         self.sftp_utility = SFTPExecutor()
         self.notification_utils = NotificationUtils()
         
-        # RabbitMQ consumer
-        self.rabbitmq_consumer = None
-        self.rabbitmq_task = None
+        # Job processing now handled by Celery workers
     
     def start_worker(self) -> Any:
         """Start the worker thread"""
@@ -108,27 +105,7 @@ class JobExecutor:
             self.worker_thread.join(timeout=5)
         logger.info("Executor worker stopped")
     
-    async def start_rabbitmq_consumer(self) -> None:
-        """Start RabbitMQ job consumer"""
-        try:
-            if not self.rabbitmq_consumer:
-                logger.info("Starting RabbitMQ job consumer...")
-                self.rabbitmq_consumer = await start_rabbitmq_job_consumer(self)
-                logger.info("RabbitMQ job consumer started")
-        except Exception as e:
-            logger.error(f"Failed to start RabbitMQ consumer: {e}")
-            raise
-    
-    async def stop_rabbitmq_consumer(self) -> None:
-        """Stop RabbitMQ job consumer"""
-        try:
-            if self.rabbitmq_consumer:
-                logger.info("Stopping RabbitMQ job consumer...")
-                await stop_rabbitmq_job_consumer()
-                self.rabbitmq_consumer = None
-                logger.info("RabbitMQ job consumer stopped")
-        except Exception as e:
-            logger.error(f"Error stopping RabbitMQ consumer: {e}")
+    # RabbitMQ consumer methods removed - job processing now handled by Celery
     
     def _worker_loop(self):
         """Main worker loop - processes queued job steps"""
@@ -1546,25 +1523,15 @@ async def startup_event() -> None:
     logger.info("Service utilities initialized")
     executor.start_worker()
     
-    # Start RabbitMQ consumer for job processing
-    try:
-        await executor.start_rabbitmq_consumer()
-        logger.info("RabbitMQ job consumer started successfully")
-    except Exception as e:
-        logger.error(f"Failed to start RabbitMQ consumer: {e}")
-        # Continue without RabbitMQ - fallback to database polling
+    # Job processing now handled by Celery workers
+    logger.info("Executor service ready - job processing via Celery")
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     """Stop the executor worker on shutdown"""
     executor.stop_worker()
     
-    # Stop RabbitMQ consumer
-    try:
-        await executor.stop_rabbitmq_consumer()
-        logger.info("RabbitMQ job consumer stopped successfully")
-    except Exception as e:
-        logger.error(f"Error stopping RabbitMQ consumer: {e}")
+    # Celery handles job processing cleanup automatically
     
     log_shutdown("executor-service")
     cleanup_database_pool()

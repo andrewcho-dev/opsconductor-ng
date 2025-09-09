@@ -1,8 +1,8 @@
 """
-Message Schema Definitions for OpsConductor RabbitMQ Implementation
+Message Schema Definitions for OpsConductor Celery Implementation
 
-This module defines the message schemas and routing patterns for all
-message queue operations in OpsConductor.
+This module defines the message schemas and task parameters for all
+Celery task operations in OpsConductor.
 """
 
 from typing import Dict, Any, Optional, Literal
@@ -90,79 +90,70 @@ class AuditLogMessage(BaseMessage):
     user_agent: Optional[str] = Field(None, description="Client user agent")
 
 
-# Routing Key Patterns
-class RoutingKeys:
-    """Routing key patterns for message routing"""
+# Celery Task Names
+class TaskNames:
+    """Celery task name constants"""
     
-    # Notification routing keys
-    EMAIL_NOTIFICATION = "notify.email"
-    EMAIL_URGENT = "notify.email.urgent"
-    EMAIL_NORMAL = "notify.email.normal"
+    # Job execution tasks
+    EXECUTE_JOB_RUN = "shared.tasks.execute_job_run"
+    EXECUTE_JOB_STEP = "shared.tasks.execute_job_step"
+    PROCESS_JOB_REQUEST = "shared.tasks.process_job_request"
     
-    SLACK_NOTIFICATION = "notify.slack"
-    SLACK_URGENT = "notify.slack.urgent"
-    SLACK_NORMAL = "notify.slack.normal"
+    # Notification tasks
+    SEND_EMAIL = "shared.tasks.send_email_notification"
+    SEND_SLACK = "shared.tasks.send_slack_notification"
+    SEND_WEBHOOK = "shared.tasks.send_webhook_notification"
     
-    WEBHOOK_NOTIFICATION = "notify.webhook"
-    WEBHOOK_URGENT = "notify.webhook.urgent"
-    WEBHOOK_NORMAL = "notify.webhook.normal"
-    
-    # Job scheduling routing keys
-    JOB_SCHEDULE = "jobs.schedule"
-    JOB_SCHEDULE_URGENT = "jobs.schedule.urgent"
-    JOB_SCHEDULE_NORMAL = "jobs.schedule.normal"
-    
-    # Audit logging routing keys
-    AUDIT_LOG = "audit.log"
-    AUDIT_USER_ACTION = "audit.log.user"
-    AUDIT_SYSTEM_EVENT = "audit.log.system"
-    
-    @classmethod
-    def get_notification_routing_key(cls, notification_type: str, priority: str = "normal") -> str:
-        """Get routing key for notification messages"""
-        base_key = f"notify.{notification_type}"
-        if priority in ["urgent", "high"]:
-            return f"{base_key}.urgent"
-        return f"{base_key}.normal"
-    
-    @classmethod
-    def get_job_routing_key(cls, priority: str = "normal") -> str:
-        """Get routing key for job messages"""
-        if priority in ["urgent", "high"]:
-            return cls.JOB_SCHEDULE_URGENT
-        return cls.JOB_SCHEDULE_NORMAL
+    # Test task
+    TEST_TASK = "shared.tasks.test_task"
 
 
-# Queue Names
-class QueueNames:
-    """Queue name constants"""
+# Celery Queue Names
+class CeleryQueues:
+    """Celery queue name constants"""
     
-    # Notification queues
-    EMAIL_NOTIFICATIONS = "notifications.email"
-    SLACK_NOTIFICATIONS = "notifications.slack"
-    WEBHOOK_NOTIFICATIONS = "notifications.webhook"
-    
-    # Job queues
-    JOB_SCHEDULER = "jobs.scheduled"
-    
-    # Audit queues
-    AUDIT_LOGS = "audit.logs"
-    
-    # Dead letter queues
-    EMAIL_DLQ = "notifications.email.dlq"
-    SLACK_DLQ = "notifications.slack.dlq"
-    WEBHOOK_DLQ = "notifications.webhook.dlq"
-    JOB_DLQ = "jobs.scheduled.dlq"
-    AUDIT_DLQ = "audit.logs.dlq"
-
-
-# Exchange Names
-class ExchangeNames:
-    """Exchange name constants"""
-    
-    NOTIFICATIONS = "notifications"
+    # Job execution queues
+    EXECUTION = "execution"
     JOBS = "jobs"
-    AUDIT = "audit"
+    
+    # Notification queues  
+    NOTIFICATIONS = "notifications"
+    
+    # Default queue
+    CELERY = "celery"
+    
+    @classmethod
+    def get_queue_for_task(cls, task_name: str) -> str:
+        """Get appropriate queue for a task"""
+        if "execute_job" in task_name or "execute_step" in task_name:
+            return cls.EXECUTION
+        elif "process_job" in task_name:
+            return cls.JOBS
+        elif "notification" in task_name or "send_" in task_name:
+            return cls.NOTIFICATIONS
+        else:
+            return cls.CELERY
+
+
+# Task Priority Levels
+class TaskPriority:
+    """Task priority constants for Celery"""
+    
+    LOW = 1
+    NORMAL = 5
+    HIGH = 8
+    URGENT = 10
+    
+    @classmethod
+    def get_priority(cls, priority_str: str) -> int:
+        """Convert priority string to numeric value"""
+        priority_map = {
+            "low": cls.LOW,
+            "normal": cls.NORMAL,
+            "high": cls.HIGH,
+            "urgent": cls.URGENT
+        }
+        return priority_map.get(priority_str.lower(), cls.NORMAL)
 
 
 def create_message_from_dict(message_type: str, data: Dict[str, Any]) -> BaseMessage:

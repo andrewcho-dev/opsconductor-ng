@@ -343,6 +343,16 @@ export const jobApi = {
   run: async (id: number, parameters: Record<string, any> = {}): Promise<JobRun> => {
     const response: AxiosResponse<JobRun> = await api.post(`/api/v1/jobs/${id}/run`, { parameters });
     return response.data;
+  },
+
+  export: async (): Promise<any> => {
+    const response: AxiosResponse<any> = await api.post('/api/v1/jobs/export', {});
+    return response.data;
+  },
+
+  import: async (importData: any): Promise<any> => {
+    const response: AxiosResponse<any> = await api.post('/api/v1/jobs/import', importData);
+    return response.data;
   }
 };
 

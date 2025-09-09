@@ -59,7 +59,7 @@ const Schedules: React.FC = () => {
         schedulerApi.getStatus()
       ]);
       setSchedules(schedulesData.schedules);
-      setJobs(jobsData.jobs);
+      setJobs(jobsData.data);
       setSchedulerStatus(statusData);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch data');

@@ -55,7 +55,7 @@ const JobRuns: React.FC = () => {
   const fetchJobs = async () => {
     try {
       const response = await jobApi.list(0, 100, false); // Include inactive jobs
-      setJobs(response.jobs || []);
+      setJobs(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch jobs:', error);
     }
