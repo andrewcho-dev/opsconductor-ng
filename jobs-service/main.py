@@ -756,7 +756,7 @@ async def import_jobs(
 
 def _convert_visual_workflow_to_steps(workflow_definition: dict, parameters: dict) -> list:
     """
-    Convert visual workflow format (nodes/edges) to traditional steps format
+    Convert visual workflow format (nodes/edges) to traditional steps format using enhanced engine
     
     Args:
         workflow_definition: Visual workflow with nodes and edges
@@ -764,6 +764,81 @@ def _convert_visual_workflow_to_steps(workflow_definition: dict, parameters: dic
         
     Returns:
         List of step dictionaries
+    """
+    try:
+        # Use the enhanced visual workflow engine
+        from shared.visual_workflow_engine import workflow_engine
+        
+        execution_steps = workflow_engine.translate_workflow(workflow_definition, parameters)
+        
+        # Convert ExecutionStep objects to dictionary format expected by database
+        steps = []
+        for exec_step in execution_steps:
+            step = {
+                'type': exec_step.type,
+                'shell': exec_step.command,
+                'timeout': exec_step.timeout,
+                'target_id': exec_step.target_id,
+                'connection_type': exec_step.connection_type
+            }
+            
+            # Add type-specific parameters
+            if exec_step.type == 'shell':
+                step.update({
+                    'working_directory': exec_step.parameters.get('working_directory'),
+                    'environment_variables': exec_step.parameters.get('environment_variables', {}),
+                    'username': exec_step.parameters.get('username'),
+                    'password': exec_step.parameters.get('password'),
+                    'port': exec_step.parameters.get('port', 22),
+                    'use_ssl': exec_step.parameters.get('use_ssl', False)
+                })
+            
+            elif exec_step.type == 'http':
+                step.update({
+                    'method': exec_step.parameters.get('method', 'GET'),
+                    'headers': exec_step.parameters.get('headers', {}),
+                    'body': exec_step.parameters.get('body'),
+                    'auth': exec_step.parameters.get('auth'),
+                    'verify_ssl': exec_step.parameters.get('verify_ssl', True)
+                })
+            
+            elif exec_step.type == 'file_transfer':
+                step.update({
+                    'source_path': exec_step.parameters.get('source_path'),
+                    'dest_path': exec_step.parameters.get('dest_path'),
+                    'direction': exec_step.parameters.get('direction', 'upload'),
+                    'preserve_permissions': exec_step.parameters.get('preserve_permissions', True),
+                    'recursive': exec_step.parameters.get('recursive', False)
+                })
+            
+            elif exec_step.type == 'notification':
+                step.update({
+                    'notification_type': exec_step.parameters.get('notification_type', 'email'),
+                    'recipients': exec_step.parameters.get('recipients', []),
+                    'subject': exec_step.parameters.get('subject'),
+                    'priority': exec_step.parameters.get('priority', 'normal')
+                })
+            
+            # Add conditions and retry config if present
+            if exec_step.conditions:
+                step['conditions'] = exec_step.conditions
+            
+            if exec_step.retry_config:
+                step['retry_config'] = exec_step.retry_config
+            
+            steps.append(step)
+        
+        logger.info(f"Enhanced workflow engine converted {len(steps)} steps")
+        return steps
+        
+    except Exception as e:
+        logger.error(f"Error converting visual workflow: {str(e)}")
+        # Fallback to basic conversion for backward compatibility
+        return _convert_visual_workflow_to_steps_basic(workflow_definition, parameters)
+
+def _convert_visual_workflow_to_steps_basic(workflow_definition: dict, parameters: dict) -> list:
+    """
+    Basic fallback conversion for visual workflows
     """
     from jinja2 import Template
     
