@@ -1,29 +1,112 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { jobRunApi, jobApi } from '../services/api';
-import { JobRun, JobRunStep, Job } from '../types';
-import { Plus, Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, ExternalLink, Filter, X } from 'lucide-react';
+import { jobRunApi, jobApi, userApi, targetApi } from '../services/api';
+import { JobRun, JobRunStep, Job, User, Target } from '../types';
+import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, ExternalLink } from 'lucide-react';
+
+// Component to check if Celery task exists and render appropriate link
+const CeleryTaskLink: React.FC<{ jobRunId: number; correlationId: string }> = ({ jobRunId, correlationId }) => {
+  const [taskExists, setTaskExists] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(true);
+  
+  const taskId = `job_run_${jobRunId}_${correlationId}`;
+  
+  useEffect(() => {
+    const checkTaskExists = async () => {
+      try {
+        // Check if task exists in Flower/Celery
+        const response = await fetch(`/flower/api/task/info/${taskId}`);
+        setTaskExists(response.ok);
+      } catch (error) {
+        console.log('Could not check task existence:', error);
+        setTaskExists(false);
+      } finally {
+        setChecking(false);
+      }
+    };
+    
+    checkTaskExists();
+  }, [taskId]);
+  
+  if (checking) {
+    return (
+      <span style={{ color: 'var(--neutral-500)' }}>
+        {correlationId} <span style={{ opacity: 0.7 }}>(checking...)</span>
+      </span>
+    );
+  }
+  
+  if (taskExists) {
+    return (
+      <a 
+        href={`/history/celery-workers-iframe?task=${taskId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ 
+          color: 'var(--primary)', 
+          textDecoration: 'none',
+          borderBottom: '1px dotted var(--primary)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+        title="View task in Celery monitoring"
+      >
+        {correlationId}
+        <ExternalLink size={12} />
+      </a>
+    );
+  } else {
+    return (
+      <span 
+        style={{ 
+          color: 'var(--neutral-600)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+        title="Task no longer available in Celery (expired or deleted)"
+      >
+        {correlationId}
+        <span style={{ fontSize: '12px', opacity: 0.7 }}>(expired)</span>
+      </span>
+    );
+  }
+};
 
 const JobRuns: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [targets, setTargets] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState<number | undefined>(undefined);
+  const [selectedRunId, setSelectedRunId] = useState<number | undefined>(undefined);
   const [selectedRun, setSelectedRun] = useState<JobRun | null>(null);
   const [runSteps, setRunSteps] = useState<JobRunStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Parse job_id from URL parameters on mount
+  // Parse job_id and run_id from URL parameters on mount
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const jobIdParam = searchParams.get('job_id');
+    const runIdParam = searchParams.get('run_id');
+    
     if (jobIdParam) {
       const jobId = parseInt(jobIdParam, 10);
       if (!isNaN(jobId)) {
         setSelectedJobId(jobId);
+      }
+    }
+    
+    if (runIdParam) {
+      const runId = parseInt(runIdParam, 10);
+      if (!isNaN(runId)) {
+        // We'll select the run after runs are loaded
+        setSelectedRunId(runId);
       }
     }
   }, [location.search]);
@@ -31,6 +114,8 @@ const JobRuns: React.FC = () => {
   useEffect(() => {
     fetchRuns();
     fetchJobs();
+    fetchUsers();
+    fetchTargets();
   }, [selectedJobId]);
 
   useEffect(() => {
@@ -39,11 +124,23 @@ const JobRuns: React.FC = () => {
     }
   }, [selectedRun]);
 
+  // Auto-select run when runs are loaded and we have a selectedRunId from URL
+  useEffect(() => {
+    if (selectedRunId && runs.length > 0 && !selectedRun) {
+      const runToSelect = runs.find(run => run.id === selectedRunId);
+      if (runToSelect) {
+        setSelectedRun(runToSelect);
+        // Clear the selectedRunId so it doesn't interfere with manual selection
+        setSelectedRunId(undefined);
+      }
+    }
+  }, [runs, selectedRunId, selectedRun]);
+
   const fetchRuns = async () => {
     try {
       setLoading(true);
       const response = await jobRunApi.list(0, 100, selectedJobId);
-      setRuns(response.runs || []);
+      setRuns(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch job runs:', error);
       setError(error.message || 'Failed to load job runs');
@@ -58,6 +155,24 @@ const JobRuns: React.FC = () => {
       setJobs(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch jobs:', error);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const response = await userApi.list(0, 100); // Get all users
+      setUsers(response.data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error);
+    }
+  };
+
+  const fetchTargets = async () => {
+    try {
+      const response = await targetApi.list(0, 100); // Get all targets
+      setTargets(response.targets || []);
+    } catch (error: any) {
+      console.error('Failed to fetch targets:', error);
     }
   };
 
@@ -79,6 +194,61 @@ const JobRuns: React.FC = () => {
     return job ? job.name : `Job ${jobId}`;
   };
 
+  const getUserName = (userId: number) => {
+    const user = users.find(u => u.id === userId);
+    return user ? user.username : `User ${userId}`;
+  };
+
+  const getTargetInfo = (targetId: number) => {
+    const target = targets.find(t => t.id === targetId);
+    if (target) {
+      return target.ip_address || target.hostname;
+    }
+    return `Target ${targetId}`;
+  };
+
+  const getStepCommand = (step: JobRunStep) => {
+    if (!selectedRun) return step.shell || 'Unknown';
+    
+    const job = jobs.find(j => j.id === selectedRun.job_id);
+    if (!job || !job.definition || !job.definition.steps) {
+      return step.shell || 'Unknown';
+    }
+    
+    // Find the step in the job definition by index
+    const jobStep = job.definition.steps[step.idx];
+    if (jobStep && jobStep.command) {
+      return jobStep.command;
+    }
+    
+    return step.shell || 'Unknown';
+  };
+
+  const hasStatusInconsistency = () => {
+    if (!selectedRun || runSteps.length === 0) return false;
+    
+    const jobStatus = selectedRun.status;
+    const activeSteps = runSteps.filter(step => step.status !== 'skipped');
+    
+    // Type 1: Job complete but steps still queued/running
+    const hasIncompleteSteps = activeSteps.some(step => 
+      step.status === 'queued' || step.status === 'running'
+    );
+    
+    // Type 2: Job failed but no steps actually failed
+    const hasFailedSteps = activeSteps.some(step => step.status === 'failed');
+    const jobFailedButNoFailedSteps = jobStatus === 'failed' && !hasFailedSteps && activeSteps.length > 0;
+    
+    // Type 3: Job succeeded but has failed steps
+    const jobSucceededButHasFailedSteps = jobStatus === 'succeeded' && hasFailedSteps;
+    
+    return (
+      ((jobStatus === 'succeeded' || jobStatus === 'failed') && hasIncompleteSteps) ||
+      jobFailedButNoFailedSteps ||
+      jobSucceededButHasFailedSteps
+    );
+  };
+
   const getRunStatusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'succeeded':
@@ -92,6 +262,8 @@ const JobRuns: React.FC = () => {
       case 'queued':
       case 'pending':
         return 'status-badge-warning';
+      case 'skipped':
+        return 'status-badge-neutral';
       case 'canceled':
       case 'cancelled':
       case 'aborted':
@@ -114,6 +286,8 @@ const JobRuns: React.FC = () => {
       case 'queued':
       case 'pending':
         return <Clock size={14} />;
+      case 'skipped':
+        return <Minus size={14} />;
       case 'canceled':
       case 'cancelled':
       case 'aborted':
@@ -510,15 +684,6 @@ const JobRuns: React.FC = () => {
           <h1>Job Runs</h1>
           <p className="header-subtitle">Monitor job execution history and detailed run information</p>
         </div>
-        <div className="header-actions">
-          <Link 
-            to="/job-management"
-            className="btn-icon btn-success"
-            title="Create new job"
-          >
-            <Plus size={16} />
-          </Link>
-        </div>
       </div>
 
       {error && (
@@ -539,13 +704,6 @@ const JobRuns: React.FC = () => {
         <div className="dashboard-section">
           <div className="section-header">
             Job Runs ({runs.length})
-            <Link 
-              to="/job-management"
-              className="btn-icon btn-success"
-              title="Create new job"
-            >
-              <Plus size={14} />
-            </Link>
           </div>
           
           {/* Filter Bar */}
@@ -583,13 +741,6 @@ const JobRuns: React.FC = () => {
               <div className="empty-state">
                 <h3>No job runs found</h3>
                 <p>{selectedJobId ? `No runs found for ${getFilteredJobName()}` : 'No job runs have been executed yet'}</p>
-                <Link 
-                  to="/job-management"
-                  className="btn-icon btn-success"
-                  title="Create first job"
-                >
-                  <Plus size={16} />
-                </Link>
               </div>
             ) : (
               <div className="table-container">
@@ -601,7 +752,6 @@ const JobRuns: React.FC = () => {
                       <th>Requested By</th>
                       <th>Started</th>
                       <th>Duration</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -624,25 +774,13 @@ const JobRuns: React.FC = () => {
                           </div>
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-600)' }}>
-                          User {run.requested_by}
+                          {getUserName(run.requested_by)}
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
                           {run.started_at ? new Date(run.started_at).toLocaleString() : 'Not started'}
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
                           {formatDuration(run.started_at, run.finished_at)}
-                        </td>
-                        <td>
-                          <button 
-                            className="btn-icon btn-ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/job-runs/${run.id}`);
-                            }}
-                            title="View full details"
-                          >
-                            <ExternalLink size={14} />
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -661,68 +799,72 @@ const JobRuns: React.FC = () => {
           <div className="compact-content">
             {selectedRun ? (
               <div className="details-panel">
-                <h3>Run #{selectedRun.id}</h3>
-                
-                <div className="detail-group">
-                  <div className="detail-label">Job</div>
-                  <div className="detail-value">{getJobName(selectedRun.job_id)}</div>
-                </div>
+                {/* Compact 2-column grid for basic info */}
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <label>Job</label>
+                    <div className="detail-value">{getJobName(selectedRun.job_id)}</div>
+                  </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Status</div>
-                  <div className="detail-value">
-                    <div className="run-status-icon">
-                      {getRunStatusIcon(selectedRun.status)}
-                      <span className={`status-badge ${getRunStatusBadge(selectedRun.status)}`}>
-                        {selectedRun.status}
-                      </span>
+                  <div className="detail-item">
+                    <label>Status</label>
+                    <div className="detail-value">
+                      <div className="run-status-icon">
+                        {getRunStatusIcon(selectedRun.status)}
+                        <span className={`status-badge ${getRunStatusBadge(selectedRun.status)}`}>
+                          {selectedRun.status}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Requested By</div>
-                  <div className="detail-value">User {selectedRun.requested_by}</div>
-                </div>
+                  <div className="detail-item">
+                    <label>Requested By</label>
+                    <div className="detail-value">{getUserName(selectedRun.requested_by)}</div>
+                  </div>
 
-                {selectedRun.correlation_id && (
-                  <div className="detail-group">
-                    <div className="detail-label">Correlation ID</div>
-                    <div className="detail-value" style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {selectedRun.correlation_id}
+                  <div className="detail-item">
+                    <label>Duration</label>
+                    <div className="detail-value">
+                      {formatDuration(selectedRun.started_at, selectedRun.finished_at)}
                     </div>
                   </div>
-                )}
 
-                <div className="detail-group">
-                  <div className="detail-label">Queued</div>
-                  <div className="detail-value">{new Date(selectedRun.queued_at).toLocaleString()}</div>
-                </div>
-
-                <div className="detail-group">
-                  <div className="detail-label">Started</div>
-                  <div className="detail-value">
-                    {selectedRun.started_at ? new Date(selectedRun.started_at).toLocaleString() : 'Not started'}
+                  <div className="detail-item">
+                    <label>Queued</label>
+                    <div className="detail-value">{new Date(selectedRun.queued_at).toLocaleString()}</div>
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Finished</div>
-                  <div className="detail-value">
-                    {selectedRun.finished_at ? new Date(selectedRun.finished_at).toLocaleString() : 'Not finished'}
+                  <div className="detail-item">
+                    <label>Started</label>
+                    <div className="detail-value">
+                      {selectedRun.started_at ? new Date(selectedRun.started_at).toLocaleString() : 'Not started'}
+                    </div>
                   </div>
-                </div>
 
-                <div className="detail-group">
-                  <div className="detail-label">Duration</div>
-                  <div className="detail-value">
-                    {formatDuration(selectedRun.started_at, selectedRun.finished_at)}
+                  <div className="detail-item">
+                    <label>Finished</label>
+                    <div className="detail-value">
+                      {selectedRun.finished_at ? new Date(selectedRun.finished_at).toLocaleString() : 'Not finished'}
+                    </div>
                   </div>
+
+                  {selectedRun.correlation_id && (
+                    <div className="detail-item detail-item-full">
+                      <label>Correlation ID</label>
+                      <div className="detail-value">
+                        <CeleryTaskLink 
+                          jobRunId={selectedRun.id} 
+                          correlationId={selectedRun.correlation_id} 
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {selectedRun.parameters && Object.keys(selectedRun.parameters).length > 0 && (
-                  <div className="detail-group">
-                    <div className="detail-label">Parameters</div>
+                  <div className="detail-section">
+                    <div className="detail-section-title">Parameters</div>
                     <div className="detail-value">
                       <div className="parameters-json">
                         {JSON.stringify(selectedRun.parameters, null, 2)}
@@ -732,8 +874,21 @@ const JobRuns: React.FC = () => {
                 )}
 
                 {/* Steps Section */}
-                <div className="steps-section">
-                  <div className="detail-label">Steps ({runSteps.length})</div>
+                <div className="detail-section">
+                  <div className="detail-section-title">Steps ({runSteps.length})</div>
+                  {hasStatusInconsistency() && (
+                    <div style={{ 
+                      background: 'var(--warning-light)', 
+                      border: '1px solid var(--warning)', 
+                      borderRadius: '4px', 
+                      padding: '8px 12px', 
+                      marginBottom: '12px',
+                      fontSize: '12px',
+                      color: 'var(--warning-dark)'
+                    }}>
+                      ⚠️ Status inconsistency detected: Job status "{selectedRun?.status}" doesn't match step statuses. This indicates a backend processing issue.
+                    </div>
+                  )}
                   {loadingSteps ? (
                     <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neutral-500)' }}>
                       Loading steps...
@@ -758,8 +913,8 @@ const JobRuns: React.FC = () => {
                             </div>
                           </div>
                           <div className="step-details">
-                            {step.target_id && <div>Target: {step.target_id}</div>}
-                            {step.shell && <div>Shell: {step.shell}</div>}
+                            {step.target_id && <div>Target: {getTargetInfo(step.target_id)}</div>}
+                            <div>Command: {getStepCommand(step)}</div>
                             {step.exit_code !== null && step.exit_code !== undefined && (
                               <div>Exit Code: {step.exit_code}</div>
                             )}
@@ -783,14 +938,7 @@ const JobRuns: React.FC = () => {
                   )}
                 </div>
 
-                <div className="action-buttons">
-                  <button 
-                    className="btn-primary"
-                    onClick={() => navigate(`/job-runs/${selectedRun.id}`)}
-                  >
-                    View Full Details
-                  </button>
-                </div>
+
               </div>
             ) : (
               <div className="empty-state">

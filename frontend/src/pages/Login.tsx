@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
-import { authApi, setTokens } from '../services/api';
+import { authApi, setSessionToken } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const Login: React.FC = () => {
@@ -20,10 +20,10 @@ const Login: React.FC = () => {
 
     try {
       const response = await authApi.login({ username, password });
-      setTokens(response.access_token, response.refresh_token);
+      setSessionToken(response.access_token);
       
-      // Also update the AuthContext with both tokens
-      login(response.access_token, response.user, response.refresh_token);
+      // Update the AuthContext with session token
+      login(response.access_token, response.user);
       
       navigate('/');
     } catch (error: any) {

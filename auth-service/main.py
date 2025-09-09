@@ -51,8 +51,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours - longer session since no refresh
 
 # Database configuration is now handled by shared.database module
 
@@ -71,13 +70,9 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
     user: UserResponse
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 class User(BaseModel):
     id: int
@@ -110,17 +105,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create JWT refresh token"""
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    
-    to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+
 
 def authenticate_user(username: str, password: str) -> Optional[User]:
     """Authenticate user by username and password"""
@@ -197,9 +182,8 @@ async def login(login_request: LoginRequest) -> Dict[str, Any]:
         logger.error(f"Unexpected error during login: {e}", exc_info=True)
         raise AuthError("Authentication failed")
     
-    # Create tokens
+    # Create access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     
     token_data = {
         "user_id": user.id,
@@ -209,11 +193,9 @@ async def login(login_request: LoginRequest) -> Dict[str, Any]:
     }
     
     access_token = create_access_token(token_data, expires_delta=access_token_expires)
-    refresh_token = create_refresh_token(token_data, expires_delta=refresh_token_expires)
     
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         user=UserResponse(
             id=user.id,
@@ -225,67 +207,7 @@ async def login(login_request: LoginRequest) -> Dict[str, Any]:
         )
     )
 
-@app.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_request: RefreshRequest) -> Dict[str, Any]:
-    """Refresh token endpoint"""
-    try:
-        payload = jwt.decode(refresh_request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("user_id")
-        token_type: str = payload.get("type")
-        
-        if user_id is None or token_type != "refresh":
-            raise AuthError("Invalid refresh token")
-        
-        # Verify user and token version
-        try:
-            with get_db_cursor(commit=False) as cursor:
-                cursor.execute(
-                    "SELECT id, email, username, role, created_at, token_version FROM users WHERE id = %s",
-                    (user_id,)
-                )
-                user_data = cursor.fetchone()
-                
-                if not user_data:
-                    raise AuthError("User not found")
-                
-                if user_data['token_version'] != payload.get("token_version", 1):
-                    raise AuthError("Token revoked")
-        except AuthError:
-            raise
-        except Exception as e:
-            logger.error(f"Database error during token refresh: {e}", exc_info=True)
-            raise handle_database_error(e, "token refresh")
-        
-        # Create new tokens
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-        
-        token_data = {
-            "user_id": user_data['id'],
-            "username": user_data['username'],
-            "role": user_data['role'],
-            "token_version": user_data['token_version']
-        }
-        
-        access_token = create_access_token(token_data, expires_delta=access_token_expires)
-        new_refresh_token = create_refresh_token(token_data, expires_delta=refresh_token_expires)
-        
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=new_refresh_token,
-            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            user=UserResponse(
-                id=user_data['id'],
-                email=user_data['email'],
-                username=user_data['username'],
-                role=user_data['role'],
-                created_at=user_data['created_at'].isoformat(),
-                token_version=user_data['token_version']
-            )
-        )
-        
-    except JWTError:
-        raise AuthError("Invalid refresh token")
+
 
 @app.post("/revoke-all")
 async def revoke_all_tokens(current_user: User = Depends(verify_token)):

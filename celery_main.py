@@ -1104,9 +1104,15 @@ class JobExecutor:
             return
         
         # Determine overall status
-        if any(status == 'failed' for status in step_statuses):
+        # Filter out skipped steps when determining job status
+        active_statuses = [status for status in step_statuses if status != 'skipped']
+        
+        if not active_statuses:
+            # All steps were skipped
+            overall_status = 'succeeded'
+        elif any(status == 'failed' for status in active_statuses):
             overall_status = 'failed'
-        elif any(status in ['queued', 'running'] for status in step_statuses):
+        elif any(status in ['queued', 'running'] for status in active_statuses):
             overall_status = 'running'
         else:
             overall_status = 'succeeded'
@@ -1182,7 +1188,7 @@ class JobExecutor:
     def _create_notification_skipped_result(self) -> Dict[str, Any]:
         """Create result for skipped notification"""
         return {
-            'status': 'succeeded',
+            'status': 'skipped',
             'exit_code': 0,
             'stdout': 'Notification skipped based on send_on condition',
             'stderr': ''
@@ -1313,7 +1319,7 @@ class JobExecutor:
             condition = step_definition['condition']
             if not self._evaluate_condition(condition, context):
                 return {
-                    'status': 'succeeded',
+                    'status': 'skipped',
                     'exit_code': 0,
                     'stdout': f'Conditional notification skipped: condition "{condition}" evaluated to false',
                     'stderr': ''

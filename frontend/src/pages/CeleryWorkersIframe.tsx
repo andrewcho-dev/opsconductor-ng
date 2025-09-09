@@ -1,9 +1,15 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 import { Activity, AlertCircle } from 'lucide-react';
 
 const CeleryWorkersIframe: React.FC = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  
+  // Get task parameter from URL
+  const searchParams = new URLSearchParams(location.search);
+  const taskId = searchParams.get('task');
 
   // Check if user is admin
   if (user?.role !== 'admin') {
@@ -37,7 +43,16 @@ const CeleryWorkersIframe: React.FC = () => {
       {/* Full-width iframe section - matching CeleryHealthCard placement */}
       <div className="dashboard-grid" style={{ gridTemplateColumns: '1fr' }}>
         <div className="dashboard-section" style={{ height: 'calc(100vh - 110px)' }}>
-          <div className="section-header">Worker Dashboard</div>
+          <div className="section-header">
+            {taskId ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Task: {taskId}</span>
+                <span style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
+                  (If task shows "Unknown", it may have expired from Celery)
+                </span>
+              </div>
+            ) : "Worker Dashboard"}
+          </div>
           <div className="compact-content" style={{ padding: 0 }}>
             <iframe
               ref={(iframe) => {
@@ -89,7 +104,7 @@ const CeleryWorkersIframe: React.FC = () => {
                   };
                 }
               }}
-              src="/flower"
+              src={taskId ? `/flower/task/${taskId}` : "/flower"}
               title="Celery Workers Dashboard"
               style={{ 
                 width: '100%', 

@@ -422,11 +422,12 @@ services:
       context: .
       dockerfile: ./executor-service/Dockerfile
     container_name: opsconductor-flower
-    command: celery -A shared.celery_config flower --port=5555 --broker=redis://redis:6379/0
+    command: celery -A shared.celery_config flower --port=5555 --persistent=True
     ports:
       - "5555:5555"
     environment:
-      REDIS_URL: redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379/0
+      - FLOWER_UNAUTHENTICATED_API=1
     depends_on:
       redis:
         condition: service_healthy
@@ -434,6 +435,7 @@ services:
       - opsconductor-net
     volumes:
       - ./shared:/app/shared
+      - flower_data:/app/flower_data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5555"]
       interval: 30s
@@ -519,3 +521,4 @@ volumes:
   step_libraries_data:
   step_libraries_cache:
   celery_beat_data:
+  flower_data:

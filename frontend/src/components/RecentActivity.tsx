@@ -12,7 +12,7 @@ const RecentActivity: React.FC = () => {
   const fetchRecentRuns = async () => {
     try {
       const response = await jobRunApi.list(0, 5); // Get last 5 runs only
-      setRecentRuns(response.runs || []);
+      setRecentRuns(response.data || []);
       setLastUpdate(new Date());
     } catch (error) {
       setRecentRuns([]);
@@ -114,7 +114,7 @@ const RecentActivity: React.FC = () => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Link 
-                    to={`/job-runs/${run.id}`}
+                    to={`/history/job-runs?run_id=${run.id}`}
                     style={{ 
                       textDecoration: 'none', 
                       color: '#1d4ed8',

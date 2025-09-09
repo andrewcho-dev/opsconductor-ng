@@ -260,8 +260,15 @@ export interface JobListResponse {
 }
 
 export interface JobRunListResponse {
-  runs: JobRun[];
-  total: number;
+  data: JobRun[];
+  meta: {
+    page: number;
+    per_page: number;
+    total_items: number;
+    total_pages: number;
+    has_next: boolean;
+    has_prev: boolean;
+  };
 }
 
 // Schedule Types

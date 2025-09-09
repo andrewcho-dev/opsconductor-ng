@@ -44,7 +44,7 @@ celery_app.conf.update(
     worker_max_tasks_per_child=1000,  # Restart worker after 1000 tasks
     
     # Result backend settings
-    result_expires=3600,  # Results expire after 1 hour
+    result_expires=2592000,  # Results expire after 30 days (30 * 24 * 60 * 60)
     result_persistent=True,  # Persist results to disk
     
     # Task routing

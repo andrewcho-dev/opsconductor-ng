@@ -15,6 +15,7 @@ A comprehensive microservices-based automation platform for managing Windows and
 - **targets-service**: Windows/Linux target management with groups (Port 3005)
 - **jobs-service**: Job definition and management (Port 3006)
 - **executor-service**: Job execution via WinRM/SSH with file operations (Port 3007)
+- **scheduler-service**: Cron-based job scheduling with timezone support (Port 3008)
 - **notification-service**: Multi-channel notifications (Email, Slack, Teams, Webhooks) (Port 3009)
 - **discovery-service**: Network scanning and automated target discovery (Port 3010)
 - **step-libraries-service**: Reusable automation step libraries (Port 3011)
@@ -113,11 +114,12 @@ npx playwright test
 - **Connection**: Environment variables in docker-compose.yml
 
 ### Job Processing
-- **Framework**: Celery 5.3.4 with Redis backend
+- **Framework**: Celery 5.3.4 with Redis backend (replaced RabbitMQ)
 - **Worker Configuration**: Concurrency of 4 workers
 - **Task Queues**: execution, jobs, and default queues
 - **Monitoring**: Flower dashboard on port 5555
 - **Beat Scheduler**: Handles all recurring jobs
+- **Task Routing**: Specialized queues for different job types
 
 ### Docker Compose
 **Main File**: docker-compose.yml
@@ -128,6 +130,16 @@ npx playwright test
   - nginx_ssl: SSL certificates
   - step_libraries_data: Automation libraries
   - step_libraries_cache: Library cache
+  - celery_beat_data: Persistent Celery Beat schedule
+
+### Security & Authentication
+**API Gateway**: NGINX handles authentication for all services
+**Authentication Flow**:
+- JWT tokens validated at NGINX level using auth_request
+- User identity passed to microservices via custom headers
+- Inter-service communication secured through gateway
+- No direct service-to-service authentication needed
+- Centralized auth_request to auth-service for all endpoints
 
 ### Environment Variables
 Key variables defined in .env:
@@ -165,3 +177,5 @@ docker-compose up -d
 - ✅ Production deployment with HTTPS and SSL
 - ✅ Comprehensive testing suite with Playwright
 - ✅ Unified job processing with Celery (replaced RabbitMQ)
+- ✅ Improved job reliability with task retries and monitoring
+- ✅ Simplified architecture with consolidated job execution flow

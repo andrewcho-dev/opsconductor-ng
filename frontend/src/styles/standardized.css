@@ -1368,3 +1368,29 @@ body {
   font-size: var(--font-size-xs);
   text-align: center;
 }
+
+/* Job Runs Panel - Override detail styles for consistency */
+.details-panel .detail-item label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--neutral-500);
+  text-transform: none;
+  letter-spacing: normal;
+  margin-bottom: var(--space-1);
+}
+
+.details-panel .detail-value {
+  font-size: var(--font-size-sm);
+  color: var(--neutral-700);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.details-panel .detail-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--neutral-700);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--neutral-200);
+}

@@ -13,7 +13,6 @@ import Jobs from './pages/Jobs';
 import Schedules from './pages/Schedules';
 
 import JobRuns from './pages/JobRuns';
-import JobRunDetail from './pages/JobRunDetail';
 
 import NotificationHistoryPage from './pages/NotificationHistory';
 import CeleryWorkersIframe from './pages/CeleryWorkersIframe';
@@ -67,7 +66,6 @@ const App: React.FC = () => {
 
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
                     <Route path="/history/job-runs" element={<JobRuns />} />
-                    <Route path="/history/job-runs/:id" element={<JobRunDetail />} />
                     <Route path="/history/notifications" element={<NotificationHistoryPage />} />
                     <Route path="/history/celery-workers-iframe" element={<CeleryWorkersIframe />} />
                     <Route path="/notifications" element={<Navigate to="/settings/notification-preferences" />} />

@@ -66,25 +66,16 @@ const api = axios.create({
   },
 });
 
-// Token management  
-let refreshToken: string | null = localStorage.getItem('refresh_token');
-
-// Request interceptor to add auth token and set dynamic baseURL
+// Request interceptor to set dynamic baseURL
 api.interceptors.request.use(
   (config) => {
     // Set dynamic baseURL for each request
     config.baseURL = getApiBaseUrl();
     
-    // Always get fresh token from localStorage
-    const currentToken = localStorage.getItem('access_token');
-    console.log('API Request Interceptor:', { 
-      baseURL: config.baseURL,
-      url: config.url, 
-      hasToken: !!currentToken,
-      tokenPreview: currentToken ? currentToken.substring(0, 20) + '...' : null
-    });
-    if (currentToken) {
-      config.headers.Authorization = `Bearer ${currentToken}`;
+    // Add session token if available (simple session-based auth)
+    const sessionToken = localStorage.getItem('session_token');
+    if (sessionToken) {
+      config.headers.Authorization = `Bearer ${sessionToken}`;
     }
     return config;
   },
@@ -93,92 +84,38 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token refresh
+// Response interceptor to handle auth errors
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
-
-    // Handle both 401 (Unauthorized) and 403 (Forbidden) errors
-    if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
-      originalRequest._retry = true;
-      console.log(`Auth error (${error.response?.status}), attempting token refresh`);
-
-      const currentRefreshToken = localStorage.getItem('refresh_token');
-      if (currentRefreshToken) {
-        try {
-          console.log('Refreshing token with refresh_token');
-          const response = await axios.post(`${getApiBaseUrl()}/api/v1/refresh`, {
-            refresh_token: currentRefreshToken
-          });
-
-          const { access_token, refresh_token: newRefreshToken } = response.data;
-          console.log('Token refresh successful, updating tokens');
-          
-          setTokens(access_token, newRefreshToken);
-          
-          // Update user data in AuthContext
-          try {
-            const userResponse = await axios.get(`${getApiBaseUrl()}/api/v1/auth/verify`, {
-              headers: { Authorization: `Bearer ${access_token}` }
-            });
-            if (userResponse.data?.user) {
-              localStorage.setItem('user', JSON.stringify(userResponse.data.user));
-            }
-          } catch (userError) {
-            console.error('Failed to refresh user data:', userError);
-          }
-          
-          // Retry the original request
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return api(originalRequest);
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError);
-          // Refresh failed, redirect to login
-          clearTokens();
-          window.location.href = '/login';
-          return Promise.reject(refreshError);
-        }
-      } else {
-        console.log('No refresh token found, redirecting to login');
-        // No refresh token, redirect to login
-        clearTokens();
-        window.location.href = '/login';
-      }
+    // Handle auth errors by redirecting to login
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      console.log('Authentication required, redirecting to login');
+      clearTokens();
+      window.location.href = '/login';
     }
-
     return Promise.reject(error);
   }
 );
 
-// Token management functions
-export const setTokens = (access: string, refresh: string) => {
-  refreshToken = refresh;
-  localStorage.setItem('access_token', access);
-  localStorage.setItem('refresh_token', refresh);
+// Simple session management functions
+export const setSessionToken = (token: string) => {
+  localStorage.setItem('session_token', token);
 };
 
 export const clearTokens = () => {
-  refreshToken = null;
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('session_token');
+  localStorage.removeItem('user');
 };
 
 export const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('access_token');
+  return !!localStorage.getItem('session_token');
 };
 
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
     const response: AxiosResponse<AuthResponse> = await axios.post(`${getApiBaseUrl()}/api/v1/auth/login`, credentials);
-    return response.data;
-  },
-
-  refresh: async (): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/api/v1/auth/refresh', {
-      refresh_token: refreshToken
-    });
     return response.data;
   },
 
