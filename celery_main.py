@@ -34,9 +34,9 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, ServiceCommunicationError
-from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
+from shared.auth import require_admin_role
 from shared.utils import utility_render_template, utility_render_file_paths, utility_create_error_result
-import shared.utility_service_auth as service_auth_utility
+# Service auth utility no longer needed with header-based auth
 import shared.utility_service_clients as service_clients_utility
 
 # Import utility modules
@@ -1557,13 +1557,7 @@ async def startup_event() -> None:
     
     # Initialize service utilities
     service_clients_utility.set_service_name("executor-service")
-    service_auth_utility.set_config({
-        "auth_service_url": os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001"),
-        "service_credentials": {
-            "username": os.getenv("EXECUTOR_SERVICE_USERNAME", "admin"),
-            "password": os.getenv("EXECUTOR_SERVICE_PASSWORD", "admin123")
-        }
-    })
+    # Service auth utility no longer needed with header-based auth
     
     logger.info("Service utilities initialized")
     executor.start_worker()

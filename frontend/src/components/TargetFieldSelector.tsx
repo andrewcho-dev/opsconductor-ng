@@ -168,11 +168,11 @@ const TargetFieldSelector: React.FC<TargetFieldSelectorProps> = ({
                 width: '20px',
                 height: '20px',
                 borderRadius: '3px',
-                backgroundColor: target.status === 'online' ? '#e8f5e8' : '#fee2e2',
+                backgroundColor: '#f0f0f0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: target.status === 'online' ? '#388e3c' : '#dc2626'
+                color: '#666'
               }}>
                 <Server size={12} />
               </div>

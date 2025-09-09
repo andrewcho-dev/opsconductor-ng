@@ -20,7 +20,8 @@ import {
   ClipboardList,
   History,
   Plus,
-  List
+  List,
+  Activity
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -187,6 +188,15 @@ const Navbar: React.FC = () => {
                   >
                     <span className="nav-icon"><ClipboardList size={14} /></span>
                     Notifications
+                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                  </Link>
+                  <Link 
+                    to="/history/celery-workers-iframe" 
+                    className={`nav-submenu-item ${location.pathname === '/history/celery-workers-iframe' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Activity size={14} /></span>
+                    Celery Workers
                     {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
                   </Link>
                 </div>

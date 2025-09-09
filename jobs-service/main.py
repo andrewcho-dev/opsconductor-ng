@@ -18,7 +18,7 @@ sys.path.append('/home/opsconductor')
 
 import psycopg2
 import psycopg2.extras
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, validator, Field
 from dotenv import load_dotenv
@@ -30,7 +30,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
+from shared.auth import require_admin_role
 # Job scheduling now handled by Celery tasks
 
 # Import visual job schema
@@ -52,6 +52,24 @@ app = FastAPI(
 
 # Add standard middleware
 add_standard_middleware(app, "jobs-service", version="2.0.0")
+
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
 
 # Database configuration
 DB_HOST = os.getenv("DB_HOST", "postgres")
@@ -156,12 +174,14 @@ async def health_check():
 
 @app.get("/jobs", response_model=PaginatedResponse)
 async def list_jobs(
+    request: Request,
     page: int = 1,
     limit: int = 50,
-    active_only: bool = True,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    active_only: bool = True
 ):
     """List all jobs with pagination"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         offset = (page - 1) * limit
         
@@ -230,9 +250,11 @@ async def list_jobs(
 @app.get("/jobs/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: int,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get a specific job by ID"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         with get_db_cursor() as cursor:
             cursor.execute("""
@@ -272,9 +294,11 @@ async def get_job(
 @app.post("/jobs", response_model=JobResponse)
 async def create_job(
     job: JobCreate,
-    user_info: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Create a new visual workflow job"""
+    # Check admin/operator role
+    user_info = await require_admin_or_operator_role(request)
     try:
         # Validate the job definition
         validate_job_definition(job.definition.dict())
@@ -324,9 +348,11 @@ async def create_job(
 async def update_job(
     job_id: int,
     job_update: JobUpdate,
-    user_info: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update an existing job"""
+    # Check admin/operator role
+    user_info = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Check if job exists
@@ -408,9 +434,11 @@ async def update_job(
 @app.delete("/jobs/{job_id}")
 async def delete_job(
     job_id: int,
-    user_info: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Delete a job (soft delete by setting is_active = false)"""
+    # Check admin/operator role
+    user_info = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             cursor.execute("UPDATE jobs SET is_active = false WHERE id = %s RETURNING name", (job_id,))
@@ -448,13 +476,15 @@ class JobRunResponse(BaseModel):
 @app.post("/jobs/{job_id}/run", response_model=JobRunResponse)
 async def run_job(
     job_id: int,
-    run_request: Optional[JobRunRequest] = None,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    request: Request,
+    run_request: Optional[JobRunRequest] = None
 ):
     """
     Execute a job immediately using Celery (Phase 2 Implementation)
     Creates a job run record and dispatches to Celery for execution
     """
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         if run_request is None:
             run_request = JobRunRequest()
@@ -580,12 +610,14 @@ class ExportRequest(BaseModel):
 
 @app.post("/jobs/export")
 async def export_jobs(
-    request: Optional[ExportRequest] = None,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    request: Request,
+    export_request: Optional[ExportRequest] = None
 ):
     """Export jobs to downloadable format"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
-        job_ids = request.job_ids if request else None
+        job_ids = export_request.job_ids if export_request else None
         
         with get_db_cursor() as cursor:
             # Build query
@@ -662,9 +694,11 @@ async def export_jobs(
 @app.post("/jobs/import")
 async def import_jobs(
     import_data: JobExport,
-    user_info: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Import jobs from export format"""
+    # Check admin/operator role
+    user_info = await require_admin_or_operator_role(request)
     try:
         # Validate import format
         jsonschema.validate(import_data.dict(), EXPORT_FORMAT_SCHEMA)
@@ -931,12 +965,14 @@ def _convert_visual_workflow_to_steps_basic(workflow_definition: dict, parameter
 # Job Runs API endpoints
 @app.get("/runs")
 async def list_job_runs(
+    request: Request,
     skip: int = 0, 
     limit: int = 100, 
-    job_id: Optional[int] = None,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    job_id: Optional[int] = None
 ):
     """List job runs with pagination and optional filtering by job_id"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         with get_db_cursor() as cursor:
             # Build query based on filters
@@ -984,9 +1020,11 @@ async def list_job_runs(
 @app.get("/runs/{run_id}")
 async def get_job_run(
     run_id: int,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get a specific job run by ID"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         with get_db_cursor() as cursor:
             query = """
@@ -1010,9 +1048,11 @@ async def get_job_run(
 @app.get("/runs/{run_id}/steps")
 async def get_job_run_steps(
     run_id: int,
-    user_info: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get all steps for a specific job run"""
+    # Get user info from headers
+    user_info = get_user_from_headers(request)
     try:
         with get_db_cursor() as cursor:
             # First verify the run exists

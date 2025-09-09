@@ -15,14 +15,13 @@ A comprehensive microservices-based automation platform for managing Windows and
 - **targets-service**: Windows/Linux target management with groups (Port 3005)
 - **jobs-service**: Job definition and management (Port 3006)
 - **executor-service**: Job execution via WinRM/SSH with file operations (Port 3007)
-- **scheduler-service**: Cron-based job scheduling with timezone support (Port 3008)
 - **notification-service**: Multi-channel notifications (Email, Slack, Teams, Webhooks) (Port 3009)
 - **discovery-service**: Network scanning and automated target discovery (Port 3010)
 - **step-libraries-service**: Reusable automation step libraries (Port 3011)
 - **frontend**: React TypeScript UI with responsive design (Port 3000)
 - **nginx**: Reverse proxy and SSL termination (Ports 80/443)
 - **database**: PostgreSQL 16 with comprehensive schema
-- **rabbitmq**: Message queue for job execution (Ports 5672/15672)
+- **redis**: Message broker and result backend for Celery (Port 6379)
 
 ## Projects
 
@@ -47,6 +46,9 @@ A comprehensive microservices-based automation platform for managing Windows and
 - pydantic==2.5.0
 - python-dotenv==1.0.0
 - aiohttp==3.9.1 (executor-service, for async HTTP)
+- celery[redis]==5.3.4 (job execution)
+- redis==5.0.1 (Celery broker/backend)
+- flower==2.0.1 (Celery monitoring)
 
 #### Build & Installation
 ```bash
@@ -110,11 +112,19 @@ npx playwright test
 - **Migrations**: database/migrations folder contains schema updates
 - **Connection**: Environment variables in docker-compose.yml
 
+### Job Processing
+- **Framework**: Celery 5.3.4 with Redis backend
+- **Worker Configuration**: Concurrency of 4 workers
+- **Task Queues**: execution, jobs, and default queues
+- **Monitoring**: Flower dashboard on port 5555
+- **Beat Scheduler**: Handles all recurring jobs
+
 ### Docker Compose
 **Main File**: docker-compose.yml
 **Network**: Bridge network (opsconductor-net)
 **Volumes**: 
   - postgres_data: Persistent PostgreSQL data
+  - redis_data: Persistent Redis data
   - nginx_ssl: SSL certificates
   - step_libraries_data: Automation libraries
   - step_libraries_cache: Library cache
@@ -126,6 +136,7 @@ Key variables defined in .env:
 - Service URLs for inter-service communication
 - SMTP settings for notification service
 - Encryption keys for credential storage
+- Redis URL for Celery configuration
 
 ### Startup
 ```bash
@@ -140,7 +151,7 @@ docker-compose up -d
 - Health check endpoints on all services
 - System status script: ./system-status.sh
 - Service dependency management in docker-compose
-- RabbitMQ management UI at http://localhost:15672
+- Celery Flower dashboard at http://localhost:5555
 
 ## Current System Status
 **Phase 11 Complete**: Target Groups & UI Improvements with Advanced Scheduler Removal
@@ -153,3 +164,4 @@ docker-compose up -d
 - ✅ Enterprise security (AES-GCM encryption, JWT authentication)
 - ✅ Production deployment with HTTPS and SSL
 - ✅ Comprehensive testing suite with Playwright
+- ✅ Unified job processing with Celery (replaced RabbitMQ)

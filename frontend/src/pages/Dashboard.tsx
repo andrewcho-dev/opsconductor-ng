@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import SystemMetrics from '../components/SystemMetrics';
 import RecentActivity from '../components/RecentActivity';
-import CeleryHealthCard from '../components/CeleryHealthCard';
+
 import { Users, Shield, Target, Settings, Play, Calendar, Search, CheckCircle, Circle, Plus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
@@ -99,9 +99,6 @@ const Dashboard: React.FC = () => {
       <div className="dashboard-header">
         <div className="header-left">
           <h1>Dashboard</h1>
-          <span className={`scheduler-status ${stats.schedulerRunning ? 'running' : 'stopped'}`}>
-            Scheduler {stats.schedulerRunning ? <CheckCircle size={12} className="inline" /> : <Circle size={12} className="inline" />}
-          </span>
         </div>
         <div className="header-stats">
           <Link to="/user-management" className="stat-pill"><Users size={14} /> {stats.users}</Link>
@@ -146,12 +143,6 @@ const Dashboard: React.FC = () => {
             <Link to="/discovery" className="action-btn"><Search size={14} /> Discover</Link>
           </div>
         </div>
-      </div>
-
-      {/* Second row: Celery Monitoring */}
-      <div className="dashboard-grid" style={{ marginTop: '12px' }}>
-        {/* Celery Health & Metrics */}
-        <CeleryHealthCard />
       </div>
     </div>
   );

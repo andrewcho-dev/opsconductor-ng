@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
@@ -24,7 +24,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_self_access
+from shared.auth import require_admin_role
 from shared.utils import get_service_client
 
 # Load environment variables
@@ -44,6 +44,26 @@ app = FastAPI(
 
 # Add standard middleware (includes CORS, logging, error handling, etc.)
 add_standard_middleware(app, "user-service", version="1.0.0")
+
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_self_access(user_id: int, request: Request):
+    """Require admin role or self-access (user accessing their own data)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    current_user_id = current_user.get("id")
+    
+    if user_role != "admin" and str(current_user_id) != str(user_id):
+        raise PermissionError("Access denied")
+    return current_user
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -98,8 +118,10 @@ def get_password_hash(password: str) -> str:
 
 # CRUD Operations
 @app.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(user_data: UserCreate, current_user: dict = Depends(require_admin_role)):
+async def create_user(user_data: UserCreate, request: Request):
     """Create a new user - ADMIN ONLY"""
+    # Check admin role
+    current_user = await require_admin_role(request)
     try:
         with get_db_cursor() as cursor:
             # Check if username or email already exists
@@ -134,11 +156,13 @@ async def create_user(user_data: UserCreate, current_user: dict = Depends(requir
 
 @app.get("/users", response_model=PaginatedResponse, response_model_exclude_none=False)
 async def list_users(
+    request: Request,
     skip: int = 0,
-    limit: int = 100,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    limit: int = 100
 ):
     """List all users with pagination"""
+    # Get user info from headers
+    current_user = get_user_from_headers(request)
     # Non-admin users can only see their own profile
     if current_user["role"] != "admin":
         try:
@@ -225,8 +249,10 @@ async def list_users(
         raise handle_database_error(e, "user listing")
 
 @app.get("/users/{user_id}")
-async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_user(user_id: int, request: Request):
     """Get user by ID"""
+    # Check admin or self access
+    current_user = await require_admin_or_self_access(user_id, request)
     # Non-admin users can only access their own profile
     if current_user["role"] != "admin" and current_user["id"] != user_id:
         raise PermissionError("Access denied")
@@ -267,9 +293,11 @@ async def get_user(user_id: int, current_user: dict = Depends(verify_token_with_
 async def update_user(
     user_id: int, 
     user_data: UserUpdate, 
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Update user by ID"""
+    # Check admin or self access
+    current_user = await require_admin_or_self_access(user_id, request)
     # Non-admin users can only update their own profile (and not change role)
     if current_user["role"] != "admin":
         if current_user["id"] != user_id:
@@ -347,8 +375,10 @@ async def update_user(
         raise DatabaseError("Failed to update user")
 
 @app.delete("/users/{user_id}")
-async def delete_user(user_id: int, current_user: dict = Depends(require_admin_role)):
+async def delete_user(user_id: int, request: Request):
     """Delete user by ID - ADMIN ONLY"""
+    # Check admin role
+    current_user = await require_admin_role(request)
     # Prevent admin from deleting themselves
     if current_user["id"] == user_id:
         raise ValidationError("Cannot delete your own account")
@@ -379,9 +409,11 @@ async def delete_user(user_id: int, current_user: dict = Depends(require_admin_r
 async def assign_role(
     user_id: int, 
     role_data: RoleAssignment, 
-    current_user: dict = Depends(require_admin_role)
+    request: Request
 ):
     """Assign role to user - ADMIN ONLY"""
+    # Check admin role
+    current_user = await require_admin_role(request)
     valid_roles = ["admin", "operator", "viewer"]
     if role_data.role not in valid_roles:
         raise ValidationError(f"Invalid role. Must be one of: {', '.join(valid_roles)}", "role")
@@ -438,9 +470,11 @@ class NotificationPreferencesResponse(NotificationPreferences):
 @app.get("/users/{user_id}/notification-preferences", response_model=NotificationPreferencesResponse)
 async def get_user_notification_preferences(
     user_id: int,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get user notification preferences"""
+    # Check admin or self access
+    current_user = await require_admin_or_self_access(user_id, request)
     # Users can only access their own preferences, admins can access any
     if current_user["role"] != "admin" and current_user["user_id"] != user_id:
         raise PermissionError("Access denied")
@@ -494,9 +528,11 @@ async def get_user_notification_preferences(
 async def update_user_notification_preferences(
     user_id: int,
     preferences: NotificationPreferences,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Update user notification preferences"""
+    # Check admin or self access
+    current_user = await require_admin_or_self_access(user_id, request)
     # Users can only update their own preferences, admins can update any
     if current_user["role"] != "admin" and current_user["user_id"] != user_id:
         raise PermissionError("Access denied")

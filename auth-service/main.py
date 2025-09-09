@@ -25,7 +25,7 @@ from shared.logging import setup_service_logging, get_logger
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, StandardResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, handle_database_error, AuthError
-from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
+# Auth service doesn't need to import from shared.auth
 
 # Load environment variables
 load_dotenv()
@@ -318,6 +318,22 @@ async def verify_token_endpoint(current_user: User = Depends(verify_token)):
         },
         message="Token is valid"
     )
+
+@app.get("/auth")
+async def nginx_auth_endpoint(current_user: User = Depends(verify_token)):
+    """
+    Special endpoint for nginx auth_request module
+    Returns user info in headers for downstream services
+    """
+    from fastapi import Response
+    
+    response = Response(status_code=200)
+    response.headers["X-User-ID"] = str(current_user.id)
+    response.headers["X-Username"] = current_user.username
+    response.headers["X-User-Email"] = current_user.email
+    response.headers["X-User-Role"] = current_user.role
+    
+    return response
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:

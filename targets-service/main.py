@@ -13,7 +13,7 @@ from typing import List, Optional, Dict, Any
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-from fastapi import FastAPI, HTTPException, Depends, status, Query
+from fastapi import FastAPI, HTTPException, Depends, status, Query, Request
 from dotenv import load_dotenv
 
 # Import shared modules
@@ -22,7 +22,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_role
+from shared.auth import require_admin_role
 from shared.utils import get_service_client
 
 # Import our enhanced models
@@ -55,8 +55,18 @@ add_standard_middleware(app, "targets-service", version="2.0.0")
 
 # Database connection is now handled by shared.database module
 
-async def require_admin_or_operator_role(current_user: dict = Depends(verify_token_with_auth_service)):
-    """Require admin or operator role"""
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
     user_role = current_user.get("role")
     if user_role not in ["admin", "operator"]:
         raise PermissionError("Admin or operator role required")
@@ -160,9 +170,9 @@ async def get_service_definitions() -> Dict[str, Any]:
 
 @app.get("/targets", response_model=TargetListResponse)
 async def get_targets(
+    request: Request,
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    current_user: dict = Depends(verify_token_with_auth_service)
+    limit: int = Query(100, ge=1, le=1000)
 ):
     """Get all targets with pagination"""
     try:
@@ -225,9 +235,12 @@ async def get_targets(
 @app.post("/targets", response_model=Target)
 async def create_target(
     target: TargetCreate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Create a new target"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
+    
     try:
         with get_db_cursor() as cursor:
             cursor.execute("""
@@ -304,7 +317,7 @@ async def create_target(
 @app.get("/targets/{target_id}", response_model=Target)
 async def get_target(
     target_id: int,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get a specific target with its services and credentials"""
     try:
@@ -348,9 +361,11 @@ async def get_target(
 async def update_target(
     target_id: int,
     target: TargetUpdate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update an existing target"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     logger.info(f"Updating target {target_id} with data: {target.dict()}")
     try:
         with get_db_cursor() as cursor:
@@ -476,9 +491,11 @@ async def update_target(
 @app.delete("/targets/{target_id}")
 async def delete_target(
     target_id: int,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Delete a target (soft delete)"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Soft delete target
@@ -507,9 +524,11 @@ async def delete_target(
 async def add_credential_to_target(
     target_id: int,
     credential: TargetCredentialCreate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Add a credential to a target"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Verify target exists
@@ -562,9 +581,11 @@ async def update_target_credential(
     target_id: int,
     credential_id: int,
     credential: TargetCredentialCreate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update a credential association on a target"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Verify target credential exists
@@ -608,9 +629,11 @@ async def update_target_credential(
 async def delete_target_credential(
     target_id: int,
     credential_id: int,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Remove a credential association from a target"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Verify target credential exists
@@ -645,9 +668,11 @@ async def delete_target_credential(
 @app.post("/targets/services/{service_id}/test")
 async def test_service_connection(
     service_id: int,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Test connection to a specific service"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     logger.info(f"Starting test connection for service_id: {service_id}")
     try:
         with get_db_cursor() as cursor:

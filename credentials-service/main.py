@@ -14,7 +14,7 @@ from typing import List, Optional, Dict, Any
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -29,7 +29,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_or_operator_role
+from shared.auth import require_admin_role
 
 # Load environment variables
 load_dotenv()
@@ -47,6 +47,24 @@ app = FastAPI(
 
 # Add standard middleware
 add_standard_middleware(app, "credentials-service", version="1.0.0")
+
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
 
 # Configuration
 MASTER_KEY = os.getenv("MASTER_KEY", "default-key-change-in-production")
@@ -218,9 +236,11 @@ def decrypt_sensitive_field(encrypted_value: str) -> str:
 @app.post("/credentials", response_model=CredentialResponse, status_code=status.HTTP_201_CREATED)
 async def create_credential(
     cred_data: CredentialCreate, 
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Create new encrypted credential"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Check if credential name already exists
@@ -309,12 +329,14 @@ async def create_credential(
         raise DatabaseError(f"Failed to create credential: {str(e)}")
 
 @app.get("/credentials", response_model=CredentialListResponse)
-async def list_credentials(
+async def get_credentials(
+    request: Request,
     skip: int = 0,
-    limit: int = 100,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    limit: int = 100
 ):
     """List all credentials (metadata only, no decrypted data)"""
+    # Get user info from headers
+    current_user = get_user_from_headers(request)
     try:
         with get_db_cursor(commit=False) as cursor:
             # Get total count
@@ -344,9 +366,11 @@ async def list_credentials(
 @app.get("/credentials/{credential_id}", response_model=CredentialResponse)
 async def get_credential(
     credential_id: int, 
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get credential metadata by ID (no decrypted data)"""
+    # Get user info from headers
+    current_user = get_user_from_headers(request)
     try:
         with get_db_cursor(commit=False) as cursor:
             cursor.execute(
@@ -369,9 +393,11 @@ async def get_credential(
 @app.get("/credentials/{credential_id}/decrypt", response_model=CredentialDecrypted)
 async def get_credential_decrypted(
     credential_id: int, 
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Get credential with decrypted data - ADMIN/OPERATOR ONLY"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor(commit=False) as cursor:
             cursor.execute(
@@ -405,9 +431,11 @@ async def get_credential_decrypted(
 async def update_credential(
     credential_id: int,
     cred_data: CredentialUpdate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update credential by ID"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Check if credential exists (excluding soft-deleted)
@@ -470,9 +498,11 @@ async def update_credential(
 @app.delete("/credentials/{credential_id}")
 async def delete_credential(
     credential_id: int, 
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Delete credential by ID"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Hard delete credential
@@ -497,9 +527,11 @@ async def delete_credential(
 async def rotate_credential(
     credential_id: int,
     new_credential_data: Dict[str, Any],
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Rotate credential data"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Check if credential exists (excluding soft-deleted)
@@ -532,9 +564,11 @@ async def rotate_credential(
 @app.delete("/credentials/by-name/{credential_name}")
 async def delete_credential_by_name(
     credential_name: str,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Delete credential by name"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # Soft delete credential by name

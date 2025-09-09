@@ -302,6 +302,7 @@ services:
       DB_POOL_MIN: 2
       DB_POOL_MAX: 10
       JWT_SECRET_KEY: your-secret-key-here
+      AUTH_SERVICE_URL: http://auth-service:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -387,7 +388,7 @@ services:
       context: .
       dockerfile: ./executor-service/Dockerfile
     container_name: opsconductor-celery-beat
-    command: celery -A shared.celery_config beat --loglevel=info
+    command: celery -A shared.celery_config beat --loglevel=info --schedule=/app/data/celerybeat-schedule
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -407,7 +408,7 @@ services:
     volumes:
       - ./executor-service:/app
       - ./shared:/app/shared
-      - celery_beat_data:/app/celerybeat-schedule
+      - celery_beat_data:/app/data
     healthcheck:
       test: ["CMD", "ps", "aux", "|", "grep", "celery.*beat"]
       interval: 60s

@@ -21,9 +21,9 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
+from shared.auth import require_admin_role
 from shared.utils import get_service_client
-import shared.utility_service_auth as service_auth_utility
+# Service auth utility no longer needed with header-based auth
 import shared.utility_service_clients as service_clients_utility
 
 # Setup structured logging
@@ -38,6 +38,24 @@ app = FastAPI(
 
 # Add standard middleware
 add_standard_middleware(app, "scheduler-service", version="1.0.0")
+
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
 
 # Service configuration now handled by utility modules
 
@@ -229,10 +247,12 @@ async def get_scheduler_status() -> Dict[str, Any]:
 @app.post("/schedules", response_model=ScheduleResponse)
 async def create_schedule(
     schedule_data: ScheduleCreate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Create a new job schedule"""
     
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             
@@ -275,13 +295,15 @@ async def create_schedule(
 
 @app.get("/schedules", response_model=ScheduleListResponse)
 async def list_schedules(
+    request: Request,
     skip: int = 0,
     limit: int = 10,
-    job_id: Optional[int] = None,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    job_id: Optional[int] = None
 ):
     """List job schedules with pagination"""
     
+    # Get user info from headers
+    current_user = get_user_from_headers(request)
     try:
         with get_db_cursor(commit=False) as cursor:
             
@@ -321,10 +343,12 @@ async def list_schedules(
 @app.get("/schedules/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(
     schedule_id: int,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Get schedule by ID"""
     
+    # Get user info from headers
+    current_user = get_user_from_headers(request)
     try:
         with get_db_cursor(commit=False) as cursor:
             cursor.execute("""
@@ -346,10 +370,12 @@ async def get_schedule(
 async def update_schedule(
     schedule_id: int,
     schedule_data: ScheduleUpdate,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update schedule"""
     
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             
@@ -415,10 +441,12 @@ async def update_schedule(
 @app.delete("/schedules/{schedule_id}")
 async def delete_schedule(
     schedule_id: int,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Delete schedule"""
     
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             
@@ -445,10 +473,12 @@ async def delete_schedule(
 @app.post("/scheduler/start")
 async def start_scheduler(
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Start the scheduler worker"""
     
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     global scheduler_running, scheduler_task
     
     if scheduler_running:
@@ -467,9 +497,11 @@ async def start_scheduler(
     )
 
 @app.post("/scheduler/stop")
-async def stop_scheduler(current_user: dict = Depends(require_admin_or_operator_role)):
+async def stop_scheduler(request: Request):
     """Stop the scheduler worker"""
     
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     global scheduler_running, scheduler_task
     
     if not scheduler_running:
@@ -533,13 +565,7 @@ async def startup_event() -> None:
     
     # Initialize service utilities
     service_clients_utility.set_service_name("scheduler-service")
-    service_auth_utility.set_config({
-        "auth_service_url": os.getenv("AUTH_SERVICE_URL", "http://auth-service:3001"),
-        "service_credentials": {
-            "username": os.getenv("SCHEDULER_SERVICE_USERNAME", "admin"),
-            "password": os.getenv("SCHEDULER_SERVICE_PASSWORD", "admin123")
-        }
-    })
+    # Service auth utility no longer needed with header-based auth
     
     logger.info("Service utilities initialized")
     

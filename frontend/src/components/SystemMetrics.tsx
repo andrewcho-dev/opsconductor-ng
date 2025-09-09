@@ -19,6 +19,7 @@ const SystemMetrics: React.FC = () => {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const fetchStats = async () => {
     try {
@@ -28,6 +29,7 @@ const SystemMetrics: React.FC = () => {
         setError(result.error);
       } else {
         setStats(result);
+        setLastUpdate(new Date());
       }
     } catch (err) {
       setError('Failed to fetch system metrics');
@@ -48,10 +50,40 @@ const SystemMetrics: React.FC = () => {
 
   return (
     <div style={{ fontSize: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <button 
+          onClick={fetchStats}
+          style={{ 
+            background: 'none', 
+            border: '1px solid #ddd', 
+            padding: '2px 6px', 
+            fontSize: '10px',
+            borderRadius: '3px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+        {lastUpdate && (
+          <span style={{ fontSize: '10px', color: '#666' }}>
+            {lastUpdate.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+
       {/* Executor Status - Ultra Compact */}
-      <div style={{ marginBottom: '8px' }}>
-        <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '13px' }}>Executor</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ 
+          fontSize: '11px', 
+          fontWeight: '600', 
+          color: '#374151', 
+          marginBottom: '4px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
+        }}>
+          Executor
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px' }}>
           <div style={{ 
             textAlign: 'center', 
             padding: '3px', 
@@ -98,13 +130,35 @@ const SystemMetrics: React.FC = () => {
               {stats.poll_interval}s
             </div>
           </div>
+          
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3px', 
+            background: '#f8fafc',
+            borderRadius: '3px',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ fontSize: '11px', color: '#666' }}>Status</div>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: stats.worker_running && stats.worker_enabled ? '#059669' : '#64748b' }}>
+              {stats.worker_running && stats.worker_enabled ? 'OK' : 'Idle'}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Queue Stats - Ultra Compact */}
       <div>
-        <div style={{ fontWeight: '600', marginBottom: '4px', fontSize: '13px' }}>Queue (24h)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '3px' }}>
+        <div style={{ 
+          fontSize: '11px', 
+          fontWeight: '600', 
+          color: '#374151', 
+          marginBottom: '4px',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px'
+        }}>
+          Queue (24h)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px' }}>
           <div style={{ 
             textAlign: 'center', 
             padding: '3px 2px', 

@@ -12,7 +12,7 @@ import {
 
 // Create axios instance for targets service
 const enhancedApi = axios.create({
-  baseURL: getServiceUrl('targets'),
+  baseURL: `${getServiceUrl('targets')}/api/v1`,
   headers: {
     'Content-Type': 'application/json',
   },

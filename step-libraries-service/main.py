@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager
 
 sys.path.append('/home/opsconductor')
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request
 from pydantic import BaseModel, Field, validator
 from abc import ABC, abstractmethod
 
@@ -40,7 +40,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
+from shared.auth import require_admin_role
 from shared.utils import get_service_client
 
 # Setup structured logging
@@ -762,6 +762,24 @@ app = FastAPI(
 # Add standard middleware
 add_standard_middleware(app, "step-libraries-service", version="1.0.0")
 
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
+
 # =============================================================================
 # API ENDPOINTS
 # =============================================================================
@@ -861,10 +879,13 @@ async def get_library(library_id: int):
 @app.post("/api/v1/libraries/install")
 async def install_library(
     background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
     license_key: Optional[str] = None
 ):
     """Install a new step library"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         result = await library_manager.install_library_from_upload(file, license_key)
         
@@ -882,8 +903,10 @@ async def install_library(
         raise DatabaseError(str(e))
 
 @app.delete("/api/v1/libraries/{library_id}")
-async def uninstall_library(library_id: int):
+async def uninstall_library(library_id: int, request: Request):
     """Uninstall a step library"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         result = await library_manager.uninstall_library(library_id)
         
@@ -899,8 +922,10 @@ async def uninstall_library(library_id: int):
         raise DatabaseError(str(e))
 
 @app.put("/api/v1/libraries/{library_id}/toggle")
-async def toggle_library(library_id: int, enabled: bool):
+async def toggle_library(library_id: int, enabled: bool, request: Request):
     """Enable or disable a library"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         success = await library_manager.db.toggle_library(library_id, enabled)
         
@@ -980,8 +1005,10 @@ async def get_performance_stats() -> Dict[str, Any]:
     }
 
 @app.post("/api/v1/install-generic-blocks")
-async def install_generic_blocks() -> Dict[str, Any]:
+async def install_generic_blocks(request: Request) -> Dict[str, Any]:
     """Install the built-in generic blocks library"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     try:
         from generic_blocks_library import create_generic_blocks_library
         
@@ -1035,8 +1062,10 @@ async def install_generic_blocks() -> Dict[str, Any]:
         raise DatabaseError(f"Failed to install generic blocks: {str(e)}")
 
 @app.post("/api/v1/cache/clear")
-async def clear_cache() -> Dict[str, Any]:
+async def clear_cache(request: Request) -> Dict[str, Any]:
     """Clear the step library cache"""
+    # Check admin/operator role
+    await require_admin_or_operator_role(request)
     library_manager.library_cache.clear()
     return {
         'status': 'success',

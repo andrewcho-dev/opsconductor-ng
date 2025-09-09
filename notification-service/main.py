@@ -31,7 +31,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, AuthError, ServiceCommunicationError
-from shared.auth import verify_token_with_auth_service, require_admin_role, verify_token_from_request
+from shared.auth import require_admin_role
 
 # Import utility modules
 import utility_email_sender as email_sender_utility
@@ -53,7 +53,23 @@ app = FastAPI(
 # Add standard middleware
 add_standard_middleware(app, "notification-service", version="2.0.0")
 
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
 
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
 
 # Service URLs
 
@@ -203,8 +219,8 @@ class SMTPTestResponse(BaseModel):
 
 # Auth verification now handled by shared modules
 async def verify_token(request: Request) -> Dict[str, Any]:
-    """Dependency for token verification"""
-    return await verify_token_from_request(request)
+    """Dependency for token verification (header-based)"""
+    return get_user_from_headers(request)
 
 # Enhanced notification processing functions
 

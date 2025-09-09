@@ -19,7 +19,7 @@ import httpx
 # Add shared module to path
 sys.path.append('/home/opsconductor')
 
-from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header
+from fastapi import FastAPI, HTTPException, Depends, status, BackgroundTasks, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import jwt
@@ -31,7 +31,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, AuthError, handle_database_error
-from shared.auth import verify_token_with_auth_service, require_admin_role, require_admin_or_operator_role
+from shared.auth import require_admin_role
 from shared.utils import get_service_client
 
 # Import utility modules
@@ -58,6 +58,24 @@ add_standard_middleware(app, "discovery-service", version="1.0.0")
 security = HTTPBearer()
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+
+# Helper functions for header-based authentication
+def get_user_from_headers(request: Request):
+    """Extract user info from nginx headers (set by gateway authentication)"""
+    return {
+        "id": request.headers.get("X-User-ID"),
+        "username": request.headers.get("X-Username"),
+        "email": request.headers.get("X-User-Email"),
+        "role": request.headers.get("X-User-Role")
+    }
+
+async def require_admin_or_operator_role(request: Request):
+    """Require admin or operator role (from nginx headers)"""
+    current_user = get_user_from_headers(request)
+    user_role = current_user.get("role")
+    if user_role not in ["admin", "operator"]:
+        raise PermissionError("Admin or operator role required")
+    return current_user
 
 # Enums
 class JobStatus(str, Enum):
@@ -368,8 +386,9 @@ async def database_metrics() -> Dict[str, Any]:
     }
 
 @app.get("/whoami")
-def whoami(current_user: dict = Depends(verify_token_with_auth_service)):
+def whoami(request: Request):
     """Simple test endpoint to check authentication"""
+    current_user = get_user_from_headers(request)
     return create_success_response(
         data={"user": current_user},
         message="Authentication working"
@@ -474,7 +493,7 @@ async def create_discovery_job(
         raise handle_database_error(e, "create discovery job")
 
 @app.get("/discovery-jobs", response_model=DiscoveryJobListResponse)
-async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_discovery_jobs(request: Request, skip: int = 0, limit: int = 100):
     """Get all discovery jobs"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -499,14 +518,14 @@ async def get_discovery_jobs(skip: int = 0, limit: int = 100, current_user: dict
 
 # Frontend compatibility endpoint - alias for discovery jobs list
 @app.get("/jobs", response_model=DiscoveryJobListResponse)
-async def get_jobs_alias(skip: int = 0, limit: int = 100, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_jobs_alias(request: Request, skip: int = 0, limit: int = 100):
     """Get all discovery jobs (frontend compatibility endpoint)"""
-    return await get_discovery_jobs(skip, limit, current_user)
+    return await get_discovery_jobs(request, skip, limit)
 
 
 
 @app.get("/discovery-jobs/{job_id}", response_model=DiscoveryJobResponse)
-async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_discovery_job(job_id: int, request: Request):
     """Get discovery job by ID"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -529,7 +548,7 @@ async def get_discovery_job(job_id: int, current_user: dict = Depends(verify_tok
         raise DatabaseError("Failed to fetch discovery job")
 
 @app.get("/discovery-jobs/{job_id}/summary")
-async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_discovery_job_summary(job_id: int, request: Request):
     """Get detailed discovery job results summary"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -609,11 +628,11 @@ async def get_discovery_job_summary(job_id: int, current_user: dict = Depends(ve
 
 @app.get("/discovery/targets", response_model=DiscoveredTargetListResponse)
 async def get_discovered_targets(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     job_id: Optional[int] = None,
-    import_status: Optional[ImportStatus] = None,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    import_status: Optional[ImportStatus] = None
 ):
     """Get discovered targets"""
     try:
@@ -655,14 +674,14 @@ async def get_discovered_targets(
 # Frontend compatibility endpoint - alias for discovered targets
 @app.get("/targets", response_model=DiscoveredTargetListResponse)
 async def get_targets_alias(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     job_id: Optional[int] = None,
-    import_status: Optional[ImportStatus] = None,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    import_status: Optional[ImportStatus] = None
 ):
     """Get discovered targets (frontend compatibility endpoint)"""
-    return await get_discovered_targets(skip, limit, job_id, import_status, current_user)
+    return await get_discovered_targets(request, skip, limit, job_id, import_status)
 
 # Target import/ignore models
 class TargetImportRequest(BaseModel):
@@ -676,25 +695,30 @@ class TargetIgnoreRequest(BaseModel):
 @app.post("/discovery/targets/import")
 async def import_discovered_targets(
     import_request: TargetImportRequest,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Import discovered targets into the main targets system"""
+    current_user = await require_admin_or_operator_role(request)
     return await _import_discovered_targets_impl(import_request, current_user)
 
 @app.post("/discovery/import-targets")
 async def import_discovered_targets_alt(
     import_request: TargetImportRequest,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Import discovered targets into the main targets system (alternative endpoint)"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     return await _import_discovered_targets_impl(import_request, current_user)
 
 @app.post("/import-targets")
 async def import_discovered_targets_root(
     import_request: TargetImportRequest,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Import discovered targets into the main targets system (root level endpoint)"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     return await _import_discovered_targets_impl(import_request, current_user)
 
 async def _import_discovered_targets_impl(
@@ -890,9 +914,11 @@ async def _import_discovered_targets_impl(
 @app.post("/discovery/targets/ignore")
 async def ignore_discovered_targets(
     ignore_request: TargetIgnoreRequest,
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Mark discovered targets as ignored"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         ignored_count = 0
         
@@ -916,9 +942,11 @@ async def ignore_discovered_targets(
 @app.delete("/discovery/targets/bulk")
 async def bulk_delete_discovered_targets(
     delete_request: TargetIgnoreRequest,  # Reuse the same model since it just needs target_ids
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Bulk delete discovered targets"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         deleted_count = 0
         
@@ -942,7 +970,7 @@ async def bulk_delete_discovered_targets(
 async def run_discovery_job(
     job_id: int, 
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(verify_token_with_auth_service)
+    request: Request
 ):
     """Run/start a discovery job"""
     try:
@@ -986,7 +1014,7 @@ async def run_discovery_job(
         raise DatabaseError("Failed to start discovery job")
 
 @app.post("/discovery-jobs/{job_id}/cancel")
-async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def cancel_discovery_job_new(job_id: int, request: Request):
     """Cancel a running discovery job"""
     try:
         with get_db_cursor() as cursor:
@@ -1018,8 +1046,10 @@ async def cancel_discovery_job_new(job_id: int, current_user: dict = Depends(ver
         raise DatabaseError("Failed to cancel discovery job")
 
 @app.delete("/discovery-jobs/{job_id}")
-async def delete_discovery_job(job_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
+async def delete_discovery_job(job_id: int, request: Request):
     """Delete a discovery job and its associated targets"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # First check if job exists and get current status
@@ -1067,9 +1097,11 @@ async def delete_discovery_job(job_id: int, current_user: dict = Depends(require
 async def update_discovery_job(
     job_id: int, 
     job_update: DiscoveryJobUpdate, 
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update a discovery job (only if not running/completed)"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # First check if job exists and get current status
@@ -1128,7 +1160,7 @@ async def update_discovery_job(
         raise DatabaseError("Failed to update discovery job")
 
 @app.get("/discovery/targets/{target_id}", response_model=DiscoveredTargetResponse)
-async def get_discovered_target(target_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_discovered_target(target_id: int, request: Request):
     """Get a specific discovered target by ID"""
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -1156,9 +1188,11 @@ async def get_discovered_target(target_id: int, current_user: dict = Depends(ver
 async def update_discovered_target(
     target_id: int, 
     target_update: DiscoveredTargetUpdate, 
-    current_user: dict = Depends(require_admin_or_operator_role)
+    request: Request
 ):
     """Update a discovered target"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             # First check if target exists
@@ -1225,8 +1259,10 @@ async def update_discovered_target(
         raise DatabaseError("Failed to update discovered target")
 
 @app.delete("/discovery/targets/{target_id}")
-async def delete_discovered_target(target_id: int, current_user: dict = Depends(require_admin_or_operator_role)):
+async def delete_discovered_target(target_id: int, request: Request):
     """Delete a discovered target"""
+    # Check admin/operator role
+    current_user = await require_admin_or_operator_role(request)
     try:
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM discovered_targets WHERE id = %s", (target_id,))
@@ -1294,24 +1330,24 @@ async def create_job_alias(
         raise handle_database_error(e, "create discovery job")
 
 @app.get("/jobs/{job_id}", response_model=DiscoveryJobResponse)
-async def get_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def get_job_alias(job_id: int, request: Request):
     """Get discovery job by ID (frontend compatibility endpoint)"""
-    return await get_discovery_job(job_id, current_user)
+    return await get_discovery_job(job_id, request)
 
 @app.put("/jobs/{job_id}", response_model=DiscoveryJobResponse)
-async def update_job_alias(job_id: int, job_data: DiscoveryJobUpdate, current_user: dict = Depends(verify_token_with_auth_service)):
+async def update_job_alias(job_id: int, job_data: DiscoveryJobUpdate, request: Request):
     """Update discovery job (frontend compatibility endpoint)"""
-    return await update_discovery_job(job_id, job_data, current_user)
+    return await update_discovery_job(job_id, job_data, request)
 
 @app.delete("/jobs/{job_id}")
-async def delete_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def delete_job_alias(job_id: int, request: Request):
     """Delete discovery job (frontend compatibility endpoint)"""
-    return await delete_discovery_job(job_id, current_user)
+    return await delete_discovery_job(job_id, request)
 
 @app.post("/jobs/{job_id}/cancel")
-async def cancel_job_alias(job_id: int, current_user: dict = Depends(verify_token_with_auth_service)):
+async def cancel_job_alias(job_id: int, request: Request):
     """Cancel discovery job (frontend compatibility endpoint)"""
-    return await cancel_discovery_job_new(job_id, current_user)
+    return await cancel_discovery_job_new(job_id, request)
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check() -> HealthResponse:

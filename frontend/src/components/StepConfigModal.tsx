@@ -99,10 +99,10 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
     }
 
     // Auto-populate credentials if target has associated credentials
-    if (selectedTarget.credential_id) {
+    if (selectedTarget.credential_ref) {
       // You could fetch credential details here and populate username
-      updates.username = `{{credential:${selectedTarget.credential_id}:username}}`;
-      updates.password = `{{credential:${selectedTarget.credential_id}:password}}`;
+      updates.username = `{{credential:${selectedTarget.credential_ref}:username}}`;
+      updates.password = `{{credential:${selectedTarget.credential_ref}:password}}`;
     }
 
     // Apply all updates at once

@@ -7,18 +7,21 @@ import { CheckCircle, XCircle, Play, Clock } from 'lucide-react';
 const RecentActivity: React.FC = () => {
   const [recentRuns, setRecentRuns] = useState<JobRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const fetchRecentRuns = async () => {
+    try {
+      const response = await jobRunApi.list(0, 5); // Get last 5 runs only
+      setRecentRuns(response.runs || []);
+      setLastUpdate(new Date());
+    } catch (error) {
+      setRecentRuns([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchRecentRuns = async () => {
-      try {
-        const response = await jobRunApi.list(0, 5); // Get last 5 runs only
-        setRecentRuns(response.runs || []);
-      } catch (error) {
-        setRecentRuns([]);
-      } finally {
-        setLoading(false);
-      }
-    };
 
     fetchRecentRuns();
     const interval = setInterval(fetchRecentRuns, 30000);
@@ -60,17 +63,25 @@ const RecentActivity: React.FC = () => {
 
   return (
     <div style={{ fontSize: '12px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <Link to="/runs" style={{ 
-          fontSize: '11px', 
-          color: '#1d4ed8', 
-          textDecoration: 'none',
-          padding: '3px 8px',
-          border: '1px solid #e2e8f0',
-          borderRadius: '3px'
-        }}>
-          View All
-        </Link>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <button 
+          onClick={fetchRecentRuns}
+          style={{ 
+            background: 'none', 
+            border: '1px solid #ddd', 
+            padding: '2px 6px', 
+            fontSize: '10px',
+            borderRadius: '3px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+        {lastUpdate && (
+          <span style={{ fontSize: '10px', color: '#666' }}>
+            {lastUpdate.toLocaleTimeString()}
+          </span>
+        )}
       </div>
 
       {(recentRuns || []).length === 0 ? (

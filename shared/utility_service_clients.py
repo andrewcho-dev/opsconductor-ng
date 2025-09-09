@@ -36,7 +36,7 @@ from .errors import (
     ServiceCommunicationError, DatabaseError
 )
 from .logging import get_logger
-from . import utility_service_auth as service_auth_utility
+# Service auth utility no longer needed with header-based auth
 
 # Global configuration
 CONFIG = {}
@@ -73,9 +73,14 @@ def _get_service_name() -> str:
     return _current_service_name
 
 async def _get_authenticated_headers(additional_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """Get authentication headers for service calls"""
-    service_name = _get_service_name()
-    return await service_auth_utility.get_service_auth_headers(service_name, additional_headers)
+    """Get authentication headers for service calls - now using header-based auth"""
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": f"OpsConductor-{_get_service_name()}/1.0.0"
+    }
+    if additional_headers:
+        headers.update(additional_headers)
+    return headers
 
 class AuthServiceClient:
     """Client for authentication service operations"""

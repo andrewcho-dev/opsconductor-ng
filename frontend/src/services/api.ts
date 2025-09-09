@@ -429,6 +429,7 @@ export const healthApi = {
     try {
       // Map service names to their health endpoints
       const serviceMap: Record<string, string> = {
+        // Core application services
         'auth': '/api/v1/auth/health',
         'users': '/api/v1/users/health', 
         'credentials': '/api/v1/credentials/health',
@@ -438,7 +439,15 @@ export const healthApi = {
         'scheduler': '/api/v1/scheduler/health',
         'notification': '/api/v1/notification/health',
         'discovery': '/api/v1/discovery/health',
-        'step-libraries': '/api/v1/step-libraries/health'
+        'step-libraries': '/api/v1/step-libraries/health',
+        // Infrastructure services
+        'nginx': '/api/v1/nginx/health',
+        'frontend': '/api/v1/frontend/health',
+        'redis': '/api/v1/redis/health',
+        'postgres': '/api/v1/postgres/health',
+        'celery-worker': '/api/v1/celery-worker/health',
+        'celery-beat': '/api/v1/celery-beat/health',
+        'flower': '/api/v1/flower/health'
       };
       
       const endpoint = serviceMap[service] || `/api/v1/${service}/health`;
@@ -459,7 +468,12 @@ export const healthApi = {
   },
 
   checkAllServices: async (): Promise<Record<string, any>> => {
-    const services = ['auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'scheduler', 'notification', 'discovery', 'step-libraries'];
+    const services = [
+      // Core application services
+      'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'scheduler', 'notification', 'discovery', 'step-libraries',
+      // Infrastructure services
+      'nginx', 'frontend', 'redis', 'postgres', 'celery-worker', 'celery-beat', 'flower'
+    ];
     const results: Record<string, any> = {};
     
     const checks = services.map(async (service) => {
