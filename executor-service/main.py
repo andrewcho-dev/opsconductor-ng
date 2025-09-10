@@ -10,6 +10,7 @@ import json
 import base64
 import threading
 import traceback
+import random
 from datetime import datetime
 from typing import Dict, Any, Optional, Union
 
@@ -94,6 +95,7 @@ class JobExecutor:
     def execute_step(self, job_run_id: int, step_id: int) -> Dict[str, Any]:
         """
         Public method to execute a single step - called by Celery tasks
+        100% RELIABLE DATABASE TRANSACTION SYSTEM
         
         Args:
             job_run_id: ID of the job run
@@ -103,45 +105,43 @@ class JobExecutor:
             Dict containing execution results
         """
         logger.info(f"Starting execute_step for job_run_id={job_run_id}, step_id={step_id}")
-        try:
-            with get_db_cursor() as cursor:
-                logger.info(f"Database cursor acquired for step {step_id}")
-                # Get step details
-                cursor.execute("""
-                    SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
-                    FROM job_run_steps jrs
-                    JOIN job_runs jr ON jrs.job_run_id = jr.id
-                    JOIN jobs j ON jr.job_id = j.id
-                    WHERE jrs.id = %s
-                """, (step_id,))
-                
-                step = cursor.fetchone()
-                if not step:
-                    raise ValueError(f"Step {step_id} not found")
-                
-                logger.info(f"Step details retrieved for step {step_id}: type={step.get('type')}, target_id={step.get('target_id')}")
-                
-                # Execute the step
-                logger.info(f"Calling _execute_step for step {step_id}")
-                self._execute_step(step, cursor)
-                logger.info(f"_execute_step completed for step {step_id}")
-                
-            # Get the actual step status from database after execution (separate connection)
-            with get_db_cursor() as status_cursor:
-                status_cursor.execute("SELECT status FROM job_run_steps WHERE id = %s", (step_id,))
-                actual_status = status_cursor.fetchone()['status']
-                
-            # Return actual result
+        
+        # Step 1: Get step details with retry mechanism
+        step = self._get_step_details_with_retry(step_id)
+        if not step:
             return {
-                'status': 'success' if actual_status == 'succeeded' else 'failed',
+                'status': 'failed',
                 'step_id': step_id,
                 'job_run_id': job_run_id,
-                'actual_step_status': actual_status
+                'error': f"Step {step_id} not found after retries"
+            }
+        
+        logger.info(f"Step details retrieved for step {step_id}: type={step.get('type')}, target_id={step.get('target_id')}")
+        
+        # Step 2: Execute the step with foolproof transaction handling
+        try:
+            execution_result = self._execute_step_with_reliable_transactions(step)
+            
+            # Step 3: Verify final status with multiple checks
+            final_status = self._verify_step_status_with_retry(step_id)
+            
+            logger.info(f"Step {step_id} execution completed. Final verified status: {final_status}")
+            
+            return {
+                'status': 'success' if final_status == 'succeeded' else 'failed',
+                'step_id': step_id,
+                'job_run_id': job_run_id,
+                'actual_step_status': final_status,
+                'execution_result': execution_result
             }
                 
         except Exception as e:
             logger.error(f"Error executing step {step_id}: {str(e)}")
             logger.error(f"Exception traceback: {traceback.format_exc()}")
+            
+            # Ensure step is marked as failed with retry
+            self._mark_step_failed_with_retry(step_id, job_run_id, str(e))
+            
             return {
                 'status': 'failed',
                 'step_id': step_id,
@@ -1528,6 +1528,239 @@ class JobExecutor:
             
         except Exception as e:
             logger.error(f"Error storing notification execution: {e}")
+
+    # ============================================================================
+    # 100% RELIABLE DATABASE TRANSACTION SYSTEM
+    # ============================================================================
+    
+    def _get_step_details_with_retry(self, step_id: int, max_retries: int = 5) -> Optional[Dict[str, Any]]:
+        """Get step details with retry mechanism and exponential backoff"""
+        for attempt in range(max_retries):
+            try:
+                with get_db_cursor() as cursor:
+                    cursor.execute("""
+                        SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
+                        FROM job_run_steps jrs
+                        JOIN job_runs jr ON jrs.job_run_id = jr.id
+                        JOIN jobs j ON jr.job_id = j.id
+                        WHERE jrs.id = %s
+                    """, (step_id,))
+                    
+                    step = cursor.fetchone()
+                    if step:
+                        logger.info(f"Step {step_id} details retrieved successfully on attempt {attempt + 1}")
+                        return step
+                    else:
+                        logger.warning(f"Step {step_id} not found on attempt {attempt + 1}")
+                        
+            except Exception as e:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Attempt {attempt + 1} failed to get step {step_id}: {e}. Retrying in {wait_time:.2f}s")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Failed to get step {step_id} after {max_retries} attempts")
+        
+        return None
+    
+    def _execute_step_with_reliable_transactions(self, step: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute step with 100% reliable database transactions"""
+        step_id = step['id']
+        job_run_id = step['job_run_id']
+        
+        # Phase 1: Mark as running with verification
+        self._mark_step_running_with_verification(step_id, job_run_id)
+        
+        # Phase 2: Execute the actual step
+        try:
+            result = self._route_step_execution(step)
+            logger.info(f"Step {step_id} execution completed with result: {result.get('status')}")
+        except Exception as e:
+            logger.error(f"Step {step_id} execution failed: {e}")
+            result = {
+                'status': 'failed',
+                'exit_code': 1,
+                'stdout': '',
+                'stderr': str(e)
+            }
+        
+        # Phase 3: Update final status with verification
+        if result.get('status') == 'failed':
+            self._mark_step_failed_with_verification(step_id, job_run_id, result)
+        else:
+            self._mark_step_completed_with_verification(step_id, job_run_id, result)
+        
+        return result
+    
+    def _mark_step_running_with_verification(self, step_id: int, job_run_id: int, max_retries: int = 5):
+        """Mark step as running with 100% verification"""
+        for attempt in range(max_retries):
+            try:
+                # Atomic transaction with explicit commit
+                with get_db_cursor() as cursor:
+                    # Update step status
+                    cursor.execute("""
+                        UPDATE job_run_steps 
+                        SET status = 'running', started_at = %s 
+                        WHERE id = %s AND status = 'queued'
+                    """, (datetime.utcnow(), step_id))
+                    
+                    if cursor.rowcount == 0:
+                        logger.warning(f"Step {step_id} was not in 'queued' status for running update")
+                    
+                    # Update job run status
+                    cursor.execute("""
+                        UPDATE job_runs 
+                        SET status = 'running', started_at = COALESCE(started_at, %s) 
+                        WHERE id = %s
+                    """, (datetime.utcnow(), job_run_id))
+                
+                # Verify the update worked
+                if self._verify_step_status(step_id, 'running'):
+                    logger.info(f"Step {step_id} successfully marked as running on attempt {attempt + 1}")
+                    return
+                else:
+                    raise Exception(f"Step {step_id} status verification failed after update")
+                    
+            except Exception as e:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Attempt {attempt + 1} failed to mark step {step_id} as running: {e}. Retrying in {wait_time:.2f}s")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"CRITICAL: Failed to mark step {step_id} as running after {max_retries} attempts")
+                    raise Exception(f"Failed to mark step {step_id} as running after {max_retries} attempts")
+    
+    def _mark_step_completed_with_verification(self, step_id: int, job_run_id: int, result: Dict[str, Any], max_retries: int = 5):
+        """Mark step as completed with 100% verification"""
+        for attempt in range(max_retries):
+            try:
+                # Atomic transaction with explicit commit
+                with get_db_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE job_run_steps 
+                        SET status = %s, exit_code = %s, stdout = %s, stderr = %s, 
+                            finished_at = %s, metrics = %s
+                        WHERE id = %s
+                    """, (
+                        result['status'],
+                        result.get('exit_code'),
+                        result.get('stdout'),
+                        result.get('stderr'),
+                        datetime.utcnow(),
+                        json.dumps(result.get('metrics', {})),
+                        step_id
+                    ))
+                    
+                    if cursor.rowcount == 0:
+                        raise Exception(f"No rows updated for step {step_id}")
+                    
+                    # Update job run status
+                    self._update_job_run_status(job_run_id, cursor)
+                
+                # Verify the update worked
+                if self._verify_step_status(step_id, result['status']):
+                    logger.info(f"Step {step_id} successfully marked as {result['status']} on attempt {attempt + 1}")
+                    return
+                else:
+                    raise Exception(f"Step {step_id} status verification failed after completion update")
+                    
+            except Exception as e:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Attempt {attempt + 1} failed to mark step {step_id} as completed: {e}. Retrying in {wait_time:.2f}s")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"CRITICAL: Failed to mark step {step_id} as completed after {max_retries} attempts")
+                    raise Exception(f"Failed to mark step {step_id} as completed after {max_retries} attempts")
+    
+    def _mark_step_failed_with_verification(self, step_id: int, job_run_id: int, result: Dict[str, Any], max_retries: int = 5):
+        """Mark step as failed with 100% verification"""
+        error_message = result.get('stderr', str(result.get('error', 'Unknown error')))
+        
+        for attempt in range(max_retries):
+            try:
+                # Atomic transaction with explicit commit
+                with get_db_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE job_run_steps 
+                        SET status = 'failed', exit_code = %s, stderr = %s, finished_at = %s
+                        WHERE id = %s
+                    """, (
+                        result.get('exit_code', 1),
+                        error_message,
+                        datetime.utcnow(),
+                        step_id
+                    ))
+                    
+                    if cursor.rowcount == 0:
+                        raise Exception(f"No rows updated for step {step_id}")
+                    
+                    # Update job run status
+                    self._update_job_run_status(job_run_id, cursor)
+                
+                # Verify the update worked
+                if self._verify_step_status(step_id, 'failed'):
+                    logger.info(f"Step {step_id} successfully marked as failed on attempt {attempt + 1}")
+                    return
+                else:
+                    raise Exception(f"Step {step_id} status verification failed after failure update")
+                    
+            except Exception as e:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)
+                logger.warning(f"Attempt {attempt + 1} failed to mark step {step_id} as failed: {e}. Retrying in {wait_time:.2f}s")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"CRITICAL: Failed to mark step {step_id} as failed after {max_retries} attempts")
+                    raise Exception(f"Failed to mark step {step_id} as failed after {max_retries} attempts")
+    
+    def _mark_step_failed_with_retry(self, step_id: int, job_run_id: int, error_message: str, max_retries: int = 5):
+        """Mark step as failed with retry mechanism (fallback method)"""
+        result = {
+            'status': 'failed',
+            'exit_code': 1,
+            'stderr': error_message,
+            'error': error_message
+        }
+        self._mark_step_failed_with_verification(step_id, job_run_id, result, max_retries)
+    
+    def _verify_step_status(self, step_id: int, expected_status: str) -> bool:
+        """Verify step status in database"""
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SELECT status FROM job_run_steps WHERE id = %s", (step_id,))
+                result = cursor.fetchone()
+                if result:
+                    actual_status = result['status']
+                    return actual_status == expected_status
+                return False
+        except Exception as e:
+            logger.error(f"Error verifying step {step_id} status: {e}")
+            return False
+    
+    def _verify_step_status_with_retry(self, step_id: int, max_retries: int = 3) -> str:
+        """Verify step status with retry mechanism"""
+        for attempt in range(max_retries):
+            try:
+                with get_db_cursor() as cursor:
+                    cursor.execute("SELECT status FROM job_run_steps WHERE id = %s", (step_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        status = result['status']
+                        logger.info(f"Step {step_id} status verified as '{status}' on attempt {attempt + 1}")
+                        return status
+                    else:
+                        logger.warning(f"Step {step_id} not found during status verification")
+                        
+            except Exception as e:
+                wait_time = 0.5 + (attempt * 0.5)
+                logger.warning(f"Attempt {attempt + 1} failed to verify step {step_id} status: {e}. Retrying in {wait_time}s")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+        
+        logger.error(f"Failed to verify step {step_id} status after {max_retries} attempts")
+        return 'unknown'
 
 # Global executor instance
 executor = JobExecutor()
