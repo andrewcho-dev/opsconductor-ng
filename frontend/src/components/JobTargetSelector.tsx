@@ -37,6 +37,8 @@ const JobTargetSelector: React.FC<JobTargetSelectorProps> = ({
   };
 
   const handleTargetToggle = (targetName: string) => {
+    console.log('handleTargetToggle called:', { targetName, selectionMode, currentSelected: selectedTargets });
+    
     if (selectionMode === 'single') {
       // Single mode: replace selection
       onTargetChange([targetName]);
@@ -44,10 +46,14 @@ const JobTargetSelector: React.FC<JobTargetSelectorProps> = ({
       // Multiple mode: toggle selection
       if (selectedTargets.includes(targetName)) {
         // Remove from selection
-        onTargetChange(selectedTargets.filter(t => t !== targetName));
+        const newSelection = selectedTargets.filter(t => t !== targetName);
+        console.log('Removing target, new selection:', newSelection);
+        onTargetChange(newSelection);
       } else {
         // Add to selection
-        onTargetChange([...selectedTargets, targetName]);
+        const newSelection = [...selectedTargets, targetName];
+        console.log('Adding target, new selection:', newSelection);
+        onTargetChange(newSelection);
       }
     }
   };

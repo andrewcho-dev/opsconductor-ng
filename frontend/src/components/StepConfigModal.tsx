@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import JobTargetSelector from './JobTargetSelector';
 import CredentialSelector from './CredentialSelector';
 import TargetFieldSelector from './TargetFieldSelector';
@@ -19,7 +19,7 @@ interface StepConfigModalProps {
   } | null;
 }
 
-const StepConfigModal: React.FC<StepConfigModalProps> = ({
+const StepConfigModal: React.FC<StepConfigModalProps> = React.memo(({
   isOpen,
   onClose,
   onSave,
@@ -32,9 +32,18 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
 
   useEffect(() => {
     if (stepNode) {
-      setConfig({ ...stepNode.config });
+      const initialConfig = { ...stepNode.config };
+      // Ensure target_names is always a string
+      if (initialConfig.target_names === undefined || initialConfig.target_names === null) {
+        initialConfig.target_names = '';
+      }
+      // Ensure selection_mode has a default value
+      if (!initialConfig.selection_mode) {
+        initialConfig.selection_mode = 'specific';
+      }
+      setConfig(initialConfig);
     }
-  }, [stepNode]);
+  }, [stepNode?.id]);
 
   useEffect(() => {
     fetchTargets();
@@ -54,12 +63,23 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
     onClose();
   };
 
-  const updateConfig = (key: string, value: any) => {
+  const updateConfig = useCallback((key: string, value: any) => {
     setConfig((prev: any) => ({
       ...prev,
       [key]: value
     }));
-  };
+  }, []);
+
+  const handleTargetChange = useCallback((targets: string[]) => {
+    // Store multiple targets
+    updateConfig('targets', targets);
+    // Also set the first target as primary for backward compatibility
+    if (targets.length > 0) {
+      updateConfig('target', targets[0]);
+    } else {
+      updateConfig('target', '');
+    }
+  }, [updateConfig]);
 
   const handleTargetSelection = (targetNames: string[]) => {
     const targetName = targetNames[0];
@@ -113,47 +133,63 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
   };
 
   // Compact Target Selector Component
-  const CompactTargetSelector = ({ selectedTargets, onTargetChange }: { 
+  const CompactTargetSelector = ({ selectedTargets, onTargetChange, availableTargets }: { 
     selectedTargets: string[], 
-    onTargetChange: (targets: string[]) => void 
+    onTargetChange: (targets: string[]) => void,
+    availableTargets: Target[]
   }) => {
+    const handleTargetToggle = (targetName: string) => {
+      const isSelected = selectedTargets.includes(targetName);
+      let newSelection: string[];
+      
+      if (isSelected) {
+        // Remove target
+        newSelection = selectedTargets.filter(t => t !== targetName);
+      } else {
+        // Add target
+        newSelection = [...selectedTargets, targetName];
+      }
+      
+      onTargetChange(newSelection);
+    };
+    
     return (
-      <select
-        multiple
-        value={selectedTargets}
-        onChange={(e) => {
-          const selected = Array.from(e.target.selectedOptions, option => option.value);
-          onTargetChange(selected);
-        }}
-        style={{
-          width: '100%',
-          height: '120px',
-          padding: '4px',
-          border: '1px solid #ddd',
-          borderRadius: '4px',
-          fontSize: '12px',
-          backgroundColor: 'white',
-          cursor: 'pointer',
-          overflowY: 'auto',
-          outline: 'none'
-        }}
-        title="Hold Ctrl/Cmd or Shift to select multiple targets"
-      >
-          {targets.map(target => (
-            <option 
-              key={target.name} 
-              value={target.name}
-              style={{
-                padding: '3px 6px',
-                fontSize: '12px',
-                lineHeight: '1.3',
-                whiteSpace: 'nowrap'
-              }}
-            >
+      <div style={{
+        width: '100%',
+        height: '120px',
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        backgroundColor: 'white',
+        overflowY: 'auto',
+        padding: '4px'
+      }}>
+        {availableTargets.map(target => (
+          <div 
+            key={target.name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '2px 4px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              backgroundColor: selectedTargets.includes(target.name) ? '#e3f2fd' : 'transparent',
+              borderRadius: '2px',
+              marginBottom: '1px'
+            }}
+            onClick={() => handleTargetToggle(target.name)}
+          >
+            <input
+              type="checkbox"
+              checked={selectedTargets.includes(target.name)}
+              onChange={() => {}} // Handled by div onClick
+              style={{ marginRight: '6px', cursor: 'pointer' }}
+            />
+            <span style={{ whiteSpace: 'nowrap' }}>
               {target.name} ({target.hostname || target.ip_address}) - {target.os_type || 'Unknown'}
-            </option>
-          ))}
-        </select>
+            </span>
+          </div>
+        ))}
+      </div>
     );
   };
 
@@ -456,12 +492,15 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
             {/* Target Selector for specific mode */}
             {config.selection_mode !== 'all' && config.selection_mode !== 'tag-based' && (
               <JobTargetSelector
-                selectedTargets={
-                  typeof config.target_names === 'string' && config.target_names
+                selectedTargets={(() => {
+                  const targets = typeof config.target_names === 'string' && config.target_names
                     ? config.target_names.split(',').map((t: string) => t.trim()).filter((t: string) => t)
-                    : []
-                }
+                    : [];
+                  console.log('Current config.target_names:', config.target_names, 'Parsed targets:', targets);
+                  return targets;
+                })()}
                 onTargetChange={(targets) => {
+                  console.log('Target selection changed:', targets);
                   updateConfig('target_names', targets.join(','));
                 }}
                 selectionMode="multiple"
@@ -528,21 +567,9 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
                 Target(s):
               </label>
               <CompactTargetSelector
-                selectedTargets={
-                  config.targets ? config.targets : 
-                  config.target ? [config.target] : []
-                }
-                onTargetChange={(targets) => {
-                  // Store multiple targets
-                  updateConfig('targets', targets);
-                  // Also set the first target as primary for backward compatibility
-                  if (targets.length > 0) {
-                    updateConfig('target', targets[0]);
-                    handleTargetSelection(targets);
-                  } else {
-                    updateConfig('target', '');
-                  }
-                }}
+                selectedTargets={config.targets || (config.target ? [config.target] : [])}
+                availableTargets={targets}
+                onTargetChange={handleTargetChange}
               />
             </div>
 
@@ -676,7 +703,7 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
         {/* Other step configurations */}
         {Object.entries(config).map(([key, value]) => {
           // Skip already handled fields
-          if (['name', 'target_names', 'selection_mode', 'target_tags', 'target', 'target_host', 'connection_type', 'connection_method', 'username', 'password', 'port', 'command', 'timeout', 'timeout_seconds'].includes(key)) {
+          if (['name', 'target_names', 'selection_mode', 'target_tags', 'target', 'targets', 'target_host', 'connection_type', 'connection_method', 'username', 'password', 'port', 'command', 'timeout', 'timeout_seconds'].includes(key)) {
             return null;
           }
 
@@ -775,6 +802,13 @@ const StepConfigModal: React.FC<StepConfigModalProps> = ({
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  return (
+    prevProps.isOpen === nextProps.isOpen &&
+    prevProps.stepNode?.id === nextProps.stepNode?.id &&
+    JSON.stringify(prevProps.stepNode?.config) === JSON.stringify(nextProps.stepNode?.config)
+  );
+});
 
 export default StepConfigModal;

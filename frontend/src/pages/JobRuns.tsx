@@ -89,6 +89,13 @@ const JobRuns: React.FC = () => {
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Pagination state for infinite scroll
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMoreRuns, setHasMoreRuns] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalLoadedRuns, setTotalLoadedRuns] = useState(0);
+  const [maxRunsReached, setMaxRunsReached] = useState(false);
+  
   // Modal state for viewing full output
   const [outputModalOpen, setOutputModalOpen] = useState(false);
   const [modalOutputData, setModalOutputData] = useState<{
@@ -145,17 +152,88 @@ const JobRuns: React.FC = () => {
     }
   }, [runs, selectedRunId, selectedRun]);
 
-  const fetchRuns = async () => {
+  // Infinite scroll detection
+  useEffect(() => {
+    const handleScroll = () => {
+      if (loadingMore || !hasMoreRuns || maxRunsReached) return;
+      
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      // Load more when user is within 200px of the bottom
+      if (scrollTop + windowHeight >= documentHeight - 200) {
+        loadMoreRuns();
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadingMore, hasMoreRuns, maxRunsReached]);
+
+  const fetchRuns = async (reset: boolean = true) => {
     try {
-      setLoading(true);
-      const response = await jobRunApi.list(0, 100, selectedJobId);
-      setRuns(response.data || []);
+      if (reset) {
+        setLoading(true);
+        setCurrentPage(0);
+        setHasMoreRuns(true);
+        setMaxRunsReached(false);
+        setTotalLoadedRuns(0);
+      }
+      
+      const pageSize = reset ? 50 : 25; // Initial load: 50, subsequent: 25
+      const skip = reset ? 0 : totalLoadedRuns; // For subsequent loads, skip what we already have
+      
+      const response = await jobRunApi.list(skip, pageSize, selectedJobId);
+      const newRuns = response.data || [];
+      
+      if (reset) {
+        setRuns(newRuns);
+        setTotalLoadedRuns(newRuns.length);
+      } else {
+        setRuns(prevRuns => [...prevRuns, ...newRuns]);
+        setTotalLoadedRuns(prev => prev + newRuns.length);
+      }
+      
+      // Update pagination state
+      const newTotalLoaded = reset ? newRuns.length : totalLoadedRuns + newRuns.length;
+      setHasMoreRuns(response.meta.has_next && newTotalLoaded < 500);
+      
+      // Check if we've reached the 500 item limit
+      if (newTotalLoaded >= 500) {
+        setMaxRunsReached(true);
+        setHasMoreRuns(false);
+      }
+      
     } catch (error: any) {
       console.error('Failed to fetch job runs:', error);
       setError(error.message || 'Failed to load job runs');
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadMoreRuns = async () => {
+    if (loadingMore || !hasMoreRuns || maxRunsReached) return;
+    
+    try {
+      setLoadingMore(true);
+      await fetchRuns(false); // false = don't reset, append to existing
+    } catch (error: any) {
+      console.error('Failed to load more runs:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const resetAndLoadRuns = () => {
+    // Reset all pagination state and reload from beginning
+    setRuns([]);
+    setCurrentPage(0);
+    setHasMoreRuns(true);
+    setMaxRunsReached(false);
+    setTotalLoadedRuns(0);
+    fetchRuns(true);
   };
 
   const fetchJobs = async () => {
@@ -809,7 +887,7 @@ const JobRuns: React.FC = () => {
               </button>
             )}
             <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--neutral-500)' }}>
-              Showing: {getFilteredJobName()}
+              {getFilteredJobName()} • {totalLoadedRuns} loaded{hasMoreRuns ? ' (scroll for more)' : ''}
             </span>
           </div>
           
@@ -866,6 +944,60 @@ const JobRuns: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                
+                {/* Loading and pagination controls */}
+                {loadingMore && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px', 
+                    color: 'var(--neutral-500)',
+                    fontSize: '14px'
+                  }}>
+                    Loading more runs...
+                  </div>
+                )}
+                
+                {maxRunsReached && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px',
+                    borderTop: '1px solid var(--neutral-200)'
+                  }}>
+                    <div style={{ 
+                      color: 'var(--neutral-600)', 
+                      fontSize: '14px', 
+                      marginBottom: '12px' 
+                    }}>
+                      Showing {totalLoadedRuns} most recent runs (limit reached)
+                    </div>
+                    <button
+                      onClick={resetAndLoadRuns}
+                      style={{
+                        background: 'var(--primary)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Load Older Runs
+                    </button>
+                  </div>
+                )}
+                
+                {!hasMoreRuns && !maxRunsReached && totalLoadedRuns > 0 && (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '20px', 
+                    color: 'var(--neutral-500)',
+                    fontSize: '12px',
+                    borderTop: '1px solid var(--neutral-200)'
+                  }}>
+                    All runs loaded ({totalLoadedRuns} total)
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -1317,10 +1317,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
           {/* Canvas Toolbar */}
           <div className="canvas-toolbar" onMouseDown={(e) => e.stopPropagation()}>
             {/* Selection Tools */}
-            {(() => {
-              console.log('Rendering toolbar - selectedNodes.length:', selectedNodes.length, 'disabled:', selectedNodes.length < 2);
-              return null;
-            })()}
+
             <button
               className={`canvas-tool-btn ${canvasTool === 'select' ? 'active' : ''}`}
               onClick={() => setCanvasTool('select')}
