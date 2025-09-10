@@ -223,35 +223,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # Scheduler Service
-  scheduler-service:
-    build: ./scheduler-service
-    container_name: opsconductor-scheduler
-    ports:
-      - "3008:3008"
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: opsconductor
-      DB_USER: postgres
-      DB_PASSWORD: postgres123
-      DB_POOL_MIN: 2
-      DB_POOL_MAX: 10
-      AUTH_SERVICE_URL: http://auth-service:3001
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - opsconductor-net
-    volumes:
-      - ./scheduler-service:/app
-      - ./shared:/app/shared
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3008/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
+
 
   # Notification Service
   notification-service:
@@ -385,32 +357,20 @@ services:
   celery-beat:
     build:
       context: .
-      dockerfile: ./executor-service/Dockerfile
+      dockerfile: ./executor-service/Dockerfile.beat
     container_name: opsconductor-celery-beat
-    command: celery -A shared.celery_config beat --loglevel=info --schedule=/app/data/celerybeat-schedule
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: opsconductor
-      DB_USER: postgres
-      DB_PASSWORD: postgres123
-      DB_POOL_MIN: 2
-      DB_POOL_MAX: 10
       REDIS_URL: redis://redis:6379/0
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
     networks:
       - opsconductor-net
     volumes:
-      - ./executor-service:/app
-      - ./shared:/app/shared
       - celery_beat_data:/app/data
     healthcheck:
-      test: ["CMD", "ps", "aux", "|", "grep", "celery.*beat"]
-      interval: 60s
+      test: ["CMD", "python", "/app/standalone_health_check.py"]
+      interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
@@ -466,7 +426,6 @@ services:
       - targets-service
       - jobs-service
       - executor-service
-      - scheduler-service
       - notification-service
       - discovery-service
       - step-libraries-service
@@ -492,7 +451,6 @@ services:
       - targets-service
       - jobs-service
       - executor-service
-      - scheduler-service
       - notification-service
       - discovery-service
       - step-libraries-service

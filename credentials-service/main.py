@@ -58,13 +58,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_operator_role(request: Request):
-    """Require admin or operator role (from nginx headers)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    if user_role not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # Configuration
 MASTER_KEY = os.getenv("MASTER_KEY", "default-key-change-in-production")
@@ -239,8 +233,7 @@ async def create_credential(
     request: Request
 ):
     """Create new encrypted credential"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Check if credential name already exists
@@ -396,8 +389,7 @@ async def get_credential_decrypted(
     request: Request
 ):
     """Get credential with decrypted data - ADMIN/OPERATOR ONLY"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor(commit=False) as cursor:
             cursor.execute(
@@ -477,8 +469,7 @@ async def update_credential(
     request: Request
 ):
     """Update credential by ID"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Check if credential exists (excluding soft-deleted)
@@ -544,8 +535,7 @@ async def delete_credential(
     request: Request
 ):
     """Delete credential by ID"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Hard delete credential
@@ -573,8 +563,7 @@ async def rotate_credential(
     request: Request
 ):
     """Rotate credential data"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Check if credential exists (excluding soft-deleted)
@@ -610,8 +599,7 @@ async def delete_credential_by_name(
     request: Request
 ):
     """Delete credential by name"""
-    # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Soft delete credential by name

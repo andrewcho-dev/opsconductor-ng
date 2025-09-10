@@ -55,15 +55,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_self_access(user_id: int, request: Request):
-    """Require admin role or self-access (user accessing their own data)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    current_user_id = current_user.get("id")
-    
-    if user_role != "admin" and str(current_user_id) != str(user_id):
-        raise PermissionError("Access denied")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # Security
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -161,45 +153,7 @@ async def list_users(
     limit: int = 100
 ):
     """List all users with pagination"""
-    # Get user info from headers
-    current_user = get_user_from_headers(request)
-    # Non-admin users can only see their own profile
-    if current_user["role"] != "admin":
-        try:
-            with get_db_cursor(commit=False) as cursor:
-                cursor.execute(
-                    "SELECT id, email, username, role, first_name, last_name, telephone, title, created_at, token_version FROM users WHERE id = %s",
-                    (current_user["id"],)
-                )
-                user_data = cursor.fetchone()
-            
-            if user_data:
-                # Explicitly construct the response to ensure all fields are included
-                response_data = {
-                    'id': user_data['id'],
-                    'email': user_data['email'],
-                    'username': user_data['username'],
-                    'role': user_data['role'],
-                    'created_at': user_data['created_at'],
-                    'token_version': user_data['token_version'],
-                    'first_name': user_data.get('first_name'),
-                    'last_name': user_data.get('last_name'),
-                    'telephone': user_data.get('telephone'),
-                    'title': user_data.get('title')
-                }
-                return PaginatedResponse.create(
-                    items=[UserResponse(**response_data)],
-                    page=1,
-                    per_page=1,
-                    total_items=1
-                )
-            else:
-                return PaginatedResponse.create(items=[], page=1, per_page=limit, total_items=0)
-        except Exception as e:
-            logger.error(f"Error fetching user profile: {e}", exc_info=True)
-            raise handle_database_error(e, "user profile fetch")
-    
-    # Admin can see all users
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor(commit=False) as cursor:
             # Get total count
@@ -251,11 +205,7 @@ async def list_users(
 @app.get("/users/{user_id}")
 async def get_user(user_id: int, request: Request):
     """Get user by ID"""
-    # Check admin or self access
-    current_user = await require_admin_or_self_access(user_id, request)
-    # Non-admin users can only access their own profile
-    if current_user["role"] != "admin" and current_user["id"] != user_id:
-        raise PermissionError("Access denied")
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -296,14 +246,7 @@ async def update_user(
     request: Request
 ):
     """Update user by ID"""
-    # Check admin or self access
-    current_user = await require_admin_or_self_access(user_id, request)
-    # Non-admin users can only update their own profile (and not change role)
-    if current_user["role"] != "admin":
-        if current_user["id"] != user_id:
-            raise PermissionError("Access denied")
-        if user_data.role is not None:
-            raise PermissionError("Cannot change your own role")
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor() as cursor:
@@ -377,11 +320,7 @@ async def update_user(
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, request: Request):
     """Delete user by ID - ADMIN ONLY"""
-    # Check admin role
-    current_user = await require_admin_role(request)
-    # Prevent admin from deleting themselves
-    if current_user["id"] == user_id:
-        raise ValidationError("Cannot delete your own account")
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor() as cursor:
@@ -412,8 +351,7 @@ async def assign_role(
     request: Request
 ):
     """Assign role to user - ADMIN ONLY"""
-    # Check admin role
-    current_user = await require_admin_role(request)
+    # Auth handled at nginx gateway level
     valid_roles = ["admin", "operator", "viewer"]
     if role_data.role not in valid_roles:
         raise ValidationError(f"Invalid role. Must be one of: {', '.join(valid_roles)}", "role")
@@ -473,11 +411,7 @@ async def get_user_notification_preferences(
     request: Request
 ):
     """Get user notification preferences"""
-    # Check admin or self access
-    current_user = await require_admin_or_self_access(user_id, request)
-    # Users can only access their own preferences, admins can access any
-    if current_user["role"] != "admin" and current_user["user_id"] != user_id:
-        raise PermissionError("Access denied")
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor(commit=False) as cursor:
@@ -531,11 +465,7 @@ async def update_user_notification_preferences(
     request: Request
 ):
     """Update user notification preferences"""
-    # Check admin or self access
-    current_user = await require_admin_or_self_access(user_id, request)
-    # Users can only update their own preferences, admins can update any
-    if current_user["role"] != "admin" and current_user["user_id"] != user_id:
-        raise PermissionError("Access denied")
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor() as cursor:

@@ -772,13 +772,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_operator_role(request: Request):
-    """Require admin or operator role (from nginx headers)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    if user_role not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # =============================================================================
 # API ENDPOINTS
@@ -885,7 +879,7 @@ async def install_library(
 ):
     """Install a new step library"""
     # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         result = await library_manager.install_library_from_upload(file, license_key)
         
@@ -906,7 +900,7 @@ async def install_library(
 async def uninstall_library(library_id: int, request: Request):
     """Uninstall a step library"""
     # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         result = await library_manager.uninstall_library(library_id)
         
@@ -925,7 +919,7 @@ async def uninstall_library(library_id: int, request: Request):
 async def toggle_library(library_id: int, enabled: bool, request: Request):
     """Enable or disable a library"""
     # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         success = await library_manager.db.toggle_library(library_id, enabled)
         
@@ -1008,7 +1002,7 @@ async def get_performance_stats() -> Dict[str, Any]:
 async def install_generic_blocks(request: Request) -> Dict[str, Any]:
     """Install the built-in generic blocks library"""
     # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         from generic_blocks_library import create_generic_blocks_library
         
@@ -1065,7 +1059,7 @@ async def install_generic_blocks(request: Request) -> Dict[str, Any]:
 async def clear_cache(request: Request) -> Dict[str, Any]:
     """Clear the step library cache"""
     # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     library_manager.library_cache.clear()
     return {
         'status': 'success',

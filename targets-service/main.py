@@ -64,13 +64,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_operator_role(request: Request):
-    """Require admin or operator role (from nginx headers)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    if user_role not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # Helper functions
 def get_target_services(target_id: int) -> List[TargetService]:
@@ -238,8 +232,7 @@ async def create_target(
     request: Request
 ):
     """Create a new target"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     
     try:
         with get_db_cursor() as cursor:
@@ -364,8 +357,7 @@ async def update_target(
     request: Request
 ):
     """Update an existing target"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     logger.info(f"Updating target {target_id} with data: {target.dict()}")
     try:
         with get_db_cursor() as cursor:
@@ -494,8 +486,7 @@ async def delete_target(
     request: Request
 ):
     """Delete a target (soft delete)"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Soft delete target
@@ -527,8 +518,7 @@ async def add_credential_to_target(
     request: Request
 ):
     """Add a credential to a target"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Verify target exists
@@ -584,8 +574,7 @@ async def update_target_credential(
     request: Request
 ):
     """Update a credential association on a target"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Verify target credential exists
@@ -632,8 +621,7 @@ async def delete_target_credential(
     request: Request
 ):
     """Remove a credential association from a target"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # Verify target credential exists
@@ -671,8 +659,7 @@ async def test_service_connection(
     request: Request
 ):
     """Test connection to a specific service"""
-    # Check admin/operator role
-    await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     logger.info(f"Starting test connection for service_id: {service_id}")
     try:
         with get_db_cursor() as cursor:

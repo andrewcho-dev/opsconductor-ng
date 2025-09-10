@@ -271,44 +271,7 @@ export interface JobRunListResponse {
   };
 }
 
-// Schedule Types
-export interface Schedule {
-  id: number;
-  job_id: number;
-  cron: string;
-  timezone: string;
-  next_run?: string;
-  next_run_at?: string;
-  last_run_at?: string;
-  is_active: boolean;
-  created_at: string;
-}
 
-export interface ScheduleCreate {
-  job_id: number;
-  cron: string;
-  timezone?: string;
-  is_active?: boolean;
-}
-
-export interface ScheduleUpdate {
-  cron?: string;
-  timezone?: string;
-  is_active?: boolean;
-}
-
-export interface ScheduleListResponse {
-  schedules: Schedule[];
-  total: number;
-}
-
-export interface SchedulerStatus {
-  scheduler_running: boolean;
-  is_running: boolean;
-  active_schedules: number;
-  next_execution?: string;
-  last_check?: string;
-}
 
 // Notification Types
 export interface NotificationPreferences {

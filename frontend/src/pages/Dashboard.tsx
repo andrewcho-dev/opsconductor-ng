@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { userApi, credentialApi, targetApi, jobApi, jobRunApi, schedulerApi } from '../services/api';
+import { userApi, credentialApi, targetApi, jobApi, jobRunApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import SystemMetrics from '../components/SystemMetrics';
@@ -16,8 +16,7 @@ const Dashboard: React.FC = () => {
     targets: 0,
     jobs: 0,
     recentRuns: 0,
-    schedules: 0,
-    schedulerRunning: false
+
   });
   const [loading, setLoading] = useState(true);
 
@@ -28,9 +27,7 @@ const Dashboard: React.FC = () => {
         credentialApi.list(0, 1),
         targetApi.list(0, 1),
         jobApi.list(0, 1),
-        jobRunApi.list(0, 1),
-        schedulerApi.list(0, 1),
-        schedulerApi.getStatus()
+        jobRunApi.list(0, 1)
       ];
 
       const [
@@ -38,9 +35,7 @@ const Dashboard: React.FC = () => {
         credentialsRes,
         targetsRes,
         jobsRes,
-        runsRes,
-        schedulesRes,
-        schedulerStatusRes
+        runsRes
       ] = await Promise.allSettled(requests);
 
       const getTotal = (res: any) => {
@@ -52,25 +47,19 @@ const Dashboard: React.FC = () => {
         // Handle old API response format with total
         return res.value?.total ?? 0;
       };
-      const getSchedulerRunning = (res: any) => (res.status === 'fulfilled' ? !!res.value?.scheduler_running : false);
-
       // Log failures for debugging but keep dashboard rendering
       if (usersRes.status === 'rejected') console.warn('Users stats failed:', usersRes.reason);
       if (credentialsRes.status === 'rejected') console.warn('Credentials stats failed:', credentialsRes.reason);
       if (targetsRes.status === 'rejected') console.warn('Targets stats failed:', targetsRes.reason);
       if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
       if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
-      if (schedulesRes.status === 'rejected') console.warn('Schedules stats failed:', schedulesRes.reason);
-      if (schedulerStatusRes.status === 'rejected') console.warn('Scheduler status failed:', schedulerStatusRes.reason);
 
       setStats({
         users: getTotal(usersRes),
         credentials: getTotal(credentialsRes),
         targets: getTotal(targetsRes),
         jobs: getTotal(jobsRes),
-        recentRuns: getTotal(runsRes),
-        schedules: getTotal(schedulesRes),
-        schedulerRunning: getSchedulerRunning(schedulerStatusRes)
+        recentRuns: getTotal(runsRes)
       });
     } catch (error) {
       console.error('Failed to load dashboard stats:', error);
@@ -106,7 +95,7 @@ const Dashboard: React.FC = () => {
           <Link to="/targets-management" className="stat-pill"><Target size={14} /> {stats.targets}</Link>
           <Link to="/job-management" className="stat-pill"><Settings size={14} /> {stats.jobs}</Link>
           <Link to="/job-runs" className="stat-pill"><Play size={14} /> {stats.recentRuns}</Link>
-          <Link to="/schedule-management" className="stat-pill"><Calendar size={14} /> {stats.schedules}</Link>
+
         </div>
       </div>
 

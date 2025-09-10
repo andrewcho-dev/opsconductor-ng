@@ -10,7 +10,7 @@ import Targets from './pages/Targets';
 
 import Discovery from './pages/Discovery';
 import Jobs from './pages/Jobs';
-import Schedules from './pages/Schedules';
+
 
 import JobRuns from './pages/JobRuns';
 
@@ -62,7 +62,7 @@ const App: React.FC = () => {
                     <Route path="/job-management" element={<Jobs />} />
                     <Route path="/job-management/:action" element={<Jobs />} />
                     <Route path="/job-management/:action/:id" element={<Jobs />} />
-                    <Route path="/schedule-management" element={<Schedules />} />
+
 
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
                     <Route path="/history/job-runs" element={<JobRuns />} />

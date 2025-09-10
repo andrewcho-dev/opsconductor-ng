@@ -156,14 +156,7 @@ const Navbar: React.FC = () => {
                   </Link>
                 </div>
               </div>
-              <Link 
-                to="/schedule-management" 
-                className={`nav-menu-item ${isActive('/schedule-management') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Calendar size={16} /></span>
-                Schedules
-              </Link>
+
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
                   <span className="nav-icon"><History size={16} /></span>

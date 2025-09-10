@@ -5,7 +5,7 @@ import {
   Target, TargetCreate, TargetListResponse, WinRMTestResult, SSHTestResult,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
-  Schedule, ScheduleCreate, ScheduleUpdate, ScheduleListResponse, SchedulerStatus,
+
   LoginRequest, AuthResponse,
   NotificationPreferences, NotificationPreferencesResponse, NotificationChannel,
   SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse,
@@ -24,7 +24,7 @@ const SERVICE_PORTS = {
   targets: 3005,
   jobs: 3006,
   executor: 3007,
-  scheduler: 3008,
+
   notifications: 3009,
   discovery: 3010,
   stepLibraries: 3011
@@ -313,51 +313,7 @@ export const jobRunApi = {
   }
 };
 
-// Scheduler API
-export const schedulerApi = {
-  // Schedule management
-  list: async (skip = 0, limit = 100): Promise<ScheduleListResponse> => {
-    const response: AxiosResponse<ScheduleListResponse> = await api.get('/api/v1/schedules', {
-      params: { skip, limit }
-    });
-    return response.data;
-  },
 
-  get: async (id: number): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.get(`/api/v1/schedules/${id}`);
-    return response.data;
-  },
-
-  create: async (schedule: ScheduleCreate): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.post('/api/v1/schedules', schedule);
-    return response.data;
-  },
-
-  update: async (id: number, schedule: ScheduleUpdate): Promise<Schedule> => {
-    const response: AxiosResponse<Schedule> = await api.put(`/api/v1/schedules/${id}`, schedule);
-    return response.data;
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/schedules/${id}`);
-  },
-
-  // Scheduler control
-  getStatus: async (): Promise<SchedulerStatus> => {
-    const response: AxiosResponse<SchedulerStatus> = await api.get('/api/v1/scheduler/status');
-    return response.data;
-  },
-
-  start: async (): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post('/api/v1/scheduler/start');
-    return response.data;
-  },
-
-  stop: async (): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post('/api/v1/scheduler/stop');
-    return response.data;
-  }
-};
 
 // Health Monitoring API
 export const healthApi = {
@@ -373,7 +329,7 @@ export const healthApi = {
         'targets': '/api/v1/targets/health',
         'jobs': '/api/v1/jobs/health',
         'executor': '/api/v1/executor/health',
-        'scheduler': '/api/v1/scheduler/health',
+
         'notification': '/api/v1/notification/health',
         'discovery': '/api/v1/discovery/health',
         'step-libraries': '/api/v1/step-libraries/health',
@@ -407,7 +363,7 @@ export const healthApi = {
   checkAllServices: async (): Promise<Record<string, any>> => {
     const services = [
       // Core application services
-      'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'scheduler', 'notification', 'discovery', 'step-libraries',
+      'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'notification', 'discovery', 'step-libraries',
       // Infrastructure services
       'nginx', 'frontend', 'redis', 'postgres', 'celery-worker', 'celery-beat', 'flower'
     ];

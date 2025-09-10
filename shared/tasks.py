@@ -20,13 +20,15 @@ logger = get_logger(__name__)
 
 # Import JobExecutor at module level to avoid race conditions during task execution
 try:
+    # Try to import from executor-service main
+    sys.path.insert(0, '/app')
     from main import JobExecutor
     JOBEXECUTOR_AVAILABLE = True
     logger.info("JobExecutor imported successfully at module level")
 except Exception as import_exc:
     JOBEXECUTOR_AVAILABLE = False
-    logger.error(f"Failed to import JobExecutor at module level: {str(import_exc)}")
-    logger.error(f"Import traceback: {traceback.format_exc()}")
+    logger.warning(f"JobExecutor not available for import: {str(import_exc)}")
+    # This is expected for celery-beat which doesn't need JobExecutor
 
 @celery_app.task(bind=True)
 def test_task(self, message="Hello from Celery!"):

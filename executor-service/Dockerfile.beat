@@ -1,0 +1,36 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install only the required Python packages for Celery Beat
+RUN pip install --no-cache-dir \
+    celery[redis]==5.3.4
+
+# Copy only the beat-specific files
+COPY executor-service/standalone_beat.py .
+COPY executor-service/standalone_health_check.py .
+
+# Create non-root user
+RUN addgroup --gid 1001 --system celery
+RUN adduser --system --uid 1001 --gid 1001 celery
+
+# Create data directory and set permissions
+RUN mkdir -p /app/data && chown -R celery:celery /app
+USER celery
+
+# Set Python path
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python /app/standalone_health_check.py
+
+# Run Celery Beat
+CMD ["celery", "-A", "standalone_beat", "beat", "--loglevel=info", "--schedule=/app/data/celerybeat-schedule"]

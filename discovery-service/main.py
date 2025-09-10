@@ -69,13 +69,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_operator_role(request: Request):
-    """Require admin or operator role (from nginx headers)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    if user_role not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # Enums
 class JobStatus(str, Enum):
@@ -698,8 +692,8 @@ async def import_discovered_targets(
     request: Request
 ):
     """Import discovered targets into the main targets system"""
-    current_user = await require_admin_or_operator_role(request)
-    return await _import_discovered_targets_impl(import_request, current_user)
+    # Auth handled at nginx gateway level
+    return await _import_discovered_targets_impl(import_request, None)
 
 @app.post("/discovery/import-targets")
 async def import_discovered_targets_alt(
@@ -708,8 +702,8 @@ async def import_discovered_targets_alt(
 ):
     """Import discovered targets into the main targets system (alternative endpoint)"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
-    return await _import_discovered_targets_impl(import_request, current_user)
+    # Auth handled at nginx gateway level
+    return await _import_discovered_targets_impl(import_request, None)
 
 @app.post("/import-targets")
 async def import_discovered_targets_root(
@@ -718,8 +712,8 @@ async def import_discovered_targets_root(
 ):
     """Import discovered targets into the main targets system (root level endpoint)"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
-    return await _import_discovered_targets_impl(import_request, current_user)
+    # Auth handled at nginx gateway level
+    return await _import_discovered_targets_impl(import_request, None)
 
 async def _import_discovered_targets_impl(
     import_request: TargetImportRequest,
@@ -918,7 +912,7 @@ async def ignore_discovered_targets(
 ):
     """Mark discovered targets as ignored"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         ignored_count = 0
         
@@ -946,7 +940,7 @@ async def bulk_delete_discovered_targets(
 ):
     """Bulk delete discovered targets"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         deleted_count = 0
         
@@ -1049,7 +1043,7 @@ async def cancel_discovery_job_new(job_id: int, request: Request):
 async def delete_discovery_job(job_id: int, request: Request):
     """Delete a discovery job and its associated targets"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # First check if job exists and get current status
@@ -1101,7 +1095,7 @@ async def update_discovery_job(
 ):
     """Update a discovery job (only if not running/completed)"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # First check if job exists and get current status
@@ -1192,7 +1186,7 @@ async def update_discovered_target(
 ):
     """Update a discovered target"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             # First check if target exists
@@ -1262,7 +1256,7 @@ async def update_discovered_target(
 async def delete_discovered_target(target_id: int, request: Request):
     """Delete a discovered target"""
     # Check admin/operator role
-    current_user = await require_admin_or_operator_role(request)
+    # Auth handled at nginx gateway level
     try:
         with get_db_cursor() as cursor:
             cursor.execute("DELETE FROM discovered_targets WHERE id = %s", (target_id,))

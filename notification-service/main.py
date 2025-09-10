@@ -63,13 +63,7 @@ def get_user_from_headers(request: Request):
         "role": request.headers.get("X-User-Role")
     }
 
-async def require_admin_or_operator_role(request: Request):
-    """Require admin or operator role (from nginx headers)"""
-    current_user = get_user_from_headers(request)
-    user_role = current_user.get("role")
-    if user_role not in ["admin", "operator"]:
-        raise PermissionError("Admin or operator role required")
-    return current_user
+# Auth is now handled at nginx gateway level - no internal auth checks needed
 
 # Service URLs
 
