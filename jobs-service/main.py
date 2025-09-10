@@ -543,6 +543,9 @@ async def run_job(
             
             if steps:
                 for idx, step in enumerate(steps):
+                    # Use target_relative_order if available, otherwise fall back to global index
+                    step_idx = step.get('target_relative_order', idx)
+                    
                     cursor.execute("""
                         INSERT INTO job_run_steps (
                             job_run_id, idx, type, target_id, shell, timeoutsec, status
@@ -550,7 +553,7 @@ async def run_job(
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """, (
                         job_run["id"],
-                        idx,
+                        step_idx,
                         step.get('type', 'shell'),
                         step.get('target_id'),
                         step.get('shell', ''),
@@ -816,7 +819,8 @@ def _convert_visual_workflow_to_steps(workflow_definition: dict, parameters: dic
                 'shell': exec_step.command,
                 'timeout': exec_step.timeout,
                 'target_id': exec_step.target_id,
-                'connection_type': exec_step.connection_type
+                'connection_type': exec_step.connection_type,
+                'target_relative_order': exec_step.target_relative_order
             }
             
             # Add type-specific parameters

@@ -69,9 +69,7 @@ app = FastAPI(
 # Add standard middleware
 add_standard_middleware(app, "executor-service", version="1.0.0")
 
-# Configuration
-WORKER_POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "5"))  # seconds
-WORKER_ENABLED = os.getenv("WORKER_ENABLED", "true").lower() == "true"
+# Configuration - Worker loop disabled, using Celery only
 # Service URLs now handled by utility modules
 
 # Database connection handled by shared module
@@ -80,8 +78,7 @@ class JobExecutor:
     """Job execution engine with queue processing"""
     
     def __init__(self):
-        self.running = False
-        self.worker_thread = None
+        # Worker attributes removed - using Celery only
         self.ssh_executor = SSHExecutor()
         self.sftp_executor = SSHSFTPExecutor(self.ssh_executor)
         
@@ -92,22 +89,7 @@ class JobExecutor:
         self.sftp_utility = SFTPExecutor()
         self.notification_utils = NotificationUtils()
         
-        # Job processing now handled by Celery workers
-    
-    def start_worker(self) -> Any:
-        """Start the worker thread"""
-        if WORKER_ENABLED and not self.running:
-            self.running = True
-            self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-            self.worker_thread.start()
-            logger.info("Executor worker started")
-    
-    def stop_worker(self) -> Any:
-        """Stop the worker thread"""
-        self.running = False
-        if self.worker_thread:
-            self.worker_thread.join(timeout=5)
-        logger.info("Executor worker stopped")
+        # Job processing now handled by Celery workers only
     
     def execute_step(self, job_run_id: int, step_id: int) -> Dict[str, Any]:
         """
@@ -144,12 +126,18 @@ class JobExecutor:
                 self._execute_step(step, cursor)
                 logger.info(f"_execute_step completed for step {step_id}")
                 
-                # Return success result
-                return {
-                    'status': 'success',
-                    'step_id': step_id,
-                    'job_run_id': job_run_id
-                }
+            # Get the actual step status from database after execution (separate connection)
+            with get_db_cursor() as status_cursor:
+                status_cursor.execute("SELECT status FROM job_run_steps WHERE id = %s", (step_id,))
+                actual_status = status_cursor.fetchone()['status']
+                
+            # Return actual result
+            return {
+                'status': 'success' if actual_status == 'succeeded' else 'failed',
+                'step_id': step_id,
+                'job_run_id': job_run_id,
+                'actual_step_status': actual_status
+            }
                 
         except Exception as e:
             logger.error(f"Error executing step {step_id}: {str(e)}")
@@ -163,42 +151,7 @@ class JobExecutor:
     
     # RabbitMQ consumer methods removed - job processing now handled by Celery
     
-    def _worker_loop(self):
-        """Main worker loop - processes queued job steps"""
-        logger.info("Worker loop started")
-        
-        while self.running:
-            try:
-                # Get next queued step using SKIP LOCKED
-                try:
-                    with get_db_cursor() as cursor:
-                        cursor.execute("""
-                            SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
-                            FROM job_run_steps jrs
-                            JOIN job_runs jr ON jrs.job_run_id = jr.id
-                            JOIN jobs j ON jr.job_id = j.id
-                            WHERE jrs.status = 'queued'
-                            ORDER BY jrs.id
-                            FOR UPDATE SKIP LOCKED
-                            LIMIT 1
-                        """)
-                        
-                        step = cursor.fetchone()
-                        if not step:
-                            # No queued steps, sleep and continue
-                            time.sleep(WORKER_POLL_INTERVAL)
-                            continue
-                        
-                        # Process the step
-                        logger.info(f"Processing step {step['id']} (run {step['job_run_id']}, type {step['type']})")
-                        self._execute_step(step, cursor)
-                    
-                except Exception as e:
-                    logger.error(f"Worker loop error: {e}")
-                    
-            except Exception as e:
-                logger.error(f"Critical worker loop error: {e}")
-                time.sleep(WORKER_POLL_INTERVAL)
+    # Worker loop removed - using Celery only
     
     def _execute_step(self, step: Dict[str, Any], cursor):
         """Execute a single job step"""
@@ -1102,10 +1055,18 @@ class JobExecutor:
             # Visual workflow format - find the action node (skip flow.start)
             nodes = job_definition['nodes']
             action_nodes = [node for node in nodes if node['type'].startswith('action.')]
-            if step_idx < len(action_nodes):
+            
+            if not action_nodes:
+                raise ValueError("No action nodes found in visual workflow")
+            
+            # For visual workflows, if there's only one action node, all steps use that node
+            # This handles the case where one action node is expanded to multiple targets
+            if len(action_nodes) == 1:
+                return action_nodes[0]['data']
+            elif step_idx < len(action_nodes):
                 return action_nodes[step_idx]['data']
             else:
-                raise IndexError(f"Step index {step_idx} out of range for action nodes")
+                raise IndexError(f"Step index {step_idx} out of range for action nodes (found {len(action_nodes)} action nodes)")
         else:
             raise KeyError("Job definition contains neither 'steps' nor 'nodes'")
     
@@ -1478,7 +1439,7 @@ class JobExecutor:
             
         cursor.execute("""
             SELECT id, name, hostname, protocol, port, tags, metadata
-            FROM targets WHERE id = %s
+            FROM targets WHERE id = %s AND deleted_at IS NULL
         """, (target_id,))
         
         return cursor.fetchone()
@@ -1609,17 +1570,15 @@ async def startup_event() -> None:
     # Service auth utility no longer needed with header-based auth
     
     logger.info("Service utilities initialized")
-    executor.start_worker()
     
-    # Job processing now handled by Celery workers
+    # Job processing handled by Celery workers only
     logger.info("Executor service ready - job processing via Celery")
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Stop the executor worker on shutdown"""
-    executor.stop_worker()
-    
+    """Cleanup on shutdown"""
     # Celery handles job processing cleanup automatically
+    logger.info("Executor service shutting down")
     
     log_shutdown("executor-service")
     cleanup_database_pool()
@@ -1644,9 +1603,7 @@ async def get_status() -> Dict[str, Any]:
             stats = cursor.fetchone()
             
             return {
-                "worker_running": executor.running,
-                "worker_enabled": WORKER_ENABLED,
-                "poll_interval": WORKER_POLL_INTERVAL,
+                "execution_method": "celery_only",
                 "queue_stats": dict(stats)
             }
             

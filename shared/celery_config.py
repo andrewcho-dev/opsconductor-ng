@@ -50,7 +50,9 @@ celery_app.conf.update(
     # Task routing
     task_routes={
         'shared.tasks.execute_job_run': {'queue': 'execution'},
+        'shared.tasks.execute_job_target': {'queue': 'execution'},
         'shared.tasks.execute_job_step': {'queue': 'execution'},
+        'shared.tasks.monitor_job_completion': {'queue': 'jobs'},
         'shared.tasks.process_job_request': {'queue': 'jobs'},
         'shared.tasks.test_task': {'queue': 'celery'},
     },
@@ -69,7 +71,9 @@ celery_app.conf.update(
 # Task queues
 celery_app.conf.task_routes = {
     'shared.tasks.execute_job_run': {'queue': 'execution'},
+    'shared.tasks.execute_job_target': {'queue': 'execution'},
     'shared.tasks.execute_job_step': {'queue': 'execution'},
+    'shared.tasks.monitor_job_completion': {'queue': 'jobs'},
     'shared.tasks.process_job_request': {'queue': 'jobs'},
     'shared.tasks.test_task': {'queue': 'celery'},
 }

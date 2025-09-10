@@ -71,6 +71,7 @@ class ExecutionStep:
     parameters: Dict[str, Any]
     conditions: Optional[Dict[str, Any]] = None
     retry_config: Optional[Dict[str, Any]] = None
+    target_relative_order: int = 0  # Target-relative step index (0, 1, 2... per target)
 
 class VisualWorkflowEngine:
     """Enhanced visual workflow engine with comprehensive node support"""
@@ -124,19 +125,48 @@ class VisualWorkflowEngine:
             # Resolve execution order
             execution_order = self._resolve_execution_order(execution_graph, nodes, edges)
             
-            # Convert nodes to executable steps
+            # Convert nodes to executable steps with proper target-relative indexing
             steps = []
-            for order, node_id in enumerate(execution_order):
+            current_order = 0
+            target_step_counters = {}  # Track step count per target
+            
+            for node_id in execution_order:
                 node = nodes[node_id]
                 
                 if node.type in self.node_handlers:
-                    step = self.node_handlers[node.type](node, parameters, order)
-                    if step:
-                        steps.append(step)
+                    result = self.node_handlers[node.type](node, parameters, current_order)
+                    if result:
+                        # Handle both single steps and lists of steps
+                        if isinstance(result, list):
+                            # Multiple steps (e.g., multi-target command/script)
+                            for step in result:
+                                # Assign target-relative index
+                                target_id = step.target_id
+                                if target_id not in target_step_counters:
+                                    target_step_counters[target_id] = 0
+                                
+                                # Set target-relative order (0, 1, 2... for each target)
+                                step.target_relative_order = target_step_counters[target_id]
+                                target_step_counters[target_id] += 1
+                                
+                                steps.append(step)
+                            current_order += len(result)
+                        else:
+                            # Single step
+                            target_id = result.target_id
+                            if target_id not in target_step_counters:
+                                target_step_counters[target_id] = 0
+                            
+                            # Set target-relative order
+                            result.target_relative_order = target_step_counters[target_id]
+                            target_step_counters[target_id] += 1
+                            
+                            steps.append(result)
+                            current_order += 1
                 else:
                     logger.warning(f"Unsupported node type: {node.type}")
             
-            logger.info(f"Translated workflow to {len(steps)} executable steps")
+            logger.info(f"Translated workflow to {len(steps)} executable steps across {len(target_step_counters)} targets")
             return steps
             
         except Exception as e:
@@ -331,72 +361,118 @@ class VisualWorkflowEngine:
         node: WorkflowNode, 
         parameters: Dict[str, Any], 
         order: int
-    ) -> Optional[ExecutionStep]:
-        """Handle command execution node"""
+    ) -> List[ExecutionStep]:
+        """Handle command execution node - supports multiple targets"""
         data = node.data
         
         command = self._apply_template_substitution(data.get('command', ''), parameters)
-        target_host = self._apply_template_substitution(data.get('target', ''), parameters)
         
-        # Resolve target_id from target_host
-        target_id = self._resolve_target_id(target_host)
+        # Handle multiple targets
+        targets = data.get('targets', [])
+        if not targets:
+            # Fallback to single target for backward compatibility
+            single_target = data.get('target', '')
+            if single_target:
+                targets = [single_target]
         
-        # Determine step type based on connection type
-        connection_type = data.get('connection_type', 'ssh')
-        if connection_type == 'winrm':
-            step_type = 'winrm.exec'
-        elif connection_type == 'ssh':
-            step_type = 'ssh.exec'
-        else:
-            step_type = 'shell'  # fallback
+        if not targets:
+            logger.warning(f"No targets specified for command node {node.id}")
+            return []
         
-        return ExecutionStep(
-            id=node.id,
-            type=step_type,
-            order=order,
-            target_id=target_id,
-            command=command,
-            timeout=data.get('timeout', 60),
-            connection_type=connection_type,
-            parameters={
-                'working_directory': data.get('working_directory'),
-                'environment_variables': data.get('environment_variables', {}),
-                'username': self._apply_template_substitution(data.get('username', ''), parameters),
-                'password': self._apply_template_substitution(data.get('password', ''), parameters),
-                'port': data.get('port', 22),
-                'use_ssl': data.get('use_ssl', False)
-            }
-        )
+        steps = []
+        for i, target_host in enumerate(targets):
+            target_host = self._apply_template_substitution(target_host, parameters)
+            
+            # Resolve target_id from target_host
+            target_id = self._resolve_target_id(target_host)
+            
+            # Determine step type based on connection type
+            connection_type = data.get('connection_type', 'ssh')
+            if connection_type == 'winrm':
+                step_type = 'winrm.exec'
+            elif connection_type == 'ssh':
+                step_type = 'ssh.exec'
+            else:
+                step_type = 'shell'  # fallback
+            
+            # Create unique step ID for each target
+            step_id = f"{node.id}_{i}" if len(targets) > 1 else node.id
+            
+            step = ExecutionStep(
+                id=step_id,
+                type=step_type,
+                order=order + i,  # Increment order for each target
+                target_id=target_id,
+                command=command,
+                timeout=data.get('timeout', 60),
+                connection_type=connection_type,
+                parameters={
+                    'working_directory': data.get('working_directory'),
+                    'environment_variables': data.get('environment_variables', {}),
+                    'username': self._apply_template_substitution(data.get('username', ''), parameters),
+                    'password': self._apply_template_substitution(data.get('password', ''), parameters),
+                    'port': data.get('port', 22),
+                    'use_ssl': data.get('use_ssl', False),
+                    'original_node_id': node.id,  # Track original node for UI purposes
+                    'target_host': target_host
+                }
+            )
+            steps.append(step)
+        
+        return steps
     
     def _handle_script_node(
         self, 
         node: WorkflowNode, 
         parameters: Dict[str, Any], 
         order: int
-    ) -> Optional[ExecutionStep]:
-        """Handle script execution node"""
+    ) -> List[ExecutionStep]:
+        """Handle script execution node - supports multiple targets"""
         data = node.data
         
         script_content = self._apply_template_substitution(data.get('script', ''), parameters)
-        target_host = self._apply_template_substitution(data.get('target', ''), parameters)
         
-        target_id = self._resolve_target_id(target_host)
+        # Handle multiple targets
+        targets = data.get('targets', [])
+        if not targets:
+            # Fallback to single target for backward compatibility
+            single_target = data.get('target', '')
+            if single_target:
+                targets = [single_target]
         
-        return ExecutionStep(
-            id=node.id,
-            type='script',
-            order=order,
-            target_id=target_id,
-            command=script_content,
-            timeout=data.get('timeout', 300),
-            connection_type=data.get('connection_type', 'ssh'),
-            parameters={
-                'script_type': data.get('script_type', 'bash'),
-                'interpreter': data.get('interpreter', '/bin/bash'),
-                'arguments': data.get('arguments', []),
-                'working_directory': data.get('working_directory')
-            }
-        )
+        if not targets:
+            logger.warning(f"No targets specified for script node {node.id}")
+            return []
+        
+        steps = []
+        for i, target_host in enumerate(targets):
+            target_host = self._apply_template_substitution(target_host, parameters)
+            
+            target_id = self._resolve_target_id(target_host)
+            
+            # Create unique step ID for each target
+            step_id = f"{node.id}_{i}" if len(targets) > 1 else node.id
+            
+            step = ExecutionStep(
+                id=step_id,
+                type='script',
+                order=order + i,  # Increment order for each target
+                target_id=target_id,
+                command=script_content,
+                timeout=data.get('timeout', 300),
+                connection_type=data.get('connection_type', 'ssh'),
+                parameters={
+                    'script_type': data.get('script_type', 'bash'),
+                    'interpreter': data.get('interpreter', '/bin/bash'),
+                    'arguments': data.get('arguments', []),
+                    'working_directory': data.get('working_directory'),
+                    'original_node_id': node.id,  # Track original node for UI purposes
+                    'target_host': target_host
+                }
+            )
+            steps.append(step)
+        
+        return steps
     
     def _handle_http_node(
         self, 
@@ -432,33 +508,56 @@ class VisualWorkflowEngine:
         node: WorkflowNode, 
         parameters: Dict[str, Any], 
         order: int
-    ) -> Optional[ExecutionStep]:
-        """Handle file transfer node"""
+    ) -> List[ExecutionStep]:
+        """Handle file transfer node - supports multiple targets"""
         data = node.data
         
         source_path = self._apply_template_substitution(data.get('source_path', ''), parameters)
         dest_path = self._apply_template_substitution(data.get('dest_path', ''), parameters)
-        target_host = self._apply_template_substitution(data.get('target', ''), parameters)
         
-        target_id = self._resolve_target_id(target_host)
+        # Handle multiple targets
+        targets = data.get('targets', [])
+        if not targets:
+            # Fallback to single target for backward compatibility
+            single_target = data.get('target', '')
+            if single_target:
+                targets = [single_target]
         
-        return ExecutionStep(
-            id=node.id,
-            type='file_transfer',
-            order=order,
-            target_id=target_id,
-            command=f"{source_path} -> {dest_path}",
-            timeout=data.get('timeout', 300),
-            connection_type=data.get('connection_type', 'sftp'),
-            parameters={
-                'source_path': source_path,
-                'dest_path': dest_path,
-                'direction': data.get('direction', 'upload'),  # upload/download
-                'preserve_permissions': data.get('preserve_permissions', True),
-                'recursive': data.get('recursive', False),
-                'overwrite': data.get('overwrite', True)
-            }
-        )
+        if not targets:
+            logger.warning(f"No targets specified for file transfer node {node.id}")
+            return []
+        
+        steps = []
+        for i, target_host in enumerate(targets):
+            target_host = self._apply_template_substitution(target_host, parameters)
+            
+            target_id = self._resolve_target_id(target_host)
+            
+            # Create unique step ID for each target
+            step_id = f"{node.id}_{i}" if len(targets) > 1 else node.id
+            
+            step = ExecutionStep(
+                id=step_id,
+                type='file_transfer',
+                order=order + i,  # Increment order for each target
+                target_id=target_id,
+                command=f"{source_path} -> {dest_path}",
+                timeout=data.get('timeout', 300),
+                connection_type=data.get('connection_type', 'sftp'),
+                parameters={
+                    'source_path': source_path,
+                    'dest_path': dest_path,
+                    'direction': data.get('direction', 'upload'),  # upload/download
+                    'preserve_permissions': data.get('preserve_permissions', True),
+                    'recursive': data.get('recursive', False),
+                    'overwrite': data.get('overwrite', True),
+                    'original_node_id': node.id,  # Track original node for UI purposes
+                    'target_host': target_host
+                }
+            )
+            steps.append(step)
+        
+        return steps
     
     def _handle_database_node(
         self, 
@@ -698,7 +797,7 @@ class VisualWorkflowEngine:
         )
     
     def _resolve_target_id(self, target_host: str) -> Optional[int]:
-        """Resolve target hostname to target ID"""
+        """Resolve target hostname to target ID (excluding soft-deleted targets)"""
         if not target_host:
             return None
         
@@ -706,7 +805,8 @@ class VisualWorkflowEngine:
             with get_db_cursor(commit=False) as cursor:
                 cursor.execute("""
                     SELECT id FROM targets 
-                    WHERE hostname = %s OR ip_address = %s
+                    WHERE (hostname = %s OR ip_address = %s)
+                    AND deleted_at IS NULL
                     LIMIT 1
                 """, (target_host, target_host))
                 

@@ -373,8 +373,7 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./executor-service:/app
-      - ./shared:/app/shared
+      - ./shared:/app/shared:ro  # Read-only to prevent restart triggers
     healthcheck:
       test: ["CMD", "celery", "-A", "shared.celery_config", "inspect", "ping"]
       interval: 30s
