@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { jobRunApi, jobApi, userApi, targetApi } from '../services/api';
 import { JobRun, JobRunStep, Job, User, Target } from '../types';
-import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, ExternalLink } from 'lucide-react';
+import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, ExternalLink, Maximize2, Upload } from 'lucide-react';
 
 // Component to check if Celery task exists and render appropriate link
 const CeleryTaskLink: React.FC<{ jobRunId: number; correlationId: string }> = ({ jobRunId, correlationId }) => {
@@ -88,6 +88,15 @@ const JobRuns: React.FC = () => {
   const [runSteps, setRunSteps] = useState<JobRunStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Modal state for viewing full output
+  const [outputModalOpen, setOutputModalOpen] = useState(false);
+  const [modalOutputData, setModalOutputData] = useState<{
+    stepName: string;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+  } | null>(null);
 
   // Parse job_id and run_id from URL parameters on mount
   useEffect(() => {
@@ -325,6 +334,74 @@ const JobRuns: React.FC = () => {
     if (!selectedJobId) return 'All Jobs';
     const job = jobs.find(j => j.id === selectedJobId);
     return job ? job.name : `Job ${selectedJobId}`;
+  };
+
+  const openOutputModal = (step: JobRunStep) => {
+    setModalOutputData({
+      stepName: `Step ${step.idx + 1}: ${step.type}`,
+      stdout: step.stdout,
+      stderr: step.stderr,
+      exitCode: step.exit_code
+    });
+    setOutputModalOpen(true);
+  };
+
+  const closeOutputModal = () => {
+    setOutputModalOpen(false);
+    setModalOutputData(null);
+  };
+
+  const formatOutput = (output: string) => {
+    // Replace \r\n and \n with actual line breaks, and handle other escape sequences
+    return output
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\n')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+  };
+
+  const exportOutput = (step: JobRunStep) => {
+    const stepName = `Step_${step.idx + 1}_${step.type}`;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `${stepName}_${timestamp}.txt`;
+    
+    let content = `=== ${stepName} Output ===\n`;
+    content += `Job Run ID: ${step.job_run_id}\n`;
+    content += `Step Index: ${step.idx + 1}\n`;
+    content += `Step Type: ${step.type}\n`;
+    content += `Status: ${step.status}\n`;
+    content += `Exit Code: ${step.exit_code ?? 'N/A'}\n`;
+    content += `Started: ${step.started_at ?? 'N/A'}\n`;
+    content += `Finished: ${step.finished_at ?? 'N/A'}\n`;
+    content += `\n${'='.repeat(50)}\n\n`;
+    
+    if (step.stdout) {
+      content += `STANDARD OUTPUT:\n`;
+      content += `${'-'.repeat(20)}\n`;
+      content += `${formatOutput(step.stdout)}\n\n`;
+    }
+    
+    if (step.stderr) {
+      content += `STANDARD ERROR:\n`;
+      content += `${'-'.repeat(20)}\n`;
+      content += `${formatOutput(step.stderr)}\n\n`;
+    }
+    
+    if (!step.stdout && !step.stderr) {
+      content += `No output available.\n`;
+    }
+    
+    // Create and download file
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   if (loading && runs.length === 0) {
@@ -747,6 +824,7 @@ const JobRuns: React.FC = () => {
                 <table className="runs-table">
                   <thead>
                     <tr>
+                      <th>Run #</th>
                       <th>Job</th>
                       <th>Status</th>
                       <th>Requested By</th>
@@ -761,9 +839,11 @@ const JobRuns: React.FC = () => {
                         className={selectedRun?.id === run.id ? 'selected' : ''}
                         onClick={() => handleRunSelect(run)}
                       >
+                        <td style={{ fontSize: '11px', color: 'var(--neutral-600)', textAlign: 'center' }}>
+                          {run.id}
+                        </td>
                         <td>
                           <div style={{ fontWeight: '500' }}>{getJobName(run.job_id)}</div>
-                          <div style={{ fontSize: '10px', color: 'var(--neutral-500)' }}>Run #{run.id}</div>
                         </td>
                         <td>
                           <div className="run-status-icon">
@@ -799,68 +879,70 @@ const JobRuns: React.FC = () => {
           <div className="compact-content">
             {selectedRun ? (
               <div className="details-panel">
-                {/* Compact 2-column grid for basic info */}
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <label>Job</label>
-                    <div className="detail-value">{getJobName(selectedRun.job_id)}</div>
-                  </div>
-
-                  <div className="detail-item">
-                    <label>Status</label>
-                    <div className="detail-value">
-                      <div className="run-status-icon">
-                        {getRunStatusIcon(selectedRun.status)}
-                        <span className={`status-badge ${getRunStatusBadge(selectedRun.status)}`}>
-                          {selectedRun.status}
-                        </span>
-                      </div>
+                {/* 3-column grid for run details */}
+                <div className="detail-grid-3col">
+                    <div className="detail-item">
+                      <label>Job</label>
+                      <div className="detail-value">{getJobName(selectedRun.job_id)}</div>
                     </div>
-                  </div>
 
-                  <div className="detail-item">
-                    <label>Requested By</label>
-                    <div className="detail-value">{getUserName(selectedRun.requested_by)}</div>
-                  </div>
-
-                  <div className="detail-item">
-                    <label>Duration</label>
-                    <div className="detail-value">
-                      {formatDuration(selectedRun.started_at, selectedRun.finished_at)}
-                    </div>
-                  </div>
-
-                  <div className="detail-item">
-                    <label>Queued</label>
-                    <div className="detail-value">{new Date(selectedRun.queued_at).toLocaleString()}</div>
-                  </div>
-
-                  <div className="detail-item">
-                    <label>Started</label>
-                    <div className="detail-value">
-                      {selectedRun.started_at ? new Date(selectedRun.started_at).toLocaleString() : 'Not started'}
-                    </div>
-                  </div>
-
-                  <div className="detail-item">
-                    <label>Finished</label>
-                    <div className="detail-value">
-                      {selectedRun.finished_at ? new Date(selectedRun.finished_at).toLocaleString() : 'Not finished'}
-                    </div>
-                  </div>
-
-                  {selectedRun.correlation_id && (
-                    <div className="detail-item detail-item-full">
-                      <label>Correlation ID</label>
+                    <div className="detail-item">
+                      <label>Status</label>
                       <div className="detail-value">
-                        <CeleryTaskLink 
-                          jobRunId={selectedRun.id} 
-                          correlationId={selectedRun.correlation_id} 
-                        />
+                        <div className="run-status-icon">
+                          {getRunStatusIcon(selectedRun.status)}
+                          <span className={`status-badge ${getRunStatusBadge(selectedRun.status)}`}>
+                            {selectedRun.status}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
+
+                    <div className="detail-item">
+                      <label>Requested By</label>
+                      <div className="detail-value">{getUserName(selectedRun.requested_by)}</div>
+                    </div>
+
+                    <div className="detail-item">
+                      <label>Queued</label>
+                      <div className="detail-value">{new Date(selectedRun.queued_at).toLocaleString()}</div>
+                    </div>
+
+                    <div className="detail-item">
+                      <label>Started</label>
+                      <div className="detail-value">
+                        {selectedRun.started_at ? new Date(selectedRun.started_at).toLocaleString() : 'Not started'}
+                      </div>
+                    </div>
+
+                    <div className="detail-item">
+                      <label>Duration</label>
+                      <div className="detail-value">
+                        {formatDuration(selectedRun.started_at, selectedRun.finished_at)}
+                      </div>
+                    </div>
+
+                    {selectedRun.finished_at && (
+                      <div className="detail-item">
+                        <label>Finished</label>
+                        <div className="detail-value">
+                          {new Date(selectedRun.finished_at).toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedRun.correlation_id && (
+                      <div className="detail-item detail-item-span-2-3">
+                        <label>Correlation ID</label>
+                        <div className="detail-value">
+                          <CeleryTaskLink 
+                            jobRunId={selectedRun.id} 
+                            correlationId={selectedRun.correlation_id} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                 {selectedRun.parameters && Object.keys(selectedRun.parameters).length > 0 && (
                   <div className="detail-section">
@@ -900,38 +982,97 @@ const JobRuns: React.FC = () => {
                   ) : (
                     <div>
                       {runSteps.map((step, index) => (
-                        <div key={step.id} className="step-item">
-                          <div className="step-header">
-                            <div className="step-title">
-                              Step {step.idx + 1}: {step.type}
+                        <div key={step.id} style={{ marginBottom: '16px', paddingBottom: '16px', borderBottom: index < runSteps.length - 1 ? '1px solid var(--neutral-200)' : 'none' }}>
+                          {/* 3-column grid for step details */}
+                          <div className="detail-grid-3col">
+                            {/* Row 1: Step, Status, Target */}
+                            <div className="detail-item">
+                              <label>Step {step.idx + 1}</label>
+                              <div className="detail-value">{step.type}</div>
                             </div>
-                            <div className="run-status-icon">
-                              {getRunStatusIcon(step.status)}
-                              <span className={`status-badge ${getRunStatusBadge(step.status)}`}>
-                                {step.status}
-                              </span>
+                            
+                            <div className="detail-item">
+                              <label>Status</label>
+                              <div className="detail-value">
+                                <div className="run-status-icon">
+                                  {getRunStatusIcon(step.status)}
+                                  <span className={`status-badge ${getRunStatusBadge(step.status)}`}>
+                                    {step.status}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="step-details">
-                            {step.target_id && <div>Target: {getTargetInfo(step.target_id)}</div>}
-                            <div>Command: {getStepCommand(step)}</div>
-                            {step.exit_code !== null && step.exit_code !== undefined && (
-                              <div>Exit Code: {step.exit_code}</div>
+                            
+                            <div className="detail-item">
+                              <label>Target</label>
+                              <div className="detail-value">{step.target_id ? getTargetInfo(step.target_id) : 'N/A'}</div>
+                            </div>
+                            
+                            {/* Row 2: Command (spans all columns) */}
+                            <div className="detail-item detail-item-span-remaining">
+                              <label>Command</label>
+                              <div className="detail-value">{getStepCommand(step)}</div>
+                            </div>
+                            
+                            {/* Row 3: Output (spans all columns) */}
+                            {(step.stdout || step.stderr) && (
+                              <div className="detail-item detail-item-span-remaining">
+                                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span>Output</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <button
+                                      onClick={() => exportOutput(step)}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: 'var(--primary)',
+                                        padding: '2px',
+                                        borderRadius: '3px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        transition: 'background-color 0.2s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--neutral-100)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                      title="Export output to file"
+                                    >
+                                      <Upload size={14} />
+                                    </button>
+                                    <button
+                                      onClick={() => openOutputModal(step)}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: 'var(--primary)',
+                                        padding: '2px',
+                                        borderRadius: '3px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        transition: 'background-color 0.2s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--neutral-100)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                      title="View full output"
+                                    >
+                                      <Maximize2 size={14} />
+                                    </button>
+                                  </div>
+                                </label>
+                                <div className="detail-value">
+                                  {step.stdout && (
+                                    <div>{step.stdout.substring(0, 200)}{step.stdout.length > 200 ? '...' : ''}</div>
+                                  )}
+                                  {step.stderr && (
+                                    <div style={{ color: 'var(--error)' }}>
+                                      Error: {step.stderr.substring(0, 200)}{step.stderr.length > 200 ? '...' : ''}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             )}
-                            {step.started_at && (
-                              <div>Duration: {formatDuration(step.started_at, step.finished_at)}</div>
-                            )}
                           </div>
-                          {step.stdout && (
-                            <div className="step-output">
-                              {step.stdout.substring(0, 200)}{step.stdout.length > 200 ? '...' : ''}
-                            </div>
-                          )}
-                          {step.stderr && (
-                            <div className="step-output step-error">
-                              {step.stderr.substring(0, 200)}{step.stderr.length > 200 ? '...' : ''}
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -948,6 +1089,184 @@ const JobRuns: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Output Modal */}
+      {outputModalOpen && modalOutputData && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={closeOutputModal}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '80%',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--neutral-200)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
+                {modalOutputData.stepName} - Output
+              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => {
+                    // Find the step data for export
+                    const step = runSteps.find(s => 
+                      `Step ${s.idx + 1}: ${s.type}` === modalOutputData.stepName
+                    );
+                    if (step) exportOutput(step);
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--primary)',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--neutral-100)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  title="Export output to file"
+                >
+                  <Upload size={18} />
+                </button>
+                <button
+                  onClick={closeOutputModal}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--neutral-600)',
+                    padding: '4px',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--neutral-100)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                  title="Close modal"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{
+              padding: '20px',
+              overflow: 'auto',
+              flex: 1
+            }}>
+              {modalOutputData.stdout && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ 
+                    margin: '0 0 8px 0', 
+                    fontSize: '14px', 
+                    fontWeight: 600,
+                    color: 'var(--neutral-700)'
+                  }}>
+                    Standard Output:
+                  </h4>
+                  <pre style={{
+                    backgroundColor: 'var(--neutral-50)',
+                    border: '1px solid var(--neutral-200)',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    margin: 0,
+                    fontSize: '13px',
+                    fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: '300px',
+                    overflow: 'auto'
+                  }}>
+                    {formatOutput(modalOutputData.stdout)}
+                  </pre>
+                </div>
+              )}
+
+              {modalOutputData.stderr && (
+                <div style={{ marginBottom: '16px' }}>
+                  <h4 style={{ 
+                    margin: '0 0 8px 0', 
+                    fontSize: '14px', 
+                    fontWeight: 600,
+                    color: 'var(--error)'
+                  }}>
+                    Standard Error:
+                  </h4>
+                  <pre style={{
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    margin: 0,
+                    fontSize: '13px',
+                    fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    maxHeight: '300px',
+                    overflow: 'auto',
+                    color: 'var(--error)'
+                  }}>
+                    {formatOutput(modalOutputData.stderr)}
+                  </pre>
+                </div>
+              )}
+
+              {modalOutputData.exitCode !== undefined && (
+                <div>
+                  <h4 style={{ 
+                    margin: '0 0 8px 0', 
+                    fontSize: '14px', 
+                    fontWeight: 600,
+                    color: 'var(--neutral-700)'
+                  }}>
+                    Exit Code:
+                  </h4>
+                  <span style={{
+                    display: 'inline-block',
+                    backgroundColor: modalOutputData.exitCode === 0 ? 'var(--success-light)' : 'var(--error-light)',
+                    color: modalOutputData.exitCode === 0 ? 'var(--success)' : 'var(--error)',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    fontSize: '13px',
+                    fontWeight: 600
+                  }}>
+                    {modalOutputData.exitCode}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

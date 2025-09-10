@@ -317,7 +317,7 @@ class CredentialsServiceClient:
     
     async def get_credential(self, credential_id: int) -> Dict[str, Any]:
         """
-        Get credential by ID
+        Get credential by ID (metadata only, no decrypted data)
         
         Args:
             credential_id: ID of the credential
@@ -336,6 +336,28 @@ class CredentialsServiceClient:
                 raise
             logger.error(f"Failed to get credential {credential_id}: {e}")
             raise ServiceCommunicationError("credentials-service", f"Get credential error: {str(e)}")
+    
+    async def get_credential_decrypted(self, credential_id: int) -> Dict[str, Any]:
+        """
+        Get credential with decrypted data (for execution services)
+        
+        Args:
+            credential_id: ID of the credential
+            
+        Returns:
+            Dict containing credential data with decrypted password/keys
+        """
+        try:
+            headers = await _get_authenticated_headers()
+            response = await self.client.get_json(f"/credentials/{credential_id}/service-decrypt", headers=headers)
+            
+            return response
+            
+        except Exception as e:
+            if isinstance(e, (NotFoundError, ServiceCommunicationError)):
+                raise
+            logger.error(f"Failed to get decrypted credential {credential_id}: {e}")
+            raise ServiceCommunicationError("credentials-service", f"Get decrypted credential error: {str(e)}")
     
     async def get_credentials_by_target(self, target_id: int) -> List[Dict[str, Any]]:
         """

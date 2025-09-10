@@ -9,8 +9,9 @@ import time
 import json
 import base64
 import threading
+import traceback
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 import psycopg2
 import psycopg2.extras
@@ -54,6 +55,9 @@ load_dotenv()
 # Setup structured logging
 setup_service_logging("executor-service", level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("executor-service")
+
+# Set service name for service client authentication
+service_clients_utility.set_service_name("executor-service")
 
 # FastAPI app
 app = FastAPI(
@@ -116,8 +120,10 @@ class JobExecutor:
         Returns:
             Dict containing execution results
         """
+        logger.info(f"Starting execute_step for job_run_id={job_run_id}, step_id={step_id}")
         try:
             with get_db_cursor() as cursor:
+                logger.info(f"Database cursor acquired for step {step_id}")
                 # Get step details
                 cursor.execute("""
                     SELECT jrs.*, jr.parameters as run_parameters, j.definition as job_definition
@@ -131,8 +137,12 @@ class JobExecutor:
                 if not step:
                     raise ValueError(f"Step {step_id} not found")
                 
+                logger.info(f"Step details retrieved for step {step_id}: type={step.get('type')}, target_id={step.get('target_id')}")
+                
                 # Execute the step
+                logger.info(f"Calling _execute_step for step {step_id}")
                 self._execute_step(step, cursor)
+                logger.info(f"_execute_step completed for step {step_id}")
                 
                 # Return success result
                 return {
@@ -143,6 +153,7 @@ class JobExecutor:
                 
         except Exception as e:
             logger.error(f"Error executing step {step_id}: {str(e)}")
+            logger.error(f"Exception traceback: {traceback.format_exc()}")
             return {
                 'status': 'failed',
                 'step_id': step_id,
@@ -464,11 +475,11 @@ class JobExecutor:
                 }
             
             # Get job definition and parameters
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            job_definition = self._safe_json_loads(step['job_definition'])
+            run_parameters = self._safe_json_loads(step['run_parameters'])
             
             # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            step_definition = self._get_step_definition(job_definition, step['idx'])
             
             # Generate PowerShell command based on command type
             command_type = step_definition.get('command_type', 'system_info')
@@ -546,11 +557,11 @@ class JobExecutor:
                 }
             
             # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            job_definition = self._safe_json_loads(step['job_definition'])
+            run_parameters = self._safe_json_loads(step['run_parameters'])
             
             # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            step_definition = self._get_step_definition(job_definition, step['idx'])
             
             # Render command template
             rendered_command = utility_render_template(step_definition['command'], run_parameters)
@@ -651,9 +662,10 @@ class JobExecutor:
             }
         
         # Get job definition and parameters for template rendering
-        job_definition = json.loads(step['job_definition'])
-        run_parameters = json.loads(step['run_parameters'])
-        step_definition = job_definition['steps'][step['idx']]
+        job_definition = self._safe_json_loads(step['job_definition'])
+        run_parameters = self._safe_json_loads(step['run_parameters'])
+            
+        step_definition = self._get_step_definition(job_definition, step['idx'])
         
         return {
             'target_info': target_info,
@@ -735,11 +747,11 @@ class JobExecutor:
                 }
             
             # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            job_definition = self._safe_json_loads(step['job_definition'])
+            run_parameters = self._safe_json_loads(step['run_parameters'])
             
             # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            step_definition = self._get_step_definition(job_definition, step['idx'])
             
             # Render paths
             local_path, remote_path = utility_render_file_paths(
@@ -805,11 +817,11 @@ class JobExecutor:
                 }
             
             # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            job_definition = self._safe_json_loads(step['job_definition'])
+            run_parameters = self._safe_json_loads(step['run_parameters'])
             
             # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            step_definition = self._get_step_definition(job_definition, step['idx'])
             
             # Render paths
             remote_path, local_path = utility_render_file_paths(
@@ -1054,13 +1066,17 @@ class JobExecutor:
             logger.error(f"Error storing webhook execution details: {e}")
     
     def _get_target_info(self, target_id: int) -> Optional[Dict[str, Any]]:
-        """Get target information from database"""
+        """Get target information from database including service and credential info"""
         try:
             with get_db_cursor(commit=False) as cursor:
-                cursor.execute(
-                    "SELECT * FROM targets WHERE id = %s AND deleted_at IS NULL",
-                    (target_id,)
-                )
+                # Join with target_services to get service type, port, and credential info
+                cursor.execute("""
+                    SELECT t.*, ts.service_type, ts.port, ts.credential_id as credential_ref
+                    FROM targets t
+                    LEFT JOIN target_services ts ON t.id = ts.target_id 
+                    WHERE t.id = %s AND t.deleted_at IS NULL
+                    AND ts.service_type = 'winrm'
+                """, (target_id,))
                 
                 target = cursor.fetchone()
                 
@@ -1070,15 +1086,37 @@ class JobExecutor:
             logger.error(f"Error getting target info: {e}")
             return None
     
+    def _safe_json_loads(self, data: Union[str, dict]) -> dict:
+        """Safely parse JSON data that might already be a dict"""
+        if isinstance(data, str):
+            return json.loads(data)
+        else:
+            return data
+    
+    def _get_step_definition(self, job_definition: dict, step_idx: int) -> dict:
+        """Get step definition from job, handling both traditional steps and visual workflow nodes"""
+        if 'steps' in job_definition:
+            # Traditional workflow format
+            return job_definition['steps'][step_idx]
+        elif 'nodes' in job_definition:
+            # Visual workflow format - find the action node (skip flow.start)
+            nodes = job_definition['nodes']
+            action_nodes = [node for node in nodes if node['type'].startswith('action.')]
+            if step_idx < len(action_nodes):
+                return action_nodes[step_idx]['data']
+            else:
+                raise IndexError(f"Step index {step_idx} out of range for action nodes")
+        else:
+            raise KeyError("Job definition contains neither 'steps' nor 'nodes'")
+    
     def _get_credential_data(self, credential_ref: int) -> Optional[Dict[str, Any]]:
         """Get decrypted credential data from credentials service"""
         try:
             # Use credentials service client
             credentials_client = service_clients_utility.get_credentials_client()
             
-            # Note: This assumes the credentials service has a get_credential method
-            # If it uses a different endpoint, we may need to add a custom method
-            credential_data = asyncio.run(credentials_client.get_credential(credential_ref))
+            # Use the decrypt endpoint to get the actual password/keys
+            credential_data = asyncio.run(credentials_client.get_credential_decrypted(credential_ref))
             return credential_data
                 
         except NotFoundError:
@@ -1176,8 +1214,8 @@ class JobExecutor:
     
     def _get_step_definition_from_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """Extract step definition from job step"""
-        job_definition = json.loads(step['job_definition'])
-        return job_definition['steps'][step['idx']]
+        job_definition = self._safe_json_loads(step['job_definition'])
+        return self._get_step_definition(job_definition, step['idx'])
     
     def _create_notification_skipped_result(self) -> Dict[str, Any]:
         """Create result for skipped notification"""
@@ -1300,11 +1338,11 @@ class JobExecutor:
         """Execute notify.conditional step"""
         try:
             # Get job definition and parameters for template rendering
-            job_definition = json.loads(step['job_definition'])
-            run_parameters = json.loads(step['run_parameters'])
+            job_definition = self._safe_json_loads(step['job_definition'])
+            run_parameters = self._safe_json_loads(step['run_parameters'])
             
             # Find the step definition in job
-            step_definition = job_definition['steps'][step['idx']]
+            step_definition = self._get_step_definition(job_definition, step['idx'])
             
             # Get context for condition evaluation
             context = self._get_notification_context(step)
@@ -1325,7 +1363,18 @@ class JobExecutor:
             # Create a temporary step for the nested notification
             temp_step = step.copy()
             temp_job_definition = job_definition.copy()
-            temp_job_definition['steps'][step['idx']] = notification_config
+            
+            # Update the appropriate structure based on job format
+            if 'steps' in temp_job_definition:
+                temp_job_definition['steps'][step['idx']] = notification_config
+            elif 'nodes' in temp_job_definition:
+                # For visual workflows, update the action node data
+                nodes = temp_job_definition['nodes']
+                action_nodes = [i for i, node in enumerate(nodes) if node['type'].startswith('action.')]
+                if step['idx'] < len(action_nodes):
+                    action_node_idx = action_nodes[step['idx']]
+                    temp_job_definition['nodes'][action_node_idx]['data'] = notification_config
+            
             temp_step['job_definition'] = json.dumps(temp_job_definition)
             
             # Execute based on notification type

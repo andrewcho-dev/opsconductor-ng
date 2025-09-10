@@ -68,7 +68,6 @@ class NotificationUtils:
                 jr.finished_at,
                 jr.requested_by,
                 j.name as job_name,
-                j.description as job_description,
                 u.email as user_email,
                 u.username,
                 COUNT(jrs.id) as total_steps,
@@ -80,7 +79,7 @@ class NotificationUtils:
             LEFT JOIN users u ON jr.requested_by = u.id
             LEFT JOIN job_run_steps jrs ON jr.id = jrs.job_run_id
             WHERE jr.id = %s
-            GROUP BY jr.id, j.name, j.description, u.email, u.username
+            GROUP BY jr.id, j.name, u.email, u.username
         """, (job_run_id,))
         
         return cursor.fetchone()

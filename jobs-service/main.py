@@ -30,7 +30,7 @@ from shared.logging import setup_service_logging, get_logger, log_startup, log_s
 from shared.middleware import add_standard_middleware
 from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
 from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import require_admin_role
+from shared.auth import require_admin_role, get_user_from_request
 # Job scheduling now handled by Celery tasks
 
 # Import visual job schema
@@ -184,7 +184,7 @@ async def list_jobs(
 ):
     """List all jobs with pagination"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         offset = (page - 1) * limit
         
@@ -257,7 +257,7 @@ async def get_job(
 ):
     """Get a specific job by ID"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         with get_db_cursor() as cursor:
             cursor.execute("""
@@ -487,7 +487,7 @@ async def run_job(
     Creates a job run record and dispatches to Celery for execution
     """
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         if run_request is None:
             run_request = JobRunRequest()
@@ -618,7 +618,7 @@ async def export_jobs(
 ):
     """Export jobs to downloadable format"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         job_ids = export_request.job_ids if export_request else None
         
@@ -975,7 +975,7 @@ async def list_job_runs(
 ):
     """List job runs with pagination and optional filtering by job_id"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         with get_db_cursor() as cursor:
             # Build query based on filters
@@ -1027,7 +1027,7 @@ async def get_job_run(
 ):
     """Get a specific job run by ID"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         with get_db_cursor() as cursor:
             query = """
@@ -1055,7 +1055,7 @@ async def get_job_run_steps(
 ):
     """Get all steps for a specific job run"""
     # Get user info from headers
-    user_info = get_user_from_headers(request)
+    user_info = await get_user_from_request(request)
     try:
         with get_db_cursor() as cursor:
             # First verify the run exists

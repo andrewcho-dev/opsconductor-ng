@@ -75,6 +75,7 @@ def execute_job_run(self, job_run_id: int, job_config: Dict[str, Any]) -> Dict[s
                 logger.info(f"Executing step {step['idx']} (ID: {step['id']}) for job run {job_run_id}")
                 
                 # Execute step directly using JobExecutor (avoid Celery deadlock)
+                # Import from executor service - Celery worker runs in /app directory
                 from main import JobExecutor
                 executor = JobExecutor()
                 step_result = executor.execute_step(job_run_id, step['id'])
@@ -213,9 +214,8 @@ def execute_job_step(self, job_run_id: int, step_id: int, step_config: Dict[str,
             """, (step_start, step_id))
         
         # Import executor dynamically to avoid circular imports
+        # Celery worker runs in /app directory which contains executor service files
         from main import JobExecutor
-        
-        # Execute the step using the job executor
         executor = JobExecutor()
         step_result = executor.execute_step(job_run_id, step_id)
         

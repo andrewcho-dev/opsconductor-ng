@@ -178,7 +178,7 @@ export interface JobRunStep {
   idx: number;
   type: string;
   target_id?: number;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'aborted';
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'aborted' | 'skipped';
   shell?: string;
   timeoutsec?: number;
   exit_code?: number;

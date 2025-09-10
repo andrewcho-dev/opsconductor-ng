@@ -427,6 +427,49 @@ async def get_credential_decrypted(
         logger.error(f"Credential decryption error: {e}")
         raise DatabaseError("Failed to decrypt credential")
 
+@app.get("/credentials/{credential_id}/service-decrypt", response_model=CredentialDecrypted)
+async def get_credential_decrypted_for_service(
+    credential_id: int, 
+    request: Request
+):
+    """Get credential with decrypted data - FOR SERVICE-TO-SERVICE CALLS ONLY"""
+    # This endpoint is for service-to-service communication (executor-service)
+    # It bypasses user authentication but logs the access
+    user_agent = request.headers.get("User-Agent", "")
+    if not user_agent.startswith("OpsConductor-"):
+        raise PermissionError("This endpoint is for service-to-service communication only")
+    
+    logger.info(f"Service-to-service credential access: {user_agent} requesting credential {credential_id}")
+    
+    try:
+        with get_db_cursor(commit=False) as cursor:
+            cursor.execute(
+                """SELECT id, name, description, credential_type, username, domain,
+                          password, private_key, public_key, certificate, certificate_chain, passphrase,
+                          valid_from, valid_until, next_rotation_date, created_at, updated_at 
+                   FROM credentials WHERE id = %s""",
+                (credential_id,)
+            )
+            cred_data = cursor.fetchone()
+            
+            if not cred_data:
+                raise NotFoundError("Credential not found")
+            
+            # Decrypt sensitive fields
+            result = dict(cred_data)
+            result['password'] = decrypt_sensitive_field(result['password']) if result['password'] else None
+            result['private_key'] = decrypt_sensitive_field(result['private_key']) if result['private_key'] else None
+            result['public_key'] = decrypt_sensitive_field(result['public_key']) if result['public_key'] else None
+            result['certificate'] = decrypt_sensitive_field(result['certificate']) if result['certificate'] else None
+            result['certificate_chain'] = decrypt_sensitive_field(result['certificate_chain']) if result['certificate_chain'] else None
+            result['passphrase'] = decrypt_sensitive_field(result['passphrase']) if result['passphrase'] else None
+            
+            return CredentialDecrypted(**result)
+        
+    except Exception as e:
+        logger.error(f"Service credential decryption error: {e}")
+        raise DatabaseError("Failed to decrypt credential for service")
+
 @app.put("/credentials/{credential_id}", response_model=CredentialResponse)
 async def update_credential(
     credential_id: int,
