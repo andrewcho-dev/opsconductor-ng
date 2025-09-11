@@ -162,50 +162,7 @@ export const userApi = {
   }
 };
 
-// Credential API
-export const credentialApi = {
-  getAll: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
-    const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
-      params: { skip, limit }
-    });
-    return response.data;
-  },
 
-  list: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
-    const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
-      params: { skip, limit }
-    });
-    return response.data;
-  },
-
-  get: async (id: number): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.get(`/api/v1/credentials/${id}`);
-    return response.data;
-  },
-
-  getDecrypted: async (id: number): Promise<CredentialDecrypted> => {
-    const response: AxiosResponse<CredentialDecrypted> = await api.get(`/api/v1/credentials/${id}/decrypt`);
-    return response.data;
-  },
-
-  create: async (credData: CredentialCreate): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.post('/api/v1/credentials', credData);
-    return response.data;
-  },
-
-  update: async (id: number, credData: Partial<CredentialCreate>): Promise<Credential> => {
-    const response: AxiosResponse<Credential> = await api.put(`/api/v1/credentials/${id}`, credData);
-    return response.data;
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/credentials/${id}`);
-  },
-
-  rotate: async (id: number, newCredentialData: Record<string, any>): Promise<void> => {
-    await api.post(`/api/v1/credentials/${id}/rotate`, newCredentialData);
-  }
-};
 
 // Target API
 export const targetApi = {

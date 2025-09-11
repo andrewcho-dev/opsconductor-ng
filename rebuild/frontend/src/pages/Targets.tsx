@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, Check, X, Edit3, MonitorCheck, Zap } from 'lucide-react';
-import { targetApi, credentialApi } from '../services/api';
+import { targetApi } from '../services/api';
 import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
@@ -181,7 +181,7 @@ const Targets: React.FC = () => {
   const navigate = useNavigate();
   const { action, id } = useParams<{ action?: string; id?: string }>();
   const [targets, setTargets] = useState<EnhancedTarget[]>([]);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingConnections, setTestingConnections] = useState<Set<number>>(new Set());
@@ -208,7 +208,6 @@ const Targets: React.FC = () => {
 
   useEffect(() => {
     fetchTargets();
-    fetchCredentials();
   }, []);
 
   // Add a retry mechanism for initial load
@@ -264,15 +263,7 @@ const Targets: React.FC = () => {
     }
   };
 
-  const fetchCredentials = async () => {
-    try {
-      const response = await credentialApi.list();
-      setCredentials(response.credentials || []);
-    } catch (error) {
-      console.error('Failed to fetch credentials:', error);
-      setCredentials([]);
-    }
-  };
+
 
   const startAddingNew = () => {
     setAddingNew(true);

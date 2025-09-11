@@ -1,18 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { userApi, credentialApi, targetApi, jobApi, jobRunApi } from '../services/api';
+import { userApi, targetApi, jobApi, jobRunApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import SystemMetrics from '../components/SystemMetrics';
 import RecentActivity from '../components/RecentActivity';
 
-import { Users, Shield, Target, Settings, Play, Calendar, Search, CheckCircle, Circle, Plus } from 'lucide-react';
+import { Users, Target, Settings, Play, Calendar, Search, CheckCircle, Circle, Plus } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [stats, setStats] = useState({
     users: 0,
-    credentials: 0,
     targets: 0,
     jobs: 0,
     recentRuns: 0,
@@ -24,7 +23,6 @@ const Dashboard: React.FC = () => {
     try {
       const requests = [
         userApi.list(0, 1),
-        credentialApi.list(0, 1),
         targetApi.list(0, 1),
         jobApi.list(0, 1),
         jobRunApi.list(0, 1)
@@ -32,7 +30,6 @@ const Dashboard: React.FC = () => {
 
       const [
         usersRes,
-        credentialsRes,
         targetsRes,
         jobsRes,
         runsRes
@@ -49,14 +46,12 @@ const Dashboard: React.FC = () => {
       };
       // Log failures for debugging but keep dashboard rendering
       if (usersRes.status === 'rejected') console.warn('Users stats failed:', usersRes.reason);
-      if (credentialsRes.status === 'rejected') console.warn('Credentials stats failed:', credentialsRes.reason);
       if (targetsRes.status === 'rejected') console.warn('Targets stats failed:', targetsRes.reason);
       if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
       if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
 
       setStats({
         users: getTotal(usersRes),
-        credentials: getTotal(credentialsRes),
         targets: getTotal(targetsRes),
         jobs: getTotal(jobsRes),
         recentRuns: getTotal(runsRes)
@@ -91,7 +86,6 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="header-stats">
           <Link to="/user-management" className="stat-pill"><Users size={14} /> {stats.users}</Link>
-          <Link to="/credential-management" className="stat-pill"><Shield size={14} /> {stats.credentials}</Link>
           <Link to="/targets-management" className="stat-pill"><Target size={14} /> {stats.targets}</Link>
           <Link to="/job-management" className="stat-pill"><Settings size={14} /> {stats.jobs}</Link>
           <Link to="/job-runs" className="stat-pill"><Play size={14} /> {stats.recentRuns}</Link>

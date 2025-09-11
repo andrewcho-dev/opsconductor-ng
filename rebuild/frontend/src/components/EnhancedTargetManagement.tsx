@@ -5,7 +5,7 @@ import {
   targetServiceApi, 
   targetCredentialApi
 } from '../services/enhancedApi';
-import { credentialApi } from '../services/api';
+
 import {
   EnhancedTarget,
   EnhancedTargetCreate,
@@ -23,7 +23,7 @@ const EnhancedTargetManagement: React.FC = () => {
   // State management
   const [targets, setTargets] = useState<EnhancedTarget[]>([]);
   const [serviceDefinitions, setServiceDefinitions] = useState<ServiceDefinition[]>([]);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,16 +79,14 @@ const EnhancedTargetManagement: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const [targetsResponse, servicesResponse, credentialsResponse] = await Promise.all([
+      const [targetsResponse, servicesResponse] = await Promise.all([
         enhancedTargetApi.list(),
-        serviceDefinitionApi.list(),
-        credentialApi.list()
+        serviceDefinitionApi.list()
       ]);
 
       const loadedTargets = targetsResponse.targets || [];
       setTargets(loadedTargets);
       setServiceDefinitions(servicesResponse.services || []);
-      setCredentials(credentialsResponse.credentials || []);
       
       // Expand all targets by default to show CRUD buttons
       const allTargetIds = new Set(loadedTargets.map(t => t.id));
