@@ -11,8 +11,7 @@ import base64
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-# Add shared module to path
-sys.path.append('/home/opsconductor')
+# Service is now self-contained
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from pydantic import BaseModel
@@ -23,13 +22,13 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from dotenv import load_dotenv
 
-# Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
-from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
-from shared.middleware import add_standard_middleware
-from shared.models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import require_admin_role
+# Import service modules
+from .database import get_db_cursor, check_database_health, cleanup_database_pool
+from .logging_config import setup_service_logging, get_logger, log_startup, log_shutdown
+from .middleware import add_standard_middleware
+from .models import HealthResponse, HealthCheck, PaginatedResponse, create_success_response
+from .errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from .auth import require_admin_role
 
 # Load environment variables
 load_dotenv()

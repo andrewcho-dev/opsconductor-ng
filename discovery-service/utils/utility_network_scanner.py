@@ -7,7 +7,7 @@ Handles network scanning operations for discovery service
 import asyncio
 import nmap
 from typing import List, Dict, Optional, Tuple
-from shared.logging import get_logger
+from .logging import get_logger
 
 logger = get_logger("discovery-service.network-scanner")
 

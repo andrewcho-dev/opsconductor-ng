@@ -1,0 +1,305 @@
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:16-alpine
+    container_name: opsconductor-postgres
+    environment:
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init-schema.sql:/docker-entrypoint-initdb.d/init-schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: opsconductor-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    container_name: opsconductor-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./api-gateway:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Core Services
+  identity-service:
+    build: ./identity-service
+    container_name: opsconductor-identity
+    ports:
+      - "3001:3001"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: identity
+      REDIS_URL: redis://redis:6379/1
+      JWT_SECRET_KEY: your-secret-key-here
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./identity-service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  asset-service:
+    build: ./asset-service
+    container_name: opsconductor-assets
+    ports:
+      - "3002:3002"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: assets
+      REDIS_URL: redis://redis:6379/2
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ENCRYPTION_KEY: your-encryption-key-here
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./asset-service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  automation-service:
+    build: ./automation-service
+    container_name: opsconductor-automation
+    ports:
+      - "3003:3003"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service:/app
+      - automation_libraries:/app/libraries
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  communication-service:
+    build: ./communication-service
+    container_name: opsconductor-communication
+    ports:
+      - "3004:3004"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: communication
+      REDIS_URL: redis://redis:6379/4
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USERNAME: your-email@gmail.com
+      SMTP_PASSWORD: your-app-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./communication-service:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Background Workers
+  automation-worker:
+    build: ./automation-service
+    container_name: opsconductor-worker
+    command: celery -A worker worker --loglevel=info --concurrency=4
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service:/app
+      - automation_libraries:/app/libraries
+    restart: unless-stopped
+
+  automation-scheduler:
+    build: ./automation-service
+    container_name: opsconductor-scheduler
+    command: celery -A worker beat --loglevel=info
+    environment:
+      REDIS_URL: redis://redis:6379/3
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - scheduler_data:/app/data
+    restart: unless-stopped
+
+  # Monitoring
+  flower:
+    build: ./automation-service
+    container_name: opsconductor-flower
+    command: celery -A worker flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/3
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    container_name: opsconductor-frontend
+    # Removed REACT_APP_API_URL to use dynamic URL detection
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    build: ./nginx
+    container_name: opsconductor-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3100:443"  # Additional HTTPS port for compatibility
+    depends_on:
+      - api-gateway
+      - frontend
+    networks:
+      - opsconductor-net
+    restart: unless-stopped
+
+networks:
+  opsconductor-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  automation_libraries:
+  scheduler_data:

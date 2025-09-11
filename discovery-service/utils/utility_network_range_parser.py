@@ -7,7 +7,7 @@ Handles parsing and optimization of network ranges for discovery
 import ipaddress
 import re
 from typing import List
-from shared.logging import get_logger
+from .logging import get_logger
 
 logger = get_logger("discovery-service.network-range-parser")
 

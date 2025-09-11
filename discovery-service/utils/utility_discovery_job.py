@@ -6,8 +6,8 @@ Handles discovery job execution and management
 
 import asyncio
 from typing import List, Dict, Any, Optional
-from shared.logging import get_logger
-from shared.database import get_db_cursor
+from .logging import get_logger
+from .database import get_db_cursor
 
 logger = get_logger("discovery-service.discovery-job")
 

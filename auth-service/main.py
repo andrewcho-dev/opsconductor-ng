@@ -9,8 +9,7 @@ import sys
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-# Add shared module to path
-sys.path.append('/home/opsconductor')
+# Service is now self-contained
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -19,13 +18,13 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from dotenv import load_dotenv
 
-# Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
-from shared.logging import setup_service_logging, get_logger
-from shared.middleware import add_standard_middleware
-from shared.models import HealthResponse, HealthCheck, StandardResponse, create_success_response
-from shared.errors import DatabaseError, ValidationError, handle_database_error, AuthError
-# Auth service doesn't need to import from shared.auth
+# Import service modules
+from .database import get_db_cursor, check_database_health, cleanup_database_pool
+from .logging_config import setup_service_logging, get_logger
+from .middleware import add_standard_middleware
+from .models import HealthResponse, HealthCheck, StandardResponse, create_success_response
+from .errors import DatabaseError, ValidationError, handle_database_error, AuthError
+# Auth service doesn't need to import from .auth
 
 # Load environment variables
 load_dotenv()
@@ -285,7 +284,9 @@ async def health_check() -> HealthResponse:
 @app.get("/metrics/database")
 async def database_metrics() -> Dict[str, Any]:
     """Database connection pool metrics endpoint"""
-    metrics = get_database_metrics()
+    from .database import get_database_pool
+    pool = get_database_pool()
+    metrics = pool.get_health_status()
     return {
         "service": "auth-service",
         "timestamp": datetime.utcnow().isoformat(),
@@ -296,13 +297,13 @@ async def database_metrics() -> Dict[str, Any]:
 @app.on_event("startup")
 async def startup_event() -> None:
     """Log service startup"""
-    from shared.logging import log_startup
+    from .logging_config import log_startup
     log_startup("auth-service", "1.0.0", 3001)
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     """Clean up database connections on shutdown"""
-    from shared.logging import log_shutdown
+    from .logging_config import log_shutdown
     log_shutdown("auth-service")
     cleanup_database_pool()
 

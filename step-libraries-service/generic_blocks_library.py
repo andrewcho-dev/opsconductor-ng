@@ -8,7 +8,7 @@ from datetime import datetime
 
 from main import StepLibraryBase, LibraryMetadata, StepDefinition, StepParameter
 from generic_blocks import GenericBlockExecutor, GENERIC_BLOCKS
-from shared.logging import get_logger
+from .logging import get_logger
 
 logger = get_logger("generic-blocks-library")
 

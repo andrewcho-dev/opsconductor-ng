@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from abc import ABC, abstractmethod
 
-from shared.logging import get_logger
+from .logging import get_logger
 
 logger = get_logger("generic-blocks")
 

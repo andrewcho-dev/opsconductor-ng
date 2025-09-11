@@ -15,7 +15,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # Add shared module to path
-sys.path.append('/home/opsconductor')
 
 
 import psycopg2
@@ -26,12 +25,12 @@ from jinja2 import Template, Environment
 import re
 
 # Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool
-from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
-from shared.middleware import add_standard_middleware
-from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, AuthError, ServiceCommunicationError
-from shared.auth import require_admin_role
+from .database import get_db_cursor, check_database_health, cleanup_database_pool
+from .logging_config import setup_service_logging, get_logger, log_startup, log_shutdown
+from .middleware import add_standard_middleware
+from .models import HealthResponse, HealthCheck, create_success_response
+from .errors import DatabaseError, ValidationError, NotFoundError, handle_database_error, AuthError, ServiceCommunicationError
+from .auth import require_admin_role
 
 # Import utility modules
 import utility_email_sender as email_sender_utility

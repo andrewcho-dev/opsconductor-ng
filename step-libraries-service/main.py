@@ -28,20 +28,19 @@ import sys
 import traceback
 from contextlib import asynccontextmanager
 
-sys.path.append('/home/opsconductor')
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks, Request
 from pydantic import BaseModel, Field, validator
 from abc import ABC, abstractmethod
 
 # Import shared modules
-from shared.database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
-from shared.logging import setup_service_logging, get_logger, log_startup, log_shutdown
-from shared.middleware import add_standard_middleware
-from shared.models import HealthResponse, HealthCheck, create_success_response
-from shared.errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
-from shared.auth import require_admin_role
-from shared.utils import get_service_client
+from .database import get_db_cursor, check_database_health, cleanup_database_pool, get_database_metrics
+from .logging_config import setup_service_logging, get_logger, log_startup, log_shutdown
+from .middleware import add_standard_middleware
+from .models import HealthResponse, HealthCheck, create_success_response
+from .errors import DatabaseError, ValidationError, NotFoundError, PermissionError, handle_database_error
+from .auth import require_admin_role
+from .utils import get_service_client
 
 # Setup structured logging
 setup_service_logging("step-libraries-service", level=os.getenv("LOG_LEVEL", "INFO"))
