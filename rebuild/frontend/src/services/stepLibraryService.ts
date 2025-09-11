@@ -6,7 +6,7 @@
 import axios from 'axios';
 import { getApiBaseUrl } from './api';
 
-const getStepLibrariesServiceUrl = () => `${getApiBaseUrl()}/api/v1/libraries`;
+const getStepLibrariesServiceUrl = () => `${getApiBaseUrl()}/api/v1/step-libraries`;
 
 // Types
 export interface StepParameter {
@@ -411,17 +411,9 @@ class StepLibraryService {
    */
   async checkServiceHealth(): Promise<boolean> {
     try {
-      // Use centralized health endpoint instead of service-specific health
-      const response = await axios.get(`${getApiBaseUrl()}/health`, {
+      const response = await axios.get(`${getStepLibrariesServiceUrl()}/health`, {
         timeout: 5000
       });
-      
-      // Check if automation service (which handles libraries) is healthy
-      if (response.data && response.data.checks) {
-        const automationService = response.data.checks.find((check: any) => check.name === 'automation');
-        return automationService && automationService.status === 'healthy';
-      }
-      
       return response.status === 200;
     } catch (error) {
       return false;

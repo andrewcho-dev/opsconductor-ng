@@ -15,7 +15,7 @@ const CeleryTaskLink: React.FC<{ jobRunId: number; correlationId: string }> = ({
     const checkTaskExists = async () => {
       try {
         // Check if task exists in Flower/Celery
-        const response = await fetch(`/api/v1/executions/celery/task/info/${taskId}`);
+        const response = await fetch(`/flower/api/task/info/${taskId}`);
         setTaskExists(response.ok);
       } catch (error) {
         console.log('Could not check task existence:', error);

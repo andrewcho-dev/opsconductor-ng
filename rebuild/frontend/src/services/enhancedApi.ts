@@ -10,32 +10,21 @@ import {
   TargetFilters
 } from '../types/enhanced';
 
-// Create axios instance for enhanced API calls
+// Create axios instance for targets service
 const enhancedApi = axios.create({
+  baseURL: `${getServiceUrl('targets')}/api/v1`,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor to set dynamic baseURL
-enhancedApi.interceptors.request.use(
-  (config) => {
-    // Set dynamic baseURL for each request
-    config.baseURL = getApiBaseUrl();
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
 // Request interceptor to add auth token (same as main api.ts)
 enhancedApi.interceptors.request.use(
   (config) => {
     // Always get fresh token from localStorage
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      config.headers.Authorization = `Bearer ${sessionToken}`;
+    const currentToken = localStorage.getItem('access_token');
+    if (currentToken) {
+      config.headers.Authorization = `Bearer ${currentToken}`;
     }
     return config;
   },
@@ -52,11 +41,35 @@ enhancedApi.interceptors.response.use(
     if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // Handle auth errors by redirecting to login
-      console.log('Authentication required, redirecting to login');
-      localStorage.removeItem('session_token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      const currentRefreshToken = localStorage.getItem('refresh_token');
+      if (currentRefreshToken) {
+        try {
+          const response = await axios.post(`${getApiBaseUrl()}/refresh`, {
+            refresh_token: currentRefreshToken
+          });
+
+          const { access_token, refresh_token: newRefreshToken } = response.data;
+          
+          // Update tokens in localStorage
+          localStorage.setItem('access_token', access_token);
+          localStorage.setItem('refresh_token', newRefreshToken);
+          
+          // Retry the original request
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          return enhancedApi(originalRequest);
+        } catch (refreshError) {
+          // Refresh failed, redirect to login
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          window.location.href = '/login';
+          return Promise.reject(refreshError);
+        }
+      } else {
+        // No refresh token, redirect to login
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+      }
     }
 
     return Promise.reject(error);
@@ -71,7 +84,7 @@ export const serviceDefinitionApi = {
     if (commonOnly) params.append('common_only', 'true');
     
     const response: AxiosResponse<ServiceDefinitionResponse> = await enhancedApi.get(
-      `/api/v1/targets/service-definitions?${params.toString()}`
+      `/service-definitions?${params.toString()}`
     );
     return response.data;
   },
@@ -95,28 +108,28 @@ export const enhancedTargetApi = {
     if (filters?.tag) params.append('tag', filters.tag);
     
     const response: AxiosResponse<EnhancedTargetListResponse> = await enhancedApi.get(
-      `/api/v1/targets?${params.toString()}`
+      `/targets?${params.toString()}`
     );
     return response.data;
   },
 
   get: async (id: number): Promise<EnhancedTarget> => {
-    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.get(`/api/v1/targets/${id}`);
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.get(`/targets/${id}`);
     return response.data;
   },
 
   create: async (target: EnhancedTargetCreate): Promise<EnhancedTarget> => {
-    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.post('/api/v1/targets', target);
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.post('/targets', target);
     return response.data;
   },
 
   update: async (id: number, target: EnhancedTargetUpdate): Promise<EnhancedTarget> => {
-    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.put(`/api/v1/targets/${id}`, target);
+    const response: AxiosResponse<EnhancedTarget> = await enhancedApi.put(`/targets/${id}`, target);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await enhancedApi.delete(`/api/v1/targets/${id}`);
+    await enhancedApi.delete(`/targets/${id}`);
   }
 };
 
@@ -124,7 +137,7 @@ export const enhancedTargetApi = {
 export const targetServiceApi = {
   add: async (targetId: number, service: TargetServiceCreate): Promise<TargetService> => {
     const response: AxiosResponse<TargetService> = await enhancedApi.post(
-      `/api/v1/targets/${targetId}/services`, 
+      `/targets/${targetId}/services`, 
       service
     );
     return response.data;
@@ -132,24 +145,24 @@ export const targetServiceApi = {
 
   update: async (targetId: number, serviceId: number, service: TargetServiceUpdate): Promise<TargetService> => {
     const response: AxiosResponse<TargetService> = await enhancedApi.put(
-      `/api/v1/targets/${targetId}/services/${serviceId}`, 
+      `/targets/${targetId}/services/${serviceId}`, 
       service
     );
     return response.data;
   },
 
   delete: async (targetId: number, serviceId: number): Promise<void> => {
-    await enhancedApi.delete(`/api/v1/targets/${targetId}/services/${serviceId}`);
+    await enhancedApi.delete(`/targets/${targetId}/services/${serviceId}`);
   },
 
   testConnection: async (serviceId: number): Promise<any> => {
-    const response = await enhancedApi.post(`/api/v1/targets/services/${serviceId}/test`);
+    const response = await enhancedApi.post(`/targets/services/${serviceId}/test`);
     return response.data;
   },
 
   bulkOperation: async (operation: BulkServiceOperation): Promise<BulkServiceResponse> => {
     const response: AxiosResponse<BulkServiceResponse> = await enhancedApi.post(
-      '/api/v1/targets/services/bulk', 
+      '/targets/services/bulk', 
       operation
     );
     return response.data;
@@ -160,7 +173,7 @@ export const targetServiceApi = {
 export const targetCredentialApi = {
   add: async (targetId: number, credential: TargetCredentialCreate): Promise<TargetCredential> => {
     const response: AxiosResponse<TargetCredential> = await enhancedApi.post(
-      `/api/v1/targets/${targetId}/credentials`, 
+      `/targets/${targetId}/credentials`, 
       credential
     );
     return response.data;
@@ -168,21 +181,21 @@ export const targetCredentialApi = {
 
   update: async (targetId: number, credentialId: number, credential: Partial<TargetCredentialCreate>): Promise<TargetCredential> => {
     const response: AxiosResponse<TargetCredential> = await enhancedApi.put(
-      `/api/v1/targets/${targetId}/credentials/${credentialId}`, 
+      `/targets/${targetId}/credentials/${credentialId}`, 
       credential
     );
     return response.data;
   },
 
   delete: async (targetId: number, credentialId: number): Promise<void> => {
-    await enhancedApi.delete(`/api/v1/targets/${targetId}/credentials/${credentialId}`);
+    await enhancedApi.delete(`/targets/${targetId}/credentials/${credentialId}`);
   }
 };
 
 // Migration API
 export const migrationApi = {
   migrateSchema: async (): Promise<MigrationStatus> => {
-    const response: AxiosResponse<MigrationStatus> = await enhancedApi.post('/api/v1/targets/migrate-schema');
+    const response: AxiosResponse<MigrationStatus> = await enhancedApi.post('/targets/migrate-schema');
     return response.data;
   }
 };
@@ -190,15 +203,7 @@ export const migrationApi = {
 // Health check
 export const enhancedHealthApi = {
   check: async (): Promise<any> => {
-    // Use centralized health endpoint instead of service-specific health
-    const response = await enhancedApi.get('/health');
-    
-    // Extract asset service health from centralized response
-    if (response.data && response.data.checks) {
-      const assetService = response.data.checks.find((check: any) => check.name === 'asset');
-      return assetService || { status: 'unknown', name: 'asset' };
-    }
-    
+    const response = await enhancedApi.get('/targets/health');
     return response.data;
   }
 };

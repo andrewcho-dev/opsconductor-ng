@@ -14,10 +14,12 @@ const ServiceHealthMonitor: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  // Group services by category - using actual service names from centralized health endpoint
+  // Group services by category
   const serviceGroups = {
-    'Core Services': ['identity', 'asset', 'automation', 'communication'],
-    'Infrastructure': ['redis']
+    'Core Services': ['auth', 'users', 'credentials', 'targets', 'jobs'],
+    'Processing': ['executor', 'celery-worker', 'celery-beat'],
+    'Infrastructure': ['nginx', 'frontend', 'redis', 'postgres'],
+    'Monitoring': ['notification', 'discovery', 'step-libraries', 'flower']
   };
 
   const fetchServiceHealth = async () => {

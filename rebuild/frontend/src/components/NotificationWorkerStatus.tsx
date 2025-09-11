@@ -26,7 +26,7 @@ const NotificationWorkerStatus: React.FC = () => {
   const fetchWorkerStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/notifications/status', {
+      const response = await fetch('/api/v1/notification/status', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -50,7 +50,7 @@ const NotificationWorkerStatus: React.FC = () => {
 
   const controlWorker = async (action: 'start' | 'stop') => {
     try {
-      const response = await fetch(`/api/v1/notifications/worker/${action}`, {
+      const response = await fetch(`/api/v1/notification/worker/${action}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -72,7 +72,7 @@ const NotificationWorkerStatus: React.FC = () => {
 
   const sendTestNotification = async () => {
     try {
-      const response = await fetch('/api/v1/notifications/notifications/enhanced', {
+      const response = await fetch('/api/v1/notification/notifications/enhanced', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

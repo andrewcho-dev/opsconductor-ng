@@ -40,6 +40,7 @@ SERVICE_ROUTES = {
     
     # Automation Service
     "/api/v1/jobs": "AUTOMATION_SERVICE_URL",
+    "/api/v1/schedules": "AUTOMATION_SERVICE_URL",
     "/api/v1/workflows": "AUTOMATION_SERVICE_URL",
     "/api/v1/executions": "AUTOMATION_SERVICE_URL",
     "/api/v1/libraries": "AUTOMATION_SERVICE_URL",
@@ -49,6 +50,13 @@ SERVICE_ROUTES = {
     "/api/v1/templates": "COMMUNICATION_SERVICE_URL",
     "/api/v1/channels": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
+}
+
+# Routes that don't require authentication
+PUBLIC_ROUTES = {
+    "/api/v1/auth/login",
+    "/api/v1/auth/refresh",
+    "/health"
 }
 
 # ============================================================================
@@ -226,6 +234,48 @@ class APIGateway:
                     detail="Rate limit exceeded"
                 )
             
+            # Authentication check (skip for public routes)
+            full_path = f"/{path}"
+            user_info = None
+            
+            if full_path not in PUBLIC_ROUTES and not any(full_path.startswith(route) for route in PUBLIC_ROUTES):
+                # Extract token from Authorization header
+                auth_header = request.headers.get("authorization")
+                if not auth_header or not auth_header.startswith("Bearer "):
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Missing or invalid authorization header"
+                    )
+                
+                # Validate token with Identity Service
+                try:
+                    identity_service_url = self.service_urls.get("/api/v1/auth")
+                    if not identity_service_url:
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Identity service not available"
+                        )
+                    
+                    # Call identity service to validate token and get user info
+                    response = await self.http_client.get(
+                        f"{identity_service_url}/auth/me",
+                        headers={"authorization": auth_header}
+                    )
+                    
+                    if response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid or expired token"
+                        )
+                    
+                    user_info = response.json()
+                    
+                except httpx.RequestError:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="Authentication service unavailable"
+                    )
+            
             # Find matching service
             service_url = None
             for route_prefix, url in self.service_urls.items():
@@ -252,6 +302,16 @@ class APIGateway:
             # Add request ID if not present
             if "x-request-id" not in headers:
                 headers["x-request-id"] = f"gw_{int(time.time() * 1000)}"
+            
+            # Add user information to headers for authenticated requests
+            if user_info:
+                headers["x-user-id"] = str(user_info.get("id"))
+                headers["x-username"] = user_info.get("username", "")
+                headers["x-user-email"] = user_info.get("email", "")
+                headers["x-is-admin"] = str(user_info.get("is_admin", False)).lower()
+                headers["x-authenticated"] = "true"
+            else:
+                headers["x-authenticated"] = "false"
             
             try:
                 # Forward request

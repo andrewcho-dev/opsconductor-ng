@@ -35,23 +35,23 @@ export const getApiBaseUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   
-  // Always use the current window location for API calls
-  // This ensures the frontend uses the same host/port that the user is accessing
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  const port = window.location.port;
-  
-  // For development, force HTTP protocol to avoid certificate issues
-  const apiProtocol = (hostname === 'localhost' || hostname === '127.0.0.1') ? 'http:' : protocol;
-  
-  // Build the base URL
-  if (port && 
-      !((apiProtocol === 'https:' && port === '443') || 
-        (apiProtocol === 'http:' && port === '80'))) {
-    return `${apiProtocol}//${hostname}:${port}`;
+  // If running on development port 3000, use nginx proxy
+  if (window.location.port === '3000') {
+    return 'http://localhost';
   }
   
-  return `${apiProtocol}//${hostname}`;
+  // Use current window location but ensure correct protocol
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  // Only include port if it's not the standard port for the protocol
+  if (window.location.port && 
+      !((protocol === 'https:' && window.location.port === '443') || 
+        (protocol === 'http:' && window.location.port === '80'))) {
+    return `${protocol}//${hostname}:${window.location.port}`;
+  }
+  
+  return `${protocol}//${hostname}`;
 };
 
 export const getServiceUrl = (service: string) => {
@@ -115,7 +115,7 @@ export const isAuthenticated = (): boolean => {
 // Auth API
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/api/v1/auth/login', credentials);
+    const response: AxiosResponse<AuthResponse> = await axios.post(`${getApiBaseUrl()}/api/v1/auth/login`, credentials);
     return response.data;
   },
 
@@ -296,19 +296,19 @@ export const jobApi = {
 // Job Run API
 export const jobRunApi = {
   list: async (skip = 0, limit = 100, jobId?: number): Promise<JobRunListResponse> => {
-    const response: AxiosResponse<JobRunListResponse> = await api.get('/api/v1/executions', {
+    const response: AxiosResponse<JobRunListResponse> = await api.get('/api/v1/runs', {
       params: { skip, limit, job_id: jobId }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<JobRun> => {
-    const response: AxiosResponse<JobRun> = await api.get(`/api/v1/executions/${id}`);
+    const response: AxiosResponse<JobRun> = await api.get(`/api/v1/runs/${id}`);
     return response.data;
   },
 
   getSteps: async (id: number): Promise<JobRunStep[]> => {
-    const response: AxiosResponse<JobRunStep[]> = await api.get(`/api/v1/executions/${id}/steps`);
+    const response: AxiosResponse<JobRunStep[]> = await api.get(`/api/v1/runs/${id}/steps`);
     return response.data;
   }
 };
@@ -318,64 +318,70 @@ export const jobRunApi = {
 // Health Monitoring API
 export const healthApi = {
   checkService: async (service: string): Promise<{ status: string; service: string; responseTime?: number; error?: string }> => {
-    // Get service status from centralized health endpoint
+    const startTime = Date.now();
     try {
-      const allServices = await healthApi.checkAllServices();
-      return allServices[service] || { 
-        status: 'unknown', 
-        service, 
-        error: 'Service not found in health check' 
+      // Map service names to their health endpoints
+      const serviceMap: Record<string, string> = {
+        // Core application services
+        'auth': '/api/v1/auth/health',
+        'users': '/api/v1/users/health', 
+        'credentials': '/api/v1/credentials/health',
+        'targets': '/api/v1/targets/health',
+        'jobs': '/api/v1/jobs/health',
+        'executor': '/api/v1/executor/health',
+
+        'notification': '/api/v1/notification/health',
+        'discovery': '/api/v1/discovery/health',
+        'step-libraries': '/api/v1/step-libraries/health',
+        // Infrastructure services
+        'nginx': '/api/v1/nginx/health',
+        'frontend': '/api/v1/frontend/health',
+        'redis': '/api/v1/redis/health',
+        'postgres': '/api/v1/postgres/health',
+        'celery-worker': '/api/v1/celery-worker/health',
+        'celery-beat': '/api/v1/celery-beat/health',
+        'flower': '/api/v1/flower/health'
       };
+      
+      const endpoint = serviceMap[service] || `/api/v1/${service}/health`;
+      const response = await api.get(endpoint, {
+        timeout: 5000 // 5 second timeout
+      });
+      const responseTime = Date.now() - startTime;
+      return { ...response.data, responseTime };
     } catch (error) {
+      const responseTime = Date.now() - startTime;
       return { 
         status: 'unhealthy', 
         service, 
+        responseTime,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   },
 
   checkAllServices: async (): Promise<Record<string, any>> => {
-    const startTime = Date.now();
-    try {
-      // Get health status from centralized API gateway endpoint
-      const response = await api.get('/health', {
-        timeout: 10000 // 10 second timeout
-      });
-      const responseTime = Date.now() - startTime;
-      
-      const results: Record<string, any> = {};
-      
-      // Process the health checks from the API gateway
-      if (response.data && response.data.checks) {
-        response.data.checks.forEach((check: any) => {
-          results[check.name] = {
-            status: check.status,
-            service: check.name,
-            responseTime: check.response_time_ms || responseTime,
-            details: check.details
-          };
-        });
-      }
-      
-      return results;
-    } catch (error) {
-      const responseTime = Date.now() - startTime;
-      return {
-        'api-gateway': {
-          status: 'unhealthy',
-          service: 'api-gateway',
-          responseTime,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }
-      };
-    }
+    const services = [
+      // Core application services
+      'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'notification', 'discovery', 'step-libraries',
+      // Infrastructure services
+      'nginx', 'frontend', 'redis', 'postgres', 'celery-worker', 'celery-beat', 'flower'
+    ];
+    const results: Record<string, any> = {};
+    
+    const checks = services.map(async (service) => {
+      const result = await healthApi.checkService(service);
+      results[service] = result;
+    });
+    
+    await Promise.allSettled(checks);
+    return results;
   },
 
   getSystemStats: async (): Promise<any> => {
     try {
-      // Get execution status for queue statistics
-      const executorResponse = await api.get('/api/v1/executions/status');
+      // Get executor status for queue statistics
+      const executorResponse = await api.get('/api/v1/executor/status');
       return executorResponse.data;
     } catch (error) {
       return { error: 'Failed to fetch system stats' };
@@ -398,23 +404,23 @@ export const notificationApi = {
 
   // Notification channels
   getChannels: async (): Promise<NotificationChannel[]> => {
-    const response = await api.get('/api/v1/channels');
+    const response = await api.get('/api/v1/notification/channels');
     return response.data;
   },
 
   // SMTP settings (admin only)
   getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
-    const response = await api.get('/api/v1/notifications/smtp/settings');
+    const response = await api.get('/api/v1/notification/smtp/settings');
     return response.data;
   },
 
   updateSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
-    const response = await api.post('/api/v1/notifications/smtp/settings', settings);
+    const response = await api.post('/api/v1/notification/smtp/settings', settings);
     return response.data;
   },
 
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
-    const response = await api.post('/api/v1/notifications/smtp/test', testRequest);
+    const response = await api.post('/api/v1/notification/smtp/test', testRequest);
     return response.data;
   }
 };
@@ -423,38 +429,38 @@ export const notificationApi = {
 export const discoveryApi = {
   // Discovery Jobs
   listJobs: async (skip = 0, limit = 100): Promise<DiscoveryJobListResponse> => {
-    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/jobs', {
+    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/discovery-jobs', {
       params: { skip, limit }
     });
     return response.data;
   },
 
   getJob: async (id: number): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.get(`/api/v1/discovery/jobs/${id}`);
+    const response: AxiosResponse<DiscoveryJob> = await api.get(`/api/v1/discovery/discovery-jobs/${id}`);
     return response.data;
   },
 
   createJob: async (jobData: DiscoveryJobCreate): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.post('/api/v1/discovery/jobs', jobData);
+    const response: AxiosResponse<DiscoveryJob> = await api.post('/api/v1/discovery/discovery-jobs', jobData);
     return response.data;
   },
 
   updateJob: async (id: number, jobData: Partial<DiscoveryJobCreate>): Promise<DiscoveryJob> => {
-    const response: AxiosResponse<DiscoveryJob> = await api.put(`/api/v1/discovery/jobs/${id}`, jobData);
+    const response: AxiosResponse<DiscoveryJob> = await api.put(`/api/v1/discovery/discovery-jobs/${id}`, jobData);
     return response.data;
   },
 
   deleteJob: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/discovery/jobs/${id}`);
+    await api.delete(`/api/v1/discovery/discovery-jobs/${id}`);
   },
 
   runJob: async (id: number): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/jobs/${id}/run`);
+    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/run`);
     return response.data;
   },
 
   cancelJob: async (id: number): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/jobs/${id}/cancel`);
+    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/cancel`);
     return response.data;
   },
 
@@ -534,17 +540,17 @@ export const discoveryApi = {
 // Celery Monitoring API
 export const celeryApi = {
   getStatus: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executions/celery/status');
+    const response = await api.get('/api/v1/executor/celery/status');
     return response.data;
   },
 
   getMetrics: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executions/celery/metrics');
+    const response = await api.get('/api/v1/executor/celery/metrics');
     return response.data;
   },
 
   getQueues: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executions/celery/queues');
+    const response = await api.get('/api/v1/executor/celery/queues');
     return response.data;
   }
 };

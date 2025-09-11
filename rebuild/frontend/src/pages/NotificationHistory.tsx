@@ -26,7 +26,7 @@ const NotificationHistoryPage: React.FC = () => {
   const fetchNotifications = async (pageNum: number = 1) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/notifications/notifications?offset=${(pageNum - 1) * 20}&limit=20`, {
+      const response = await fetch(`/api/v1/notification/notifications?offset=${(pageNum - 1) * 20}&limit=20`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
