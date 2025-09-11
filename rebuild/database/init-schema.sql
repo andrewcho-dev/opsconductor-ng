@@ -19,6 +19,8 @@ CREATE TABLE identity.users (
     password_hash VARCHAR(255) NOT NULL,
     first_name VARCHAR(100),
     last_name VARCHAR(100),
+    telephone VARCHAR(20),
+    title VARCHAR(100),
     is_active BOOLEAN DEFAULT true,
     is_admin BOOLEAN DEFAULT false,
     last_login TIMESTAMP WITH TIME ZONE,

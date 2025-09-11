@@ -610,9 +610,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   useEffect(() => {
     if (editingJob) {
       setJobName(editingJob.name);
-      if (editingJob.definition?.nodes) {
+      if (editingJob.workflow_definition?.nodes) {
         // Convert from API format to internal format
-        const convertedNodes = editingJob.definition.nodes.map((node: any) => ({
+        const convertedNodes = editingJob.workflow_definition.nodes.map((node: any) => ({
           id: node.id,
           type: node.type,
           name: node.data?.name || node.type,
@@ -631,9 +631,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         // If no nodes in definition, clear nodes to trigger default start node creation
         setNodes([]);
       }
-      if (editingJob.definition?.edges) {
+      if (editingJob.workflow_definition?.edges) {
         // Convert from API format to internal format
-        const convertedConnections = editingJob.definition.edges.map((edge: any) => ({
+        const convertedConnections = editingJob.workflow_definition.edges.map((edge: any) => ({
           id: edge.id,
           sourceNodeId: edge.source,
           sourcePort: 0,

@@ -30,12 +30,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     // Check for existing session token in localStorage on mount
-    const storedToken = localStorage.getItem('session_token');
+    const storedToken = localStorage.getItem('access_token');
     const storedUser = localStorage.getItem('user');
     
-    if (storedToken && storedUser) {
+    console.log('AuthContext: storedToken =', storedToken);
+    console.log('AuthContext: storedUser =', storedUser);
+    
+    if (storedToken && storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error('Failed to parse stored user data:', error);
+        // Clear invalid data
+        localStorage.removeItem('user');
+        localStorage.removeItem('access_token');
+      }
     }
     setIsLoading(false);
   }, []);
@@ -43,14 +53,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = (newToken: string, newUser: any) => {
     setToken(newToken);
     setUser(newUser);
-    localStorage.setItem('session_token', newToken);
+    localStorage.setItem('access_token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('session_token');
+    localStorage.removeItem('access_token');
     localStorage.removeItem('user');
   };
 

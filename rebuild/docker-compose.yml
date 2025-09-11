@@ -277,6 +277,8 @@ services:
         condition: service_healthy
     networks:
       - opsconductor-net
+    volumes:
+      - ./frontend:/app
     restart: unless-stopped
 
   # Nginx Reverse Proxy

@@ -41,35 +41,10 @@ enhancedApi.interceptors.response.use(
     if ((error.response?.status === 401 || error.response?.status === 403) && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      const currentRefreshToken = localStorage.getItem('refresh_token');
-      if (currentRefreshToken) {
-        try {
-          const response = await axios.post(`${getApiBaseUrl()}/refresh`, {
-            refresh_token: currentRefreshToken
-          });
-
-          const { access_token, refresh_token: newRefreshToken } = response.data;
-          
-          // Update tokens in localStorage
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', newRefreshToken);
-          
-          // Retry the original request
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          return enhancedApi(originalRequest);
-        } catch (refreshError) {
-          // Refresh failed, redirect to login
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
-          return Promise.reject(refreshError);
-        }
-      } else {
-        // No refresh token, redirect to login
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
-      }
+      // For now, just redirect to login since we're using session tokens
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
     }
 
     return Promise.reject(error);
@@ -156,7 +131,7 @@ export const targetServiceApi = {
   },
 
   testConnection: async (serviceId: number): Promise<any> => {
-    const response = await enhancedApi.post(`/targets/services/${serviceId}/test`);
+    const response = await enhancedApi.post(`/targets/services/${serviceId}/test-connection`);
     return response.data;
   },
 

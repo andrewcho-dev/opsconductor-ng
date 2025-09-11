@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { jobRunApi, jobApi, userApi, targetApi } from '../services/api';
 import { JobRun, JobRunStep, Job, User, Target } from '../types';
@@ -127,12 +127,96 @@ const JobRuns: React.FC = () => {
     }
   }, [location.search]);
 
+  // Define fetch functions before they are used in useEffect
+  const fetchJobs = useCallback(async () => {
+    try {
+      const response = await jobApi.list(0, 100);
+      setJobs(response.jobs || []);
+    } catch (error: any) {
+      console.error('Failed to fetch jobs:', error);
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const response = await userApi.list(0, 100); // Get all users
+      setUsers(response.data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error);
+    }
+  }, []);
+
+  const fetchTargets = useCallback(async () => {
+    try {
+      const response = await targetApi.list(0, 100); // Get all targets
+      setTargets(response.targets || []);
+    } catch (error: any) {
+      console.error('Failed to fetch targets:', error);
+    }
+  }, []);
+
+  const fetchRuns = useCallback(async (reset: boolean = true) => {
+    try {
+      if (reset) {
+        setLoading(true);
+        setCurrentPage(0);
+        setHasMoreRuns(true);
+        setMaxRunsReached(false);
+        setTotalLoadedRuns(0);
+      }
+      
+      const pageSize = reset ? 50 : 25; // Initial load: 50, subsequent: 25
+      
+      // Use functional update to get current totalLoadedRuns
+      let currentTotalLoaded = 0;
+      setTotalLoadedRuns(prev => {
+        currentTotalLoaded = prev;
+        return prev;
+      });
+      
+      const skip = reset ? 0 : currentTotalLoaded;
+      
+      const response = await jobRunApi.list(skip, pageSize, selectedJobId);
+      const newRuns = response.executions || [];
+      
+      if (reset) {
+        setRuns(newRuns);
+        setTotalLoadedRuns(newRuns.length);
+        currentTotalLoaded = newRuns.length;
+      } else {
+        setRuns(prevRuns => [...prevRuns, ...newRuns]);
+        setTotalLoadedRuns(prev => {
+          const newTotal = prev + newRuns.length;
+          currentTotalLoaded = newTotal;
+          return newTotal;
+        });
+      }
+      
+      // Update pagination state
+      const hasMore = newRuns.length === pageSize && currentTotalLoaded < (response.total || 0) && currentTotalLoaded < 500;
+      setHasMoreRuns(hasMore);
+      
+      // Check if we've reached the 500 item limit
+      if (currentTotalLoaded >= 500) {
+        setMaxRunsReached(true);
+        setHasMoreRuns(false);
+      }
+      
+    } catch (error: any) {
+      console.error('Failed to fetch job runs:', error);
+      console.error('Error stack:', error.stack);
+      setError(error.message || 'Failed to load job runs');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedJobId]);
+
   useEffect(() => {
     fetchRuns();
     fetchJobs();
     fetchUsers();
     fetchTargets();
-  }, [selectedJobId]);
+  }, [selectedJobId, fetchRuns, fetchJobs, fetchUsers, fetchTargets]);
 
   useEffect(() => {
     if (selectedRun) {
@@ -171,48 +255,6 @@ const JobRuns: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [loadingMore, hasMoreRuns, maxRunsReached]);
 
-  const fetchRuns = async (reset: boolean = true) => {
-    try {
-      if (reset) {
-        setLoading(true);
-        setCurrentPage(0);
-        setHasMoreRuns(true);
-        setMaxRunsReached(false);
-        setTotalLoadedRuns(0);
-      }
-      
-      const pageSize = reset ? 50 : 25; // Initial load: 50, subsequent: 25
-      const skip = reset ? 0 : totalLoadedRuns; // For subsequent loads, skip what we already have
-      
-      const response = await jobRunApi.list(skip, pageSize, selectedJobId);
-      const newRuns = response.data || [];
-      
-      if (reset) {
-        setRuns(newRuns);
-        setTotalLoadedRuns(newRuns.length);
-      } else {
-        setRuns(prevRuns => [...prevRuns, ...newRuns]);
-        setTotalLoadedRuns(prev => prev + newRuns.length);
-      }
-      
-      // Update pagination state
-      const newTotalLoaded = reset ? newRuns.length : totalLoadedRuns + newRuns.length;
-      setHasMoreRuns(response.meta.has_next && newTotalLoaded < 500);
-      
-      // Check if we've reached the 500 item limit
-      if (newTotalLoaded >= 500) {
-        setMaxRunsReached(true);
-        setHasMoreRuns(false);
-      }
-      
-    } catch (error: any) {
-      console.error('Failed to fetch job runs:', error);
-      setError(error.message || 'Failed to load job runs');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadMoreRuns = async () => {
     if (loadingMore || !hasMoreRuns || maxRunsReached) return;
     
@@ -236,32 +278,7 @@ const JobRuns: React.FC = () => {
     fetchRuns(true);
   };
 
-  const fetchJobs = async () => {
-    try {
-      const response = await jobApi.list(0, 100, false); // Include inactive jobs
-      setJobs(response.data || []);
-    } catch (error: any) {
-      console.error('Failed to fetch jobs:', error);
-    }
-  };
 
-  const fetchUsers = async () => {
-    try {
-      const response = await userApi.list(0, 100); // Get all users
-      setUsers(response.data || []);
-    } catch (error: any) {
-      console.error('Failed to fetch users:', error);
-    }
-  };
-
-  const fetchTargets = async () => {
-    try {
-      const response = await targetApi.list(0, 100); // Get all targets
-      setTargets(response.targets || []);
-    } catch (error: any) {
-      console.error('Failed to fetch targets:', error);
-    }
-  };
 
   const fetchRunSteps = async (runId: number) => {
     try {
@@ -295,20 +312,20 @@ const JobRuns: React.FC = () => {
   };
 
   const getStepCommand = (step: JobRunStep) => {
-    if (!selectedRun) return step.shell || 'Unknown';
+    if (!selectedRun) return step.step_id || 'Unknown';
     
     const job = jobs.find(j => j.id === selectedRun.job_id);
-    if (!job || !job.definition || !job.definition.steps) {
-      return step.shell || 'Unknown';
+    if (!job || !job.workflow_definition || !job.workflow_definition.steps) {
+      return step.step_id || 'Unknown';
     }
     
     // Find the step in the job definition by index
-    const jobStep = job.definition.steps[step.idx];
+    const jobStep = job.workflow_definition.steps[step.execution_order];
     if (jobStep && jobStep.command) {
       return jobStep.command;
     }
     
-    return step.shell || 'Unknown';
+    return step.step_id || 'Unknown';
   };
 
   const hasStatusInconsistency = () => {
@@ -416,10 +433,10 @@ const JobRuns: React.FC = () => {
 
   const openOutputModal = (step: JobRunStep) => {
     setModalOutputData({
-      stepName: `Step ${step.idx + 1}: ${step.type}`,
-      stdout: step.stdout,
-      stderr: step.stderr,
-      exitCode: step.exit_code
+      stepName: `Step ${step.execution_order + 1}: ${step.step_type}`,
+      stdout: JSON.stringify(step.output_data, null, 2),
+      stderr: step.error_message || '',
+      exitCode: undefined
     });
     setOutputModalOpen(true);
   };
@@ -440,34 +457,35 @@ const JobRuns: React.FC = () => {
   };
 
   const exportOutput = (step: JobRunStep) => {
-    const stepName = `Step_${step.idx + 1}_${step.type}`;
+    const stepName = `Step_${step.execution_order + 1}_${step.step_type}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${stepName}_${timestamp}.txt`;
     
     let content = `=== ${stepName} Output ===\n`;
-    content += `Job Run ID: ${step.job_run_id}\n`;
-    content += `Step Index: ${step.idx + 1}\n`;
-    content += `Step Type: ${step.type}\n`;
+    content += `Job Run ID: ${step.job_execution_id}\n`;
+    content += `Step Index: ${step.execution_order + 1}\n`;
+    content += `Step Type: ${step.step_type}\n`;
     content += `Status: ${step.status}\n`;
-    content += `Exit Code: ${step.exit_code ?? 'N/A'}\n`;
     content += `Started: ${step.started_at ?? 'N/A'}\n`;
-    content += `Finished: ${step.finished_at ?? 'N/A'}\n`;
+    content += `Finished: ${step.completed_at ?? 'N/A'}\n`;
     content += `\n${'='.repeat(50)}\n\n`;
     
-    if (step.stdout) {
-      content += `STANDARD OUTPUT:\n`;
+    if (step.output_data && Object.keys(step.output_data).length > 0) {
+      content += `OUTPUT DATA:\n`;
       content += `${'-'.repeat(20)}\n`;
-      content += `${formatOutput(step.stdout)}\n\n`;
+      content += `${JSON.stringify(step.output_data, null, 2)}\n\n`;
     }
     
-    if (step.stderr) {
-      content += `STANDARD ERROR:\n`;
+    if (step.error_message) {
+      content += `ERROR MESSAGE:\n`;
       content += `${'-'.repeat(20)}\n`;
-      content += `${formatOutput(step.stderr)}\n\n`;
+      content += `${step.error_message}\n\n`;
     }
     
-    if (!step.stdout && !step.stderr) {
-      content += `No output available.\n`;
+    if (!step.output_data || Object.keys(step.output_data).length === 0) {
+      if (!step.error_message) {
+        content += `No output available.\n`;
+      }
     }
     
     // Create and download file
@@ -932,13 +950,13 @@ const JobRuns: React.FC = () => {
                           </div>
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-600)' }}>
-                          {getUserName(run.requested_by)}
+                          {run.started_by ? getUserName(run.started_by) : 'System'}
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
                           {run.started_at ? new Date(run.started_at).toLocaleString() : 'Not started'}
                         </td>
                         <td style={{ fontSize: '11px', color: 'var(--neutral-500)' }}>
-                          {formatDuration(run.started_at, run.finished_at)}
+                          {formatDuration(run.started_at, run.completed_at)}
                         </td>
                       </tr>
                     ))}
@@ -1031,13 +1049,13 @@ const JobRuns: React.FC = () => {
                     </div>
 
                     <div className="detail-item">
-                      <label>Requested By</label>
-                      <div className="detail-value">{getUserName(selectedRun.requested_by)}</div>
+                      <label>Started By</label>
+                      <div className="detail-value">{selectedRun.started_by ? getUserName(selectedRun.started_by) : 'System'}</div>
                     </div>
 
                     <div className="detail-item">
-                      <label>Queued</label>
-                      <div className="detail-value">{new Date(selectedRun.queued_at).toLocaleString()}</div>
+                      <label>Created</label>
+                      <div className="detail-value">{new Date(selectedRun.created_at).toLocaleString()}</div>
                     </div>
 
                     <div className="detail-item">
@@ -1050,38 +1068,38 @@ const JobRuns: React.FC = () => {
                     <div className="detail-item">
                       <label>Duration</label>
                       <div className="detail-value">
-                        {formatDuration(selectedRun.started_at, selectedRun.finished_at)}
+                        {formatDuration(selectedRun.started_at, selectedRun.completed_at)}
                       </div>
                     </div>
 
-                    {selectedRun.finished_at && (
+                    {selectedRun.completed_at && (
                       <div className="detail-item">
-                        <label>Finished</label>
+                        <label>Completed</label>
                         <div className="detail-value">
-                          {new Date(selectedRun.finished_at).toLocaleString()}
+                          {new Date(selectedRun.completed_at).toLocaleString()}
                         </div>
                       </div>
                     )}
 
-                    {selectedRun.correlation_id && (
+                    {selectedRun.execution_id && (
                       <div className="detail-item detail-item-span-2-3">
-                        <label>Correlation ID</label>
+                        <label>Execution ID</label>
                         <div className="detail-value">
                           <CeleryTaskLink 
                             jobRunId={selectedRun.id} 
-                            correlationId={selectedRun.correlation_id} 
+                            correlationId={selectedRun.execution_id} 
                           />
                         </div>
                       </div>
                     )}
                   </div>
 
-                {selectedRun.parameters && Object.keys(selectedRun.parameters).length > 0 && (
+                {selectedRun.input_data && Object.keys(selectedRun.input_data).length > 0 && (
                   <div className="detail-section">
-                    <div className="detail-section-title">Parameters</div>
+                    <div className="detail-section-title">Input Data</div>
                     <div className="detail-value">
                       <div className="parameters-json">
-                        {JSON.stringify(selectedRun.parameters, null, 2)}
+                        {JSON.stringify(selectedRun.input_data, null, 2)}
                       </div>
                     </div>
                   </div>
@@ -1119,8 +1137,8 @@ const JobRuns: React.FC = () => {
                           <div className="detail-grid-3col">
                             {/* Row 1: Step, Status, Target */}
                             <div className="detail-item">
-                              <label>Step {step.idx + 1}</label>
-                              <div className="detail-value">{step.type}</div>
+                              <label>Step {step.execution_order + 1}</label>
+                              <div className="detail-value">{step.step_type}</div>
                             </div>
                             
                             <div className="detail-item">
@@ -1136,8 +1154,8 @@ const JobRuns: React.FC = () => {
                             </div>
                             
                             <div className="detail-item">
-                              <label>Target</label>
-                              <div className="detail-value">{step.target_id ? getTargetInfo(step.target_id) : 'N/A'}</div>
+                              <label>Step Name</label>
+                              <div className="detail-value">{step.step_name}</div>
                             </div>
                             
                             {/* Row 2: Command (spans all columns) */}
@@ -1147,7 +1165,7 @@ const JobRuns: React.FC = () => {
                             </div>
                             
                             {/* Row 3: Output (spans all columns) */}
-                            {(step.stdout || step.stderr) && (
+                            {((step.output_data && Object.keys(step.output_data).length > 0) || step.error_message) && (
                               <div className="detail-item detail-item-span-remaining">
                                 <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                   <span>Output</span>
@@ -1193,12 +1211,12 @@ const JobRuns: React.FC = () => {
                                   </div>
                                 </label>
                                 <div className="detail-value">
-                                  {step.stdout && (
-                                    <div>{step.stdout.substring(0, 200)}{step.stdout.length > 200 ? '...' : ''}</div>
+                                  {step.output_data && Object.keys(step.output_data).length > 0 && (
+                                    <div>{JSON.stringify(step.output_data).substring(0, 200)}{JSON.stringify(step.output_data).length > 200 ? '...' : ''}</div>
                                   )}
-                                  {step.stderr && (
+                                  {step.error_message && (
                                     <div style={{ color: 'var(--error)' }}>
-                                      Error: {step.stderr.substring(0, 200)}{step.stderr.length > 200 ? '...' : ''}
+                                      Error: {step.error_message.substring(0, 200)}{step.error_message.length > 200 ? '...' : ''}
                                     </div>
                                   )}
                                 </div>
@@ -1268,7 +1286,7 @@ const JobRuns: React.FC = () => {
                   onClick={() => {
                     // Find the step data for export
                     const step = runSteps.find(s => 
-                      `Step ${s.idx + 1}: ${s.type}` === modalOutputData.stepName
+                      `Step ${s.execution_order + 1}: ${s.step_type}` === modalOutputData.stepName
                     );
                     if (step) exportOutput(step);
                   }}

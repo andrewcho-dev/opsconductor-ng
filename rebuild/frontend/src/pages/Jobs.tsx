@@ -38,7 +38,7 @@ const Jobs: React.FC = () => {
     try {
       setLoading(true);
       const response = await jobApi.list();
-      setJobs(response.data || []);
+      setJobs(response.jobs || []);
     } catch (error: any) {
       console.error('Failed to fetch jobs:', error);
       setError(error.message || 'Failed to load jobs');
@@ -771,8 +771,8 @@ const Jobs: React.FC = () => {
                 </div>
 
                 <div className="detail-group">
-                  <div className="detail-label">Version</div>
-                  <div className="detail-value">v{selectedJob.version}</div>
+                  <div className="detail-label">Updated</div>
+                  <div className="detail-value">{new Date(selectedJob.updated_at).toLocaleString()}</div>
                 </div>
 
 

@@ -1,18 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { healthApi } from '../services/api';
 
-interface QueueStats {
-  queued_steps: number;
-  running_steps: number;
-  succeeded_steps: number;
-  failed_steps: number;
-}
-
 interface SystemStats {
-  worker_running: boolean;
-  worker_enabled: boolean;
-  poll_interval: number;
-  queue_stats: QueueStats;
+  overall_status: string;
+  services_count: number;
+  healthy_services: number;
+  unhealthy_services: number;
+  timestamp: string;
+  message: string;
+  error?: string;
 }
 
 const SystemMetrics: React.FC = () => {
@@ -71,7 +67,7 @@ const SystemMetrics: React.FC = () => {
         )}
       </div>
 
-      {/* Executor Status - Ultra Compact */}
+      {/* System Status - Ultra Compact */}
       <div style={{ marginBottom: '12px' }}>
         <div style={{ 
           fontSize: '11px', 
@@ -81,72 +77,42 @@ const SystemMetrics: React.FC = () => {
           textTransform: 'uppercase',
           letterSpacing: '0.5px'
         }}>
-          Executor
+          System Status
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '8px' }}>
           <div style={{ 
             textAlign: 'center', 
-            padding: '3px', 
-            background: stats.worker_running ? '#dcfce7' : '#fef2f2',
+            padding: '6px', 
+            background: stats.overall_status === 'healthy' ? '#dcfce7' : '#fef2f2',
             borderRadius: '3px',
-            border: '1px solid ' + (stats.worker_running ? '#bbf7d0' : '#fecaca')
+            border: '1px solid ' + (stats.overall_status === 'healthy' ? '#bbf7d0' : '#fecaca')
           }}>
-            <div style={{ fontSize: '11px', color: '#666' }}>Worker</div>
+            <div style={{ fontSize: '11px', color: '#666' }}>Overall</div>
             <div style={{ 
               fontSize: '12px', 
               fontWeight: '600',
-              color: stats.worker_running ? '#059669' : '#dc2626'
+              color: stats.overall_status === 'healthy' ? '#059669' : '#dc2626'
             }}>
-              {stats.worker_running ? 'Run' : 'Stop'}
+              {stats.overall_status === 'healthy' ? 'Healthy' : 'Issues'}
             </div>
           </div>
           
           <div style={{ 
             textAlign: 'center', 
-            padding: '3px', 
-            background: stats.worker_enabled ? '#dcfce7' : '#fef3c7',
-            borderRadius: '3px',
-            border: '1px solid ' + (stats.worker_enabled ? '#bbf7d0' : '#fde68a')
-          }}>
-            <div style={{ fontSize: '11px', color: '#666' }}>Enabled</div>
-            <div style={{ 
-              fontSize: '12px', 
-              fontWeight: '600',
-              color: stats.worker_enabled ? '#059669' : '#d97706'
-            }}>
-              {stats.worker_enabled ? 'Yes' : 'No'}
-            </div>
-          </div>
-          
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '3px', 
+            padding: '6px', 
             background: '#f1f5f9',
             borderRadius: '3px',
             border: '1px solid #e2e8f0'
           }}>
-            <div style={{ fontSize: '11px', color: '#666' }}>Poll</div>
+            <div style={{ fontSize: '11px', color: '#666' }}>Services</div>
             <div style={{ fontSize: '12px', fontWeight: '600' }}>
-              {stats.poll_interval}s
-            </div>
-          </div>
-          
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '3px', 
-            background: '#f8fafc',
-            borderRadius: '3px',
-            border: '1px solid #e2e8f0'
-          }}>
-            <div style={{ fontSize: '11px', color: '#666' }}>Status</div>
-            <div style={{ fontSize: '12px', fontWeight: '600', color: stats.worker_running && stats.worker_enabled ? '#059669' : '#64748b' }}>
-              {stats.worker_running && stats.worker_enabled ? 'OK' : 'Idle'}
+              {stats.services_count} Total
             </div>
           </div>
         </div>
       </div>
 
-      {/* Queue Stats - Ultra Compact */}
+      {/* Service Health Stats - Ultra Compact */}
       <div>
         <div style={{ 
           fontSize: '11px', 
@@ -156,35 +122,9 @@ const SystemMetrics: React.FC = () => {
           textTransform: 'uppercase',
           letterSpacing: '0.5px'
         }}>
-          Queue (24h)
+          Service Health
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px' }}>
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '3px 2px', 
-            background: '#fef3c7',
-            borderRadius: '3px',
-            border: '1px solid #fde68a'
-          }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#d97706' }}>
-              {stats.queue_stats.queued_steps}
-            </div>
-            <div style={{ fontSize: '10px', color: '#92400e' }}>Queue</div>
-          </div>
-          
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '3px 2px', 
-            background: '#dbeafe',
-            borderRadius: '3px',
-            border: '1px solid #bfdbfe'
-          }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#1d4ed8' }}>
-              {stats.queue_stats.running_steps}
-            </div>
-            <div style={{ fontSize: '10px', color: '#1e40af' }}>Run</div>
-          </div>
-          
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
           <div style={{ 
             textAlign: 'center', 
             padding: '3px 2px', 
@@ -193,22 +133,44 @@ const SystemMetrics: React.FC = () => {
             border: '1px solid #bbf7d0'
           }}>
             <div style={{ fontSize: '13px', fontWeight: '600', color: '#059669' }}>
-              {stats.queue_stats.succeeded_steps}
+              {stats.healthy_services}
             </div>
-            <div style={{ fontSize: '10px', color: '#047857' }}>OK</div>
+            <div style={{ fontSize: '10px', color: '#047857' }}>Healthy</div>
           </div>
           
           <div style={{ 
             textAlign: 'center', 
             padding: '3px 2px', 
-            background: '#fef2f2',
+            background: stats.unhealthy_services > 0 ? '#fef2f2' : '#f8fafc',
             borderRadius: '3px',
-            border: '1px solid #fecaca'
+            border: '1px solid ' + (stats.unhealthy_services > 0 ? '#fecaca' : '#e2e8f0')
           }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: '#dc2626' }}>
-              {stats.queue_stats.failed_steps}
+            <div style={{ 
+              fontSize: '13px', 
+              fontWeight: '600', 
+              color: stats.unhealthy_services > 0 ? '#dc2626' : '#64748b'
+            }}>
+              {stats.unhealthy_services}
             </div>
-            <div style={{ fontSize: '10px', color: '#b91c1c' }}>Fail</div>
+            <div style={{ 
+              fontSize: '10px', 
+              color: stats.unhealthy_services > 0 ? '#b91c1c' : '#64748b'
+            }}>
+              Issues
+            </div>
+          </div>
+        </div>
+        
+        {/* Status Message */}
+        <div style={{ 
+          marginTop: '8px', 
+          padding: '4px 6px', 
+          background: '#f8fafc', 
+          borderRadius: '3px',
+          border: '1px solid #e2e8f0'
+        }}>
+          <div style={{ fontSize: '10px', color: '#64748b', textAlign: 'center' }}>
+            {stats.message}
           </div>
         </div>
       </div>

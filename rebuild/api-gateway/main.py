@@ -40,6 +40,7 @@ SERVICE_ROUTES = {
     
     # Automation Service
     "/api/v1/jobs": "AUTOMATION_SERVICE_URL",
+    "/api/v1/runs": "AUTOMATION_SERVICE_URL",  # Map runs to executions
     "/api/v1/schedules": "AUTOMATION_SERVICE_URL",
     "/api/v1/workflows": "AUTOMATION_SERVICE_URL",
     "/api/v1/executions": "AUTOMATION_SERVICE_URL",
@@ -67,7 +68,7 @@ class RateLimiter:
     def __init__(self, gateway):
         self.gateway = gateway
     
-    async def is_allowed(self, key: str, limit: int = 1000, window: int = 60) -> bool:
+    async def is_allowed(self, key: str, limit: int = 10000, window: int = 60) -> bool:
         """Check if request is within rate limit"""
         try:
             current = await self.gateway.redis.get(f"rate_limit:{key}")
@@ -276,12 +277,25 @@ class APIGateway:
                         detail="Authentication service unavailable"
                     )
             
-            # Find matching service
+            # Find matching service with special route mappings
             service_url = None
-            for route_prefix, url in self.service_urls.items():
-                if path.startswith(route_prefix.lstrip("/")):
-                    service_url = url
-                    break
+            service_path = path
+            
+            # Special route mappings
+            if path.startswith("api/v1/runs"):
+                # Map /api/v1/runs/* to /api/v1/executions/*
+                service_url = self.service_urls.get("/api/v1/executions")
+                service_path = path.replace("api/v1/runs", "api/v1/executions", 1)
+            elif path.startswith("api/v1/jobs/") and path.endswith("/run"):
+                # Map /api/v1/jobs/{id}/run to POST /api/v1/jobs/{id}/run (automation service)
+                service_url = self.service_urls.get("/api/v1/jobs")
+                service_path = path  # Keep the path as is
+            else:
+                # Standard route matching
+                for route_prefix, url in self.service_urls.items():
+                    if path.startswith(route_prefix.lstrip("/")):
+                        service_url = url
+                        break
             
             if not service_url:
                 raise HTTPException(
@@ -290,9 +304,8 @@ class APIGateway:
                 )
             
             # Build target URL - strip /api/v1 prefix for service calls
-            service_path = path
-            if path.startswith("api/v1/"):
-                service_path = path[7:]  # Remove "api/v1/" prefix
+            if service_path.startswith("api/v1/"):
+                service_path = service_path[7:]  # Remove "api/v1/" prefix
             target_url = f"{service_url}/{service_path}"
             
             # Prepare request

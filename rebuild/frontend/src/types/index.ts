@@ -11,8 +11,11 @@ export interface User {
   email: string;
   username: string;
   role: 'admin' | 'operator' | 'viewer';
+  is_admin: boolean; // For backward compatibility
+  is_active: boolean;
   created_at: string;
-  token_version: number;
+  updated_at?: string;
+  last_login?: string;
   first_name?: string;
   last_name?: string;
   telephone?: string;
@@ -24,6 +27,8 @@ export interface UserCreate {
   username: string;
   password: string;
   role: 'admin' | 'operator' | 'viewer';
+  is_admin?: boolean;
+  is_active?: boolean;
   first_name?: string;
   last_name?: string;
   telephone?: string;
@@ -35,6 +40,8 @@ export interface UserUpdate {
   username?: string;
   password?: string;
   role?: 'admin' | 'operator' | 'viewer';
+  is_admin?: boolean;
+  is_active?: boolean;
   first_name?: string;
   last_name?: string;
   telephone?: string;
@@ -135,18 +142,26 @@ export interface TargetCreate {
 export interface Job {
   id: number;
   name: string;
-  version: number;
-  definition: Record<string, any>;
+  description?: string;
+  workflow_definition: Record<string, any>;
+  schedule_expression?: string;
+  is_enabled: boolean;
+  tags: string[];
+  metadata: Record<string, any>;
   created_by: number;
-  is_active: boolean;
+  updated_by: number;
   created_at: string;
+  updated_at: string;
 }
 
 export interface JobCreate {
   name: string;
-  version?: number;
-  definition: Record<string, any>;
-  is_active?: boolean;
+  description?: string;
+  workflow_definition?: Record<string, any>;
+  schedule_expression?: string;
+  is_enabled?: boolean;
+  tags?: string[];
+  metadata?: Record<string, any>;
 }
 
 export interface JobStep {
@@ -163,30 +178,32 @@ export interface JobStep {
 export interface JobRun {
   id: number;
   job_id: number;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
-  requested_by: number;
-  parameters: Record<string, any>;
-  queued_at: string;
+  job_name: string;
+  execution_id: string;
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled';
+  trigger_type: string;
+  input_data: Record<string, any>;
+  output_data: Record<string, any>;
+  error_message?: string;
   started_at?: string;
-  finished_at?: string;
-  correlation_id?: string;
+  completed_at?: string;
+  started_by?: number;
+  created_at: string;
 }
 
 export interface JobRunStep {
   id: number;
-  job_run_id: number;
-  idx: number;
-  type: string;
-  target_id?: number;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'aborted' | 'skipped';
-  shell?: string;
-  timeoutsec?: number;
-  exit_code?: number;
-  stdout?: string;
-  stderr?: string;
-  metrics?: Record<string, any>;
+  job_execution_id: number;
+  step_id: string;
+  step_name: string;
+  step_type: string;
+  status: string;
+  input_data: Record<string, any>;
+  output_data: Record<string, any>;
+  error_message?: string;
   started_at?: string;
-  finished_at?: string;
+  completed_at?: string;
+  execution_order: number;
 }
 
 export interface WinRMTestResult {
@@ -228,13 +245,12 @@ export interface SSHTestResult {
 export interface UserListResponse {
   data: User[];
   meta: {
-    page: number;
-    per_page: number;
     total_items: number;
-    total_pages: number;
-    has_next: boolean;
-    has_prev: boolean;
+    skip: number;
+    limit: number;
+    has_more: boolean;
   };
+  total: number; // For backward compatibility
 }
 
 export interface CredentialListResponse {
@@ -248,27 +264,17 @@ export interface TargetListResponse {
 }
 
 export interface JobListResponse {
-  data: Job[];
-  meta: {
-    page: number;
-    per_page: number;
-    total_items: number;
-    total_pages: number;
-    has_next: boolean;
-    has_prev: boolean;
-  };
+  jobs: Job[];
+  total: number;
+  skip: number;
+  limit: number;
 }
 
 export interface JobRunListResponse {
-  data: JobRun[];
-  meta: {
-    page: number;
-    per_page: number;
-    total_items: number;
-    total_pages: number;
-    has_next: boolean;
-    has_prev: boolean;
-  };
+  executions: JobRun[];
+  total: number;
+  skip: number;
+  limit: number;
 }
 
 

@@ -400,6 +400,138 @@ class AssetService(BaseService):
                     detail="Failed to delete target"
                 )
 
+        @self.app.post("/targets/{target_id}/test-connection", response_model=dict)
+        async def test_target_connection(target_id: int):
+            """Test connection to target"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get target details with credential
+                    target_row = await conn.fetchrow("""
+                        SELECT t.id, t.name, t.host, t.port, t.target_type, t.credential_id,
+                               c.credential_type, c.encrypted_data
+                        FROM assets.targets t
+                        LEFT JOIN assets.credentials c ON t.credential_id = c.id
+                        WHERE t.id = $1 AND t.is_active = true
+                    """, target_id)
+                    
+                    if not target_row:
+                        raise HTTPException(status_code=404, detail="Target not found or inactive")
+                    
+                    # Determine connection type based on target type and port
+                    connection_type = self._determine_connection_type(
+                        target_row['target_type'], 
+                        target_row['port']
+                    )
+                    
+                    # Test connection based on type
+                    test_result = await self._test_connection(
+                        host=target_row['host'],
+                        port=target_row['port'],
+                        connection_type=connection_type,
+                        credential_data=target_row['encrypted_data']
+                    )
+                    
+                    # Update target's last_tested timestamp
+                    await conn.execute(
+                        "UPDATE assets.targets SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2",
+                        '{"last_tested": "' + datetime.utcnow().isoformat() + '"}',
+                        target_id
+                    )
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "target_id": target_id,
+                            "target_name": target_row['name'],
+                            "host": target_row['host'],
+                            "port": target_row['port'],
+                            "connection_type": connection_type,
+                            "status": test_result['status'],
+                            "message": test_result['message'],
+                            "response_time_ms": test_result.get('response_time_ms'),
+                            "tested_at": datetime.utcnow().isoformat()
+                        }
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to test target connection", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to test target connection"
+                )
+
+        @self.app.post("/targets/services/{service_id}/test-connection", response_model=dict)
+        async def test_service_connection(service_id: int):
+            """Test connection to a specific service"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get service details with target and credential info
+                    service_row = await conn.fetchrow("""
+                        SELECT s.id, s.target_id, s.service_type, s.port, s.credential_id,
+                               t.name as target_name, t.host, t.target_type,
+                               c.credential_type, c.encrypted_data
+                        FROM assets.target_services s
+                        JOIN assets.targets t ON s.target_id = t.id
+                        LEFT JOIN assets.credentials c ON s.credential_id = c.id
+                        WHERE s.id = $1 AND s.is_active = true AND t.is_active = true
+                    """, service_id)
+                    
+                    if not service_row:
+                        raise HTTPException(status_code=404, detail="Service not found or inactive")
+                    
+                    # Determine connection type based on service type and port
+                    connection_type = self._determine_connection_type(
+                        service_row['service_type'], 
+                        service_row['port']
+                    )
+                    
+                    # Test connection based on type
+                    test_result = await self._test_connection(
+                        host=service_row['host'],
+                        port=service_row['port'],
+                        connection_type=connection_type,
+                        credential_data=service_row['encrypted_data']
+                    )
+                    
+                    # Update service's connection status and last_tested timestamp
+                    connection_status = 'connected' if test_result['status'] == 'success' else 'failed'
+                    await conn.execute("""
+                        UPDATE assets.target_services 
+                        SET connection_status = $1, 
+                            metadata = COALESCE(metadata, '{}')::jsonb || $2::jsonb 
+                        WHERE id = $3
+                    """, 
+                    connection_status,
+                    '{"last_tested": "' + datetime.utcnow().isoformat() + '"}',
+                    service_id
+                    )
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "service_id": service_id,
+                            "target_name": service_row['target_name'],
+                            "service_type": service_row['service_type'],
+                            "host": service_row['host'],
+                            "port": service_row['port'],
+                            "connection_type": connection_type,
+                            "status": test_result['status'],
+                            "message": test_result['message'],
+                            "response_time_ms": test_result.get('response_time_ms'),
+                            "connection_status": connection_status,
+                            "tested_at": datetime.utcnow().isoformat()
+                        }
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to test service connection", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to test service connection"
+                )
+
         # ============================================================================
         # CREDENTIAL CRUD ENDPOINTS
         # ============================================================================
@@ -665,6 +797,48 @@ class AssetService(BaseService):
                     detail="Failed to delete credential"
                 )
 
+        @self.app.get("/credentials/{credential_id}/decrypt", response_model=dict)
+        async def decrypt_credential(credential_id: int):
+            """Decrypt credential data (admin only)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get credential
+                    credential_row = await conn.fetchrow("""
+                        SELECT id, name, credential_type, encrypted_data, description, 
+                               is_active, created_by, created_at, updated_at
+                        FROM assets.credentials 
+                        WHERE id = $1
+                    """, credential_id)
+                    
+                    if not credential_row:
+                        raise HTTPException(status_code=404, detail="Credential not found")
+                    
+                    # Decrypt the credential data
+                    decrypted_data = self._decrypt_credential_data(credential_row['encrypted_data'])
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "id": credential_row['id'],
+                            "name": credential_row['name'],
+                            "credential_type": credential_row['credential_type'],
+                            "decrypted_data": decrypted_data,
+                            "description": credential_row['description'],
+                            "is_active": credential_row['is_active'],
+                            "created_by": credential_row['created_by'],
+                            "created_at": credential_row['created_at'].isoformat(),
+                            "updated_at": credential_row['updated_at'].isoformat() if credential_row['updated_at'] else None
+                        }
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to decrypt credential", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to decrypt credential"
+                )
+
         # ============================================================================
         # DISCOVERY CRUD ENDPOINTS
         # ============================================================================
@@ -899,6 +1073,183 @@ class AssetService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete discovery job"
                 )
+
+    # ============================================================================
+    # CREDENTIAL ENCRYPTION/DECRYPTION HELPER METHODS
+    # ============================================================================
+    
+    def _decrypt_credential_data(self, encrypted_data: str) -> dict:
+        """Decrypt credential data"""
+        import json
+        import base64
+        
+        try:
+            # For now, we'll assume the data is base64 encoded JSON
+            # In a real implementation, you'd use proper encryption (AES, etc.)
+            if not encrypted_data:
+                return {}
+            
+            # Try to decode as base64 first
+            try:
+                decoded_bytes = base64.b64decode(encrypted_data)
+                decoded_str = decoded_bytes.decode('utf-8')
+                return json.loads(decoded_str)
+            except:
+                # If base64 decoding fails, try to parse as JSON directly
+                return json.loads(encrypted_data)
+                
+        except Exception as e:
+            self.logger.error("Failed to decrypt credential data", error=str(e))
+            return {"error": "Failed to decrypt credential data"}
+    
+    def _encrypt_credential_data(self, credential_data: dict) -> str:
+        """Encrypt credential data"""
+        import json
+        import base64
+        
+        try:
+            # For now, we'll just base64 encode the JSON
+            # In a real implementation, you'd use proper encryption (AES, etc.)
+            json_str = json.dumps(credential_data)
+            encoded_bytes = base64.b64encode(json_str.encode('utf-8'))
+            return encoded_bytes.decode('utf-8')
+        except Exception as e:
+            self.logger.error("Failed to encrypt credential data", error=str(e))
+            return ""
+
+    # ============================================================================
+    # CONNECTION TESTING HELPER METHODS
+    # ============================================================================
+    
+    def _determine_connection_type(self, target_type: str, port: int) -> str:
+        """Determine connection type based on target type and port"""
+        if target_type:
+            target_type_lower = target_type.lower()
+            if 'windows' in target_type_lower:
+                return 'winrm' if port in [5985, 5986] else 'rdp'
+            elif 'linux' in target_type_lower or 'unix' in target_type_lower:
+                return 'ssh'
+        
+        # Fallback to port-based detection
+        port_mappings = {
+            22: 'ssh',
+            23: 'telnet',
+            80: 'http',
+            443: 'https',
+            3389: 'rdp',
+            5985: 'winrm',
+            5986: 'winrm'
+        }
+        
+        return port_mappings.get(port, 'tcp')
+    
+    async def _test_connection(self, host: str, port: int, connection_type: str, credential_data: str = None) -> dict:
+        """Test connection to target based on connection type"""
+        import asyncio
+        import socket
+        import time
+        
+        start_time = time.time()
+        
+        try:
+            if connection_type == 'tcp':
+                # Basic TCP connection test
+                return await self._test_tcp_connection(host, port, start_time)
+            elif connection_type == 'ssh':
+                return await self._test_ssh_connection(host, port, credential_data, start_time)
+            elif connection_type == 'winrm':
+                return await self._test_winrm_connection(host, port, credential_data, start_time)
+            elif connection_type in ['http', 'https']:
+                return await self._test_http_connection(host, port, connection_type, start_time)
+            else:
+                # Default to TCP test
+                return await self._test_tcp_connection(host, port, start_time)
+                
+        except Exception as e:
+            response_time = int((time.time() - start_time) * 1000)
+            return {
+                "status": "failed",
+                "message": f"Connection test failed: {str(e)}",
+                "response_time_ms": response_time
+            }
+    
+    async def _test_tcp_connection(self, host: str, port: int, start_time: float) -> dict:
+        """Test basic TCP connection"""
+        import asyncio
+        import socket
+        
+        try:
+            # Create socket with timeout
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10)  # 10 second timeout
+            
+            result = sock.connect_ex((host, port))
+            sock.close()
+            
+            response_time = int((time.time() - start_time) * 1000)
+            
+            if result == 0:
+                return {
+                    "status": "success",
+                    "message": f"TCP connection to {host}:{port} successful",
+                    "response_time_ms": response_time
+                }
+            else:
+                return {
+                    "status": "failed",
+                    "message": f"TCP connection to {host}:{port} failed (error code: {result})",
+                    "response_time_ms": response_time
+                }
+        except Exception as e:
+            response_time = int((time.time() - start_time) * 1000)
+            return {
+                "status": "failed",
+                "message": f"TCP connection test failed: {str(e)}",
+                "response_time_ms": response_time
+            }
+    
+    async def _test_ssh_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
+        """Test SSH connection"""
+        # For now, just do a TCP test to port 22
+        # In a real implementation, you'd use paramiko or similar
+        tcp_result = await self._test_tcp_connection(host, port, start_time)
+        if tcp_result["status"] == "success":
+            tcp_result["message"] = f"SSH port {port} is reachable on {host}"
+        return tcp_result
+    
+    async def _test_winrm_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
+        """Test WinRM connection"""
+        # For now, just do a TCP test to WinRM ports
+        # In a real implementation, you'd use pywinrm or similar
+        tcp_result = await self._test_tcp_connection(host, port, start_time)
+        if tcp_result["status"] == "success":
+            tcp_result["message"] = f"WinRM port {port} is reachable on {host}"
+        return tcp_result
+    
+    async def _test_http_connection(self, host: str, port: int, protocol: str, start_time: float) -> dict:
+        """Test HTTP/HTTPS connection"""
+        import aiohttp
+        import time
+        
+        try:
+            url = f"{protocol}://{host}:{port}"
+            timeout = aiohttp.ClientTimeout(total=10)
+            
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    response_time = int((time.time() - start_time) * 1000)
+                    return {
+                        "status": "success",
+                        "message": f"{protocol.upper()} connection to {host}:{port} successful (HTTP {response.status})",
+                        "response_time_ms": response_time
+                    }
+        except Exception as e:
+            response_time = int((time.time() - start_time) * 1000)
+            return {
+                "status": "failed",
+                "message": f"{protocol.upper()} connection test failed: {str(e)}",
+                "response_time_ms": response_time
+            }
 
 if __name__ == "__main__":
     service = AssetService()

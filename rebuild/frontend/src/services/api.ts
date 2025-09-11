@@ -16,19 +16,18 @@ import {
 
 // Base API configuration
 // Explicitly construct the API URL to ensure HTTPS and correct port
-// Service port mapping for development
-const SERVICE_PORTS = {
-  auth: 3001,
-  users: 3002,
-  credentials: 3004,
-  targets: 3005,
-  jobs: 3006,
-  executor: 3007,
-
-  notifications: 3009,
-  discovery: 3010,
-  stepLibraries: 3011
-};
+// Service port mapping for development (kept for reference)
+// const SERVICE_PORTS = {
+//   auth: 3001,
+//   users: 3002,
+//   credentials: 3004,
+//   targets: 3005,
+//   jobs: 3006,
+//   executor: 3007,
+//   notifications: 3009,
+//   discovery: 3010,
+//   stepLibraries: 3011
+// };
 
 export const getApiBaseUrl = () => {
   if (process.env.REACT_APP_API_URL) {
@@ -72,10 +71,10 @@ api.interceptors.request.use(
     // Set dynamic baseURL for each request
     config.baseURL = getApiBaseUrl();
     
-    // Add session token if available (simple session-based auth)
-    const sessionToken = localStorage.getItem('session_token');
-    if (sessionToken) {
-      config.headers.Authorization = `Bearer ${sessionToken}`;
+    // Add access token if available (simple session-based auth)
+    const accessToken = localStorage.getItem('access_token');
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
     return config;
   },
@@ -100,16 +99,16 @@ api.interceptors.response.use(
 
 // Simple session management functions
 export const setSessionToken = (token: string) => {
-  localStorage.setItem('session_token', token);
+  localStorage.setItem('access_token', token);
 };
 
 export const clearTokens = () => {
-  localStorage.removeItem('session_token');
+  localStorage.removeItem('access_token');
   localStorage.removeItem('user');
 };
 
 export const isAuthenticated = (): boolean => {
-  return !!localStorage.getItem('session_token');
+  return !!localStorage.getItem('access_token');
 };
 
 // Auth API
@@ -251,26 +250,26 @@ export const targetApi = {
 
 // Job API
 export const jobApi = {
-  list: async (skip = 0, limit = 100, activeOnly = true): Promise<JobListResponse> => {
+  list: async (skip = 0, limit = 100): Promise<JobListResponse> => {
     const response: AxiosResponse<JobListResponse> = await api.get('/api/v1/jobs', {
-      params: { skip, limit, active_only: activeOnly }
+      params: { skip, limit }
     });
     return response.data;
   },
 
   get: async (id: number): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.get(`/api/v1/jobs/${id}`);
-    return response.data;
+    const response: AxiosResponse<{success: boolean, data: Job}> = await api.get(`/api/v1/jobs/${id}`);
+    return response.data.data;
   },
 
   create: async (jobData: JobCreate): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.post('/api/v1/jobs', jobData);
-    return response.data;
+    const response: AxiosResponse<{success: boolean, message: string, data: Job}> = await api.post('/api/v1/jobs', jobData);
+    return response.data.data;
   },
 
   update: async (id: number, jobData: Partial<JobCreate>): Promise<Job> => {
-    const response: AxiosResponse<Job> = await api.put(`/api/v1/jobs/${id}`, jobData);
-    return response.data;
+    const response: AxiosResponse<{success: boolean, message: string, data: Job}> = await api.put(`/api/v1/jobs/${id}`, jobData);
+    return response.data.data;
   },
 
   delete: async (id: number): Promise<void> => {
@@ -317,74 +316,140 @@ export const jobRunApi = {
 
 // Health Monitoring API
 export const healthApi = {
-  checkService: async (service: string): Promise<{ status: string; service: string; responseTime?: number; error?: string }> => {
+  checkAllServices: async (): Promise<Record<string, any>> => {
     const startTime = Date.now();
     try {
-      // Map service names to their health endpoints
-      const serviceMap: Record<string, string> = {
-        // Core application services
-        'auth': '/api/v1/auth/health',
-        'users': '/api/v1/users/health', 
-        'credentials': '/api/v1/credentials/health',
-        'targets': '/api/v1/targets/health',
-        'jobs': '/api/v1/jobs/health',
-        'executor': '/api/v1/executor/health',
-
-        'notification': '/api/v1/notification/health',
-        'discovery': '/api/v1/discovery/health',
-        'step-libraries': '/api/v1/step-libraries/health',
-        // Infrastructure services
-        'nginx': '/api/v1/nginx/health',
-        'frontend': '/api/v1/frontend/health',
-        'redis': '/api/v1/redis/health',
-        'postgres': '/api/v1/postgres/health',
-        'celery-worker': '/api/v1/celery-worker/health',
-        'celery-beat': '/api/v1/celery-beat/health',
-        'flower': '/api/v1/flower/health'
-      };
-      
-      const endpoint = serviceMap[service] || `/api/v1/${service}/health`;
-      const response = await api.get(endpoint, {
-        timeout: 5000 // 5 second timeout
+      const response = await api.get('/health', {
+        timeout: 10000 // 10 second timeout for comprehensive health check
       });
       const responseTime = Date.now() - startTime;
-      return { ...response.data, responseTime };
+      
+      // Transform the centralized health response into the expected format
+      const healthData = response.data;
+      const results: Record<string, any> = {};
+      
+      // Add overall API Gateway status
+      results['api-gateway'] = {
+        status: healthData.status,
+        service: 'api-gateway',
+        responseTime,
+        message: healthData.message
+      };
+      
+      // Add individual service checks from the centralized response
+      if (healthData.checks) {
+        healthData.checks.forEach((check: any) => {
+          // Map service names from the health check response
+          let serviceName = check.service || check.name || 'unknown';
+          
+          // Normalize service names to match frontend expectations
+          if (serviceName.includes('identity')) {
+            results['auth'] = { ...check, service: 'auth', responseTime };
+            results['users'] = { ...check, service: 'users', responseTime };
+          } else if (serviceName.includes('asset')) {
+            results['credentials'] = { ...check, service: 'credentials', responseTime };
+            results['targets'] = { ...check, service: 'targets', responseTime };
+            results['discovery'] = { ...check, service: 'discovery', responseTime };
+          } else if (serviceName.includes('automation')) {
+            results['jobs'] = { ...check, service: 'jobs', responseTime };
+            results['executor'] = { ...check, service: 'executor', responseTime };
+            results['step-libraries'] = { ...check, service: 'step-libraries', responseTime };
+          } else if (serviceName.includes('communication')) {
+            results['notification'] = { ...check, service: 'notification', responseTime };
+          } else {
+            // For database, redis, etc.
+            results[serviceName.toLowerCase()] = { ...check, service: serviceName.toLowerCase(), responseTime };
+          }
+        });
+      }
+      
+      // Add default status for services not explicitly reported
+      const expectedServices = [
+        'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 
+        'notification', 'discovery', 'step-libraries', 'redis', 'postgres'
+      ];
+      
+      expectedServices.forEach(service => {
+        if (!results[service]) {
+          results[service] = {
+            status: 'unknown',
+            service,
+            responseTime,
+            message: 'Service status not reported'
+          };
+        }
+      });
+      
+      return results;
     } catch (error) {
       const responseTime = Date.now() - startTime;
-      return { 
-        status: 'unhealthy', 
-        service, 
-        responseTime,
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Return error status for all services if health check fails
+      const services = [
+        'api-gateway', 'auth', 'users', 'credentials', 'targets', 'jobs', 'executor',
+        'notification', 'discovery', 'step-libraries', 'redis', 'postgres'
+      ];
+      
+      const results: Record<string, any> = {};
+      services.forEach(service => {
+        results[service] = {
+          status: 'unhealthy',
+          service,
+          responseTime,
+          error: errorMessage
+        };
+      });
+      
+      return results;
+    }
+  },
+
+  checkService: async (service: string): Promise<{ status: string; service: string; responseTime?: number; error?: string }> => {
+    // For individual service checks, use the centralized health endpoint
+    // and extract the specific service status
+    try {
+      const allServices = await healthApi.checkAllServices();
+      return allServices[service] || {
+        status: 'unknown',
+        service,
+        error: 'Service not found in health report'
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        service,
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   },
 
-  checkAllServices: async (): Promise<Record<string, any>> => {
-    const services = [
-      // Core application services
-      'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 'notification', 'discovery', 'step-libraries',
-      // Infrastructure services
-      'nginx', 'frontend', 'redis', 'postgres', 'celery-worker', 'celery-beat', 'flower'
-    ];
-    const results: Record<string, any> = {};
-    
-    const checks = services.map(async (service) => {
-      const result = await healthApi.checkService(service);
-      results[service] = result;
-    });
-    
-    await Promise.allSettled(checks);
-    return results;
-  },
-
   getSystemStats: async (): Promise<any> => {
     try {
-      // Get executor status for queue statistics
-      const executorResponse = await api.get('/api/v1/executor/status');
-      return executorResponse.data;
+      // Get system stats from the centralized health endpoint
+      const healthResponse = await api.get('/health');
+      const healthData = healthResponse.data;
+      
+      // Extract system statistics from health data
+      const stats = {
+        overall_status: healthData.status,
+        services_count: healthData.checks ? healthData.checks.length : 0,
+        healthy_services: healthData.checks ? healthData.checks.filter((c: any) => c.status === 'healthy').length : 0,
+        unhealthy_services: healthData.checks ? healthData.checks.filter((c: any) => c.status === 'unhealthy').length : 0,
+        timestamp: new Date().toISOString(),
+        message: healthData.message || 'System health check completed'
+      };
+      
+      return stats;
     } catch (error) {
-      return { error: 'Failed to fetch system stats' };
+      return { 
+        error: 'Failed to fetch system stats',
+        overall_status: 'unhealthy',
+        services_count: 0,
+        healthy_services: 0,
+        unhealthy_services: 0,
+        timestamp: new Date().toISOString()
+      };
     }
   }
 };
