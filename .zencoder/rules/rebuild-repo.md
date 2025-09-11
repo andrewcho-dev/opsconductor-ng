@@ -6,7 +6,7 @@ alwaysApply: true
 # OpsConductor Rebuilt System Information
 
 ## Repository Summary
-A modernized, domain-driven microservices platform for Windows and Linux automation, featuring a consolidated architecture that reduces complexity while maintaining all functionality. The rebuilt system transforms the original 10 microservices into 4 domain-focused services with a central API gateway, improving maintainability, scalability, and development velocity.
+A modernized, domain-driven microservices platform for Windows and Linux automation, featuring a consolidated architecture that reduces complexity while maintaining all functionality. The rebuilt system transforms the original microservices into 4 domain-focused services with a central API gateway, improving maintainability, scalability, and development velocity.
 
 ## Repository Structure
 - **api-gateway**: Central entry point for all API requests (Port 3000)
@@ -42,17 +42,19 @@ A modernized, domain-driven microservices platform for Windows and Linux automat
 - celery==5.3.4 (automation-service)
 - cryptography==41.0.7 (asset-service)
 - aiosmtplib==3.0.1 (communication-service)
+- bcrypt==4.1.2
+- python-multipart==0.0.6
 
 #### Build & Installation
 ```bash
-cd /home/opsconductor/rebuild
+cd rebuild
 ./build.sh
 ./deploy.sh
 ```
 
 #### Docker
 **Dockerfile**: Each service has its own Dockerfile
-**Base Image**: Python 3.11 with optimized dependencies
+**Base Image**: Python 3.11-slim
 **Configuration**: Services are containerized with Docker Compose
 **Health Checks**: All services implement /health endpoints
 
@@ -125,7 +127,7 @@ Key variables defined in docker-compose.yml:
 
 ### Startup
 ```bash
-cd /home/opsconductor/rebuild
+cd rebuild
 ./deploy.sh
 ```
 
@@ -136,7 +138,7 @@ cd /home/opsconductor/rebuild
 - Celery Flower dashboard at http://localhost:5555
 
 ## Architecture Improvements
-- **Service Reduction**: 10 services → 4 core services + 1 gateway (44% reduction)
+- **Service Consolidation**: Microservices → 4 core services + 1 gateway
 - **Domain-Driven Design**: Clear boundaries and responsibilities
 - **Improved Scalability**: Independent scaling per domain
 - **Enhanced Maintainability**: Domain-focused development

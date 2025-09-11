@@ -18,6 +18,65 @@ from base_service import BaseService
 # MODELS
 # ============================================================================
 
+# Enhanced Target Models (for frontend compatibility)
+class TargetServiceCreate(BaseModel):
+    service_type: str
+    port: int
+    credential_id: Optional[int] = None
+    is_secure: bool = False
+    is_enabled: bool = True
+    notes: Optional[str] = None
+
+class TargetService(BaseModel):
+    id: int
+    target_id: int
+    service_type: str
+    port: int
+    credential_id: Optional[int] = None
+    is_secure: bool = False
+    is_enabled: bool = True
+    notes: Optional[str] = None
+    created_at: str
+
+class EnhancedTargetCreate(BaseModel):
+    name: str
+    hostname: str
+    ip_address: Optional[str] = None
+    os_type: Optional[str] = 'other'
+    os_version: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = []
+    services: List[TargetServiceCreate] = []
+
+class EnhancedTargetUpdate(BaseModel):
+    name: Optional[str] = None
+    hostname: Optional[str] = None
+    ip_address: Optional[str] = None
+    os_type: Optional[str] = None
+    os_version: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    services: Optional[List[TargetServiceCreate]] = None
+
+class EnhancedTarget(BaseModel):
+    id: int
+    name: str
+    hostname: str
+    ip_address: Optional[str] = None
+    os_type: Optional[str] = None
+    os_version: Optional[str] = None
+    description: Optional[str] = None
+    tags: List[str] = []
+    services: List[TargetService] = []
+    created_at: str
+    updated_at: Optional[str] = None
+
+class EnhancedTargetListResponse(BaseModel):
+    targets: List[EnhancedTarget]
+    total: int
+    skip: int
+    limit: int
+
 class Target(BaseModel):
     id: int
     name: str
@@ -174,47 +233,67 @@ class AssetService(BaseService):
         # TARGET CRUD ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/targets", response_model=TargetListResponse)
+        @self.app.get("/targets", response_model=EnhancedTargetListResponse)
         async def list_targets(
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000)
         ):
-            """List all targets"""
+            """List all targets (using enhanced system)"""
             try:
                 async with self.db.pool.acquire() as conn:
                     # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.targets")
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.enhanced_targets")
                     
                     # Get targets with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, host, port, target_type, tags, 
-                               metadata, is_active, created_by, created_at, updated_at
-                        FROM assets.targets 
+                    target_rows = await conn.fetch("""
+                        SELECT id, name, hostname, ip_address, os_type, os_version,
+                               description, tags, created_at, updated_at
+                        FROM assets.enhanced_targets 
                         ORDER BY created_at DESC 
                         LIMIT $1 OFFSET $2
                     """, limit, skip)
                     
                     targets = []
-                    for row in rows:
+                    for row in target_rows:
+                        # Get services for this target
+                        service_rows = await conn.fetch("""
+                            SELECT id, service_type, port, credential_id, is_secure, 
+                                   is_enabled, notes, created_at
+                            FROM assets.target_services 
+                            WHERE target_id = $1
+                            ORDER BY service_type, port
+                        """, row['id'])
+                        
+                        services = []
+                        for service_row in service_rows:
+                            services.append(TargetService(
+                                id=service_row['id'],
+                                target_id=row['id'],
+                                service_type=service_row['service_type'],
+                                port=service_row['port'],
+                                credential_id=service_row['credential_id'],
+                                is_secure=service_row['is_secure'],
+                                is_enabled=service_row['is_enabled'],
+                                notes=service_row['notes'],
+                                created_at=service_row['created_at'].isoformat()
+                            ))
+                        
                         import json
-                        targets.append(Target(
+                        targets.append(EnhancedTarget(
                             id=row['id'],
                             name=row['name'],
-                            host=row['host'],
-                            port=row['port'],
-                            platform=row['target_type'],
-                            credential_id=None,
-                            group_id=None,
+                            hostname=row['hostname'],
+                            ip_address=row['ip_address'],
+                            os_type=row['os_type'],
+                            os_version=row['os_version'],
+                            description=row['description'],
                             tags=json.loads(row['tags']) if row['tags'] else [],
-                            metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                            is_active=row['is_active'],
-                            last_seen=None,
-                            created_by=row['created_by'],
+                            services=services,
                             created_at=row['created_at'].isoformat(),
                             updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
                         ))
                     
-                    return TargetListResponse(
+                    return EnhancedTargetListResponse(
                         targets=targets,
                         total=total,
                         skip=skip,
@@ -228,40 +307,64 @@ class AssetService(BaseService):
                 )
 
         @self.app.post("/targets", response_model=dict)
-        async def create_target(target_data: TargetCreate):
-            """Create a new target"""
+        async def create_target(target_data: EnhancedTargetCreate):
+            """Create a new target (using enhanced system)"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    import json
-                    row = await conn.fetchrow("""
-                        INSERT INTO assets.targets (name, host, port, target_type, connection_type, 
-                                           tags, metadata, is_active, created_by)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1)
-                        RETURNING id, name, host, port, target_type, connection_type, tags,
-                                  metadata, is_active, created_by, created_at, updated_at
-                    """, target_data.name, target_data.host, target_data.port or 22, 
-                         target_data.platform or 'linux', 'ssh',
-                         json.dumps(target_data.tags or []), json.dumps(target_data.metadata or {}), target_data.is_active)
-                    
-                    import json
-                    target = Target(
-                        id=row['id'],
-                        name=row['name'],
-                        host=row['host'],
-                        port=row['port'],
-                        platform=row['target_type'],
-                        credential_id=None,
-                        group_id=None,
-                        tags=json.loads(row['tags']) if row['tags'] else [],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
-                        last_seen=None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
-                    )
-                    
-                    return {"success": True, "message": "Target created", "data": target}
+                    async with conn.transaction():
+                        import json
+                        
+                        # Create the target
+                        target_row = await conn.fetchrow("""
+                            INSERT INTO assets.enhanced_targets 
+                            (name, hostname, ip_address, os_type, os_version, description, tags)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                            RETURNING id, name, hostname, ip_address, os_type, os_version,
+                                      description, tags, created_at, updated_at
+                        """, target_data.name, target_data.hostname, target_data.ip_address,
+                             target_data.os_type, target_data.os_version, target_data.description,
+                             json.dumps(target_data.tags or []))
+                        
+                        # Create services
+                        services = []
+                        for service_data in target_data.services:
+                            service_row = await conn.fetchrow("""
+                                INSERT INTO assets.target_services 
+                                (target_id, service_type, port, credential_id, is_secure, is_enabled, notes)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                RETURNING id, service_type, port, credential_id, is_secure, 
+                                          is_enabled, notes, created_at
+                            """, target_row['id'], service_data.service_type, service_data.port,
+                                 service_data.credential_id, service_data.is_secure, 
+                                 service_data.is_enabled, service_data.notes)
+                            
+                            services.append(TargetService(
+                                id=service_row['id'],
+                                target_id=target_row['id'],
+                                service_type=service_row['service_type'],
+                                port=service_row['port'],
+                                credential_id=service_row['credential_id'],
+                                is_secure=service_row['is_secure'],
+                                is_enabled=service_row['is_enabled'],
+                                notes=service_row['notes'],
+                                created_at=service_row['created_at'].isoformat()
+                            ))
+                        
+                        target = EnhancedTarget(
+                            id=target_row['id'],
+                            name=target_row['name'],
+                            hostname=target_row['hostname'],
+                            ip_address=target_row['ip_address'],
+                            os_type=target_row['os_type'],
+                            os_version=target_row['os_version'],
+                            description=target_row['description'],
+                            tags=json.loads(target_row['tags']) if target_row['tags'] else [],
+                            services=services,
+                            created_at=target_row['created_at'].isoformat(),
+                            updated_at=target_row['updated_at'].isoformat() if target_row['updated_at'] else None
+                        )
+                        
+                        return {"success": True, "message": "Target created", "data": target}
             except Exception as e:
                 self.logger.error("Failed to create target", error=str(e))
                 raise HTTPException(
@@ -271,34 +374,59 @@ class AssetService(BaseService):
 
         @self.app.get("/targets/{target_id}", response_model=dict)
         async def get_target(target_id: int):
-            """Get target by ID"""
+            """Get target by ID (using enhanced system)"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    row = await conn.fetchrow("""
-                        SELECT id, name, host, port, target_type, tags,
-                               metadata, is_active, created_by, created_at, updated_at
-                        FROM assets.targets WHERE id = $1
+                    # Get target
+                    target_row = await conn.fetchrow("""
+                        SELECT id, name, hostname, ip_address, os_type, os_version,
+                               description, tags, created_at, updated_at
+                        FROM assets.enhanced_targets 
+                        WHERE id = $1
                     """, target_id)
                     
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Target not found")
+                    if not target_row:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Target not found"
+                        )
+                    
+                    # Get services
+                    service_rows = await conn.fetch("""
+                        SELECT id, service_type, port, credential_id, is_secure, 
+                               is_enabled, notes, created_at
+                        FROM assets.target_services 
+                        WHERE target_id = $1
+                        ORDER BY service_type, port
+                    """, target_id)
+                    
+                    services = []
+                    for service_row in service_rows:
+                        services.append(TargetService(
+                            id=service_row['id'],
+                            target_id=target_id,
+                            service_type=service_row['service_type'],
+                            port=service_row['port'],
+                            credential_id=service_row['credential_id'],
+                            is_secure=service_row['is_secure'],
+                            is_enabled=service_row['is_enabled'],
+                            notes=service_row['notes'],
+                            created_at=service_row['created_at'].isoformat()
+                        ))
                     
                     import json
-                    target = Target(
-                        id=row['id'],
-                        name=row['name'],
-                        host=row['host'],
-                        port=row['port'],
-                        platform=row['target_type'],
-                        credential_id=None,
-                        group_id=None,
-                        tags=json.loads(row['tags']) if row['tags'] else [],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
-                        last_seen=None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
+                    target = EnhancedTarget(
+                        id=target_row['id'],
+                        name=target_row['name'],
+                        hostname=target_row['hostname'],
+                        ip_address=target_row['ip_address'],
+                        os_type=target_row['os_type'],
+                        os_version=target_row['os_version'],
+                        description=target_row['description'],
+                        tags=json.loads(target_row['tags']) if target_row['tags'] else [],
+                        services=services,
+                        created_at=target_row['created_at'].isoformat(),
+                        updated_at=target_row['updated_at'].isoformat() if target_row['updated_at'] else None
                     )
                     
                     return {"success": True, "data": target}
@@ -312,94 +440,143 @@ class AssetService(BaseService):
                 )
 
         @self.app.put("/targets/{target_id}", response_model=dict)
-        async def update_target(target_id: int, target_data: TargetUpdate):
-            """Update target"""
+        async def update_target(target_id: int, target_data: EnhancedTargetUpdate):
+            """Update target (using enhanced system)"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Build dynamic update query
-                    updates = []
-                    values = []
-                    param_count = 1
-                    
-                    if target_data.name is not None:
-                        updates.append(f"name = ${param_count}")
-                        values.append(target_data.name)
-                        param_count += 1
-                    if target_data.host is not None:
-                        updates.append(f"host = ${param_count}")
-                        values.append(target_data.host)
-                        param_count += 1
-                    if target_data.port is not None:
-                        updates.append(f"port = ${param_count}")
-                        values.append(target_data.port)
-                        param_count += 1
-                    if target_data.platform is not None:
-                        updates.append(f"target_type = ${param_count}")
-                        values.append(target_data.platform)
-                        param_count += 1
-                    if target_data.credential_id is not None:
-                        updates.append(f"credential_id = ${param_count}")
-                        values.append(target_data.credential_id)
-                        param_count += 1
-                    if target_data.group_id is not None:
-                        updates.append(f"group_id = ${param_count}")
-                        values.append(target_data.group_id)
-                        param_count += 1
-                    if target_data.tags is not None:
-                        import json
-                        updates.append(f"tags = ${param_count}")
-                        values.append(json.dumps(target_data.tags))
-                        param_count += 1
-                    if target_data.metadata is not None:
-                        import json
-                        updates.append(f"metadata = ${param_count}")
-                        values.append(json.dumps(target_data.metadata))
-                        param_count += 1
-                    if target_data.is_active is not None:
-                        updates.append(f"is_active = ${param_count}")
-                        values.append(target_data.is_active)
-                        param_count += 1
-                    
-                    if not updates:
-                        raise HTTPException(status_code=400, detail="No fields to update")
-                    
-                    updates.append(f"updated_at = ${param_count}")
-                    values.append(datetime.utcnow())
-                    param_count += 1
-                    values.append(target_id)
-                    
-                    query = f"""
-                        UPDATE assets.targets 
-                        SET {', '.join(updates)}
-                        WHERE id = ${param_count}
-                        RETURNING id, name, host, port, target_type, tags,
-                                  metadata, is_active, created_by, created_at, updated_at
-                    """
-                    
-                    row = await conn.fetchrow(query, *values)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Target not found")
-                    
-                    import json
-                    target = Target(
-                        id=row['id'],
-                        name=row['name'],
-                        host=row['host'],
-                        port=row['port'],
-                        platform=row['target_type'],
-                        credential_id=None,
-                        group_id=None,
-                        tags=json.loads(row['tags']) if row['tags'] else [],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
-                        last_seen=None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
-                    )
-                    
-                    return {"success": True, "message": "Target updated", "data": target}
+                    async with conn.transaction():
+                        # Check if target exists
+                        exists = await conn.fetchval("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
+                        if not exists:
+                            raise HTTPException(
+                                status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Target not found"
+                            )
+                        
+                        # Build update query dynamically
+                        update_fields = []
+                        update_values = []
+                        param_count = 1
+                        
+                        if target_data.name is not None:
+                            update_fields.append(f"name = ${param_count}")
+                            update_values.append(target_data.name)
+                            param_count += 1
+                        
+                        if target_data.hostname is not None:
+                            update_fields.append(f"hostname = ${param_count}")
+                            update_values.append(target_data.hostname)
+                            param_count += 1
+                        
+                        if target_data.ip_address is not None:
+                            update_fields.append(f"ip_address = ${param_count}")
+                            update_values.append(target_data.ip_address)
+                            param_count += 1
+                        
+                        if target_data.os_type is not None:
+                            update_fields.append(f"os_type = ${param_count}")
+                            update_values.append(target_data.os_type)
+                            param_count += 1
+                        
+                        if target_data.os_version is not None:
+                            update_fields.append(f"os_version = ${param_count}")
+                            update_values.append(target_data.os_version)
+                            param_count += 1
+                        
+                        if target_data.description is not None:
+                            update_fields.append(f"description = ${param_count}")
+                            update_values.append(target_data.description)
+                            param_count += 1
+                        
+                        if target_data.tags is not None:
+                            import json
+                            update_fields.append(f"tags = ${param_count}")
+                            update_values.append(json.dumps(target_data.tags))
+                            param_count += 1
+                        
+                        # Always update the updated_at timestamp if there are any changes
+                        if update_fields or target_data.services is not None:
+                            if update_fields:
+                                update_fields.append(f"updated_at = ${param_count}")
+                                update_values.append(datetime.utcnow())
+                                update_values.append(target_id)
+                                
+                                query = f"""
+                                    UPDATE assets.enhanced_targets 
+                                    SET {', '.join(update_fields)}
+                                    WHERE id = ${param_count + 1}
+                                    RETURNING id, name, hostname, ip_address, os_type, os_version,
+                                              description, tags, created_at, updated_at
+                                """
+                                
+                                target_row = await conn.fetchrow(query, *update_values)
+                            else:
+                                # Only services are being updated, just update timestamp
+                                target_row = await conn.fetchrow("""
+                                    UPDATE assets.enhanced_targets 
+                                    SET updated_at = $1
+                                    WHERE id = $2
+                                    RETURNING id, name, hostname, ip_address, os_type, os_version,
+                                              description, tags, created_at, updated_at
+                                """, datetime.utcnow(), target_id)
+                            
+                            # Handle services update if provided
+                            if target_data.services is not None:
+                                # Delete existing services
+                                await conn.execute("DELETE FROM assets.target_services WHERE target_id = $1", target_id)
+                                
+                                # Create new services
+                                for service_data in target_data.services:
+                                    await conn.execute("""
+                                        INSERT INTO assets.target_services 
+                                        (target_id, service_type, port, credential_id, is_secure, is_enabled, notes)
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                    """, target_id, service_data.service_type, service_data.port,
+                                         service_data.credential_id, service_data.is_secure, 
+                                         service_data.is_enabled, service_data.notes)
+                            
+                            # Get updated services
+                            service_rows = await conn.fetch("""
+                                SELECT id, service_type, port, credential_id, is_secure, 
+                                       is_enabled, notes, created_at
+                                FROM assets.target_services 
+                                WHERE target_id = $1
+                                ORDER BY service_type, port
+                            """, target_id)
+                            
+                            services = []
+                            for service_row in service_rows:
+                                services.append(TargetService(
+                                    id=service_row['id'],
+                                    target_id=target_id,
+                                    service_type=service_row['service_type'],
+                                    port=service_row['port'],
+                                    credential_id=service_row['credential_id'],
+                                    is_secure=service_row['is_secure'],
+                                    is_enabled=service_row['is_enabled'],
+                                    notes=service_row['notes'],
+                                    created_at=service_row['created_at'].isoformat()
+                                ))
+                            
+                            import json
+                            target = EnhancedTarget(
+                                id=target_row['id'],
+                                name=target_row['name'],
+                                hostname=target_row['hostname'],
+                                ip_address=target_row['ip_address'],
+                                os_type=target_row['os_type'],
+                                os_version=target_row['os_version'],
+                                description=target_row['description'],
+                                tags=json.loads(target_row['tags']) if target_row['tags'] else [],
+                                services=services,
+                                created_at=target_row['created_at'].isoformat(),
+                                updated_at=target_row['updated_at'].isoformat() if target_row['updated_at'] else None
+                            )
+                            
+                            return {"success": True, "message": "Target updated", "data": target}
+                        else:
+                            return {"success": True, "message": "No changes made"}
+                        
             except HTTPException:
                 raise
             except Exception as e:
@@ -411,15 +588,19 @@ class AssetService(BaseService):
 
         @self.app.delete("/targets/{target_id}", response_model=dict)
         async def delete_target(target_id: int):
-            """Delete target"""
+            """Delete target (using enhanced system)"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    result = await conn.execute(
-                        "DELETE FROM assets.targets WHERE id = $1", target_id
-                    )
+                    # Check if target exists
+                    exists = await conn.fetchval("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
+                    if not exists:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Target not found"
+                        )
                     
-                    if result == "DELETE 0":
-                        raise HTTPException(status_code=404, detail="Target not found")
+                    # Delete target (services will be deleted by CASCADE)
+                    await conn.execute("DELETE FROM assets.enhanced_targets WHERE id = $1", target_id)
                     
                     return {"success": True, "message": "Target deleted"}
             except HTTPException:
@@ -562,6 +743,8 @@ class AssetService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to test service connection"
                 )
+
+
 
         # ============================================================================
         # CREDENTIAL CRUD ENDPOINTS

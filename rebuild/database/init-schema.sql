@@ -111,6 +111,33 @@ CREATE TABLE assets.target_credentials (
     PRIMARY KEY (target_id, credential_id)
 );
 
+-- Enhanced targets (for new UI)
+CREATE TABLE assets.enhanced_targets (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(45), -- IPv4 or IPv6
+    os_type VARCHAR(50) DEFAULT 'other', -- 'windows', 'linux', 'unix', 'macos', 'other'
+    os_version VARCHAR(100),
+    description TEXT,
+    tags JSONB DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Target services (for enhanced targets)
+CREATE TABLE assets.target_services (
+    id SERIAL PRIMARY KEY,
+    target_id INTEGER REFERENCES assets.enhanced_targets(id) ON DELETE CASCADE,
+    service_type VARCHAR(100) NOT NULL, -- 'ssh', 'rdp', 'http', 'https', 'ftp', etc.
+    port INTEGER NOT NULL,
+    credential_id INTEGER REFERENCES assets.credentials(id) ON DELETE SET NULL,
+    is_secure BOOLEAN DEFAULT false,
+    is_enabled BOOLEAN DEFAULT true,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Discovery scans
 CREATE TABLE assets.discovery_scans (
     id SERIAL PRIMARY KEY,

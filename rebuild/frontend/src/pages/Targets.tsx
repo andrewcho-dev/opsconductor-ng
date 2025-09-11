@@ -328,9 +328,19 @@ const Targets: React.FC = () => {
   const updateService = (index: number, field: string, value: any) => {
     setNewTarget(prev => ({
       ...prev,
-      services: prev.services.map((service, i) => 
-        i === index ? { ...service, [field]: value } : service
-      )
+      services: prev.services.map((service, i) => {
+        if (i === index) {
+          const updatedService = { ...service, [field]: value };
+          
+          // If service_type is being updated, automatically set the default port
+          if (field === 'service_type' && value && SERVICE_TYPES[value as keyof typeof SERVICE_TYPES]) {
+            updatedService.port = SERVICE_TYPES[value as keyof typeof SERVICE_TYPES];
+          }
+          
+          return updatedService;
+        }
+        return service;
+      })
     }));
   };
 
@@ -1358,7 +1368,7 @@ const Targets: React.FC = () => {
                 <span>Target Details: {selectedTarget.name}</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
-                    onClick={() => setEditingTarget(selectedTarget)}
+                    onClick={() => handleEdit(selectedTarget)}
                     className="btn-icon btn-secondary"
                     title="Edit Target"
                   >
