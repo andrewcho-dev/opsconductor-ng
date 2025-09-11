@@ -5,7 +5,7 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import Credentials from './pages/Credentials';
+
 import Targets from './pages/Targets';
 
 import Discovery from './pages/Discovery';
@@ -51,9 +51,7 @@ const App: React.FC = () => {
                     <Route path="/user-management" element={<Users />} />
                     <Route path="/user-management/:action" element={<Users />} />
                     <Route path="/user-management/:action/:id" element={<Users />} />
-                    <Route path="/credential-management" element={<Credentials />} />
-                    <Route path="/credential-management/:action" element={<Credentials />} />
-                    <Route path="/credential-management/:action/:id" element={<Credentials />} />
+
                     <Route path="/targets-management" element={<Targets />} />
                     <Route path="/targets-management/:action" element={<Targets />} />
                     <Route path="/targets-management/:action/:id" element={<Targets />} />

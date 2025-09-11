@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import JobTargetSelector from './JobTargetSelector';
-import CredentialSelector from './CredentialSelector';
+
 import TargetFieldSelector from './TargetFieldSelector';
 import ConnectionTypeSelector from './ConnectionTypeSelector';
 import { targetApi } from '../services/api';
@@ -264,11 +264,12 @@ const StepConfigModal: React.FC<StepConfigModalProps> = React.memo(({
     // Username fields
     if (lowerKey.includes('username') || lowerKey.includes('user') || lowerKey === 'login') {
       return (
-        <CredentialSelector
+        <input
+          type="text"
           value={String(value)}
-          onChange={(newValue) => updateConfig(key, newValue)}
-          fieldType="username"
-          placeholder={`Select credential or enter ${key.replace(/_/g, ' ')}`}
+          onChange={(e) => updateConfig(key, e.target.value)}
+          placeholder={`Enter ${key.replace(/_/g, ' ')}`}
+          className="form-control"
         />
       );
     }
@@ -276,11 +277,12 @@ const StepConfigModal: React.FC<StepConfigModalProps> = React.memo(({
     // Password fields
     if (lowerKey.includes('password') || lowerKey.includes('passwd') || lowerKey.includes('secret')) {
       return (
-        <CredentialSelector
+        <input
+          type="password"
           value={String(value)}
-          onChange={(newValue) => updateConfig(key, newValue)}
-          fieldType="password"
-          placeholder={`Select credential or enter ${key.replace(/_/g, ' ')}`}
+          onChange={(e) => updateConfig(key, e.target.value)}
+          placeholder={`Enter ${key.replace(/_/g, ' ')}`}
+          className="form-control"
         />
       );
     }
@@ -672,11 +674,12 @@ const StepConfigModal: React.FC<StepConfigModalProps> = React.memo(({
                 }}>
                   Username:
                 </label>
-                <CredentialSelector
+                <input
+                  type="text"
                   value={config.username || ''}
-                  onChange={(value) => updateConfig('username', value)}
-                  fieldType="username"
+                  onChange={(e) => updateConfig('username', e.target.value)}
                   placeholder="Override username"
+                  className="form-control"
                 />
               </div>
               
@@ -689,11 +692,12 @@ const StepConfigModal: React.FC<StepConfigModalProps> = React.memo(({
                 }}>
                   Password:
                 </label>
-                <CredentialSelector
+                <input
+                  type="password"
                   value={config.password || ''}
-                  onChange={(value) => updateConfig('password', value)}
-                  fieldType="password"
+                  onChange={(e) => updateConfig('password', e.target.value)}
                   placeholder="Override password"
+                  className="form-control"
                 />
               </div>
             </CollapsibleSection>

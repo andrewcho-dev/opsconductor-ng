@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   BarChart3, 
   Users, 
-  Shield, 
   Target, 
   Search, 
   Settings, 
@@ -105,14 +104,7 @@ const Navbar: React.FC = () => {
                 <span className="nav-icon"><Users size={16} /></span>
                 Users
               </Link>
-              <Link 
-                to="/credential-management" 
-                className={`nav-menu-item ${isActive('/credential-management') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Shield size={16} /></span>
-                Credentials
-              </Link>
+
               <Link 
                 to="/targets-management" 
                 className={`nav-menu-item ${isActive('/targets-management') ? 'active' : ''}`} 
