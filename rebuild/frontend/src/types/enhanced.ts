@@ -22,10 +22,22 @@ export interface ServiceDefinitionResponse {
 export interface TargetServiceCreate {
   service_type: string;
   port: number;
-  credential_id?: number;
+  is_default?: boolean;
   is_secure?: boolean;
   is_enabled?: boolean;
   notes?: string;
+  
+  // Embedded credential fields
+  credential_type?: string; // 'username_password', 'ssh_key', 'api_key', 'bearer_token'
+  username?: string;
+  password?: string;
+  private_key?: string;
+  public_key?: string;
+  api_key?: string;
+  bearer_token?: string;
+  certificate?: string;
+  passphrase?: string;
+  domain?: string; // For Windows domain authentication
 }
 
 export interface TargetServiceUpdate {
@@ -38,19 +50,24 @@ export interface TargetServiceUpdate {
 export interface TargetService {
   id: number;
   service_type: string;
-  display_name: string;
-  category: string;
   port: number;
-  default_port: number;
-  credential_id?: number;
-  credential_name?: string;
+  is_default: boolean;
   is_secure: boolean;
   is_enabled: boolean;
-  is_custom_port: boolean;
-  discovery_method: string;
-  connection_status: 'unknown' | 'connected' | 'failed' | 'timeout';
-  last_checked?: string;
   notes?: string;
+  
+  // Embedded credential fields (masked in responses)
+  credential_type?: string;
+  username?: string;
+  password?: string; // Will be "***" if set
+  private_key?: string; // Will be "***" if set
+  public_key?: string;
+  api_key?: string; // Will be "***" if set
+  bearer_token?: string; // Will be "***" if set
+  certificate?: string; // Will be "***" if set
+  passphrase?: string; // Will be "***" if set
+  domain?: string;
+  
   created_at: string;
 }
 
@@ -81,7 +98,6 @@ export interface EnhancedTargetCreate {
   description?: string;
   tags?: string[];
   services?: TargetServiceCreate[];
-  credentials?: TargetCredentialCreate[];
 }
 
 export interface EnhancedTargetUpdate {
@@ -92,6 +108,7 @@ export interface EnhancedTargetUpdate {
   os_version?: string;
   description?: string;
   tags?: string[];
+  services?: TargetServiceCreate[];
 }
 
 export interface EnhancedTarget {
@@ -104,7 +121,6 @@ export interface EnhancedTarget {
   description?: string;
   tags: string[];
   services: TargetService[];
-  credentials: TargetCredential[];
   created_at: string;
   updated_at?: string;
 }
@@ -139,9 +155,22 @@ export interface MigrationStatus {
 export interface ServiceFormData {
   service_type: string;
   port: number;
+  is_default: boolean;
   is_secure: boolean;
   is_enabled: boolean;
   notes: string;
+  
+  // Embedded credential fields
+  credential_type: string;
+  username: string;
+  password: string;
+  private_key: string;
+  public_key: string;
+  api_key: string;
+  bearer_token: string;
+  certificate: string;
+  passphrase: string;
+  domain: string;
 }
 
 export interface CredentialFormData {

@@ -6,6 +6,41 @@ import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../ser
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
 
+// Service type to credential type mapping
+const SERVICE_CREDENTIAL_MAPPING: Record<string, string[]> = {
+  'ssh': ['ssh_key', 'username_password'],
+  'sftp': ['ssh_key', 'username_password'],
+  'rdp': ['username_password'],
+  'winrm': ['username_password'],
+  'winrm_https': ['username_password'],
+  'wmi': ['username_password'],
+  'smb': ['username_password'],
+  'http': ['api_key', 'username_password', 'bearer_token'],
+  'https': ['api_key', 'username_password', 'bearer_token'],
+  'http_alt': ['api_key', 'username_password', 'bearer_token'],
+  'https_alt': ['api_key', 'username_password', 'bearer_token'],
+  'mysql': ['username_password'],
+  'postgresql': ['username_password'],
+  'sql_server': ['username_password'],
+  'oracle': ['username_password'],
+  'mongodb': ['username_password'],
+  'redis': ['username_password'],
+  'smtp': ['username_password'],
+  'smtps': ['username_password'],
+  'smtp_submission': ['username_password'],
+  'imap': ['username_password'],
+  'imaps': ['username_password'],
+  'pop3': ['username_password'],
+  'pop3s': ['username_password'],
+  'ftp': ['username_password'],
+  'ftps': ['username_password'],
+  'dns': ['username_password'],
+  'snmp': ['username_password'],
+  'ntp': ['username_password'],
+  'telnet': ['username_password'],
+  'vnc': ['username_password']
+};
+
 // Service type definitions with default ports (using backend service_type values)
 const SERVICE_TYPES = {
   // Remote Access
@@ -100,6 +135,22 @@ const SERVICE_DISPLAY_NAMES: Record<string, string> = {
   'dns': 'DNS',
   'snmp': 'SNMP',
   'ntp': 'NTP',
+};
+
+// Helper function to format credential type display
+const formatCredentialType = (credentialType: string): string => {
+  if (!credentialType) return '';
+  return credentialType
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// Helper function to get credential summary
+const getCredentialSummary = (service: any): string => {
+  if (!service.credential_type) return '';
+  
+  return formatCredentialType(service.credential_type);
 };
 
 interface NewTargetState {
@@ -314,10 +365,24 @@ const Targets: React.FC = () => {
 
   // Service management functions
   const addService = () => {
+    const isFirstService = newTarget.services.length === 0;
     const newService = {
       service_type: '',
       port: 22,
-      credential_id: undefined
+      is_default: isFirstService, // First service is default
+      is_secure: false,
+      is_enabled: true,
+      notes: '',
+      credential_type: '',
+      username: '',
+      password: '',
+      private_key: '',
+      public_key: '',
+      api_key: '',
+      bearer_token: '',
+      certificate: '',
+      passphrase: '',
+      domain: ''
     };
     setNewTarget(prev => ({
       ...prev,
@@ -332,9 +397,43 @@ const Targets: React.FC = () => {
         if (i === index) {
           const updatedService = { ...service, [field]: value };
           
-          // If service_type is being updated, automatically set the default port
+          // If service_type is being updated, automatically set the default port and clear credentials
           if (field === 'service_type' && value && SERVICE_TYPES[value as keyof typeof SERVICE_TYPES]) {
             updatedService.port = SERVICE_TYPES[value as keyof typeof SERVICE_TYPES];
+            // Clear credential fields when service type changes
+            updatedService.credential_type = '';
+            updatedService.username = '';
+            updatedService.password = '';
+            updatedService.private_key = '';
+            updatedService.public_key = '';
+            updatedService.api_key = '';
+            updatedService.bearer_token = '';
+            updatedService.certificate = '';
+            updatedService.passphrase = '';
+            updatedService.domain = '';
+          }
+          
+          // If credential_type is being updated, clear irrelevant credential fields
+          if (field === 'credential_type') {
+            if (value !== 'username_password') {
+              updatedService.username = '';
+              updatedService.password = '';
+              updatedService.domain = '';
+            }
+            if (value !== 'ssh_key') {
+              updatedService.private_key = '';
+              updatedService.public_key = '';
+              updatedService.passphrase = '';
+            }
+            if (value !== 'api_key') {
+              updatedService.api_key = '';
+            }
+            if (value !== 'bearer_token') {
+              updatedService.bearer_token = '';
+            }
+            if (value !== 'certificate') {
+              updatedService.certificate = '';
+            }
           }
           
           return updatedService;
@@ -345,15 +444,42 @@ const Targets: React.FC = () => {
   };
 
   const removeService = (index: number) => {
-    setNewTarget(prev => ({
-      ...prev,
-      services: prev.services.filter((_, i) => i !== index)
-    }));
+    setNewTarget(prev => {
+      const remainingServices = prev.services.filter((_, i) => i !== index);
+      const removedService = prev.services[index];
+      
+      // If we're removing the default service and there are other services, make the first one default
+      if (removedService.is_default && remainingServices.length > 0) {
+        remainingServices[0] = { ...remainingServices[0], is_default: true };
+      }
+      
+      return {
+        ...prev,
+        services: remainingServices
+      };
+    });
   };
 
   const saveNewTarget = async () => {
     if (!newTarget.ip_address.trim()) {
       alert('IP Address or FQDN is required');
+      return;
+    }
+
+    // Validate services
+    const validServices = newTarget.services.filter(service => service.service_type && service.service_type.trim());
+    if (validServices.length === 0) {
+      alert('At least one service is required');
+      return;
+    }
+
+    const defaultServices = validServices.filter(service => service.is_default);
+    if (defaultServices.length === 0) {
+      alert('Exactly one service must be marked as default');
+      return;
+    }
+    if (defaultServices.length > 1) {
+      alert('Only one service can be marked as default');
       return;
     }
 
@@ -371,10 +497,20 @@ const Targets: React.FC = () => {
           .map(service => ({
             service_type: service.service_type,
             port: parseInt(service.port.toString()) || 22,
-            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : undefined,
-            is_secure: false,
-            is_enabled: true,
-            notes: undefined
+            is_default: service.is_default || false,
+            is_secure: service.is_secure || false,
+            is_enabled: service.is_enabled !== false, // Default to true
+            notes: service.notes || '',
+            credential_type: service.credential_type || undefined,
+            username: service.username || undefined,
+            password: service.password || undefined,
+            private_key: service.private_key || undefined,
+            public_key: service.public_key || undefined,
+            api_key: service.api_key || undefined,
+            bearer_token: service.bearer_token || undefined,
+            certificate: service.certificate || undefined,
+            passphrase: service.passphrase || undefined,
+            domain: service.domain || undefined
           }))
       };
       
@@ -742,6 +878,8 @@ const Targets: React.FC = () => {
                     <tr>
                       <th>IP Address/FQDN</th>
                       <th>OS</th>
+                      <th>Default Service</th>
+                      <th>Credential Type</th>
                       <th>Status</th>
                       <th>Tags</th>
                       <th>Actions</th>
@@ -757,9 +895,50 @@ const Targets: React.FC = () => {
                         <td>{target.ip_address}</td>
                         <td>{target.os_type}</td>
                         <td>
-                          <span className={`status-badge status-badge-neutral`}>
-                            {getTargetStatus(target)}
-                          </span>
+                          {(() => {
+                            const defaultService = target.services?.find(s => s.is_default);
+                            if (defaultService) {
+                              return (
+                                <div style={{ fontSize: '12px', fontWeight: '500' }}>
+                                  {SERVICE_DISPLAY_NAMES[defaultService.service_type] || defaultService.service_type}:{defaultService.port}
+                                </div>
+                              );
+                            }
+                            return <span style={{ color: 'var(--neutral-500)', fontSize: '12px' }}>No default</span>;
+                          })()}
+                        </td>
+                        <td>
+                          {(() => {
+                            const defaultService = target.services?.find(s => s.is_default);
+                            if (defaultService && defaultService.credential_type) {
+                              return (
+                                <div style={{ fontSize: '12px', color: 'var(--primary-700)' }}>
+                                  {getCredentialSummary(defaultService)}
+                                </div>
+                              );
+                            }
+                            return <span style={{ color: 'var(--neutral-500)', fontSize: '12px' }}>None</span>;
+                          })()}
+                        </td>
+                        <td>
+                          {(() => {
+                            const defaultService = target.services?.find(s => s.is_default);
+                            if (defaultService) {
+                              const status = defaultService.connection_status || 'unknown';
+                              return (
+                                <span className={`status-badge ${
+                                  status === 'connected' ? 'status-badge-success' : 
+                                  status === 'failed' ? 'status-badge-danger' : 
+                                  'status-badge-neutral'
+                                }`}>
+                                  {status === 'connected' ? 'Connected' : 
+                                   status === 'failed' ? 'Failed' : 
+                                   'Unknown'}
+                                </span>
+                              );
+                            }
+                            return <span className="status-badge status-badge-neutral">Unknown</span>;
+                          })()}
                         </td>
                         <td>{target.tags?.join(', ') || '-'}</td>
                         <td>
@@ -967,84 +1146,266 @@ const Targets: React.FC = () => {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {newTarget.services.map((service, index) => (
                           <div key={index} style={{ 
-                            display: 'grid', 
-                            gridTemplateColumns: '2fr 1fr 2fr auto auto', 
-                            gap: '12px', 
-                            alignItems: 'center',
-                            padding: '0',
-                            marginBottom: '12px'
+                            border: '1px solid var(--neutral-200)',
+                            borderRadius: '8px',
+                            padding: '16px',
+                            marginBottom: '16px',
+                            backgroundColor: service.is_default ? 'var(--primary-50)' : 'var(--neutral-25)'
                           }}>
-                            {/* Service Type */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Service Type</label>
-                              <select
-                                value={service.service_type}
-                                onChange={(e) => updateService(index, 'service_type', e.target.value)}
-                                className="subtle-select"
-                                style={{ fontSize: '12px' }}
-                              >
-                                <option value="">Select Service</option>
-                                {Object.entries(SERVICE_TYPES).map(([type, port]) => (
-                                  <option key={type} value={type}>
-                                    {SERVICE_DISPLAY_NAMES[type] || type} ({port})
-                                  </option>
-                                ))}
-                              </select>
+                            {/* Service Header */}
+                            <div style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              marginBottom: '16px'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>
+                                  Service {index + 1}
+                                </h4>
+                                {service.is_default && (
+                                  <span style={{ 
+                                    fontSize: '10px', 
+                                    padding: '2px 6px', 
+                                    backgroundColor: 'var(--primary-100)', 
+                                    color: 'var(--primary-700)',
+                                    borderRadius: '4px',
+                                    fontWeight: '500'
+                                  }}>
+                                    DEFAULT
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button 
+                                  className="btn-icon btn-ghost"
+                                  title="Test Connection"
+                                  type="button"
+                                >
+                                  <MonitorCheck size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => removeService(index)}
+                                  className="btn-icon btn-ghost"
+                                  title="Remove Service"
+                                  type="button"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
 
-                            {/* Port */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Port</label>
-                              <input
-                                type="number"
-                                value={service.port}
-                                onChange={(e) => updateService(index, 'port', parseInt(e.target.value) || 22)}
-                                className="subtle-input"
-                                style={{ fontSize: '12px' }}
-                                min="1"
-                                max="65535"
-                              />
+                            {/* Basic Service Info */}
+                            <div style={{ 
+                              display: 'grid', 
+                              gridTemplateColumns: '2fr 1fr 1fr', 
+                              gap: '12px',
+                              marginBottom: '16px'
+                            }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Service Type</label>
+                                <select
+                                  value={service.service_type}
+                                  onChange={(e) => updateService(index, 'service_type', e.target.value)}
+                                  className="subtle-select"
+                                  style={{ fontSize: '12px' }}
+                                >
+                                  <option value="">Select Service</option>
+                                  {Object.entries(SERVICE_TYPES).map(([type, port]) => (
+                                    <option key={type} value={type}>
+                                      {SERVICE_DISPLAY_NAMES[type] || type} ({port})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Port</label>
+                                <input
+                                  type="number"
+                                  value={service.port}
+                                  onChange={(e) => updateService(index, 'port', parseInt(e.target.value) || 22)}
+                                  className="subtle-input"
+                                  style={{ fontSize: '12px' }}
+                                  min="1"
+                                  max="65535"
+                                />
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Default Service</label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
+                                  <input
+                                    type="radio"
+                                    name="defaultService"
+                                    checked={service.is_default || false}
+                                    onChange={() => {
+                                      // Set this service as default and unset others
+                                      const updatedServices = newTarget.services.map((s, i) => ({
+                                        ...s,
+                                        is_default: i === index
+                                      }));
+                                      setNewTarget({ ...newTarget, services: updatedServices });
+                                    }}
+                                  />
+                                  Use as default
+                                </label>
+                              </div>
                             </div>
 
-                            {/* Credential */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential</label>
-                              <select
-                                value={service.credential_id || ''}
-                                onChange={(e) => updateService(index, 'credential_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                                className="subtle-select"
-                                style={{ fontSize: '12px' }}
-                              >
-                                <option value="">No Credential</option>
-                                {credentials.map(cred => (
-                                  <option key={cred.id} value={cred.id}>
-                                    {cred.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
+                            {/* Credentials Section */}
+                            {service.service_type && (
+                              <div style={{ 
+                                borderTop: '1px solid var(--neutral-200)',
+                                paddingTop: '16px'
+                              }}>
+                                <h5 style={{ margin: '0 0 12px 0', fontSize: '12px', fontWeight: '600', color: 'var(--neutral-700)' }}>
+                                  Credentials (Optional)
+                                </h5>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                  {/* Credential Type */}
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential Type</label>
+                                    <select
+                                      value={service.credential_type || ''}
+                                      onChange={(e) => updateService(index, 'credential_type', e.target.value)}
+                                      className="subtle-select"
+                                      style={{ fontSize: '12px' }}
+                                    >
+                                      <option value="">No Credentials</option>
+                                      {SERVICE_CREDENTIAL_MAPPING[service.service_type]?.map(type => (
+                                        <option key={type} value={type}>
+                                          {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
 
-                            {/* Test Connection Button */}
-                            <div style={{ paddingTop: '14px' }}>
-                              <button 
-                                className="btn-icon btn-ghost"
-                                title="Test Connection"
-                                type="button"
-                              >
-                                <MonitorCheck size={14} />
-                              </button>
-                            </div>
+                                  {/* Credential Fields based on type */}
+                                  {service.credential_type === 'username_password' && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Username</label>
+                                        <input
+                                          type="text"
+                                          value={service.username || ''}
+                                          onChange={(e) => updateService(index, 'username', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px' }}
+                                          placeholder="Enter username"
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Password</label>
+                                        <input
+                                          type="password"
+                                          value={service.password || ''}
+                                          onChange={(e) => updateService(index, 'password', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px' }}
+                                          placeholder="Enter password"
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Domain (Optional)</label>
+                                        <input
+                                          type="text"
+                                          value={service.domain || ''}
+                                          onChange={(e) => updateService(index, 'domain', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px' }}
+                                          placeholder="Windows domain"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
 
-                            {/* Remove Button */}
-                            <div style={{ paddingTop: '14px' }}>
-                              <button 
-                                onClick={() => removeService(index)}
-                                className="btn-icon btn-ghost"
-                                title="Remove Service"
-                                type="button"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                                  {service.credential_type === 'ssh_key' && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Username</label>
+                                        <input
+                                          type="text"
+                                          value={service.username || ''}
+                                          onChange={(e) => updateService(index, 'username', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px' }}
+                                          placeholder="Enter username"
+                                        />
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Passphrase (Optional)</label>
+                                        <input
+                                          type="password"
+                                          value={service.passphrase || ''}
+                                          onChange={(e) => updateService(index, 'passphrase', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px' }}
+                                          placeholder="Key passphrase"
+                                        />
+                                      </div>
+                                      <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Private Key</label>
+                                        <textarea
+                                          value={service.private_key || ''}
+                                          onChange={(e) => updateService(index, 'private_key', e.target.value)}
+                                          className="subtle-input"
+                                          style={{ fontSize: '12px', minHeight: '80px', fontFamily: 'monospace' }}
+                                          placeholder="-----BEGIN PRIVATE KEY-----"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {service.credential_type === 'api_key' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>API Key</label>
+                                      <input
+                                        type="password"
+                                        value={service.api_key || ''}
+                                        onChange={(e) => updateService(index, 'api_key', e.target.value)}
+                                        className="subtle-input"
+                                        style={{ fontSize: '12px' }}
+                                        placeholder="Enter API key"
+                                      />
+                                    </div>
+                                  )}
+
+                                  {service.credential_type === 'bearer_token' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Bearer Token</label>
+                                      <input
+                                        type="password"
+                                        value={service.bearer_token || ''}
+                                        onChange={(e) => updateService(index, 'bearer_token', e.target.value)}
+                                        className="subtle-input"
+                                        style={{ fontSize: '12px' }}
+                                        placeholder="Enter bearer token"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Notes */}
+                            <div style={{ 
+                              borderTop: '1px solid var(--neutral-200)',
+                              paddingTop: '12px',
+                              marginTop: '12px'
+                            }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Notes (Optional)</label>
+                                <input
+                                  type="text"
+                                  value={service.notes || ''}
+                                  onChange={(e) => updateService(index, 'notes', e.target.value)}
+                                  className="subtle-input"
+                                  style={{ fontSize: '12px' }}
+                                  placeholder="Additional notes about this service"
+                                />
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1309,7 +1670,7 @@ const Targets: React.FC = () => {
 
                             {/* Credential */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential</label>
+                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential Type</label>
                               <select
                                 value={service.credential_id || ''}
                                 onChange={(e) => {
@@ -1533,13 +1894,15 @@ const Targets: React.FC = () => {
                             gap: '12px', 
                             alignItems: 'center',
                             padding: '8px',
-                            backgroundColor: 'var(--neutral-50)',
+                            backgroundColor: service.is_default ? 'var(--primary-50)' : 'var(--neutral-50)',
                             borderRadius: '4px',
-                            border: '1px solid var(--neutral-200)'
+                            border: service.is_default ? '2px solid var(--primary-200)' : '1px solid var(--neutral-200)'
                           }}>
                             {/* Service Type */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Service Type</label>
+                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>
+                                Service Type {service.is_default && <span style={{ color: 'var(--primary-600)', fontWeight: '600' }}>(Default)</span>}
+                              </label>
                               <div style={{ fontSize: '13px', fontWeight: '500', color: 'var(--neutral-900)' }}>
                                 {SERVICE_DISPLAY_NAMES[service.service_type] || service.service_type || 'Unknown'}
                               </div>
@@ -1555,9 +1918,22 @@ const Targets: React.FC = () => {
 
                             {/* Credential */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential</label>
+                              <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential Type</label>
                               <div style={{ fontSize: '13px', color: 'var(--neutral-900)' }}>
-                                {service.credential_name || 'No Credential'}
+                                {service.credential_type ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                    <div style={{ fontWeight: '500', color: 'var(--primary-700)' }}>
+                                      {formatCredentialType(service.credential_type)}
+                                    </div>
+                                    {service.notes && (
+                                      <div style={{ fontSize: '10px', color: 'var(--neutral-500)', fontStyle: 'italic' }}>
+                                        {service.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--neutral-500)', fontStyle: 'italic' }}>No Credential</span>
+                                )}
                               </div>
                             </div>
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 OpsConductor Asset Service
-Handles targets and discovery with embedded credentials
-Consolidates: target-service + discovery-service
+Handles targets, credentials, and discovery
+Consolidates: target-service + credential-service + discovery-service
 """
 
 import sys
@@ -778,11 +778,13 @@ class AssetService(BaseService):
             """Test connection to target"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get target details
+                    # Get target details with credential
                     target_row = await conn.fetchrow("""
-                        SELECT id, name, host, port, target_type
-                        FROM assets.enhanced_targets
-                        WHERE id = $1 AND is_active = true
+                        SELECT t.id, t.name, t.host, t.port, t.target_type, t.credential_id,
+                               c.credential_type, c.encrypted_data
+                        FROM assets.targets t
+                        LEFT JOIN assets.credentials c ON t.credential_id = c.id
+                        WHERE t.id = $1 AND t.is_active = true
                     """, target_id)
                     
                     if not target_row:
@@ -798,12 +800,13 @@ class AssetService(BaseService):
                     test_result = await self._test_connection(
                         host=target_row['host'],
                         port=target_row['port'],
-                        connection_type=connection_type
+                        connection_type=connection_type,
+                        credential_data=target_row['encrypted_data']
                     )
                     
                     # Update target's last_tested timestamp
                     await conn.execute(
-                        "UPDATE assets.enhanced_targets SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2",
+                        "UPDATE assets.targets SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2",
                         '{"last_tested": "' + datetime.utcnow().isoformat() + '"}',
                         target_id
                     )
@@ -979,136 +982,100 @@ class AssetService(BaseService):
                 )
 
         @self.app.get("/discovery/discovery-jobs", response_model=DiscoveryListResponse)
-        async def list_discovery_jobs(
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
-        ):
-            """List all discovery jobs"""
+        async def create_credential(credential_data: CredentialCreate):
+            """Create a new credential"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
+                    # Encrypt sensitive data (simplified for demo)
+                    encrypted_password = f"encrypted_{credential_data.password}" if credential_data.password else None
+                    encrypted_key = f"encrypted_{credential_data.private_key}" if credential_data.private_key else None
                     
-                    # Get discovery jobs with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
-                    
-                    discovery_jobs = []
-                    for row in rows:
-                        import json
-                        discovery_jobs.append(DiscoveryJob(
-                            id=row['id'],
-                            name=row['name'],
-                            target_range=row['target_range'],
-                            scan_type=row['scan_type'],
-                            status=row['status'],
-                            configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                            results=json.loads(row['results']) if row['results'] else {},
-                            started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                            completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                            created_by=row['created_by'],
-                            created_at=row['created_at'].isoformat()
-                        ))
-                    
-                    return DiscoveryListResponse(
-                        discovery_jobs=discovery_jobs,
-                        total=total,
-                        skip=skip,
-                        limit=limit
-                    )
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to fetch discovery jobs", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch discovery jobs"
-                )
-
-        @self.app.post("/discovery/discovery-jobs", response_model=dict)
-        async def create_discovery_job(discovery_data: DiscoveryCreate):
-            """Create a new discovery job"""
-            try:
-                async with self.db.pool.acquire() as conn:
                     import json
-                    row = await conn.fetchrow("""
-                        INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
-                                                          configuration, created_by)
-                        VALUES ($1, $2, $3, 'pending', $4, 1)
-                        RETURNING id, name, target_range, scan_type, status, configuration, results,
-                                  started_at, completed_at, created_by, created_at
-                    """, discovery_data.name, discovery_data.target_range, discovery_data.scan_type,
-                         json.dumps(discovery_data.configuration))
+                    # Create encrypted data structure
+                    encrypted_data = {
+                        "password": encrypted_password,
+                        "private_key": encrypted_key,
+                        "username": getattr(credential_data, 'username', None)
+                    }
                     
-                    discovery_job = DiscoveryJob(
+                    row = await conn.fetchrow("""
+                        INSERT INTO assets.credentials (name, credential_type, encrypted_data, 
+                                               description, metadata, is_active, created_by)
+                        VALUES ($1, $2, $3, $4, $5, $6, 1)
+                        RETURNING id, name, credential_type, description, metadata,
+                                  is_active, created_by, created_at, updated_at
+                    """, credential_data.name, credential_data.credential_type, json.dumps(encrypted_data),
+                         credential_data.description, json.dumps(credential_data.metadata or {}), credential_data.is_active)
+                    
+                    credential = Credential(
                         id=row['id'],
                         name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
+                        credential_type=row['credential_type'],
+                        username=getattr(credential_data, 'username', None),
+                        description=row['description'],
+                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        is_active=row['is_active'],
                         created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
                     )
                     
-                    return {"success": True, "message": "Discovery job created", "data": discovery_job}
+                    return {"success": True, "message": "Credential created", "data": credential}
             except Exception as e:
-                self.logger.error("Failed to create discovery job", error=str(e))
+                self.logger.error("Failed to create credential", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create discovery job"
+                    detail="Failed to create credential"
                 )
 
-        @self.app.get("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
-        async def get_discovery_job(discovery_id: int):
-            """Get discovery job by ID"""
+        @self.app.get("/credentials/{credential_id}", response_model=dict)
+        async def get_credential(credential_id: int):
+            """Get credential by ID"""
             try:
                 async with self.db.pool.acquire() as conn:
                     row = await conn.fetchrow("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans WHERE id = $1
-                    """, discovery_id)
+                        SELECT id, name, credential_type, encrypted_data, description, metadata,
+                               is_active, created_by, created_at, updated_at
+                        FROM assets.credentials WHERE id = $1
+                    """, credential_id)
                     
                     if not row:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                        raise HTTPException(status_code=404, detail="Credential not found")
                     
                     import json
-                    discovery_job = DiscoveryJob(
+                    # Extract username from encrypted_data if available
+                    try:
+                        encrypted_data = json.loads(row['encrypted_data']) if row['encrypted_data'] else {}
+                    except (json.JSONDecodeError, TypeError):
+                        encrypted_data = {}
+                    username = encrypted_data.get('username')
+                    
+                    credential = Credential(
                         id=row['id'],
                         name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
+                        credential_type=row['credential_type'],
+                        username=username,
+                        description=row['description'],
+                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        is_active=row['is_active'],
                         created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
                     )
                     
-                    return {"success": True, "data": discovery_job}
+                    return {"success": True, "data": credential}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to get discovery job", error=str(e))
+                self.logger.error("Failed to get credential", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get discovery job"
+                    detail="Failed to get credential"
                 )
 
-        @self.app.put("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
-        async def update_discovery_job(discovery_id: int, discovery_data: DiscoveryUpdate):
-            """Update discovery job"""
+        @self.app.put("/credentials/{credential_id}", response_model=dict)
+        async def update_credential(credential_id: int, credential_data: CredentialUpdate):
+            """Update credential"""
             try:
                 async with self.db.pool.acquire() as conn:
                     # Build dynamic update query
@@ -1116,69 +1083,156 @@ class AssetService(BaseService):
                     values = []
                     param_count = 1
                     
-                    if discovery_data.status is not None:
-                        updates.append(f"status = ${param_count}")
-                        values.append(discovery_data.status)
+                    if credential_data.name is not None:
+                        updates.append(f"name = ${param_count}")
+                        values.append(credential_data.name)
                         param_count += 1
-                        
-                        # Set started_at if status is running
-                        if discovery_data.status == 'running':
-                            updates.append(f"started_at = ${param_count}")
-                            values.append(datetime.utcnow())
-                            param_count += 1
-                        # Set completed_at if status is completed or failed
-                        elif discovery_data.status in ['completed', 'failed']:
-                            updates.append(f"completed_at = ${param_count}")
-                            values.append(datetime.utcnow())
-                            param_count += 1
+                    if credential_data.credential_type is not None:
+                        updates.append(f"credential_type = ${param_count}")
+                        values.append(credential_data.credential_type)
+                        param_count += 1
+                    # Handle encrypted_data field
+                    encrypted_data = {}
+                    if credential_data.username is not None:
+                        encrypted_data['username'] = credential_data.username
+                    if credential_data.password is not None:
+                        encrypted_data['password'] = f"encrypted_{credential_data.password}"
+                    if credential_data.private_key is not None:
+                        encrypted_data['private_key'] = f"encrypted_{credential_data.private_key}"
                     
-                    if discovery_data.results is not None:
+                    if encrypted_data:
                         import json
-                        updates.append(f"results = ${param_count}")
-                        values.append(json.dumps(discovery_data.results))
+                        updates.append(f"encrypted_data = ${param_count}")
+                        values.append(json.dumps(encrypted_data))
+                        param_count += 1
+                    if credential_data.description is not None:
+                        updates.append(f"description = ${param_count}")
+                        values.append(credential_data.description)
+                        param_count += 1
+                    if credential_data.metadata is not None:
+                        import json
+                        updates.append(f"metadata = ${param_count}")
+                        values.append(json.dumps(credential_data.metadata))
+                        param_count += 1
+                    if credential_data.is_active is not None:
+                        updates.append(f"is_active = ${param_count}")
+                        values.append(credential_data.is_active)
                         param_count += 1
                     
                     if not updates:
                         raise HTTPException(status_code=400, detail="No fields to update")
                     
-                    values.append(discovery_id)
+                    updates.append(f"updated_at = ${param_count}")
+                    values.append(datetime.utcnow())
+                    param_count += 1
+                    values.append(credential_id)
                     
                     query = f"""
-                        UPDATE assets.discovery_scans 
+                        UPDATE assets.credentials 
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
-                        RETURNING id, name, target_range, scan_type, status, configuration, results,
-                                  started_at, completed_at, created_by, created_at
+                        RETURNING id, name, credential_type, encrypted_data, description, metadata,
+                                  is_active, created_by, created_at, updated_at
                     """
                     
                     row = await conn.fetchrow(query, *values)
                     
                     if not row:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                        raise HTTPException(status_code=404, detail="Credential not found")
                     
                     import json
-                    discovery_job = DiscoveryJob(
+                    # Extract username from encrypted_data if available
+                    try:
+                        encrypted_data = json.loads(row['encrypted_data']) if row['encrypted_data'] else {}
+                    except (json.JSONDecodeError, TypeError):
+                        encrypted_data = {}
+                    username = encrypted_data.get('username')
+                    
+                    credential = Credential(
                         id=row['id'],
                         name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
+                        credential_type=row['credential_type'],
+                        username=username,
+                        description=row['description'],
+                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        is_active=row['is_active'],
                         created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
                     )
                     
-                    return {"success": True, "message": "Discovery job updated", "data": discovery_job}
+                    return {"success": True, "message": "Credential updated", "data": credential}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to update discovery job", error=str(e))
+                self.logger.error("Failed to update credential", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update discovery job"
+                    detail="Failed to update credential"
+                )
+
+        @self.app.delete("/credentials/{credential_id}", response_model=dict)
+        async def delete_credential(credential_id: int):
+            """Delete credential"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    result = await conn.execute(
+                        "DELETE FROM assets.credentials WHERE id = $1", credential_id
+                    )
+                    
+                    if result == "DELETE 0":
+                        raise HTTPException(status_code=404, detail="Credential not found")
+                    
+                    return {"success": True, "message": "Credential deleted"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to delete credential", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete credential"
+                )
+
+        @self.app.get("/credentials/{credential_id}/decrypt", response_model=dict)
+        async def decrypt_credential(credential_id: int):
+            """Decrypt credential data (admin only)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get credential
+                    credential_row = await conn.fetchrow("""
+                        SELECT id, name, credential_type, encrypted_data, description, 
+                               is_active, created_by, created_at, updated_at
+                        FROM assets.credentials 
+                        WHERE id = $1
+                    """, credential_id)
+                    
+                    if not credential_row:
+                        raise HTTPException(status_code=404, detail="Credential not found")
+                    
+                    # Decrypt the credential data
+                    decrypted_data = self._decrypt_credential_data(credential_row['encrypted_data'])
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "id": credential_row['id'],
+                            "name": credential_row['name'],
+                            "credential_type": credential_row['credential_type'],
+                            "decrypted_data": decrypted_data,
+                            "description": credential_row['description'],
+                            "is_active": credential_row['is_active'],
+                            "created_by": credential_row['created_by'],
+                            "created_at": credential_row['created_at'].isoformat(),
+                            "updated_at": credential_row['updated_at'].isoformat() if credential_row['updated_at'] else None
+                        }
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to decrypt credential", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to decrypt credential"
                 )
 
         # ============================================================================
@@ -1831,6 +1885,49 @@ class AssetService(BaseService):
                 )
 
     # ============================================================================
+    # CREDENTIAL ENCRYPTION/DECRYPTION HELPER METHODS
+    # ============================================================================
+    
+    def _decrypt_credential_data(self, encrypted_data: str) -> dict:
+        """Decrypt credential data"""
+        import json
+        import base64
+        
+        try:
+            # For now, we'll assume the data is base64 encoded JSON
+            # In a real implementation, you'd use proper encryption (AES, etc.)
+            if not encrypted_data:
+                return {}
+            
+            # Try to decode as base64 first
+            try:
+                decoded_bytes = base64.b64decode(encrypted_data)
+                decoded_str = decoded_bytes.decode('utf-8')
+                return json.loads(decoded_str)
+            except:
+                # If base64 decoding fails, try to parse as JSON directly
+                return json.loads(encrypted_data)
+                
+        except Exception as e:
+            self.logger.error("Failed to decrypt credential data", error=str(e))
+            return {"error": "Failed to decrypt credential data"}
+    
+    def _encrypt_credential_data(self, credential_data: dict) -> str:
+        """Encrypt credential data"""
+        import json
+        import base64
+        
+        try:
+            # For now, we'll just base64 encode the JSON
+            # In a real implementation, you'd use proper encryption (AES, etc.)
+            json_str = json.dumps(credential_data)
+            encoded_bytes = base64.b64encode(json_str.encode('utf-8'))
+            return encoded_bytes.decode('utf-8')
+        except Exception as e:
+            self.logger.error("Failed to encrypt credential data", error=str(e))
+            return ""
+
+    # ============================================================================
     # CONNECTION TESTING HELPER METHODS
     # ============================================================================
     
@@ -1856,7 +1953,7 @@ class AssetService(BaseService):
         
         return port_mappings.get(port, 'tcp')
     
-    async def _test_connection(self, host: str, port: int, connection_type: str) -> dict:
+    async def _test_connection(self, host: str, port: int, connection_type: str, credential_data: str = None) -> dict:
         """Test connection to target based on connection type"""
         import asyncio
         import socket
@@ -1869,9 +1966,9 @@ class AssetService(BaseService):
                 # Basic TCP connection test
                 return await self._test_tcp_connection(host, port, start_time)
             elif connection_type == 'ssh':
-                return await self._test_ssh_connection(host, port, start_time)
+                return await self._test_ssh_connection(host, port, credential_data, start_time)
             elif connection_type == 'winrm':
-                return await self._test_winrm_connection(host, port, start_time)
+                return await self._test_winrm_connection(host, port, credential_data, start_time)
             elif connection_type in ['http', 'https']:
                 return await self._test_http_connection(host, port, connection_type, start_time)
             else:
@@ -1922,7 +2019,7 @@ class AssetService(BaseService):
                 "response_time_ms": response_time
             }
     
-    async def _test_ssh_connection(self, host: str, port: int, start_time: float) -> dict:
+    async def _test_ssh_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
         """Test SSH connection"""
         # For now, just do a TCP test to port 22
         # In a real implementation, you'd use paramiko or similar
@@ -1931,7 +2028,7 @@ class AssetService(BaseService):
             tcp_result["message"] = f"SSH port {port} is reachable on {host}"
         return tcp_result
     
-    async def _test_winrm_connection(self, host: str, port: int, start_time: float) -> dict:
+    async def _test_winrm_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
         """Test WinRM connection"""
         # For now, just do a TCP test to WinRM ports
         # In a real implementation, you'd use pywinrm or similar

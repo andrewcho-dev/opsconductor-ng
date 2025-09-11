@@ -27,7 +27,7 @@ async def migrate_data():
         old_tables = await conn.fetch("""
             SELECT table_name FROM information_schema.tables 
             WHERE table_schema = 'public' 
-            AND table_name IN ('users', 'credentials', 'targets', 'jobs', 'job_runs')
+            AND table_name IN ('users', 'targets', 'jobs', 'job_runs')
         """)
         
         if not old_tables:
@@ -68,45 +68,6 @@ async def migrate_data():
         except Exception as e:
             print(f"  ❌ User migration failed: {e}")
         
-        # Migrate credentials (public.credentials -> assets.credentials)
-        print("🔐 Migrating credentials...")
-        try:
-            old_credentials = await conn.fetch("SELECT * FROM public.credentials")
-            migrated_credentials = 0
-            
-            for cred in old_credentials:
-                try:
-                    # Map old credential types to new schema
-                    cred_type = cred.get('credential_type', 'password')
-                    if cred_type not in ['password', 'ssh_key', 'api_key', 'certificate']:
-                        cred_type = 'password'
-                    
-                    await conn.execute("""
-                        INSERT INTO assets.credentials 
-                        (id, name, description, credential_type, encrypted_data, 
-                         metadata, tags, is_active, created_by, created_at, updated_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                        ON CONFLICT (id) DO NOTHING
-                    """,
-                    cred['id'], cred['name'], cred.get('description'),
-                    cred_type, cred.get('encrypted_data', ''),
-                    json.dumps(cred.get('metadata', {})),
-                    json.dumps(cred.get('tags', [])),
-                    cred.get('is_active', True),
-                    cred.get('created_by', 1),
-                    cred.get('created_at', datetime.utcnow()),
-                    cred.get('updated_at', datetime.utcnow()))
-                    migrated_credentials += 1
-                except Exception as e:
-                    print(f"  ⚠️  Failed to migrate credential {cred['name']}: {e}")
-            
-            print(f"  ✅ Migrated {migrated_credentials} credentials")
-            
-            # Update sequence
-            await conn.execute("SELECT setval('assets.credentials_id_seq', (SELECT MAX(id) FROM assets.credentials))")
-            
-        except Exception as e:
-            print(f"  ❌ Credential migration failed: {e}")
         
         # Migrate targets (public.targets -> assets.targets)
         print("🎯 Migrating targets...")

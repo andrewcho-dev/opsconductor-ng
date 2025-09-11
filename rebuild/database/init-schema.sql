@@ -87,29 +87,7 @@ CREATE TABLE assets.targets (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Credentials
-CREATE TABLE assets.credentials (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    credential_type VARCHAR(50) NOT NULL, -- 'password', 'ssh_key', 'api_key', 'certificate'
-    encrypted_data TEXT NOT NULL, -- Encrypted credential data
-    metadata JSONB DEFAULT '{}',
-    tags JSONB DEFAULT '[]',
-    is_active BOOLEAN DEFAULT true,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
--- Target-credential associations
-CREATE TABLE assets.target_credentials (
-    target_id INTEGER REFERENCES assets.targets(id) ON DELETE CASCADE,
-    credential_id INTEGER REFERENCES assets.credentials(id) ON DELETE CASCADE,
-    is_primary BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (target_id, credential_id)
-);
 
 -- Enhanced targets (for new UI)
 CREATE TABLE assets.enhanced_targets (
@@ -126,17 +104,45 @@ CREATE TABLE assets.enhanced_targets (
 );
 
 -- Target services (for enhanced targets)
+-- 
+-- Service Type to Credential Type Mapping:
+-- ssh, sftp: 'ssh_key', 'username_password'
+-- rdp, winrm, winrm_https, wmi, smb: 'username_password'
+-- http, https, http_alt, https_alt: 'api_key', 'username_password', 'bearer_token'
+-- mysql, postgresql, sql_server, oracle, mongodb, redis: 'username_password'
+-- smtp, smtps, smtp_submission, imap, imaps, pop3, pop3s: 'username_password'
+-- ftp, ftps: 'username_password'
+-- dns, snmp, ntp, telnet, vnc: 'username_password' (optional)
+--
 CREATE TABLE assets.target_services (
     id SERIAL PRIMARY KEY,
     target_id INTEGER REFERENCES assets.enhanced_targets(id) ON DELETE CASCADE,
-    service_type VARCHAR(100) NOT NULL, -- 'ssh', 'rdp', 'http', 'https', 'ftp', etc.
+    service_type VARCHAR(100) NOT NULL, -- 'ssh', 'rdp', 'winrm', 'http', 'https', etc.
     port INTEGER NOT NULL,
-    credential_id INTEGER REFERENCES assets.credentials(id) ON DELETE SET NULL,
+    is_default BOOLEAN DEFAULT false,
     is_secure BOOLEAN DEFAULT false,
     is_enabled BOOLEAN DEFAULT true,
     notes TEXT,
+    
+    -- Embedded credential fields
+    credential_type VARCHAR(50), -- 'username_password', 'ssh_key', 'api_key', 'bearer_token', 'certificate'
+    username VARCHAR(255),
+    password_encrypted TEXT,
+    private_key_encrypted TEXT,
+    public_key TEXT,
+    api_key_encrypted TEXT,
+    bearer_token_encrypted TEXT,
+    certificate_encrypted TEXT,
+    passphrase_encrypted TEXT,
+    domain VARCHAR(255), -- For Windows domain authentication
+    
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Constraint: Exactly one default service per target
+CREATE UNIQUE INDEX idx_target_services_one_default 
+ON assets.target_services (target_id) 
+WHERE is_default = true;
 
 -- Discovery scans
 CREATE TABLE assets.discovery_scans (
@@ -323,8 +329,7 @@ CREATE INDEX idx_user_sessions_expires_at ON identity.user_sessions(expires_at);
 CREATE INDEX idx_targets_host ON assets.targets(host);
 CREATE INDEX idx_targets_type ON assets.targets(target_type);
 CREATE INDEX idx_targets_active ON assets.targets(is_active);
-CREATE INDEX idx_credentials_type ON assets.credentials(credential_type);
-CREATE INDEX idx_credentials_active ON assets.credentials(is_active);
+
 CREATE INDEX idx_discovery_scans_status ON assets.discovery_scans(status);
 
 -- Automation service indexes
@@ -353,7 +358,7 @@ VALUES ('admin', 'admin@opsconductor.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6Tt
 -- Create default roles
 INSERT INTO identity.roles (name, description, permissions) VALUES 
 ('admin', 'System Administrator', '["*"]'),
-('operator', 'System Operator', '["jobs:read", "jobs:execute", "targets:read", "credentials:read"]'),
+('operator', 'System Operator', '["jobs:read", "jobs:execute", "targets:read"]'),
 ('viewer', 'Read-only User', '["jobs:read", "targets:read", "executions:read"]');
 
 -- Assign admin role to admin user
