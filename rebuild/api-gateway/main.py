@@ -45,6 +45,7 @@ SERVICE_ROUTES = {
     "/api/v1/workflows": "AUTOMATION_SERVICE_URL",
     "/api/v1/executions": "AUTOMATION_SERVICE_URL",
     "/api/v1/libraries": "AUTOMATION_SERVICE_URL",
+    "/api/v1/step-libraries": "AUTOMATION_SERVICE_URL",
     
     # Communication Service
     "/api/v1/notifications": "COMMUNICATION_SERVICE_URL",
@@ -213,6 +214,28 @@ class APIGateway:
                 status="healthy" if redis_healthy else "unhealthy"
             ))
             
+            # Check PostgreSQL connection
+            postgres_healthy = True
+            try:
+                import asyncpg
+                conn = await asyncpg.connect(
+                    host=os.getenv('POSTGRES_HOST', 'postgres'),
+                    port=int(os.getenv('POSTGRES_PORT', '5432')),
+                    user=os.getenv('POSTGRES_USER', 'postgres'),
+                    password=os.getenv('POSTGRES_PASSWORD', 'postgres123'),
+                    database=os.getenv('POSTGRES_DB', 'opsconductor'),
+                    timeout=5.0
+                )
+                await conn.execute('SELECT 1')
+                await conn.close()
+            except Exception:
+                postgres_healthy = False
+            
+            checks.append(HealthCheck(
+                name="postgres",
+                status="healthy" if postgres_healthy else "unhealthy"
+            ))
+            
             overall_status = "healthy" if all(check.status == "healthy" for check in checks) else "unhealthy"
             
             return {
@@ -220,7 +243,7 @@ class APIGateway:
                 "status": overall_status,
                 "version": "1.0.0",
                 "timestamp": time.time(),
-                "checks": [check.dict() for check in checks]
+                "checks": [check.model_dump() for check in checks]
             }
         
         @self.app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
@@ -286,6 +309,10 @@ class APIGateway:
                 # Map /api/v1/runs/* to /api/v1/executions/*
                 service_url = self.service_urls.get("/api/v1/executions")
                 service_path = path.replace("api/v1/runs", "api/v1/executions", 1)
+            elif path.startswith("api/v1/step-libraries/"):
+                # Map /api/v1/step-libraries/* to automation service /*
+                service_url = self.service_urls.get("/api/v1/step-libraries")
+                service_path = path.replace("api/v1/step-libraries/", "", 1)
             elif path.startswith("api/v1/jobs/") and path.endswith("/run"):
                 # Map /api/v1/jobs/{id}/run to POST /api/v1/jobs/{id}/run (automation service)
                 service_url = self.service_urls.get("/api/v1/jobs")

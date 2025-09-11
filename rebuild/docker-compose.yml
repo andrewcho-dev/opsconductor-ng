@@ -50,6 +50,11 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: opsconductor
     depends_on:
       redis:
         condition: service_healthy

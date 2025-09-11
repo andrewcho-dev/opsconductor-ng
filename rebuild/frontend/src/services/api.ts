@@ -562,8 +562,8 @@ export const discoveryApi = {
   },
 
   bulkDeleteTargets: async (targetIds: number[]): Promise<{ deleted: number }> => {
-    const response = await api.delete('/api/v1/discovery/targets/bulk', { 
-      data: { target_ids: targetIds }
+    const response = await api.post('/api/v1/discovery/targets/bulk-delete', { 
+      target_ids: targetIds
     });
     return response.data;
   },

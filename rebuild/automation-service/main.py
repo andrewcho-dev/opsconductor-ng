@@ -136,6 +136,16 @@ class LibraryListResponse(BaseModel):
     skip: int
     limit: int
 
+class JobExportRequest(BaseModel):
+    job_ids: List[int]
+    include_executions: bool = False
+    include_metadata: bool = True
+
+class JobImportRequest(BaseModel):
+    jobs_data: dict
+    overwrite_existing: bool = False
+    import_executions: bool = False
+
 class JobSchedule(BaseModel):
     id: int
     job_id: int
@@ -181,6 +191,17 @@ class AutomationService(BaseService):
     def __init__(self):
         super().__init__("automation-service", "1.0.0", 3003)
         self._setup_routes()
+    
+    def _parse_json_field(self, value, default=None):
+        """Helper to parse JSON fields that might be strings or already parsed"""
+        if value is None:
+            return default or {}
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                return default or {}
+        return value
     
     async def on_startup(self):
         """Set the database schema to automation"""
@@ -484,6 +505,152 @@ class AutomationService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to run job"
                 )
+
+        @self.app.post("/jobs/export", response_model=dict)
+        async def export_jobs(export_request: JobExportRequest):
+            """Export jobs to JSON format"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get jobs data
+                    jobs_data = []
+                    for job_id in export_request.job_ids:
+                        job_row = await conn.fetchrow("""
+                            SELECT id, name, description, workflow_definition, schedule_expression,
+                                   is_enabled, tags, metadata, created_by, updated_by, created_at, updated_at
+                            FROM automation.jobs WHERE id = $1
+                        """, job_id)
+                        
+                        if not job_row:
+                            continue
+                            
+                        job_data = {
+                            "id": job_row['id'],
+                            "name": job_row['name'],
+                            "description": job_row['description'],
+                            "workflow_definition": job_row['workflow_definition'],
+                            "schedule_expression": job_row['schedule_expression'],
+                            "is_enabled": job_row['is_enabled'],
+                            "tags": job_row['tags'],
+                            "metadata": job_row['metadata'] if export_request.include_metadata else {},
+                            "created_by": job_row['created_by'],
+                            "updated_by": job_row['updated_by'],
+                            "created_at": job_row['created_at'].isoformat(),
+                            "updated_at": job_row['updated_at'].isoformat()
+                        }
+                        
+                        # Include executions if requested
+                        if export_request.include_executions:
+                            execution_rows = await conn.fetch("""
+                                SELECT id, execution_id, status, trigger_type, input_data, output_data,
+                                       error_message, started_at, completed_at, started_by, created_at
+                                FROM automation.job_executions WHERE job_id = $1
+                                ORDER BY created_at DESC LIMIT 10
+                            """, job_id)
+                            
+                            job_data["recent_executions"] = [
+                                {
+                                    "id": row['id'],
+                                    "execution_id": row['execution_id'],
+                                    "status": row['status'],
+                                    "trigger_type": row['trigger_type'],
+                                    "input_data": row['input_data'],
+                                    "output_data": row['output_data'],
+                                    "error_message": row['error_message'],
+                                    "started_at": row['started_at'].isoformat() if row['started_at'] else None,
+                                    "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
+                                    "started_by": row['started_by'],
+                                    "created_at": row['created_at'].isoformat()
+                                }
+                                for row in execution_rows
+                            ]
+                        
+                        jobs_data.append(job_data)
+                    
+                    export_data = {
+                        "version": "1.0",
+                        "exported_at": datetime.utcnow().isoformat(),
+                        "jobs": jobs_data,
+                        "total_jobs": len(jobs_data)
+                    }
+                    
+                    return {
+                        "success": True,
+                        "message": f"Exported {len(jobs_data)} jobs",
+                        "data": export_data
+                    }
+            except Exception as e:
+                self.logger.error("Failed to export jobs", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to export jobs"
+                )
+
+        @self.app.post("/jobs/import", response_model=dict)
+        async def import_jobs(import_request: JobImportRequest):
+            """Import jobs from JSON format"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    jobs_data = import_request.jobs_data.get('jobs', [])
+                    imported_count = 0
+                    skipped_count = 0
+                    errors = []
+                    
+                    for job_data in jobs_data:
+                        try:
+                            # Check if job already exists
+                            existing_job = await conn.fetchrow(
+                                "SELECT id FROM automation.jobs WHERE name = $1",
+                                job_data['name']
+                            )
+                            
+                            if existing_job and not import_request.overwrite_existing:
+                                skipped_count += 1
+                                continue
+                            
+                            if existing_job and import_request.overwrite_existing:
+                                # Update existing job
+                                import json
+                                await conn.execute("""
+                                    UPDATE automation.jobs 
+                                    SET description = $1, workflow_definition = $2, schedule_expression = $3,
+                                        is_enabled = $4, tags = $5, metadata = $6, updated_by = $7, updated_at = NOW()
+                                    WHERE id = $8
+                                """, job_data.get('description'), json.dumps(job_data.get('workflow_definition', {})),
+                                     job_data.get('schedule_expression'), job_data.get('is_enabled', True),
+                                     json.dumps(job_data.get('tags', [])), json.dumps(job_data.get('metadata', {})), 1, existing_job['id'])
+                            else:
+                                # Create new job
+                                import json
+                                await conn.execute("""
+                                    INSERT INTO automation.jobs 
+                                    (name, description, workflow_definition, schedule_expression, is_enabled, 
+                                     tags, metadata, created_by, updated_by)
+                                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                """, job_data['name'], job_data.get('description'), 
+                                     json.dumps(job_data.get('workflow_definition', {})), job_data.get('schedule_expression'),
+                                     job_data.get('is_enabled', True), json.dumps(job_data.get('tags', [])), 
+                                     json.dumps(job_data.get('metadata', {})), 1, 1)
+                            
+                            imported_count += 1
+                            
+                        except Exception as job_error:
+                            errors.append(f"Job '{job_data.get('name', 'unknown')}': {str(job_error)}")
+                    
+                    return {
+                        "success": True,
+                        "message": f"Import completed: {imported_count} imported, {skipped_count} skipped",
+                        "data": {
+                            "imported_count": imported_count,
+                            "skipped_count": skipped_count,
+                            "errors": errors
+                        }
+                    }
+            except Exception as e:
+                self.logger.error("Failed to import jobs", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to import jobs"
+                )
         
         @self.app.get("/schedules", response_model=ScheduleListResponse)
         async def list_schedules(
@@ -732,6 +899,10 @@ class AutomationService(BaseService):
                     
                     executions = []
                     for row in rows:
+                        # Parse JSON strings if needed
+                        input_data = self._parse_json_field(row['input_data'])
+                        output_data = self._parse_json_field(row['output_data'])
+                        
                         executions.append(JobExecution(
                             id=row['id'],
                             job_id=row['job_id'],
@@ -739,8 +910,8 @@ class AutomationService(BaseService):
                             execution_id=str(row['execution_id']),
                             status=row['status'],
                             trigger_type=row['trigger_type'],
-                            input_data=row['input_data'] or {},
-                            output_data=row['output_data'] or {},
+                            input_data=input_data,
+                            output_data=output_data,
                             error_message=row['error_message'],
                             started_at=row['started_at'].isoformat() if row['started_at'] else None,
                             completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
@@ -831,8 +1002,8 @@ class AutomationService(BaseService):
                         execution_id=str(row['execution_id']),
                         status=row['status'],
                         trigger_type=row['trigger_type'],
-                        input_data=row['input_data'] or {},
-                        output_data=row['output_data'] or {},
+                        input_data=self._parse_json_field(row['input_data']),
+                        output_data=self._parse_json_field(row['output_data']),
                         error_message=row['error_message'],
                         started_at=row['started_at'].isoformat() if row['started_at'] else None,
                         completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
@@ -963,8 +1134,8 @@ class AutomationService(BaseService):
                         execution_id=str(row['execution_id']),
                         status=row['status'],
                         trigger_type=row['trigger_type'],
-                        input_data=row['input_data'] or {},
-                        output_data=row['output_data'] or {},
+                        input_data=self._parse_json_field(row['input_data']),
+                        output_data=self._parse_json_field(row['output_data']),
                         error_message=row['error_message'],
                         started_at=row['started_at'].isoformat() if row['started_at'] else None,
                         completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
@@ -1219,6 +1390,209 @@ class AutomationService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete library"
+                )
+
+        # ============================================================================
+        # STEP DEFINITIONS ENDPOINTS (For frontend step library service)
+        # ============================================================================
+        
+        @self.app.get("/steps", response_model=dict)
+        async def get_step_definitions(
+            category: Optional[str] = Query(None),
+            library: Optional[str] = Query(None),
+            platform: Optional[str] = Query(None)
+        ):
+            """Get all available step definitions from libraries"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Build query with optional filters
+                    where_conditions = ["sl.is_active = true"]
+                    params = []
+                    param_count = 0
+                    
+                    if library:
+                        param_count += 1
+                        where_conditions.append(f"sl.name = ${param_count}")
+                        params.append(library)
+                    
+                    where_clause = " AND ".join(where_conditions)
+                    
+                    # Get all libraries and their step definitions
+                    rows = await conn.fetch(f"""
+                        SELECT sl.id, sl.name, sl.version, sl.description, sl.manifest,
+                               sl.created_at
+                        FROM automation.step_libraries sl
+                        WHERE {where_clause}
+                        ORDER BY sl.name, sl.version DESC
+                    """, *params)
+                    
+                    steps = []
+                    categories = set()
+                    libraries = set()
+                    
+                    for row in rows:
+                        library_name = row['name']
+                        libraries.add(library_name)
+                        
+                        # Parse manifest for steps definition
+                        manifest = self._parse_json_field(row['manifest'])
+                        if not manifest or not isinstance(manifest, dict):
+                            continue
+                        
+                        # Get steps from manifest
+                        library_steps = manifest.get('steps', [])
+                        if isinstance(library_steps, dict):
+                            library_steps = list(library_steps.values())
+                        
+                        for step in library_steps:
+                            if not isinstance(step, dict):
+                                continue
+                                
+                            step_category = step.get('category', 'general')
+                            categories.add(step_category)
+                            
+                            # Apply category filter
+                            if category and step_category != category:
+                                continue
+                            
+                            # Apply platform filter
+                            if platform:
+                                supported_platforms = step.get('platform_support', [])
+                                if platform not in supported_platforms:
+                                    continue
+                            
+                            # Create step definition
+                            step_def = {
+                                'id': step.get('id', f"{library_name}_{step.get('name', 'unknown')}"),
+                                'name': step.get('name', 'Unknown Step'),
+                                'type': step.get('type', 'action'),
+                                'category': step_category,
+                                'library': library_name,
+                                'library_id': row['id'],
+                                'icon': step.get('icon', 'fa-cog'),
+                                'description': step.get('description', ''),
+                                'color': step.get('color', '#007bff'),
+                                'inputs': step.get('inputs', 1),
+                                'outputs': step.get('outputs', 1),
+                                'parameters': step.get('parameters', {}),
+                                'platform_support': step.get('platform_support', ['any']),
+                                'required_permissions': step.get('required_permissions', []),
+                                'examples': step.get('examples', []),
+                                'tags': step.get('tags', [])
+                            }
+                            steps.append(step_def)
+                    
+                    # If no steps found, return some basic fallback steps
+                    if not steps:
+                        fallback_steps = [
+                            {
+                                'id': 'core_start',
+                                'name': 'Start',
+                                'type': 'trigger',
+                                'category': 'core',
+                                'library': 'core',
+                                'library_id': 0,
+                                'icon': 'fa-play',
+                                'description': 'Start of workflow execution',
+                                'color': '#28a745',
+                                'inputs': 0,
+                                'outputs': 1,
+                                'parameters': {},
+                                'platform_support': ['any'],
+                                'required_permissions': [],
+                                'examples': [],
+                                'tags': ['core', 'trigger']
+                            },
+                            {
+                                'id': 'core_end',
+                                'name': 'End',
+                                'type': 'action',
+                                'category': 'core',
+                                'library': 'core',
+                                'library_id': 0,
+                                'icon': 'fa-stop',
+                                'description': 'End of workflow execution',
+                                'color': '#dc3545',
+                                'inputs': 1,
+                                'outputs': 0,
+                                'parameters': {},
+                                'platform_support': ['any'],
+                                'required_permissions': [],
+                                'examples': [],
+                                'tags': ['core', 'action']
+                            },
+                            {
+                                'id': 'core_log',
+                                'name': 'Log Message',
+                                'type': 'action',
+                                'category': 'utility',
+                                'library': 'core',
+                                'library_id': 0,
+                                'icon': 'fa-file-text',
+                                'description': 'Log a message during workflow execution',
+                                'color': '#007bff',
+                                'inputs': 1,
+                                'outputs': 1,
+                                'parameters': {
+                                    'message': {
+                                        'type': 'string',
+                                        'required': True,
+                                        'description': 'Message to log'
+                                    },
+                                    'level': {
+                                        'type': 'string',
+                                        'required': False,
+                                        'default': 'info',
+                                        'description': 'Log level',
+                                        'options': ['debug', 'info', 'warning', 'error']
+                                    }
+                                },
+                                'platform_support': ['any'],
+                                'required_permissions': [],
+                                'examples': [],
+                                'tags': ['core', 'utility', 'logging']
+                            }
+                        ]
+                        
+                        # Apply filters to fallback steps
+                        filtered_steps = []
+                        fallback_categories = set()
+                        fallback_libraries = set()
+                        
+                        for step in fallback_steps:
+                            step_category = step['category']
+                            step_library = step['library']
+                            
+                            # Apply filters
+                            if category and step_category != category:
+                                continue
+                            if library and step_library != library:
+                                continue
+                            if platform and platform not in step['platform_support']:
+                                continue
+                            
+                            filtered_steps.append(step)
+                            fallback_categories.add(step_category)
+                            fallback_libraries.add(step_library)
+                        
+                        return {
+                            'steps': filtered_steps,
+                            'total_count': len(filtered_steps),
+                            'categories': sorted(list(fallback_categories)),
+                            'libraries': sorted(list(fallback_libraries))
+                        }
+                    
+                    return {
+                        'steps': steps,
+                        'total_count': len(steps),
+                        'categories': sorted(list(categories)),
+                        'libraries': sorted(list(libraries))
+                    }
+            except Exception as e:
+                self.logger.error("Failed to get step definitions", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get step definitions"
                 )
 
         # ============================================================================

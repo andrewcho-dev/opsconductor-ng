@@ -103,33 +103,64 @@ class CredentialListResponse(BaseModel):
 class DiscoveryJob(BaseModel):
     id: int
     name: str
-    network_range: str
+    target_range: str  # Changed from network_range to match DB
     scan_type: str
     status: str
-    progress: int
-    targets_found: int
+    configuration: dict = {}
+    results: dict = {}
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
-    error_message: Optional[str] = None
     created_by: int
     created_at: str
 
 class DiscoveryCreate(BaseModel):
     name: str
-    network_range: str
+    target_range: str  # Changed from network_range to match DB
     scan_type: str = "ping"
+    configuration: dict = {}
 
 class DiscoveryUpdate(BaseModel):
     status: Optional[str] = None
-    progress: Optional[int] = None
-    targets_found: Optional[int] = None
-    error_message: Optional[str] = None
+    configuration: Optional[dict] = None
+    results: Optional[dict] = None
 
 class DiscoveryListResponse(BaseModel):
     discovery_jobs: List[DiscoveryJob]
     total: int
     skip: int
     limit: int
+
+class DiscoveredService(BaseModel):
+    protocol: str
+    port: int
+    service_name: Optional[str] = None
+    version: Optional[str] = None
+    is_secure: Optional[bool] = False
+
+class DiscoveredTarget(BaseModel):
+    id: int
+    discovery_job_id: int
+    hostname: Optional[str] = None
+    ip_address: str
+    os_type: Optional[str] = None
+    os_version: Optional[str] = None
+    services: List[DiscoveredService] = []
+    preferred_service: Optional[DiscoveredService] = None
+    system_info: dict = {}
+    duplicate_status: str = "unique"  # 'unique' | 'duplicate' | 'similar'
+    existing_target_id: Optional[int] = None
+    import_status: str = "pending"  # 'pending' | 'imported' | 'ignored' | 'duplicate_skipped'
+    discovered_at: str
+
+class DiscoveredTargetUpdate(BaseModel):
+    hostname: Optional[str] = None
+    os_type: Optional[str] = None
+    os_version: Optional[str] = None
+    import_status: Optional[str] = None
+
+class DiscoveredTargetListResponse(BaseModel):
+    targets: List[DiscoveredTarget]
+    total: int
 
 class AssetService(BaseService):
     def __init__(self):
@@ -843,7 +874,7 @@ class AssetService(BaseService):
         # DISCOVERY CRUD ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/discovery", response_model=DiscoveryListResponse)
+        @self.app.get("/discovery/discovery-jobs", response_model=DiscoveryListResponse)
         async def list_discovery_jobs(
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000)
@@ -852,30 +883,30 @@ class AssetService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM discovery_jobs")
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
                     
                     # Get discovery jobs with pagination
                     rows = await conn.fetch("""
-                        SELECT id, name, network_range, scan_type, status, progress, targets_found,
-                               started_at, completed_at, error_message, created_by, created_at
-                        FROM discovery_jobs 
+                        SELECT id, name, target_range, scan_type, status, configuration, results,
+                               started_at, completed_at, created_by, created_at
+                        FROM assets.discovery_scans 
                         ORDER BY created_at DESC 
                         LIMIT $1 OFFSET $2
                     """, limit, skip)
                     
                     discovery_jobs = []
                     for row in rows:
+                        import json
                         discovery_jobs.append(DiscoveryJob(
                             id=row['id'],
                             name=row['name'],
-                            network_range=row['network_range'],
+                            target_range=row['target_range'],
                             scan_type=row['scan_type'],
                             status=row['status'],
-                            progress=row['progress'],
-                            targets_found=row['targets_found'],
+                            configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
+                            results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
                             started_at=row['started_at'].isoformat() if row['started_at'] else None,
                             completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                            error_message=row['error_message'],
                             created_by=row['created_by'],
                             created_at=row['created_at'].isoformat()
                         ))
@@ -893,30 +924,32 @@ class AssetService(BaseService):
                     detail="Failed to fetch discovery jobs"
                 )
 
-        @self.app.post("/discovery", response_model=dict)
+        @self.app.post("/discovery/discovery-jobs", response_model=dict)
         async def create_discovery_job(discovery_data: DiscoveryCreate):
             """Create a new discovery job"""
             try:
                 async with self.db.pool.acquire() as conn:
+                    import json
                     row = await conn.fetchrow("""
-                        INSERT INTO discovery_jobs (name, network_range, scan_type, status, progress, 
-                                                  targets_found, created_by)
-                        VALUES ($1, $2, $3, 'pending', 0, 0, 1)
-                        RETURNING id, name, network_range, scan_type, status, progress, targets_found,
-                                  started_at, completed_at, error_message, created_by, created_at
-                    """, discovery_data.name, discovery_data.network_range, discovery_data.scan_type)
+                        INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
+                                                          configuration, created_by)
+                        VALUES ($1, $2, $3, 'pending', $4, 1)
+                        RETURNING id, name, target_range, scan_type, status, configuration, results,
+                                  started_at, completed_at, created_by, created_at
+                    """, discovery_data.name, discovery_data.target_range, discovery_data.scan_type,
+                         json.dumps(discovery_data.configuration))
                     
+                    import json
                     discovery_job = DiscoveryJob(
                         id=row['id'],
                         name=row['name'],
-                        network_range=row['network_range'],
+                        target_range=row['target_range'],
                         scan_type=row['scan_type'],
                         status=row['status'],
-                        progress=row['progress'],
-                        targets_found=row['targets_found'],
+                        configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
+                        results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
                         started_at=row['started_at'].isoformat() if row['started_at'] else None,
                         completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        error_message=row['error_message'],
                         created_by=row['created_by'],
                         created_at=row['created_at'].isoformat()
                     )
@@ -929,31 +962,31 @@ class AssetService(BaseService):
                     detail="Failed to create discovery job"
                 )
 
-        @self.app.get("/discovery/{discovery_id}", response_model=dict)
+        @self.app.get("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
         async def get_discovery_job(discovery_id: int):
             """Get discovery job by ID"""
             try:
                 async with self.db.pool.acquire() as conn:
                     row = await conn.fetchrow("""
-                        SELECT id, name, network_range, scan_type, status, progress, targets_found,
-                               started_at, completed_at, error_message, created_by, created_at
-                        FROM discovery_jobs WHERE id = $1
+                        SELECT id, name, target_range, scan_type, status, configuration, results,
+                               started_at, completed_at, created_by, created_at
+                        FROM assets.discovery_scans WHERE id = $1
                     """, discovery_id)
                     
                     if not row:
                         raise HTTPException(status_code=404, detail="Discovery job not found")
                     
+                    import json
                     discovery_job = DiscoveryJob(
                         id=row['id'],
                         name=row['name'],
-                        network_range=row['network_range'],
+                        target_range=row['target_range'],
                         scan_type=row['scan_type'],
                         status=row['status'],
-                        progress=row['progress'],
-                        targets_found=row['targets_found'],
+                        configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
+                        results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
                         started_at=row['started_at'].isoformat() if row['started_at'] else None,
                         completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        error_message=row['error_message'],
                         created_by=row['created_by'],
                         created_at=row['created_at'].isoformat()
                     )
@@ -968,7 +1001,7 @@ class AssetService(BaseService):
                     detail="Failed to get discovery job"
                 )
 
-        @self.app.put("/discovery/{discovery_id}", response_model=dict)
+        @self.app.put("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
         async def update_discovery_job(discovery_id: int, discovery_data: DiscoveryUpdate):
             """Update discovery job"""
             try:
@@ -994,19 +1027,16 @@ class AssetService(BaseService):
                             values.append(datetime.utcnow())
                             param_count += 1
                     
-                    if discovery_data.progress is not None:
-                        updates.append(f"progress = ${param_count}")
-                        values.append(discovery_data.progress)
+                    if discovery_data.configuration is not None:
+                        import json
+                        updates.append(f"configuration = ${param_count}")
+                        values.append(json.dumps(discovery_data.configuration))
                         param_count += 1
                     
-                    if discovery_data.targets_found is not None:
-                        updates.append(f"targets_found = ${param_count}")
-                        values.append(discovery_data.targets_found)
-                        param_count += 1
-                    
-                    if discovery_data.error_message is not None:
-                        updates.append(f"error_message = ${param_count}")
-                        values.append(discovery_data.error_message)
+                    if discovery_data.results is not None:
+                        import json
+                        updates.append(f"results = ${param_count}")
+                        values.append(json.dumps(discovery_data.results))
                         param_count += 1
                     
                     if not updates:
@@ -1015,11 +1045,11 @@ class AssetService(BaseService):
                     values.append(discovery_id)
                     
                     query = f"""
-                        UPDATE discovery_jobs 
+                        UPDATE assets.discovery_scans 
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
-                        RETURNING id, name, network_range, scan_type, status, progress, targets_found,
-                                  started_at, completed_at, error_message, created_by, created_at
+                        RETURNING id, name, target_range, scan_type, status, configuration, results,
+                                  started_at, completed_at, created_by, created_at
                     """
                     
                     row = await conn.fetchrow(query, *values)
@@ -1027,17 +1057,17 @@ class AssetService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="Discovery job not found")
                     
+                    import json
                     discovery_job = DiscoveryJob(
                         id=row['id'],
                         name=row['name'],
-                        network_range=row['network_range'],
+                        target_range=row['target_range'],
                         scan_type=row['scan_type'],
                         status=row['status'],
-                        progress=row['progress'],
-                        targets_found=row['targets_found'],
+                        configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
+                        results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
                         started_at=row['started_at'].isoformat() if row['started_at'] else None,
                         completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        error_message=row['error_message'],
                         created_by=row['created_by'],
                         created_at=row['created_at'].isoformat()
                     )
@@ -1052,7 +1082,73 @@ class AssetService(BaseService):
                     detail="Failed to update discovery job"
                 )
 
-        @self.app.delete("/discovery/{discovery_id}", response_model=dict)
+        @self.app.post("/discovery/discovery-jobs/{discovery_id}/run", response_model=dict)
+        async def run_discovery_job(discovery_id: int):
+            """Run/start a discovery job"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if job exists
+                    job = await conn.fetchrow(
+                        "SELECT id, status FROM assets.discovery_scans WHERE id = $1", discovery_id
+                    )
+                    
+                    if not job:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    if job['status'] == 'running':
+                        raise HTTPException(status_code=400, detail="Job is already running")
+                    
+                    # Update job status to running
+                    await conn.execute("""
+                        UPDATE assets.discovery_scans 
+                        SET status = 'running', started_at = NOW()
+                        WHERE id = $1
+                    """, discovery_id)
+                    
+                    return {"success": True, "message": "Discovery job started"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to run discovery job", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to run discovery job"
+                )
+
+        @self.app.post("/discovery/discovery-jobs/{discovery_id}/cancel", response_model=dict)
+        async def cancel_discovery_job(discovery_id: int):
+            """Cancel a running discovery job"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if job exists
+                    job = await conn.fetchrow(
+                        "SELECT id, status FROM assets.discovery_scans WHERE id = $1", discovery_id
+                    )
+                    
+                    if not job:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    if job['status'] != 'running':
+                        raise HTTPException(status_code=400, detail="Job is not running")
+                    
+                    # Update job status to cancelled
+                    await conn.execute("""
+                        UPDATE assets.discovery_scans 
+                        SET status = 'cancelled', completed_at = NOW()
+                        WHERE id = $1
+                    """, discovery_id)
+                    
+                    return {"success": True, "message": "Discovery job cancelled"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to cancel discovery job", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to cancel discovery job"
+                )
+
+        @self.app.delete("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
         async def delete_discovery_job(discovery_id: int):
             """Delete discovery job"""
             try:
@@ -1072,6 +1168,355 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete discovery job"
+                )
+
+        # ============================================================================
+        # DISCOVERED TARGETS ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/discovery/targets", response_model=DiscoveredTargetListResponse)
+        async def list_discovered_targets(
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000),
+            job_id: Optional[int] = Query(None),
+            status: Optional[str] = Query(None)
+        ):
+            """List discovered targets"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Build query with filters
+                    where_conditions = []
+                    params = []
+                    param_count = 1
+                    
+                    if job_id is not None:
+                        where_conditions.append(f"discovery_job_id = ${param_count}")
+                        params.append(job_id)
+                        param_count += 1
+                    
+                    if status is not None:
+                        where_conditions.append(f"import_status = ${param_count}")
+                        params.append(status)
+                        param_count += 1
+                    
+                    where_clause = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+                    
+                    # Get total count
+                    count_query = f"SELECT COUNT(*) FROM assets.discovered_targets{where_clause}"
+                    total = await conn.fetchval(count_query, *params)
+                    
+                    # Get targets with pagination
+                    query = f"""
+                        SELECT id, discovery_job_id, hostname, ip_address, os_type, os_version,
+                               services, system_info, duplicate_status, existing_target_id,
+                               import_status, discovered_at
+                        FROM assets.discovered_targets
+                        {where_clause}
+                        ORDER BY discovered_at DESC 
+                        LIMIT ${param_count} OFFSET ${param_count + 1}
+                    """
+                    params.extend([limit, skip])
+                    rows = await conn.fetch(query, *params)
+                    
+                    targets = []
+                    for row in rows:
+                        import json
+                        services_data = row['services'] if isinstance(row['services'], list) else (json.loads(row['services']) if row['services'] else [])
+                        services = [DiscoveredService(**service) for service in services_data]
+                        
+                        targets.append(DiscoveredTarget(
+                            id=row['id'],
+                            discovery_job_id=row['discovery_job_id'],
+                            hostname=row['hostname'],
+                            ip_address=str(row['ip_address']),
+                            os_type=row['os_type'],
+                            os_version=row['os_version'],
+                            services=services,
+                            preferred_service=services[0] if services else None,
+                            system_info=row['system_info'] if isinstance(row['system_info'], dict) else (json.loads(row['system_info']) if row['system_info'] else {}),
+                            duplicate_status=row['duplicate_status'],
+                            existing_target_id=row['existing_target_id'],
+                            import_status=row['import_status'],
+                            discovered_at=row['discovered_at'].isoformat()
+                        ))
+                    
+                    return DiscoveredTargetListResponse(targets=targets, total=total)
+            except Exception as e:
+                self.logger.error("Failed to fetch discovered targets", error=str(e))
+                # Return empty list instead of error for better UX
+                return DiscoveredTargetListResponse(targets=[], total=0)
+
+        @self.app.get("/discovery/targets/{target_id}", response_model=dict)
+        async def get_discovered_target(target_id: int):
+            """Get discovered target by ID"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    row = await conn.fetchrow("""
+                        SELECT id, discovery_job_id, hostname, ip_address, os_type, os_version,
+                               services, system_info, duplicate_status, existing_target_id,
+                               import_status, discovered_at
+                        FROM assets.discovered_targets WHERE id = $1
+                    """, target_id)
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Discovered target not found")
+                    
+                    import json
+                    services_data = row['services'] if isinstance(row['services'], list) else (json.loads(row['services']) if row['services'] else [])
+                    services = [DiscoveredService(**service) for service in services_data]
+                    
+                    target = DiscoveredTarget(
+                        id=row['id'],
+                        discovery_job_id=row['discovery_job_id'],
+                        hostname=row['hostname'],
+                        ip_address=str(row['ip_address']),
+                        os_type=row['os_type'],
+                        os_version=row['os_version'],
+                        services=services,
+                        preferred_service=services[0] if services else None,
+                        system_info=row['system_info'] if isinstance(row['system_info'], dict) else (json.loads(row['system_info']) if row['system_info'] else {}),
+                        duplicate_status=row['duplicate_status'],
+                        existing_target_id=row['existing_target_id'],
+                        import_status=row['import_status'],
+                        discovered_at=row['discovered_at'].isoformat()
+                    )
+                    
+                    return {"success": True, "data": target}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get discovered target", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get discovered target"
+                )
+
+        @self.app.put("/discovery/targets/{target_id}", response_model=dict)
+        async def update_discovered_target(target_id: int, target_data: DiscoveredTargetUpdate):
+            """Update discovered target"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Build dynamic update query
+                    updates = []
+                    values = []
+                    param_count = 1
+                    
+                    if target_data.hostname is not None:
+                        updates.append(f"hostname = ${param_count}")
+                        values.append(target_data.hostname)
+                        param_count += 1
+                    
+                    if target_data.os_type is not None:
+                        updates.append(f"os_type = ${param_count}")
+                        values.append(target_data.os_type)
+                        param_count += 1
+                    
+                    if target_data.os_version is not None:
+                        updates.append(f"os_version = ${param_count}")
+                        values.append(target_data.os_version)
+                        param_count += 1
+                    
+                    if target_data.import_status is not None:
+                        updates.append(f"import_status = ${param_count}")
+                        values.append(target_data.import_status)
+                        param_count += 1
+                    
+                    if not updates:
+                        raise HTTPException(status_code=400, detail="No fields to update")
+                    
+                    values.append(target_id)
+                    
+                    query = f"""
+                        UPDATE assets.discovered_targets 
+                        SET {', '.join(updates)}
+                        WHERE id = ${param_count}
+                        RETURNING id, discovery_job_id, hostname, ip_address, os_type, os_version,
+                                  services, system_info, duplicate_status, existing_target_id,
+                                  import_status, discovered_at
+                    """
+                    
+                    row = await conn.fetchrow(query, *values)
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Discovered target not found")
+                    
+                    import json
+                    services_data = row['services'] if isinstance(row['services'], list) else (json.loads(row['services']) if row['services'] else [])
+                    services = [DiscoveredService(**service) for service in services_data]
+                    
+                    target = DiscoveredTarget(
+                        id=row['id'],
+                        discovery_job_id=row['discovery_job_id'],
+                        hostname=row['hostname'],
+                        ip_address=str(row['ip_address']),
+                        os_type=row['os_type'],
+                        os_version=row['os_version'],
+                        services=services,
+                        preferred_service=services[0] if services else None,
+                        system_info=row['system_info'] if isinstance(row['system_info'], dict) else (json.loads(row['system_info']) if row['system_info'] else {}),
+                        duplicate_status=row['duplicate_status'],
+                        existing_target_id=row['existing_target_id'],
+                        import_status=row['import_status'],
+                        discovered_at=row['discovered_at'].isoformat()
+                    )
+                    
+                    return {"success": True, "message": "Target updated", "data": target}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update discovered target", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update discovered target"
+                )
+
+        @self.app.delete("/discovery/targets/{target_id}", response_model=dict)
+        async def delete_discovered_target(target_id: int):
+            """Delete discovered target"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    result = await conn.execute(
+                        "DELETE FROM assets.discovered_targets WHERE id = $1", target_id
+                    )
+                    
+                    if result == "DELETE 0":
+                        raise HTTPException(status_code=404, detail="Discovered target not found")
+                    
+                    return {"success": True, "message": "Target deleted"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to delete discovered target", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete discovered target"
+                )
+
+        @self.app.post("/discovery/targets/ignore", response_model=dict)
+        async def ignore_targets(request: dict):
+            """Mark targets as ignored"""
+            try:
+                target_ids = request.get('target_ids', [])
+                if not target_ids:
+                    raise HTTPException(status_code=400, detail="No target IDs provided")
+                
+                async with self.db.pool.acquire() as conn:
+                    result = await conn.execute("""
+                        UPDATE assets.discovered_targets 
+                        SET import_status = 'ignored'
+                        WHERE id = ANY($1)
+                    """, target_ids)
+                    
+                    return {"success": True, "ignored": len(target_ids)}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to ignore targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to ignore targets"
+                )
+
+        @self.app.post("/discovery/targets/bulk-delete", response_model=dict)
+        async def bulk_delete_targets(request: dict):
+            """Bulk delete targets"""
+            try:
+                target_ids = request.get('target_ids', [])
+                if not target_ids:
+                    raise HTTPException(status_code=400, detail="No target IDs provided")
+                
+                async with self.db.pool.acquire() as conn:
+                    result = await conn.execute("""
+                        DELETE FROM assets.discovered_targets 
+                        WHERE id = ANY($1)
+                    """, target_ids)
+                    
+                    # Extract the number of deleted rows from the result
+                    deleted_count = int(result.split()[-1]) if result.startswith('DELETE') else 0
+                    
+                    return {"success": True, "deleted": deleted_count}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to bulk delete targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to bulk delete targets"
+                )
+
+        @self.app.post("/discovery/import-targets", response_model=dict)
+        async def import_targets(request: dict):
+            """Import discovered targets as managed targets"""
+            try:
+                target_ids = request.get('target_ids', [])
+                if not target_ids:
+                    raise HTTPException(status_code=400, detail="No target IDs provided")
+                
+                imported_count = 0
+                failed_count = 0
+                details = []
+                
+                async with self.db.pool.acquire() as conn:
+                    for target_id in target_ids:
+                        try:
+                            # Get discovered target
+                            discovered = await conn.fetchrow("""
+                                SELECT hostname, ip_address, os_type, os_version, services, system_info
+                                FROM assets.discovered_targets WHERE id = $1
+                            """, target_id)
+                            
+                            if not discovered:
+                                failed_count += 1
+                                details.append(f"Target {target_id} not found")
+                                continue
+                            
+                            # Insert into managed targets (mapping to existing schema)
+                            target_name = discovered['hostname'] or f"Target-{str(discovered['ip_address'])}"
+                            description = f"Imported from discovery - {discovered['os_type']} {discovered['os_version']}"
+                            
+                            import json
+                            metadata = {
+                                'os_type': discovered['os_type'],
+                                'os_version': discovered['os_version'],
+                                'services': discovered['services'] if isinstance(discovered['services'], list) else (json.loads(discovered['services']) if discovered['services'] else []),
+                                'system_info': discovered['system_info'] if isinstance(discovered['system_info'], dict) else (json.loads(discovered['system_info']) if discovered['system_info'] else {}),
+                                'imported_from_discovery': True
+                            }
+                            
+                            await conn.execute("""
+                                INSERT INTO assets.targets (name, description, host, target_type, 
+                                                           connection_type, metadata, created_by)
+                                VALUES ($1, $2, $3, $4, $5, $6, 1)
+                            """, target_name, description, str(discovered['ip_address']), 
+                                 'server', 'ssh', json.dumps(metadata))
+                            
+                            # Update discovered target status
+                            await conn.execute("""
+                                UPDATE assets.discovered_targets 
+                                SET import_status = 'imported'
+                                WHERE id = $1
+                            """, target_id)
+                            
+                            imported_count += 1
+                            details.append(f"Target {target_id} imported successfully")
+                            
+                        except Exception as e:
+                            failed_count += 1
+                            details.append(f"Target {target_id} failed: {str(e)}")
+                
+                return {
+                    "success": True,
+                    "imported": imported_count,
+                    "failed": failed_count,
+                    "details": details
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to import targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to import targets"
                 )
 
     # ============================================================================

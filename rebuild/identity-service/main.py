@@ -99,6 +99,36 @@ class LoginResponse(BaseModel):
     expires_in: int
     user: dict
 
+class NotificationPreferences(BaseModel):
+    id: int
+    user_id: int
+    email_enabled: bool = True
+    sms_enabled: bool = False
+    push_enabled: bool = True
+    job_success_notifications: bool = True
+    job_failure_notifications: bool = True
+    system_alerts: bool = True
+    maintenance_notifications: bool = True
+    email_frequency: str = "immediate"  # immediate, daily, weekly
+    quiet_hours_start: Optional[str] = None  # HH:MM format
+    quiet_hours_end: Optional[str] = None    # HH:MM format
+    timezone: str = "UTC"
+    created_at: str
+    updated_at: str
+
+class NotificationPreferencesUpdate(BaseModel):
+    email_enabled: Optional[bool] = None
+    sms_enabled: Optional[bool] = None
+    push_enabled: Optional[bool] = None
+    job_success_notifications: Optional[bool] = None
+    job_failure_notifications: Optional[bool] = None
+    system_alerts: Optional[bool] = None
+    maintenance_notifications: Optional[bool] = None
+    email_frequency: Optional[str] = None
+    quiet_hours_start: Optional[str] = None
+    quiet_hours_end: Optional[str] = None
+    timezone: Optional[str] = None
+
 class IdentityService(BaseService):
     def __init__(self):
         super().__init__("identity-service", "1.0.0", 3001)
@@ -802,6 +832,140 @@ class IdentityService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to get user roles"
+                )
+
+        # ============================================================================
+        # NOTIFICATION PREFERENCES ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/users/{user_id}/notification-preferences", response_model=dict)
+        async def get_user_notification_preferences(user_id: int):
+            """Get notification preferences for a user"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # First check if user exists
+                    user_exists = await conn.fetchval("SELECT id FROM identity.users WHERE id = $1", user_id)
+                    if not user_exists:
+                        raise HTTPException(status_code=404, detail="User not found")
+                    
+                    # Get preferences from communication schema
+                    row = await conn.fetchrow("""
+                        SELECT id, user_id, email_enabled, sms_enabled, push_enabled,
+                               job_success_notifications, job_failure_notifications, 
+                               system_alerts, maintenance_notifications, email_frequency,
+                               quiet_hours_start, quiet_hours_end, timezone, created_at, updated_at
+                        FROM communication.notification_preferences 
+                        WHERE user_id = $1
+                    """, user_id)
+                    
+                    if not row:
+                        # Create default preferences if none exist
+                        row = await conn.fetchrow("""
+                            INSERT INTO communication.notification_preferences (user_id)
+                            VALUES ($1)
+                            RETURNING id, user_id, email_enabled, sms_enabled, push_enabled,
+                                     job_success_notifications, job_failure_notifications, 
+                                     system_alerts, maintenance_notifications, email_frequency,
+                                     quiet_hours_start, quiet_hours_end, timezone, created_at, updated_at
+                        """, user_id)
+                    
+                    preferences = NotificationPreferences(
+                        id=row['id'],
+                        user_id=row['user_id'],
+                        email_enabled=row['email_enabled'],
+                        sms_enabled=row['sms_enabled'],
+                        push_enabled=row['push_enabled'],
+                        job_success_notifications=row['job_success_notifications'],
+                        job_failure_notifications=row['job_failure_notifications'],
+                        system_alerts=row['system_alerts'],
+                        maintenance_notifications=row['maintenance_notifications'],
+                        email_frequency=row['email_frequency'],
+                        quiet_hours_start=row['quiet_hours_start'],
+                        quiet_hours_end=row['quiet_hours_end'],
+                        timezone=row['timezone'],
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat()
+                    )
+                    
+                    return {"success": True, "data": preferences}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get notification preferences", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get notification preferences"
+                )
+
+        @self.app.put("/users/{user_id}/notification-preferences", response_model=dict)
+        async def update_user_notification_preferences(user_id: int, preferences_data: NotificationPreferencesUpdate):
+            """Update notification preferences for a user"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # First check if user exists
+                    user_exists = await conn.fetchval("SELECT id FROM identity.users WHERE id = $1", user_id)
+                    if not user_exists:
+                        raise HTTPException(status_code=404, detail="User not found")
+                    
+                    # Build update query dynamically based on provided fields
+                    update_fields = []
+                    update_values = []
+                    param_count = 1
+                    
+                    for field, value in preferences_data.dict(exclude_unset=True).items():
+                        if value is not None:
+                            update_fields.append(f"{field} = ${param_count + 1}")
+                            update_values.append(value)
+                            param_count += 1
+                    
+                    if not update_fields:
+                        raise HTTPException(status_code=400, detail="No fields to update")
+                    
+                    # Add updated_at
+                    update_fields.append(f"updated_at = ${param_count + 1}")
+                    update_values.append(datetime.utcnow())
+                    
+                    query = f"""
+                        UPDATE communication.notification_preferences 
+                        SET {', '.join(update_fields)}
+                        WHERE user_id = $1
+                        RETURNING id, user_id, email_enabled, sms_enabled, push_enabled,
+                                 job_success_notifications, job_failure_notifications, 
+                                 system_alerts, maintenance_notifications, email_frequency,
+                                 quiet_hours_start, quiet_hours_end, timezone, created_at, updated_at
+                    """
+                    
+                    row = await conn.fetchrow(query, user_id, *update_values)
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Notification preferences not found")
+                    
+                    preferences = NotificationPreferences(
+                        id=row['id'],
+                        user_id=row['user_id'],
+                        email_enabled=row['email_enabled'],
+                        sms_enabled=row['sms_enabled'],
+                        push_enabled=row['push_enabled'],
+                        job_success_notifications=row['job_success_notifications'],
+                        job_failure_notifications=row['job_failure_notifications'],
+                        system_alerts=row['system_alerts'],
+                        maintenance_notifications=row['maintenance_notifications'],
+                        email_frequency=row['email_frequency'],
+                        quiet_hours_start=row['quiet_hours_start'],
+                        quiet_hours_end=row['quiet_hours_end'],
+                        timezone=row['timezone'],
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat()
+                    )
+                    
+                    return {"success": True, "message": "Notification preferences updated", "data": preferences}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update notification preferences", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update notification preferences"
                 )
 
 if __name__ == "__main__":
