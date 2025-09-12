@@ -105,14 +105,33 @@ const Navbar: React.FC = () => {
                 Users
               </Link>
 
-              <Link 
-                to="/targets-management" 
-                className={`nav-menu-item ${isActive('/targets-management') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Target size={16} /></span>
-                Targets
-              </Link>
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><Target size={16} /></span>
+                  Targets
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/targets-management" 
+                    className={`nav-submenu-item ${location.pathname === '/targets-management' || location.pathname.startsWith('/targets-management/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Target size={14} /></span>
+                    Manage Targets
+                  </Link>
+                  <Link 
+                    to="/target-groups" 
+                    className={`nav-submenu-item ${location.pathname === '/target-groups' || location.pathname.startsWith('/target-groups/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><List size={14} /></span>
+                    Manage Groups
+                  </Link>
+                </div>
+              </div>
               <Link 
                 to="/discovery" 
                 className={`nav-menu-item ${isActive('/discovery') ? 'active' : ''}`} 

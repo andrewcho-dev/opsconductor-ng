@@ -203,7 +203,63 @@ export const targetApi = {
   }
 };
 
+// Target Group API
+export const targetGroupApi = {
+  list: async (includeCount = false): Promise<any> => {
+    const response = await api.get('/api/v1/target-groups', {
+      params: { include_counts: includeCount }
+    });
+    return response.data;
+  },
 
+  getTree: async (): Promise<any> => {
+    const response = await api.get('/api/v1/target-groups-tree');
+    return response.data;
+  },
+
+  get: async (id: number): Promise<any> => {
+    const response = await api.get(`/api/v1/target-groups/${id}`);
+    return response.data;
+  },
+
+  create: async (groupData: any): Promise<any> => {
+    const response = await api.post('/api/v1/target-groups', groupData);
+    return response.data;
+  },
+
+  update: async (id: number, groupData: any): Promise<any> => {
+    const response = await api.put(`/api/v1/target-groups/${id}`, groupData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/target-groups/${id}`);
+  },
+
+  getTargets: async (id: number): Promise<any> => {
+    const response = await api.get(`/api/v1/target-groups/${id}/targets`);
+    return response.data;
+  },
+
+  addTargets: async (id: number, targetIds: number[]): Promise<any> => {
+    const response = await api.post(`/api/v1/target-groups/${id}/targets`, {
+      target_ids: targetIds
+    });
+    return response.data;
+  },
+
+  removeTarget: async (groupId: number, targetId: number): Promise<void> => {
+    await api.delete(`/api/v1/target-groups/${groupId}/targets/${targetId}`);
+  }
+};
+
+// Asset Service Target API (for getting all targets)
+export const assetTargetApi = {
+  list: async (): Promise<any> => {
+    const response = await api.get('/api/v1/targets');
+    return response.data;
+  }
+};
 
 // Job API
 export const jobApi = {

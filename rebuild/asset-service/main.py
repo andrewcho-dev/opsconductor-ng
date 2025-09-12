@@ -321,6 +321,59 @@ class DiscoveredTargetListResponse(BaseModel):
     targets: List[DiscoveredTarget]
     total: int
 
+# ============================================================================
+# TARGET GROUPS MODELS
+# ============================================================================
+
+class TargetGroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+class TargetGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+class TargetGroup(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    path: str
+    level: int
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+    
+    # Computed fields
+    target_count: Optional[int] = None
+    direct_target_count: Optional[int] = None
+    children: Optional[List['TargetGroup']] = None
+
+class TargetGroupListResponse(BaseModel):
+    groups: List[TargetGroup]
+    total: int
+
+class TargetGroupMembershipCreate(BaseModel):
+    target_ids: List[int]
+
+class TargetGroupMembership(BaseModel):
+    id: int
+    target_id: int
+    group_id: int
+    added_at: str
+
+class TargetGroupTargetsResponse(BaseModel):
+    targets: List[EnhancedTargetSummary]
+    total: int
+    include_descendants: bool = False
+
 class AssetService(BaseService):
     def __init__(self):
         super().__init__("asset-service", "1.0.0", 3002)
@@ -1828,6 +1881,588 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to import targets"
+                )
+
+        # ============================================================================
+        # TARGET GROUPS ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/target-groups", response_model=TargetGroupListResponse)
+        async def list_target_groups(
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000),
+            include_counts: bool = Query(False, description="Include target counts for each group")
+        ):
+            """List all target groups with optional target counts"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get groups with basic info
+                    groups_query = """
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups
+                        ORDER BY path
+                        OFFSET $1 LIMIT $2
+                    """
+                    groups = await conn.fetch(groups_query, skip, limit)
+                    
+                    # Get total count
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.target_groups")
+                    
+                    result_groups = []
+                    for group in groups:
+                        group_dict = dict(group)
+                        group_dict['created_at'] = group_dict['created_at'].isoformat()
+                        if group_dict['updated_at']:
+                            group_dict['updated_at'] = group_dict['updated_at'].isoformat()
+                        
+                        # Add target counts if requested
+                        if include_counts:
+                            # Direct targets in this group
+                            direct_count = await conn.fetchval("""
+                                SELECT COUNT(*) FROM assets.target_group_memberships 
+                                WHERE group_id = $1
+                            """, group['id'])
+                            
+                            # All targets including descendants
+                            total_count = await conn.fetchval("""
+                                SELECT COUNT(DISTINCT m.target_id) 
+                                FROM assets.target_group_memberships m
+                                JOIN assets.target_groups g ON m.group_id = g.id
+                                WHERE g.path LIKE $1
+                            """, group['path'] + '%')
+                            
+                            group_dict['direct_target_count'] = direct_count
+                            group_dict['target_count'] = total_count
+                        
+                        result_groups.append(group_dict)
+                    
+                    return TargetGroupListResponse(
+                        groups=result_groups,
+                        total=total
+                    )
+            except Exception as e:
+                self.logger.error("Failed to list target groups", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to list target groups"
+                )
+
+        @self.app.post("/target-groups", response_model=dict)
+        async def create_target_group(group_data: TargetGroupCreate):
+            """Create a new target group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Validate parent group exists if specified
+                    if group_data.parent_group_id:
+                        parent = await conn.fetchrow("""
+                            SELECT level FROM assets.target_groups WHERE id = $1
+                        """, group_data.parent_group_id)
+                        
+                        if not parent:
+                            raise HTTPException(status_code=404, detail="Parent group not found")
+                        
+                        if parent['level'] >= 3:
+                            raise HTTPException(
+                                status_code=400, 
+                                detail="Cannot create group: maximum depth of 3 levels exceeded"
+                            )
+                    
+                    # Check for duplicate name within same parent
+                    existing = await conn.fetchval("""
+                        SELECT id FROM assets.target_groups 
+                        WHERE name = $1 AND parent_group_id IS NOT DISTINCT FROM $2
+                    """, group_data.name, group_data.parent_group_id)
+                    
+                    if existing:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="Group name already exists at this level"
+                        )
+                    
+                    # Insert new group (triggers will handle path and level)
+                    group_id = await conn.fetchval("""
+                        INSERT INTO assets.target_groups (name, description, parent_group_id, color, icon)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING id
+                    """, group_data.name, group_data.description, group_data.parent_group_id,
+                        group_data.color, group_data.icon)
+                    
+                    # Get the created group with computed path and level
+                    created_group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    result = dict(created_group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to create target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create target group"
+                )
+
+        @self.app.get("/target-groups/{group_id}", response_model=dict)
+        async def get_target_group(group_id: int, include_children: bool = Query(False)):
+            """Get target group by ID with optional children"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get the group
+                    group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    result = dict(group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    # Add target counts
+                    direct_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM assets.target_group_memberships 
+                        WHERE group_id = $1
+                    """, group_id)
+                    
+                    total_count = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT m.target_id) 
+                        FROM assets.target_group_memberships m
+                        JOIN assets.target_groups g ON m.group_id = g.id
+                        WHERE g.path LIKE $1
+                    """, group['path'] + '%')
+                    
+                    result['direct_target_count'] = direct_count
+                    result['target_count'] = total_count
+                    
+                    # Add children if requested
+                    if include_children:
+                        children = await conn.fetch("""
+                            SELECT id, name, description, parent_group_id, path, level, 
+                                   color, icon, created_at, updated_at
+                            FROM assets.target_groups 
+                            WHERE parent_group_id = $1
+                            ORDER BY name
+                        """, group_id)
+                        
+                        result['children'] = []
+                        for child in children:
+                            child_dict = dict(child)
+                            child_dict['created_at'] = child_dict['created_at'].isoformat()
+                            if child_dict['updated_at']:
+                                child_dict['updated_at'] = child_dict['updated_at'].isoformat()
+                            result['children'].append(child_dict)
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get target group"
+                )
+
+        @self.app.put("/target-groups/{group_id}", response_model=dict)
+        async def update_target_group(group_id: int, group_data: TargetGroupUpdate):
+            """Update target group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    existing = await conn.fetchrow("""
+                        SELECT id, parent_group_id FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not existing:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # Validate parent group if being changed
+                    if group_data.parent_group_id is not None and group_data.parent_group_id != existing['parent_group_id']:
+                        if group_data.parent_group_id:
+                            parent = await conn.fetchrow("""
+                                SELECT level FROM assets.target_groups WHERE id = $1
+                            """, group_data.parent_group_id)
+                            
+                            if not parent:
+                                raise HTTPException(status_code=404, detail="Parent group not found")
+                            
+                            if parent['level'] >= 3:
+                                raise HTTPException(
+                                    status_code=400, 
+                                    detail="Cannot move group: maximum depth of 3 levels exceeded"
+                                )
+                    
+                    # Check for duplicate name if name is being changed
+                    if group_data.name:
+                        duplicate = await conn.fetchval("""
+                            SELECT id FROM assets.target_groups 
+                            WHERE name = $1 AND parent_group_id IS NOT DISTINCT FROM $2 AND id != $3
+                        """, group_data.name, 
+                            group_data.parent_group_id if group_data.parent_group_id is not None else existing['parent_group_id'],
+                            group_id)
+                        
+                        if duplicate:
+                            raise HTTPException(
+                                status_code=400, 
+                                detail="Group name already exists at this level"
+                            )
+                    
+                    # Build update query dynamically
+                    update_fields = []
+                    update_values = []
+                    param_count = 1
+                    
+                    if group_data.name is not None:
+                        update_fields.append(f"name = ${param_count}")
+                        update_values.append(group_data.name)
+                        param_count += 1
+                    
+                    if group_data.description is not None:
+                        update_fields.append(f"description = ${param_count}")
+                        update_values.append(group_data.description)
+                        param_count += 1
+                    
+                    if group_data.parent_group_id is not None:
+                        update_fields.append(f"parent_group_id = ${param_count}")
+                        update_values.append(group_data.parent_group_id)
+                        param_count += 1
+                    
+                    if group_data.color is not None:
+                        update_fields.append(f"color = ${param_count}")
+                        update_values.append(group_data.color)
+                        param_count += 1
+                    
+                    if group_data.icon is not None:
+                        update_fields.append(f"icon = ${param_count}")
+                        update_values.append(group_data.icon)
+                        param_count += 1
+                    
+                    if not update_fields:
+                        raise HTTPException(status_code=400, detail="No fields to update")
+                    
+                    update_fields.append(f"updated_at = ${param_count}")
+                    update_values.append("CURRENT_TIMESTAMP")
+                    param_count += 1
+                    
+                    update_values.append(group_id)
+                    
+                    query = f"""
+                        UPDATE assets.target_groups 
+                        SET {', '.join(update_fields)}
+                        WHERE id = ${param_count}
+                    """
+                    
+                    await conn.execute(query, *update_values[:-1], group_id)
+                    
+                    # Get updated group
+                    updated_group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    result = dict(updated_group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update target group"
+                )
+
+        @self.app.delete("/target-groups/{group_id}", response_model=dict)
+        async def delete_target_group(group_id: int):
+            """Delete target group (and all descendants)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group = await conn.fetchrow("""
+                        SELECT path FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # Delete all descendants (cascade will handle memberships)
+                    deleted_count = await conn.fetchval("""
+                        DELETE FROM assets.target_groups 
+                        WHERE path LIKE $1
+                        RETURNING COUNT(*)
+                    """, group['path'] + '%')
+                    
+                    return {"success": True, "deleted_groups": deleted_count}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to delete target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete target group"
+                )
+
+        @self.app.get("/target-groups/{group_id}/targets", response_model=TargetGroupTargetsResponse)
+        async def get_group_targets(
+            group_id: int, 
+            include_descendants: bool = Query(False, description="Include targets from descendant groups"),
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000)
+        ):
+            """Get targets in a group, optionally including descendants"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group = await conn.fetchrow("""
+                        SELECT path FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    if include_descendants:
+                        # Get targets from this group and all descendants
+                        targets_query = """
+                            SELECT DISTINCT t.id, t.name, t.hostname, t.ip_address, t.os_type, 
+                                   t.os_version, t.description, t.tags, t.created_at, t.updated_at
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                            ORDER BY t.name
+                            OFFSET $2 LIMIT $3
+                        """
+                        targets = await conn.fetch(targets_query, group['path'] + '%', skip, limit)
+                        
+                        total = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT t.id)
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                        """, group['path'] + '%')
+                    else:
+                        # Get targets only from this specific group
+                        targets_query = """
+                            SELECT t.id, t.name, t.hostname, t.ip_address, t.os_type, 
+                                   t.os_version, t.description, t.tags, t.created_at, t.updated_at
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            WHERE m.group_id = $1
+                            ORDER BY t.name
+                            OFFSET $2 LIMIT $3
+                        """
+                        targets = await conn.fetch(targets_query, group_id, skip, limit)
+                        
+                        total = await conn.fetchval("""
+                            SELECT COUNT(*)
+                            FROM assets.target_group_memberships
+                            WHERE group_id = $1
+                        """, group_id)
+                    
+                    # Format targets
+                    result_targets = []
+                    for target in targets:
+                        # Get services for this target (summary version)
+                        service_rows = await conn.fetch("""
+                            SELECT id, service_type, port, is_default, is_secure, is_enabled, notes,
+                                   credential_type, connection_status, last_tested_at, created_at
+                            FROM assets.target_services
+                            WHERE target_id = $1
+                            ORDER BY is_default DESC, service_type, port
+                        """, target['id'])
+                        
+                        services = []
+                        for service_row in service_rows:
+                            services.append(TargetServiceSummary(
+                                id=service_row['id'],
+                                target_id=target['id'],
+                                service_type=service_row['service_type'],
+                                port=service_row['port'],
+                                is_default=service_row['is_default'],
+                                is_secure=service_row['is_secure'],
+                                is_enabled=service_row['is_enabled'],
+                                notes=service_row['notes'],
+                                credential_type=service_row['credential_type'],
+                                connection_status=service_row['connection_status'],
+                                last_tested_at=service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None,
+                                created_at=service_row['created_at'].isoformat()
+                            ))
+                        
+                        import json
+                        result_targets.append(EnhancedTargetSummary(
+                            id=target['id'],
+                            name=target['name'],
+                            hostname=target['hostname'],
+                            ip_address=target['ip_address'],
+                            os_type=target['os_type'],
+                            os_version=target['os_version'],
+                            description=target['description'],
+                            tags=json.loads(target['tags']) if target['tags'] else [],
+                            services=services,
+                            created_at=target['created_at'].isoformat(),
+                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
+                        ))
+                    
+                    return TargetGroupTargetsResponse(
+                        targets=result_targets,
+                        total=total,
+                        include_descendants=include_descendants
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get group targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get group targets"
+                )
+
+        @self.app.post("/target-groups/{group_id}/targets", response_model=dict)
+        async def add_targets_to_group(group_id: int, membership_data: TargetGroupMembershipCreate):
+            """Add targets to a group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group_exists = await conn.fetchval("""
+                        SELECT id FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group_exists:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # Validate all targets exist
+                    existing_targets = await conn.fetch("""
+                        SELECT id FROM assets.enhanced_targets WHERE id = ANY($1)
+                    """, membership_data.target_ids)
+                    
+                    existing_ids = {t['id'] for t in existing_targets}
+                    missing_ids = set(membership_data.target_ids) - existing_ids
+                    
+                    if missing_ids:
+                        raise HTTPException(
+                            status_code=404, 
+                            detail=f"Targets not found: {list(missing_ids)}"
+                        )
+                    
+                    # Add memberships (ignore duplicates)
+                    added_count = 0
+                    for target_id in membership_data.target_ids:
+                        try:
+                            await conn.execute("""
+                                INSERT INTO assets.target_group_memberships (target_id, group_id)
+                                VALUES ($1, $2)
+                            """, target_id, group_id)
+                            added_count += 1
+                        except:
+                            # Ignore duplicate key errors
+                            pass
+                    
+                    return {
+                        "success": True, 
+                        "added": added_count,
+                        "skipped": len(membership_data.target_ids) - added_count
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to add targets to group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to add targets to group"
+                )
+
+        @self.app.delete("/target-groups/{group_id}/targets/{target_id}", response_model=dict)
+        async def remove_target_from_group(group_id: int, target_id: int):
+            """Remove a target from a group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Remove membership
+                    deleted = await conn.fetchval("""
+                        DELETE FROM assets.target_group_memberships 
+                        WHERE group_id = $1 AND target_id = $2
+                        RETURNING id
+                    """, group_id, target_id)
+                    
+                    if not deleted:
+                        raise HTTPException(
+                            status_code=404, 
+                            detail="Target not found in this group"
+                        )
+                    
+                    return {"success": True, "removed": True}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to remove target from group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to remove target from group"
+                )
+
+        @self.app.get("/target-groups-tree", response_model=dict)
+        async def get_target_groups_tree():
+            """Get target groups as a hierarchical tree structure"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get all groups ordered by path for efficient tree building
+                    groups = await conn.fetch("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups
+                        ORDER BY path
+                    """)
+                    
+                    # Build tree structure
+                    groups_dict = {}
+                    root_groups = []
+                    
+                    for group in groups:
+                        group_dict = dict(group)
+                        group_dict['created_at'] = group_dict['created_at'].isoformat()
+                        if group_dict['updated_at']:
+                            group_dict['updated_at'] = group_dict['updated_at'].isoformat()
+                        group_dict['children'] = []
+                        
+                        # Add target count
+                        target_count = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT m.target_id) 
+                            FROM assets.target_group_memberships m
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                        """, group['path'] + '%')
+                        group_dict['target_count'] = target_count
+                        
+                        groups_dict[group['id']] = group_dict
+                        
+                        if group['parent_group_id'] is None:
+                            root_groups.append(group_dict)
+                        else:
+                            parent = groups_dict.get(group['parent_group_id'])
+                            if parent:
+                                parent['children'].append(group_dict)
+                    
+                    return {"success": True, "tree": root_groups}
+            except Exception as e:
+                self.logger.error("Failed to get target groups tree", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get target groups tree"
                 )
 
     # ============================================================================

@@ -43,8 +43,7 @@ const EnhancedTargetManagement: React.FC = () => {
     os_version: '',
     description: '',
     tags: [],
-    services: [],
-    credentials: []
+    services: []
   });
 
   const [serviceFormData, setServiceFormData] = useState<ServiceFormData>({
