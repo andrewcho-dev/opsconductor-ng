@@ -26,7 +26,7 @@ const NotificationWorkerStatus: React.FC = () => {
   const fetchWorkerStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/notification/status', {
+      const response = await fetch('/api/v1/notifications/status', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -37,8 +37,8 @@ const NotificationWorkerStatus: React.FC = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      setWorkerStatus(data);
+      const result = await response.json();
+      setWorkerStatus(result.data);
       setError(null);
     } catch (err) {
       console.error('Error fetching worker status:', err);
@@ -50,7 +50,7 @@ const NotificationWorkerStatus: React.FC = () => {
 
   const controlWorker = async (action: 'start' | 'stop') => {
     try {
-      const response = await fetch(`/api/v1/notification/worker/${action}`, {
+      const response = await fetch(`/api/v1/notifications/worker/${action}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

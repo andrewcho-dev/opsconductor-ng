@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Check, X, Edit3 } from 'lucide-react';
-import { userApi } from '../services/api';
+import { Plus, Trash2, Check, X, Edit3, Shield } from 'lucide-react';
+import { userApi, rolesApi } from '../services/api';
 import { User, UserCreate } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '../utils/permissions';
 
 
 
@@ -34,7 +36,9 @@ interface EditUserState {
 const Users: React.FC = () => {
   const navigate = useNavigate();
   const { action, id } = useParams<{ action?: string; id?: string }>();
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Array<{id: number, name: string, description: string}>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -46,7 +50,7 @@ const Users: React.FC = () => {
     username: '',
     password: '',
     confirmPassword: '',
-    role: 'viewer',
+    role: '',
     first_name: '',
     last_name: '',
     telephone: '',
@@ -58,7 +62,7 @@ const Users: React.FC = () => {
     username: '',
     password: '',
     confirmPassword: '',
-    role: 'viewer',
+    role: '',
     first_name: '',
     last_name: '',
     telephone: '',
@@ -67,6 +71,7 @@ const Users: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    fetchRoles();
   }, []);
 
   const fetchUsers = async () => {
@@ -81,10 +86,30 @@ const Users: React.FC = () => {
     }
   };
 
+  const fetchRoles = async () => {
+    try {
+      const response = await rolesApi.list();
+      if (response.data.success) {
+        setRoles(response.data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch roles:', error);
+      // Fallback to default roles if API fails
+      setRoles([
+        { id: 1, name: 'admin', description: 'System Administrator' },
+        { id: 2, name: 'operator', description: 'System Operator' },
+        { id: 3, name: 'viewer', description: 'Read-only User' }
+      ]);
+    }
+  };
+
   const startAddingNew = () => {
     setAddingNew(true);
     setEditingUser(null);
     setSelectedUser(null);
+    // Set default role to viewer if available
+    const defaultRole = roles.find(r => r.name === 'viewer') || roles[0];
+    setNewUser(prev => ({ ...prev, role: defaultRole?.name || '' }));
   };
 
   const handleEdit = (user: User) => {
@@ -111,7 +136,7 @@ const Users: React.FC = () => {
       username: '',
       password: '',
       confirmPassword: '',
-      role: 'viewer',
+      role: '',
       first_name: '',
       last_name: '',
       telephone: '',
@@ -137,6 +162,10 @@ const Users: React.FC = () => {
     }
     if (editUser.password && editUser.password.length < 6) {
       alert('Password must be at least 6 characters long');
+      return;
+    }
+    if (!editUser.role.trim()) {
+      alert('Role is required');
       return;
     }
 
@@ -177,7 +206,7 @@ const Users: React.FC = () => {
       username: '',
       password: '',
       confirmPassword: '',
-      role: 'viewer',
+      role: '',
       first_name: '',
       last_name: '',
       telephone: '',
@@ -204,6 +233,10 @@ const Users: React.FC = () => {
     }
     if (newUser.password.length < 6) {
       alert('Password must be at least 6 characters long');
+      return;
+    }
+    if (!newUser.role.trim()) {
+      alert('Role is required');
       return;
     }
 
@@ -265,6 +298,19 @@ const Users: React.FC = () => {
     return (
       <div className="loading-overlay">
         <div className="loading-spinner"></div>
+      </div>
+    );
+  }
+
+  // Check if user has permission to access user management
+  if (!hasPermission(currentUser, PERMISSIONS.USERS_READ)) {
+    return (
+      <div className="dense-dashboard">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <Shield className="mx-auto h-12 w-12 text-red-400 mb-4" />
+          <h2 className="text-xl font-semibold text-red-800 mb-2">Access Denied</h2>
+          <p className="text-red-600">You don't have permission to access user management.</p>
+        </div>
       </div>
     );
   }
@@ -594,14 +640,16 @@ const Users: React.FC = () => {
           <h1>User Management</h1>
         </div>
         <div className="header-actions">
-          <button 
-            className="btn-icon btn-success"
-            onClick={startAddingNew}
-            title="Add new user"
-            disabled={addingNew || !!editingUser}
-          >
-            <Plus size={16} />
-          </button>
+          {hasPermission(currentUser, PERMISSIONS.USERS_CREATE) && (
+            <button 
+              className="btn-icon btn-success"
+              onClick={startAddingNew}
+              title="Add new user"
+              disabled={addingNew || !!editingUser}
+            >
+              <Plus size={16} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -617,13 +665,15 @@ const Users: React.FC = () => {
               <div className="empty-state">
                 <h3>No users found</h3>
                 <p>Get started by creating your first user account.</p>
-                <button 
-                  className="btn-icon btn-success"
-                  onClick={startAddingNew}
-                  title="Create first user"
-                >
-                  <Plus size={16} />
-                </button>
+                {hasPermission(currentUser, PERMISSIONS.USERS_CREATE) && (
+                  <button 
+                    className="btn-icon btn-success"
+                    onClick={startAddingNew}
+                    title="Create first user"
+                  >
+                    <Plus size={16} />
+                  </button>
+                )}
               </div>
             ) : (
               <div className="table-container">
@@ -650,16 +700,18 @@ const Users: React.FC = () => {
                       <td>{user.first_name} {user.last_name}</td>
                       <td>
                         <select 
-                          value={user.role} 
+                          value={user.role || ''} 
                           onChange={(e) => {
                             e.stopPropagation();
                             handleRoleChange(user.id, e.target.value);
                           }}
                           style={{ border: 'none', background: 'transparent', fontSize: '13px' }}
                         >
-                          <option value="viewer">Viewer</option>
-                          <option value="operator">Operator</option>
-                          <option value="admin">Admin</option>
+                          {roles.map(role => (
+                            <option key={role.id} value={role.name}>
+                              {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       <td style={{ color: '#64748b', fontSize: '12px' }}>
@@ -667,26 +719,30 @@ const Users: React.FC = () => {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          <button 
-                            className="btn-icon btn-ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEdit(user);
-                            }}
-                            title="Edit user details"
-                          >
-                            <Edit3 size={16} />
-                          </button>
-                          <button 
-                            className="btn-icon btn-danger"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(user.id);
-                            }}
-                            title="Delete user"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {hasPermission(currentUser, PERMISSIONS.USERS_UPDATE) && (
+                            <button 
+                              className="btn-icon btn-ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(user);
+                              }}
+                              title="Edit user details"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                          )}
+                          {hasPermission(currentUser, PERMISSIONS.USERS_DELETE) && (
+                            <button 
+                              className="btn-icon btn-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(user.id);
+                              }}
+                              title="Delete user"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -776,9 +832,12 @@ const Users: React.FC = () => {
                         : setNewUser(prev => ({ ...prev, role: e.target.value }))
                       }
                     >
-                      <option value="viewer">Viewer</option>
-                      <option value="operator">Operator</option>
-                      <option value="admin">Admin</option>
+                      <option value="">Select a role...</option>
+                      {roles.map(role => (
+                        <option key={role.id} value={role.name}>
+                          {role.name.charAt(0).toUpperCase() + role.name.slice(1)} - {role.description}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -893,10 +952,12 @@ const Users: React.FC = () => {
                   {/* Row 2: role, title, telephone */}
                   <div className="form-field">
                     <label className="form-label">Role</label>
-                    <select className="form-input" value={selectedUser.role} disabled>
-                      <option value="viewer">Viewer</option>
-                      <option value="operator">Operator</option>
-                      <option value="admin">Admin</option>
+                    <select className="form-input" value={selectedUser.role || ''} disabled>
+                      {roles.map(role => (
+                        <option key={role.id} value={role.name}>
+                          {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

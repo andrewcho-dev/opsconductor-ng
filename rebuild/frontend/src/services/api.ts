@@ -162,6 +162,17 @@ export const userApi = {
   }
 };
 
+// Roles API
+export const rolesApi = {
+  list: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string}>}>> => {
+    return api.get('/api/v1/available-roles');
+  },
+
+  listFull: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string, permissions: string[], is_active: boolean, created_at: string, updated_at: string}>}>> => {
+    return api.get('/api/v1/roles');
+  }
+};
+
 
 
 // Target API
@@ -482,23 +493,23 @@ export const notificationApi = {
 
   // Notification channels
   getChannels: async (): Promise<NotificationChannel[]> => {
-    const response = await api.get('/api/v1/notification/channels');
+    const response = await api.get('/api/v1/channels');
     return response.data;
   },
 
   // SMTP settings (admin only)
   getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
-    const response = await api.get('/api/v1/notification/smtp/settings');
+    const response = await api.get('/api/v1/notifications/smtp');
     return response.data;
   },
 
   updateSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
-    const response = await api.post('/api/v1/notification/smtp/settings', settings);
+    const response = await api.post('/api/v1/notifications/smtp', settings);
     return response.data;
   },
 
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
-    const response = await api.post('/api/v1/notification/smtp/test', testRequest);
+    const response = await api.post('/api/v1/notifications/smtp/test', testRequest);
     return response.data;
   }
 };
@@ -539,6 +550,21 @@ export const discoveryApi = {
 
   cancelJob: async (id: number): Promise<{ message: string }> => {
     const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/cancel`);
+    return response.data;
+  },
+
+  getJobProgress: async (id: number): Promise<{
+    status: string;
+    progress: number;
+    total?: number;
+    message: string;
+    phase?: string;
+    targets_found?: number;
+    targets_scanned?: number;
+    total_targets?: number;
+    current_target?: string;
+  }> => {
+    const response = await api.get(`/api/v1/discovery/discovery-jobs/${id}/progress`);
     return response.data;
   },
 

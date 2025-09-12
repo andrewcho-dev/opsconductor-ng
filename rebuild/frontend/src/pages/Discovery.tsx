@@ -82,6 +82,9 @@ const Discovery: React.FC = () => {
   // Network range validation states
   const [validationResults, setValidationResults] = useState<{[key: number]: any}>({});
   
+  // Progress tracking state
+  const [jobProgress, setJobProgress] = useState<{[key: number]: any}>({});
+  
   // Form state for creating new discovery job
   const [newJob, setNewJob] = useState<DiscoveryJobCreate>({
     name: '',
@@ -96,14 +99,59 @@ const Discovery: React.FC = () => {
 
   useEffect(() => {
     loadJobs();
-    loadTargets(1);
+    // Don't load targets initially - wait for job selection
   }, []);
+
+  // Poll for progress of running jobs
+  useEffect(() => {
+    const runningJobs = jobs.filter(job => job.status === 'running');
+    if (runningJobs.length === 0) return;
+
+    const pollProgress = async () => {
+      const progressUpdates: {[key: number]: any} = {};
+      
+      for (const job of runningJobs) {
+        try {
+          const progress = await discoveryApi.getJobProgress(job.id);
+          progressUpdates[job.id] = progress;
+          
+          // If job completed, reload jobs list
+          if (progress.status === 'completed' || progress.status === 'failed') {
+            loadJobs();
+            if (selectedJob && selectedJob.id === job.id) {
+              loadTargets(currentPage, job.id);
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to get progress for job ${job.id}:`, error);
+        }
+      }
+      
+      setJobProgress(prev => ({ ...prev, ...progressUpdates }));
+    };
+
+    // Poll immediately and then every 2 seconds
+    pollProgress();
+    const interval = setInterval(pollProgress, 2000);
+
+    return () => clearInterval(interval);
+  }, [jobs, selectedJob, currentPage]);
+
+  // Load targets when selected job changes
+  useEffect(() => {
+    if (selectedJob) {
+      loadTargets(1, selectedJob.id);
+    } else {
+      setTargets([]);
+      setTotalTargets(0);
+    }
+  }, [selectedJob]);
 
   const loadJobs = async () => {
     try {
       setLoading(true);
       const response = await discoveryApi.listJobs();
-      setJobs(response.jobs || []);
+      setJobs(response.discovery_jobs || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load discovery jobs');
     } finally {
@@ -111,13 +159,20 @@ const Discovery: React.FC = () => {
     }
   };
 
-  const loadTargets = async (page: number = currentPage) => {
+  const loadTargets = async (page: number = currentPage, jobId?: number) => {
     try {
       setLoading(true);
       const skip = (page - 1) * pageSize;
-      const response = await discoveryApi.listTargets(skip, pageSize);
-      setTargets(response.targets || []);
-      setTotalTargets(response.total || 0);
+      // Only load targets if a job is selected
+      if (jobId || selectedJob) {
+        const response = await discoveryApi.listTargets(skip, pageSize, jobId || selectedJob?.id);
+        setTargets(response.targets || []);
+        setTotalTargets(response.total || 0);
+      } else {
+        // No job selected, show empty list
+        setTargets([]);
+        setTotalTargets(0);
+      }
       setCurrentPage(page);
     } catch (err: any) {
       setError(err.message || 'Failed to load discovered targets');
@@ -191,7 +246,9 @@ const Discovery: React.FC = () => {
 
       alert(`Successfully imported ${result.imported} targets to registered targets. ${result.failed} failed.`);
       setSelectedTargets([]);
-      await loadTargets();
+      if (selectedJob) {
+        await loadTargets(currentPage, selectedJob.id);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to import targets');
     } finally {
@@ -216,7 +273,9 @@ const Discovery: React.FC = () => {
       await discoveryApi.ignoreTargets(selectedTargets);
       alert(`Removed ${selectedTargets.length} ignored targets from the list`);
       setSelectedTargets([]);
-      await loadTargets();
+      if (selectedJob) {
+        await loadTargets(currentPage, selectedJob.id);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to ignore targets');
     } finally {
@@ -225,7 +284,7 @@ const Discovery: React.FC = () => {
   };
 
   const handleDeleteJob = async (jobId: number) => {
-    if (!window.confirm('Are you sure you want to delete this discovery job?')) {
+    if (!window.confirm('Are you sure you want to delete this discovery job? This will also delete all discovered targets associated with this job.')) {
       return;
     }
 
@@ -235,6 +294,9 @@ const Discovery: React.FC = () => {
       await loadJobs();
       if (selectedJob?.id === jobId) {
         setSelectedJob(null);
+        setSelectedTarget(null);
+        setSelectedTargets([]);
+        // Targets will be cleared by the useEffect when selectedJob becomes null
       }
     } catch (err: any) {
       setError(err.message || 'Failed to delete discovery job');
@@ -276,12 +338,12 @@ const Discovery: React.FC = () => {
     setEditingJob(job);
     setNewJob({
       name: job.name,
-      discovery_type: job.discovery_type,
+      discovery_type: job.scan_type,
       config: {
-        cidr_ranges: job.config.cidr_ranges || [''],
-        services: job.config.services || [...DEFAULT_SERVICES],
-        os_detection: job.config.os_detection ?? true,
-        timeout: job.config.timeout || 300
+        cidr_ranges: job.configuration?.cidr_ranges || [''],
+        services: job.configuration?.services || [...DEFAULT_SERVICES],
+        os_detection: job.configuration?.os_detection ?? true,
+        timeout: job.configuration?.timeout || 300
       }
     });
     setShowEditForm(true);
@@ -980,15 +1042,55 @@ const Discovery: React.FC = () => {
                       >
                         <td style={{ fontWeight: '500' }}>{job.name}</td>
                         <td>
-                          <span className={`status-badge ${getStatusBadge(job.status)}`}>
-                            {job.status}
-                          </span>
+                          {job.status === 'running' && jobProgress[job.id] ? (
+                            <div style={{ minWidth: '120px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                                <span className={`status-badge ${getStatusBadge(job.status)}`} style={{ fontSize: '10px' }}>
+                                  running
+                                </span>
+                                <span style={{ fontSize: '10px', color: 'var(--neutral-600)' }}>
+                                  {jobProgress[job.id].progress}%
+                                </span>
+                              </div>
+                              <div style={{ 
+                                width: '100%', 
+                                height: '4px', 
+                                backgroundColor: 'var(--neutral-200)', 
+                                borderRadius: '2px',
+                                overflow: 'hidden',
+                                marginBottom: '2px'
+                              }}>
+                                <div style={{ 
+                                  width: `${jobProgress[job.id].progress}%`, 
+                                  height: '100%', 
+                                  backgroundColor: 'var(--primary-blue)',
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              <div style={{ fontSize: '9px', color: 'var(--neutral-500)', lineHeight: '1.2' }}>
+                                {jobProgress[job.id].phase === 'scanning' && jobProgress[job.id].current_target ? (
+                                  `Scanning ${jobProgress[job.id].current_target}`
+                                ) : (
+                                  jobProgress[job.id].message || 'Running...'
+                                )}
+                              </div>
+                              {jobProgress[job.id].targets_found > 0 && (
+                                <div style={{ fontSize: '9px', color: 'var(--success-600)' }}>
+                                  Found: {jobProgress[job.id].targets_found}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className={`status-badge ${getStatusBadge(job.status)}`}>
+                              {job.status}
+                            </span>
+                          )}
                         </td>
                         <td>
-                          {job.results_summary ? (
+                          {job.results && Object.keys(job.results).length > 0 ? (
                             <div style={{ fontSize: '10px' }}>
-                              <div>Hosts: {job.results_summary.total_hosts || 0}</div>
-                              <div>Win: {job.results_summary.windows_hosts || 0}</div>
+                              <div>Hosts: {job.results.total_hosts || 0}</div>
+                              <div>Win: {job.results.windows_hosts || 0}</div>
                             </div>
                           ) : (
                             '-'
@@ -996,6 +1098,7 @@ const Discovery: React.FC = () => {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '4px' }}>
+                            {/* Run/Cancel button - conditional based on status */}
                             {job.status === 'running' ? (
                               <button
                                 className="btn-icon btn-ghost"
@@ -1007,51 +1110,44 @@ const Discovery: React.FC = () => {
                               >
                                 <Square size={14} />
                               </button>
-                            ) : job.status === 'pending' || job.status === 'failed' ? (
-                              <>
-                                <button
-                                  className="btn-icon btn-success"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRunJob(job.id);
-                                  }}
-                                  title="Run job"
-                                >
-                                  <Play size={14} />
-                                </button>
-                                <button
-                                  className="btn-icon btn-ghost"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditJob(job);
-                                  }}
-                                  title="Edit job"
-                                >
-                                  <Edit3 size={14} />
-                                </button>
-                                <button
-                                  className="btn-icon btn-danger"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteJob(job.id);
-                                  }}
-                                  title="Delete job"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </>
                             ) : (
                               <button
-                                className="btn-icon btn-danger"
+                                className="btn-icon btn-success"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleDeleteJob(job.id);
+                                  handleRunJob(job.id);
                                 }}
-                                title="Delete job"
+                                title="Run job"
+                                disabled={job.status === 'running'}
                               >
-                                <Trash2 size={14} />
+                                <Play size={14} />
                               </button>
                             )}
+                            
+                            {/* Edit button - always available */}
+                            <button
+                              className="btn-icon btn-ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditJob(job);
+                              }}
+                              title="Edit job"
+                              disabled={job.status === 'running'}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                            
+                            {/* Delete button - always available */}
+                            <button
+                              className="btn-icon btn-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteJob(job.id);
+                              }}
+                              title="Delete job"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1067,6 +1163,11 @@ const Discovery: React.FC = () => {
         <div className="dashboard-section">
           <div className="section-header">
             Discovered Targets ({targets.length})
+            {selectedJob && (
+              <div style={{ fontSize: '12px', fontWeight: 'normal', color: '#666', marginTop: '4px' }}>
+                From job: {selectedJob.name}
+              </div>
+            )}
           </div>
           {selectedTargets.length > 0 && (
             <div className="bulk-actions">
@@ -1088,8 +1189,17 @@ const Discovery: React.FC = () => {
           <div className="compact-content">
             {targets.length === 0 ? (
               <div className="empty-state">
-                <h3>No discovered targets</h3>
-                <p>Run a discovery job to find targets.</p>
+                {!selectedJob ? (
+                  <>
+                    <h3>No discovery job selected</h3>
+                    <p>Select a discovery job from the left panel to view its discovered targets.</p>
+                  </>
+                ) : (
+                  <>
+                    <h3>No discovered targets</h3>
+                    <p>This discovery job hasn't found any targets yet. Run the job to discover targets.</p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="table-container">
@@ -1363,6 +1473,16 @@ const Discovery: React.FC = () => {
                 </div>
 
                 <div className="detail-group">
+                  <div className="detail-label">Target Range</div>
+                  <div className="detail-value">{selectedJob.target_range}</div>
+                </div>
+
+                <div className="detail-group">
+                  <div className="detail-label">Scan Type</div>
+                  <div className="detail-value">{selectedJob.scan_type}</div>
+                </div>
+
+                <div className="detail-group">
                   <div className="detail-label">Created</div>
                   <div className="detail-value">{new Date(selectedJob.created_at).toLocaleString()}</div>
                 </div>
@@ -1380,21 +1500,80 @@ const Discovery: React.FC = () => {
                   </div>
                 </div>
 
-                {selectedJob.results_summary && (
+                {selectedJob.status === 'running' && jobProgress[selectedJob.id] && (
+                  <>
+                    <div className="detail-group">
+                      <div className="detail-label">Progress</div>
+                      <div className="detail-value">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <div style={{ 
+                            flex: 1,
+                            height: '8px', 
+                            backgroundColor: 'var(--neutral-200)', 
+                            borderRadius: '4px',
+                            overflow: 'hidden'
+                          }}>
+                            <div style={{ 
+                              width: `${jobProgress[selectedJob.id].progress}%`, 
+                              height: '100%', 
+                              backgroundColor: 'var(--primary-blue)',
+                              transition: 'width 0.3s ease'
+                            }} />
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: '500' }}>
+                            {jobProgress[selectedJob.id].progress}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--neutral-600)' }}>
+                          {jobProgress[selectedJob.id].message}
+                        </div>
+                      </div>
+                    </div>
+
+                    {jobProgress[selectedJob.id].phase === 'scanning' && (
+                      <>
+                        <div className="detail-group">
+                          <div className="detail-label">Targets Scanned</div>
+                          <div className="detail-value">
+                            {jobProgress[selectedJob.id].targets_scanned || 0} / {jobProgress[selectedJob.id].total_targets || 0}
+                          </div>
+                        </div>
+
+                        <div className="detail-group">
+                          <div className="detail-label">Targets Found</div>
+                          <div className="detail-value" style={{ color: 'var(--success-600)', fontWeight: '500' }}>
+                            {jobProgress[selectedJob.id].targets_found || 0}
+                          </div>
+                        </div>
+
+                        {jobProgress[selectedJob.id].current_target && (
+                          <div className="detail-group">
+                            <div className="detail-label">Current Target</div>
+                            <div className="detail-value" style={{ fontFamily: 'monospace', fontSize: '11px' }}>
+                              {jobProgress[selectedJob.id].current_target}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+
+                {selectedJob.results && Object.keys(selectedJob.results).length > 0 && (
                   <>
                     <div className="detail-group">
                       <div className="detail-label">Total Hosts</div>
-                      <div className="detail-value">{selectedJob.results_summary.total_hosts || 0}</div>
+                      <div className="detail-value">{selectedJob.results.total_hosts || 0}</div>
                     </div>
 
                     <div className="detail-group">
                       <div className="detail-label">Windows Hosts</div>
-                      <div className="detail-value">{selectedJob.results_summary.windows_hosts || 0}</div>
+                      <div className="detail-value">{selectedJob.results.windows_hosts || 0}</div>
                     </div>
 
                     <div className="detail-group">
                       <div className="detail-label">Linux Hosts</div>
-                      <div className="detail-value">{selectedJob.results_summary.linux_hosts || 0}</div>
+                      <div className="detail-value">{selectedJob.results.linux_hosts || 0}</div>
                     </div>
                   </>
                 )}

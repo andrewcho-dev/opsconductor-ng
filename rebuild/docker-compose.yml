@@ -93,6 +93,7 @@ services:
       - opsconductor-net
     volumes:
       - ./identity-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -126,6 +127,7 @@ services:
       - opsconductor-net
     volumes:
       - ./asset-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 30s
@@ -162,6 +164,7 @@ services:
       - opsconductor-net
     volumes:
       - ./automation-service:/app
+      - ./shared:/app/shared
       - automation_libraries:/app/libraries
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
@@ -199,6 +202,7 @@ services:
       - opsconductor-net
     volumes:
       - ./communication-service:/app
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
       interval: 30s

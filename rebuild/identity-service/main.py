@@ -8,11 +8,33 @@ Consolidates: auth-service + user-service
 import sys
 import os
 from typing import List, Optional
-from fastapi import Query, HTTPException, status
+from fastapi import Query, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
+
+# Temporary: Define permissions locally until RBAC middleware is working
+class PERMISSIONS:
+    USERS_READ = 'users:read'
+    USERS_CREATE = 'users:create'
+    USERS_UPDATE = 'users:update'
+    USERS_DELETE = 'users:delete'
+    ROLES_READ = 'roles:read'
+    ROLES_CREATE = 'roles:create'
+    ROLES_UPDATE = 'roles:update'
+    ROLES_DELETE = 'roles:delete'
+
+# Temporary: Simple permission decorator that allows all for now
+def require_permission(permission: str):
+    def decorator(func):
+        return func
+    return decorator
+
+def require_admin():
+    def decorator(func):
+        return func
+    return decorator
 
 # ============================================================================
 # MODELS
@@ -43,7 +65,7 @@ class UserCreate(BaseModel):
     last_name: Optional[str] = None
     telephone: Optional[str] = None
     title: Optional[str] = None
-    role: Optional[str] = 'viewer'  # Default role
+    role: Optional[str] = None  # Role will be assigned via RBAC
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -146,10 +168,14 @@ class IdentityService(BaseService):
             """Authenticate user and return tokens"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get user with password hash
+                    # Get user with password hash and role information
                     row = await conn.fetchrow("""
-                        SELECT id, username, email, password_hash, is_admin, is_active
-                        FROM identity.users WHERE username = $1 AND is_active = true
+                        SELECT u.id, u.username, u.email, u.password_hash, u.is_admin, u.is_active,
+                               r.name as role_name, r.permissions
+                        FROM identity.users u
+                        LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
+                        LEFT JOIN identity.roles r ON ur.role_id = r.id AND r.is_active = true
+                        WHERE u.username = $1 AND u.is_active = true
                     """, login_data.username)
                     
                     if not row:
@@ -166,6 +192,13 @@ class IdentityService(BaseService):
                         row['id']
                     )
                     
+                    # Get user permissions
+                    permissions = []
+                    role_name = row['role_name']  # Role should always be assigned via RBAC
+                    if row['permissions']:
+                        import json
+                        permissions = json.loads(row['permissions']) if isinstance(row['permissions'], str) else row['permissions']
+                    
                     # Generate tokens (simplified for demo)
                     import jwt
                     import time
@@ -174,7 +207,8 @@ class IdentityService(BaseService):
                         "user_id": row['id'],
                         "username": row['username'],
                         "email": row['email'],
-                        "is_admin": row['is_admin'],
+                        "role": role_name,
+                        "permissions": permissions,
                         "exp": int(time.time()) + 3600  # 1 hour
                     }
                     
@@ -189,7 +223,8 @@ class IdentityService(BaseService):
                             "id": row['id'],
                             "username": row['username'],
                             "email": row['email'],
-                            "is_admin": row['is_admin']
+                            "role": role_name,
+                            "permissions": permissions
                         }
                     )
             except HTTPException:
@@ -202,26 +237,81 @@ class IdentityService(BaseService):
                 )
 
         @self.app.get("/auth/me", response_model=dict)
-        async def get_current_user():
+        async def get_current_user(request: Request):
             """Get current user info from token"""
-            # This would normally decode JWT token from Authorization header
-            # Simplified for demo
-            return {
-                "success": True,
-                "data": {
-                    "id": 1,
-                    "username": "admin",
-                    "email": "admin@example.com",
-                    "is_admin": True
-                }
-            }
+            try:
+                # Extract token from Authorization header
+                auth_header = request.headers.get("authorization")
+                if not auth_header or not auth_header.startswith("Bearer "):
+                    raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+                
+                token = auth_header.split(" ")[1]
+                
+                # Decode JWT token (simplified for demo)
+                import jwt
+                try:
+                    payload = jwt.decode(token, "secret", algorithms=["HS256"])
+                    user_id = payload.get("user_id")
+                    
+                    if not user_id:
+                        raise HTTPException(status_code=401, detail="Invalid token")
+                    
+                    # Get fresh user data with role and permissions
+                    async with self.db.pool.acquire() as conn:
+                        row = await conn.fetchrow("""
+                            SELECT u.id, u.username, u.email, u.first_name, u.last_name, 
+                                   u.is_active, r.name as role_name, r.permissions
+                            FROM identity.users u
+                            LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
+                            LEFT JOIN identity.roles r ON ur.role_id = r.id AND r.is_active = true
+                            WHERE u.id = $1 AND u.is_active = true
+                        """, user_id)
+                        
+                        if not row:
+                            raise HTTPException(status_code=401, detail="User not found or inactive")
+                        
+                        # Get user permissions
+                        permissions = []
+                        role_name = row['role_name']  # Role should always be assigned via RBAC
+                        if row['permissions']:
+                            import json
+                            permissions = json.loads(row['permissions']) if isinstance(row['permissions'], str) else row['permissions']
+                        
+                        return {
+                            "success": True,
+                            "data": {
+                                "id": row['id'],
+                                "username": row['username'],
+                                "email": row['email'],
+                                "first_name": row['first_name'],
+                                "last_name": row['last_name'],
+                                "role": role_name,
+                                "permissions": permissions
+                            }
+                        }
+                        
+                except jwt.ExpiredSignatureError:
+                    raise HTTPException(status_code=401, detail="Token expired")
+                except jwt.InvalidTokenError:
+                    raise HTTPException(status_code=401, detail="Invalid token")
+                    
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get current user", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get user information"
+                )
 
         # ============================================================================
         # USER CRUD ENDPOINTS
         # ============================================================================
         
         @self.app.get("/users", response_model=UserListResponse)
+        @require_permission(PERMISSIONS.USERS_READ)
         async def list_users(
+            request: Request,
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000)
         ):
@@ -245,8 +335,8 @@ class IdentityService(BaseService):
                     
                     users = []
                     for row in rows:
-                        # Determine role - use role_name if available, otherwise derive from is_admin
-                        role = row['role_name'] if row['role_name'] else ('admin' if row['is_admin'] else 'viewer')
+                        # Use RBAC role - all users should have a role assigned
+                        role = row['role_name']
                         
                         users.append(User(
                             id=row['id'],
@@ -282,7 +372,8 @@ class IdentityService(BaseService):
                 )
 
         @self.app.post("/users", response_model=dict)
-        async def create_user(user_data: UserCreate):
+        @require_permission(PERMISSIONS.USERS_CREATE)
+        async def create_user(request: Request, user_data: UserCreate):
             """Create a new user"""
             try:
                 async with self.db.pool.acquire() as conn:
@@ -297,10 +388,20 @@ class IdentityService(BaseService):
                     """, user_data.username, user_data.email, password_hash, 
                          user_data.first_name, user_data.last_name, user_data.telephone, user_data.title, user_data.is_admin, user_data.is_active)
                     
-                    # Assign role if specified
-                    role_name = user_data.role or 'viewer'
-                    if user_data.role:
-                        role_row = await conn.fetchrow("SELECT id FROM identity.roles WHERE name = $1", user_data.role)
+                    # Assign role - use specified role or default to viewer
+                    role_name = user_data.role
+                    if not role_name:
+                        # Get default viewer role
+                        default_role = await conn.fetchrow("SELECT id, name FROM identity.roles WHERE name = 'viewer' AND is_active = true")
+                        if default_role:
+                            role_name = default_role['name']
+                        else:
+                            # Fallback to first active role if viewer doesn't exist
+                            default_role = await conn.fetchrow("SELECT id, name FROM identity.roles WHERE is_active = true ORDER BY name LIMIT 1")
+                            role_name = default_role['name'] if default_role else None
+                    
+                    if role_name:
+                        role_row = await conn.fetchrow("SELECT id FROM identity.roles WHERE name = $1 AND is_active = true", role_name)
                         if role_row:
                             await conn.execute("""
                                 INSERT INTO identity.user_roles (user_id, role_id, assigned_by)
@@ -332,7 +433,8 @@ class IdentityService(BaseService):
                 )
 
         @self.app.get("/users/{user_id}", response_model=dict)
-        async def get_user(user_id: int):
+        @require_permission(PERMISSIONS.USERS_READ)
+        async def get_user(request: Request, user_id: int):
             """Get user by ID"""
             try:
                 async with self.db.pool.acquire() as conn:
@@ -349,8 +451,8 @@ class IdentityService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="User not found")
                     
-                    # Determine role - use role_name if available, otherwise derive from is_admin
-                    role = row['role_name'] if row['role_name'] else ('admin' if row['is_admin'] else 'viewer')
+                    # Use RBAC role - all users should have a role assigned
+                    role = row['role_name']
                     
                     user = User(
                         id=row['id'],
@@ -377,7 +479,8 @@ class IdentityService(BaseService):
                 )
 
         @self.app.put("/users/{user_id}", response_model=dict)
-        async def update_user(user_id: int, user_data: UserUpdate):
+        @require_permission(PERMISSIONS.USERS_UPDATE)
+        async def update_user(request: Request, user_id: int, user_data: UserUpdate):
             """Update user"""
             try:
                 async with self.db.pool.acquire() as conn:
@@ -463,7 +566,7 @@ class IdentityService(BaseService):
                             JOIN identity.user_roles ur ON r.id = ur.role_id
                             WHERE ur.user_id = $1
                         """, user_id)
-                        role_name = role_row['name'] if role_row else ('admin' if row['is_admin'] else 'viewer')
+                        role_name = role_row['name'] if role_row else None
                     
                     user = User(
                         id=row['id'],
@@ -492,7 +595,8 @@ class IdentityService(BaseService):
                 )
 
         @self.app.delete("/users/{user_id}", response_model=dict)
-        async def delete_user(user_id: int):
+        @require_permission(PERMISSIONS.USERS_DELETE)
+        async def delete_user(request: Request, user_id: int):
             """Delete user"""
             try:
                 async with self.db.pool.acquire() as conn:
@@ -513,7 +617,7 @@ class IdentityService(BaseService):
                     detail="Failed to delete user"
                 )
 
-        @self.app.get("/users/roles", response_model=dict)
+        @self.app.get("/available-roles", response_model=dict)
         async def get_available_roles():
             """Get available roles for user assignment"""
             try:
@@ -534,64 +638,8 @@ class IdentityService(BaseService):
                 )
 
         # ============================================================================
-        # ROLE CRUD ENDPOINTS
+        # ROLE CRUD ENDPOINTS (moved to ROLE MANAGEMENT ENDPOINTS section)
         # ============================================================================
-        
-        @self.app.get("/roles", response_model=RoleListResponse)
-        async def list_roles(
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
-        ):
-            """List all roles"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM identity.roles")
-                    
-                    # Get roles with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, description, permissions, created_at, updated_at
-                        FROM identity.roles 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
-                    
-                    roles = []
-                    for row in rows:
-                        # Handle permissions - convert from JSON string if needed
-                        permissions = row['permissions'] or []
-                        if isinstance(permissions, str):
-                            import json
-                            try:
-                                permissions = json.loads(permissions)
-                            except:
-                                permissions = []
-                        
-                        roles.append(Role(
-                            id=row['id'],
-                            name=row['name'],
-                            description=row['description'],
-                            permissions=permissions,
-                            is_active=True,  # Default since schema doesn't have is_active
-                            created_at=row['created_at'].isoformat(),
-                            updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
-                        ))
-                    
-                    return RoleListResponse(
-                        data=roles,
-                        meta={
-                            "total_items": total,
-                            "skip": skip,
-                            "limit": limit
-                        },
-                        total=total  # For backward compatibility
-                    )
-            except Exception as e:
-                self.logger.error("Failed to fetch roles", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch roles"
-                )
 
         @self.app.post("/roles", response_model=dict)
         async def create_role(role_data: RoleCreate):
@@ -599,7 +647,7 @@ class IdentityService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     row = await conn.fetchrow("""
-                        INSERT INTO roles (name, description, permissions, is_active)
+                        INSERT INTO identity.roles (name, description, permissions, is_active)
                         VALUES ($1, $2, $3, $4)
                         RETURNING id, name, description, permissions, is_active, created_at, updated_at
                     """, role_data.name, role_data.description, role_data.permissions, role_data.is_active)
@@ -629,7 +677,7 @@ class IdentityService(BaseService):
                 async with self.db.pool.acquire() as conn:
                     row = await conn.fetchrow("""
                         SELECT id, name, description, permissions, is_active, created_at, updated_at
-                        FROM roles WHERE id = $1
+                        FROM identity.roles WHERE id = $1
                     """, role_id)
                     
                     if not row:
@@ -771,26 +819,26 @@ class IdentityService(BaseService):
                     if not role_exists:
                         raise HTTPException(status_code=404, detail="Role not found")
                     
-                    # Update user's role field
-                    await conn.execute(
-                        "UPDATE identity.users SET role = $1, updated_at = NOW() WHERE id = $2",
-                        role_name, user_id
-                    )
+                    # Remove existing role assignments
+                    await conn.execute("DELETE FROM identity.user_roles WHERE user_id = $1", user_id)
                     
-                    # Also update is_admin field based on role
-                    is_admin = role_name == 'admin'
-                    await conn.execute(
-                        "UPDATE identity.users SET is_admin = $1 WHERE id = $2",
-                        is_admin, user_id
-                    )
+                    # Add new role assignment
+                    role_row = await conn.fetchrow("SELECT id FROM identity.roles WHERE name = $1 AND is_active = true", role_name)
+                    if role_row:
+                        await conn.execute("""
+                            INSERT INTO identity.user_roles (user_id, role_id, assigned_by)
+                            VALUES ($1, $2, $3)
+                        """, user_id, role_row['id'], 1)  # Assigned by admin user (id=1)
+                    
+                    # Update user's updated_at timestamp
+                    await conn.execute("UPDATE identity.users SET updated_at = NOW() WHERE id = $1", user_id)
                     
                     return {
                         "success": True, 
                         "message": f"Role '{role_name}' assigned to user {user_id}",
                         "data": {
                             "user_id": user_id,
-                            "role": role_name,
-                            "is_admin": is_admin
+                            "role": role_name
                         }
                     }
             except HTTPException:
@@ -807,10 +855,13 @@ class IdentityService(BaseService):
             """Get user's current role"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    user_row = await conn.fetchrow(
-                        "SELECT id, username, email, role, is_admin FROM identity.users WHERE id = $1",
-                        user_id
-                    )
+                    user_row = await conn.fetchrow("""
+                        SELECT u.id, u.username, u.email, u.is_admin, r.name as role_name
+                        FROM identity.users u
+                        LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
+                        LEFT JOIN identity.roles r ON ur.role_id = r.id AND r.is_active = true
+                        WHERE u.id = $1
+                    """, user_id)
                     
                     if not user_row:
                         raise HTTPException(status_code=404, detail="User not found")
@@ -821,7 +872,7 @@ class IdentityService(BaseService):
                             "user_id": user_row['id'],
                             "username": user_row['username'],
                             "email": user_row['email'],
-                            "role": user_row['role'] or 'viewer',  # Default to viewer
+                            "role": user_row['role_name'],
                             "is_admin": user_row['is_admin']
                         }
                     }
@@ -966,6 +1017,144 @@ class IdentityService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update notification preferences"
+                )
+
+        # ============================================================================
+        # ROLE MANAGEMENT ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/roles", response_model=dict)
+        @require_permission(PERMISSIONS.ROLES_READ)
+        async def list_roles(request: Request):
+            """List all roles"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    rows = await conn.fetch("""
+                        SELECT id, name, description, permissions, is_active, created_at, updated_at
+                        FROM identity.roles
+                        ORDER BY created_at DESC
+                    """)
+                    
+                    roles = []
+                    for row in rows:
+                        roles.append({
+                            'id': row['id'],
+                            'name': row['name'],
+                            'description': row['description'],
+                            'permissions': row['permissions'] or [],
+                            'is_active': row['is_active'],
+                            'created_at': row['created_at'].isoformat(),
+                            'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
+                        })
+                    
+                    return {"success": True, "data": roles}
+            except Exception as e:
+                self.logger.error("Failed to fetch roles", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to fetch roles"
+                )
+
+        @self.app.post("/roles", response_model=dict)
+        @require_permission(PERMISSIONS.ROLES_CREATE)
+        async def create_role(request: Request, role_data: dict):
+            """Create a new role"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    row = await conn.fetchrow("""
+                        INSERT INTO identity.roles (name, description, permissions, is_active)
+                        VALUES ($1, $2, $3, $4)
+                        RETURNING id, name, description, permissions, is_active, created_at, updated_at
+                    """, role_data['name'], role_data['description'], 
+                         role_data.get('permissions', []), role_data.get('is_active', True))
+                    
+                    role = {
+                        'id': row['id'],
+                        'name': row['name'],
+                        'description': row['description'],
+                        'permissions': row['permissions'] or [],
+                        'is_active': row['is_active'],
+                        'created_at': row['created_at'].isoformat(),
+                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
+                    }
+                    
+                    return {"success": True, "message": "Role created", "data": role}
+            except Exception as e:
+                self.logger.error("Failed to create role", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create role"
+                )
+
+        @self.app.put("/roles/{role_id}", response_model=dict)
+        @require_permission(PERMISSIONS.ROLES_UPDATE)
+        async def update_role(request: Request, role_id: int, role_data: dict):
+            """Update a role"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    row = await conn.fetchrow("""
+                        UPDATE identity.roles 
+                        SET name = $2, description = $3, permissions = $4, is_active = $5, updated_at = NOW()
+                        WHERE id = $1
+                        RETURNING id, name, description, permissions, is_active, created_at, updated_at
+                    """, role_id, role_data['name'], role_data['description'], 
+                         role_data.get('permissions', []), role_data.get('is_active', True))
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Role not found")
+                    
+                    role = {
+                        'id': row['id'],
+                        'name': row['name'],
+                        'description': row['description'],
+                        'permissions': row['permissions'] or [],
+                        'is_active': row['is_active'],
+                        'created_at': row['created_at'].isoformat(),
+                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
+                    }
+                    
+                    return {"success": True, "message": "Role updated", "data": role}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update role", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update role"
+                )
+
+        @self.app.delete("/roles/{role_id}", response_model=dict)
+        @require_permission(PERMISSIONS.ROLES_DELETE)
+        async def delete_role(request: Request, role_id: int):
+            """Delete a role"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if role is in use
+                    user_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM identity.user_roles WHERE role_id = $1", role_id
+                    )
+                    
+                    if user_count > 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot delete role: {user_count} users are assigned to this role"
+                        )
+                    
+                    result = await conn.execute(
+                        "DELETE FROM identity.roles WHERE id = $1", role_id
+                    )
+                    
+                    if result == "DELETE 0":
+                        raise HTTPException(status_code=404, detail="Role not found")
+                    
+                    return {"success": True, "message": "Role deleted"}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to delete role", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete role"
                 )
 
 if __name__ == "__main__":

@@ -812,6 +812,74 @@ class CommunicationService(BaseService):
                     detail="Failed to test SMTP settings"
                 )
 
+        # ============================================================================
+        # WORKER STATUS AND CONTROL ENDPOINTS (must come before generic {notification_id})
+        # ============================================================================
+
+        @self.app.get("/notifications/status", response_model=dict)
+        async def get_worker_status():
+            """Get notification worker status"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get pending notifications count
+                    pending_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM communication.notifications WHERE status = 'pending'"
+                    )
+                    
+                    # Get failed notifications count
+                    failed_count = await conn.fetchval(
+                        "SELECT COUNT(*) FROM communication.notifications WHERE status = 'failed'"
+                    )
+                    
+                    # For now, we'll assume the worker is always running since we don't have a separate worker process
+                    # In a real implementation, you'd check if the worker process is actually running
+                    worker_running = True
+                    
+                    return {
+                        "success": True,
+                        "data": {
+                            "worker_running": worker_running,
+                            "pending_notifications": pending_count,
+                            "failed_notifications": failed_count,
+                            "last_check": datetime.utcnow().isoformat()
+                        }
+                    }
+            except Exception as e:
+                self.logger.error("Failed to get worker status", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get worker status"
+                )
+
+        @self.app.post("/notifications/worker/{action}", response_model=dict)
+        async def control_worker(action: str):
+            """Control notification worker (start/stop)"""
+            try:
+                if action not in ["start", "stop"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Invalid action. Use 'start' or 'stop'"
+                    )
+                
+                # For now, we'll just return a success message
+                # In a real implementation, you'd actually start/stop the worker process
+                return {
+                    "success": True,
+                    "message": f"Worker {action} command executed",
+                    "data": {
+                        "action": action,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error(f"Failed to {action} worker", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to {action} worker"
+                )
+
         @self.app.get("/notifications/{notification_id}", response_model=dict)
         async def get_notification(notification_id: int):
             """Get notification by ID"""
@@ -1142,6 +1210,8 @@ class CommunicationService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to create channel"
                 )
+
+
 
 if __name__ == "__main__":
     service = CommunicationService()

@@ -344,14 +344,15 @@ export interface SMTPTestResponse {
 export interface DiscoveryJob {
   id: number;
   name: string;
-  discovery_type: string;
-  config: DiscoveryConfig;
+  target_range: string;
+  scan_type: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  configuration: DiscoveryConfig;
+  results: Record<string, any>;
   created_by: number;
   created_at: string;
   started_at?: string;
   completed_at?: string;
-  results_summary?: DiscoveryResultsSummary;
 }
 
 export interface DiscoveryService {
@@ -445,7 +446,7 @@ export interface DiscoveryTemplateCreate {
 }
 
 export interface DiscoveryJobListResponse {
-  jobs: DiscoveryJob[];
+  discovery_jobs: DiscoveryJob[];
   total: number;
 }
 

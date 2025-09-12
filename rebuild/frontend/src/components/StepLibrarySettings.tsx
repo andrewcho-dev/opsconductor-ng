@@ -20,10 +20,14 @@ const StepLibrarySettings: React.FC = () => {
     try {
       setLoading(true);
       const data = await stepLibraryService.getInstalledLibraries();
-      setLibraries(data);
+      
+      // Ensure data is always an array
+      const librariesArray = Array.isArray(data) ? data : [];
+      setLibraries(librariesArray);
     } catch (error) {
       setError('Failed to load libraries');
       console.error('Error loading libraries:', error);
+      setLibraries([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -464,25 +468,25 @@ const StepLibrarySettings: React.FC = () => {
                   {libraries.map((library) => (
                     <div
                       key={library.id}
-                      className={`library-card ${!library.is_enabled ? 'disabled' : ''}`}
+                      className={`library-card ${!library.is_active ? 'disabled' : ''}`}
                     >
                       <div className="library-info">
                         <div className="library-details">
                           <div className="library-title">
-                            {library.display_name}
+                            {library.display_name || library.name}
                             {library.is_premium && (
                               <span className="premium-badge">PREMIUM</span>
                             )}
                             <span 
                               className="status-badge" 
-                              style={{ backgroundColor: getStatusColor(library.status) }}
+                              style={{ backgroundColor: getStatusColor(library.is_active ? 'active' : 'inactive') }}
                             >
-                              {library.status}
+                              {library.is_active ? 'Active' : 'Inactive'}
                             </span>
                           </div>
                           
                           <div className="library-meta">
-                            v{library.version} by {library.author}
+                            v{library.version} by {library.author || 'Unknown'}
                           </div>
                           
                           <div className="library-description">
@@ -491,10 +495,10 @@ const StepLibrarySettings: React.FC = () => {
                           
                           <div className="library-stats">
                             <span className="stat-item">
-                              <Package size={12} /> {library.step_count} steps
+                              <Package size={12} /> {library.step_count || 0} steps
                             </span>
                             <span className="stat-item">
-                              <Calendar size={12} /> Installed {formatDate(library.installation_date)}
+                              <Calendar size={12} /> Installed {formatDate(library.installation_date || library.created_at)}
                             </span>
                             {library.last_used && (
                               <span className="stat-item">
@@ -506,15 +510,15 @@ const StepLibrarySettings: React.FC = () => {
                         
                         <div className="library-actions">
                           <button
-                            onClick={() => handleToggleLibrary(library.id, !library.is_enabled)}
-                            className={`action-button ${library.is_enabled ? 'disable' : 'enable'}`}
+                            onClick={() => handleToggleLibrary(library.id, !library.is_active)}
+                            className={`action-button ${library.is_active ? 'disable' : 'enable'}`}
                           >
-                            {library.is_enabled ? 'Disable' : 'Enable'}
+                            {library.is_active ? 'Disable' : 'Enable'}
                           </button>
                           
                           {library.name !== 'core' && (
                             <button
-                              onClick={() => handleUninstall(library.id, library.display_name)}
+                              onClick={() => handleUninstall(library.id, library.display_name || library.name)}
                               className="action-button uninstall"
                             >
                               Uninstall

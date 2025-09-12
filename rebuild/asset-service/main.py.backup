@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 OpsConductor Asset Service
-Handles targets, credentials, and discovery
-Consolidates: target-service + credential-service + discovery-service
+Handles targets and discovery with embedded credentials
+Consolidates: target-service + discovery-service
 """
 
 import sys
@@ -274,9 +274,8 @@ class DiscoveryJob(BaseModel):
 
 class DiscoveryCreate(BaseModel):
     name: str
-    target_range: str  # Changed from network_range to match DB
-    scan_type: str = "ping"
-    configuration: dict = {}
+    discovery_type: str = "network_scan"
+    config: dict = {}
 
 class DiscoveryUpdate(BaseModel):
     status: Optional[str] = None
@@ -320,6 +319,59 @@ class DiscoveredTargetUpdate(BaseModel):
 class DiscoveredTargetListResponse(BaseModel):
     targets: List[DiscoveredTarget]
     total: int
+
+# ============================================================================
+# TARGET GROUPS MODELS
+# ============================================================================
+
+class TargetGroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+class TargetGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+
+class TargetGroup(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    parent_group_id: Optional[int] = None
+    path: str
+    level: int
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    created_at: str
+    updated_at: Optional[str] = None
+    
+    # Computed fields
+    target_count: Optional[int] = None
+    direct_target_count: Optional[int] = None
+    children: Optional[List['TargetGroup']] = None
+
+class TargetGroupListResponse(BaseModel):
+    groups: List[TargetGroup]
+    total: int
+
+class TargetGroupMembershipCreate(BaseModel):
+    target_ids: List[int]
+
+class TargetGroupMembership(BaseModel):
+    id: int
+    target_id: int
+    group_id: int
+    added_at: str
+
+class TargetGroupTargetsResponse(BaseModel):
+    targets: List[EnhancedTargetSummary]
+    total: int
+    include_descendants: bool = False
 
 class AssetService(BaseService):
     def __init__(self):
@@ -778,13 +830,11 @@ class AssetService(BaseService):
             """Test connection to target"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get target details with credential
+                    # Get target details
                     target_row = await conn.fetchrow("""
-                        SELECT t.id, t.name, t.host, t.port, t.target_type, t.credential_id,
-                               c.credential_type, c.encrypted_data
-                        FROM assets.targets t
-                        LEFT JOIN assets.credentials c ON t.credential_id = c.id
-                        WHERE t.id = $1 AND t.is_active = true
+                        SELECT id, name, host, port, target_type
+                        FROM assets.enhanced_targets
+                        WHERE id = $1 AND is_active = true
                     """, target_id)
                     
                     if not target_row:
@@ -800,13 +850,12 @@ class AssetService(BaseService):
                     test_result = await self._test_connection(
                         host=target_row['host'],
                         port=target_row['port'],
-                        connection_type=connection_type,
-                        credential_data=target_row['encrypted_data']
+                        connection_type=connection_type
                     )
                     
                     # Update target's last_tested timestamp
                     await conn.execute(
-                        "UPDATE assets.targets SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2",
+                        "UPDATE assets.enhanced_targets SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2",
                         '{"last_tested": "' + datetime.utcnow().isoformat() + '"}',
                         target_id
                     )
@@ -982,100 +1031,101 @@ class AssetService(BaseService):
                 )
 
         @self.app.get("/discovery/discovery-jobs", response_model=DiscoveryListResponse)
-        async def create_credential(credential_data: CredentialCreate):
-            """Create a new credential"""
+        async def list_discovery_jobs(
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000)
+        ):
+            """List all discovery jobs"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Encrypt sensitive data (simplified for demo)
-                    encrypted_password = f"encrypted_{credential_data.password}" if credential_data.password else None
-                    encrypted_key = f"encrypted_{credential_data.private_key}" if credential_data.private_key else None
+                    # Get total count
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
                     
-                    import json
-                    # Create encrypted data structure
-                    encrypted_data = {
-                        "password": encrypted_password,
-                        "private_key": encrypted_key,
-                        "username": getattr(credential_data, 'username', None)
-                    }
+                    # Get discovery jobs with pagination
+                    rows = await conn.fetch("""
+                        SELECT id, name, target_range, scan_type, status, configuration, results,
+                               started_at, completed_at, created_by, created_at
+                        FROM assets.discovery_scans 
+                        ORDER BY created_at DESC 
+                        LIMIT $1 OFFSET $2
+                    """, limit, skip)
                     
-                    row = await conn.fetchrow("""
-                        INSERT INTO assets.credentials (name, credential_type, encrypted_data, 
-                                               description, metadata, is_active, created_by)
-                        VALUES ($1, $2, $3, $4, $5, $6, 1)
-                        RETURNING id, name, credential_type, description, metadata,
-                                  is_active, created_by, created_at, updated_at
-                    """, credential_data.name, credential_data.credential_type, json.dumps(encrypted_data),
-                         credential_data.description, json.dumps(credential_data.metadata or {}), credential_data.is_active)
+                    discovery_jobs = []
+                    for row in rows:
+                        import json
+                        discovery_jobs.append(DiscoveryJob(
+                            id=row['id'],
+                            name=row['name'],
+                            target_range=row['target_range'],
+                            scan_type=row['scan_type'],
+                            status=row['status'],
+                            configuration=json.loads(row['configuration']) if row['configuration'] else {},
+                            results=json.loads(row['results']) if row['results'] else {},
+                            started_at=row['started_at'].isoformat() if row['started_at'] else None,
+                            completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
+                            created_by=row['created_by'],
+                            created_at=row['created_at'].isoformat()
+                        ))
                     
-                    credential = Credential(
-                        id=row['id'],
-                        name=row['name'],
-                        credential_type=row['credential_type'],
-                        username=getattr(credential_data, 'username', None),
-                        description=row['description'],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
+                    return DiscoveryListResponse(
+                        discovery_jobs=discovery_jobs,
+                        total=total,
+                        skip=skip,
+                        limit=limit
                     )
-                    
-                    return {"success": True, "message": "Credential created", "data": credential}
-            except Exception as e:
-                self.logger.error("Failed to create credential", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create credential"
-                )
-
-        @self.app.get("/credentials/{credential_id}", response_model=dict)
-        async def get_credential(credential_id: int):
-            """Get credential by ID"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    row = await conn.fetchrow("""
-                        SELECT id, name, credential_type, encrypted_data, description, metadata,
-                               is_active, created_by, created_at, updated_at
-                        FROM assets.credentials WHERE id = $1
-                    """, credential_id)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Credential not found")
-                    
-                    import json
-                    # Extract username from encrypted_data if available
-                    try:
-                        encrypted_data = json.loads(row['encrypted_data']) if row['encrypted_data'] else {}
-                    except (json.JSONDecodeError, TypeError):
-                        encrypted_data = {}
-                    username = encrypted_data.get('username')
-                    
-                    credential = Credential(
-                        id=row['id'],
-                        name=row['name'],
-                        credential_type=row['credential_type'],
-                        username=username,
-                        description=row['description'],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
-                    )
-                    
-                    return {"success": True, "data": credential}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to get credential", error=str(e))
+                self.logger.error("Failed to fetch discovery jobs", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get credential"
+                    detail="Failed to fetch discovery jobs"
                 )
 
-        @self.app.put("/credentials/{credential_id}", response_model=dict)
-        async def update_credential(credential_id: int, credential_data: CredentialUpdate):
-            """Update credential"""
+
+
+        @self.app.get("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
+        async def get_discovery_job(discovery_id: int):
+            """Get discovery job by ID"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    row = await conn.fetchrow("""
+                        SELECT id, name, target_range, scan_type, status, configuration, results,
+                               started_at, completed_at, created_by, created_at
+                        FROM assets.discovery_scans WHERE id = $1
+                    """, discovery_id)
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    import json
+                    discovery_job = DiscoveryJob(
+                        id=row['id'],
+                        name=row['name'],
+                        target_range=row['target_range'],
+                        scan_type=row['scan_type'],
+                        status=row['status'],
+                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
+                        results=json.loads(row['results']) if row['results'] else {},
+                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
+                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
+                        created_by=row['created_by'],
+                        created_at=row['created_at'].isoformat()
+                    )
+                    
+                    return {"success": True, "data": discovery_job}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get discovery job", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get discovery job"
+                )
+
+        @self.app.put("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
+        async def update_discovery_job(discovery_id: int, discovery_data: DiscoveryUpdate):
+            """Update discovery job"""
             try:
                 async with self.db.pool.acquire() as conn:
                     # Build dynamic update query
@@ -1083,156 +1133,69 @@ class AssetService(BaseService):
                     values = []
                     param_count = 1
                     
-                    if credential_data.name is not None:
-                        updates.append(f"name = ${param_count}")
-                        values.append(credential_data.name)
+                    if discovery_data.status is not None:
+                        updates.append(f"status = ${param_count}")
+                        values.append(discovery_data.status)
                         param_count += 1
-                    if credential_data.credential_type is not None:
-                        updates.append(f"credential_type = ${param_count}")
-                        values.append(credential_data.credential_type)
-                        param_count += 1
-                    # Handle encrypted_data field
-                    encrypted_data = {}
-                    if credential_data.username is not None:
-                        encrypted_data['username'] = credential_data.username
-                    if credential_data.password is not None:
-                        encrypted_data['password'] = f"encrypted_{credential_data.password}"
-                    if credential_data.private_key is not None:
-                        encrypted_data['private_key'] = f"encrypted_{credential_data.private_key}"
+                        
+                        # Set started_at if status is running
+                        if discovery_data.status == 'running':
+                            updates.append(f"started_at = ${param_count}")
+                            values.append(datetime.utcnow())
+                            param_count += 1
+                        # Set completed_at if status is completed or failed
+                        elif discovery_data.status in ['completed', 'failed']:
+                            updates.append(f"completed_at = ${param_count}")
+                            values.append(datetime.utcnow())
+                            param_count += 1
                     
-                    if encrypted_data:
+                    if discovery_data.results is not None:
                         import json
-                        updates.append(f"encrypted_data = ${param_count}")
-                        values.append(json.dumps(encrypted_data))
-                        param_count += 1
-                    if credential_data.description is not None:
-                        updates.append(f"description = ${param_count}")
-                        values.append(credential_data.description)
-                        param_count += 1
-                    if credential_data.metadata is not None:
-                        import json
-                        updates.append(f"metadata = ${param_count}")
-                        values.append(json.dumps(credential_data.metadata))
-                        param_count += 1
-                    if credential_data.is_active is not None:
-                        updates.append(f"is_active = ${param_count}")
-                        values.append(credential_data.is_active)
+                        updates.append(f"results = ${param_count}")
+                        values.append(json.dumps(discovery_data.results))
                         param_count += 1
                     
                     if not updates:
                         raise HTTPException(status_code=400, detail="No fields to update")
                     
-                    updates.append(f"updated_at = ${param_count}")
-                    values.append(datetime.utcnow())
-                    param_count += 1
-                    values.append(credential_id)
+                    values.append(discovery_id)
                     
                     query = f"""
-                        UPDATE assets.credentials 
+                        UPDATE assets.discovery_scans 
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
-                        RETURNING id, name, credential_type, encrypted_data, description, metadata,
-                                  is_active, created_by, created_at, updated_at
+                        RETURNING id, name, target_range, scan_type, status, configuration, results,
+                                  started_at, completed_at, created_by, created_at
                     """
                     
                     row = await conn.fetchrow(query, *values)
                     
                     if not row:
-                        raise HTTPException(status_code=404, detail="Credential not found")
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
                     
                     import json
-                    # Extract username from encrypted_data if available
-                    try:
-                        encrypted_data = json.loads(row['encrypted_data']) if row['encrypted_data'] else {}
-                    except (json.JSONDecodeError, TypeError):
-                        encrypted_data = {}
-                    username = encrypted_data.get('username')
-                    
-                    credential = Credential(
+                    discovery_job = DiscoveryJob(
                         id=row['id'],
                         name=row['name'],
-                        credential_type=row['credential_type'],
-                        username=username,
-                        description=row['description'],
-                        metadata=json.loads(row['metadata']) if row['metadata'] else {},
-                        is_active=row['is_active'],
+                        target_range=row['target_range'],
+                        scan_type=row['scan_type'],
+                        status=row['status'],
+                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
+                        results=json.loads(row['results']) if row['results'] else {},
+                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
+                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
                         created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat(),
-                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
+                        created_at=row['created_at'].isoformat()
                     )
                     
-                    return {"success": True, "message": "Credential updated", "data": credential}
+                    return {"success": True, "message": "Discovery job updated", "data": discovery_job}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to update credential", error=str(e))
+                self.logger.error("Failed to update discovery job", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update credential"
-                )
-
-        @self.app.delete("/credentials/{credential_id}", response_model=dict)
-        async def delete_credential(credential_id: int):
-            """Delete credential"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    result = await conn.execute(
-                        "DELETE FROM assets.credentials WHERE id = $1", credential_id
-                    )
-                    
-                    if result == "DELETE 0":
-                        raise HTTPException(status_code=404, detail="Credential not found")
-                    
-                    return {"success": True, "message": "Credential deleted"}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to delete credential", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to delete credential"
-                )
-
-        @self.app.get("/credentials/{credential_id}/decrypt", response_model=dict)
-        async def decrypt_credential(credential_id: int):
-            """Decrypt credential data (admin only)"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get credential
-                    credential_row = await conn.fetchrow("""
-                        SELECT id, name, credential_type, encrypted_data, description, 
-                               is_active, created_by, created_at, updated_at
-                        FROM assets.credentials 
-                        WHERE id = $1
-                    """, credential_id)
-                    
-                    if not credential_row:
-                        raise HTTPException(status_code=404, detail="Credential not found")
-                    
-                    # Decrypt the credential data
-                    decrypted_data = self._decrypt_credential_data(credential_row['encrypted_data'])
-                    
-                    return {
-                        "success": True,
-                        "data": {
-                            "id": credential_row['id'],
-                            "name": credential_row['name'],
-                            "credential_type": credential_row['credential_type'],
-                            "decrypted_data": decrypted_data,
-                            "description": credential_row['description'],
-                            "is_active": credential_row['is_active'],
-                            "created_by": credential_row['created_by'],
-                            "created_at": credential_row['created_at'].isoformat(),
-                            "updated_at": credential_row['updated_at'].isoformat() if credential_row['updated_at'] else None
-                        }
-                    }
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to decrypt credential", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to decrypt credential"
+                    detail="Failed to update discovery job"
                 )
 
         # ============================================================================
@@ -1295,14 +1258,20 @@ class AssetService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     import json
+                    
+                    # Extract target range from config
+                    config = discovery_data.config or {}
+                    cidr_ranges = config.get('cidr_ranges', [])
+                    target_range = ', '.join(cidr_ranges) if cidr_ranges else ''
+                    
                     row = await conn.fetchrow("""
                         INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
                                                           configuration, created_by)
                         VALUES ($1, $2, $3, 'pending', $4, 1)
                         RETURNING id, name, target_range, scan_type, status, configuration, results,
                                   started_at, completed_at, created_by, created_at
-                    """, discovery_data.name, discovery_data.target_range, discovery_data.scan_type,
-                         json.dumps(discovery_data.configuration))
+                    """, discovery_data.name, target_range, discovery_data.discovery_type,
+                         json.dumps(discovery_data.config))
                     
                     import json
                     discovery_job = DiscoveryJob(
@@ -1452,16 +1421,21 @@ class AssetService(BaseService):
             """Run/start a discovery job"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Check if job exists
-                    job = await conn.fetchrow(
-                        "SELECT id, status FROM assets.discovery_scans WHERE id = $1", discovery_id
-                    )
+                    # Get job details
+                    job = await conn.fetchrow("""
+                        SELECT id, name, target_range, scan_type, status, configuration 
+                        FROM assets.discovery_scans WHERE id = $1
+                    """, discovery_id)
                     
                     if not job:
                         raise HTTPException(status_code=404, detail="Discovery job not found")
                     
                     if job['status'] == 'running':
                         raise HTTPException(status_code=400, detail="Job is already running")
+                    
+                    # Parse configuration
+                    import json
+                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
                     
                     # Update job status to running
                     await conn.execute("""
@@ -1470,7 +1444,30 @@ class AssetService(BaseService):
                         WHERE id = $1
                     """, discovery_id)
                     
-                    return {"success": True, "message": "Discovery job started"}
+                    # Execute discovery job directly using the worker task
+                    from celery import Celery
+                    import os
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
+                    
+                    task = celery_app.send_task(
+                        'worker.execute_discovery_job',
+                        args=[discovery_id, job['target_range'], job['scan_type'], configuration]
+                    )
+                    
+                    # Store task ID for progress tracking
+                    await conn.execute("""
+                        UPDATE assets.discovery_scans 
+                        SET configuration = $1
+                        WHERE id = $2
+                    """, json.dumps({**configuration, 'celery_task_id': task.id}), discovery_id)
+                    
+                    return {
+                        "success": True, 
+                        "message": "Discovery job started",
+                        "task_id": task.id
+                    }
             except HTTPException:
                 raise
             except Exception as e:
@@ -1478,6 +1475,90 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to run discovery job"
+                )
+
+        @self.app.get("/discovery/discovery-jobs/{discovery_id}/progress", response_model=dict)
+        async def get_discovery_job_progress(discovery_id: int):
+            """Get progress of a running discovery job"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get job details
+                    job = await conn.fetchrow("""
+                        SELECT id, status, configuration 
+                        FROM assets.discovery_scans WHERE id = $1
+                    """, discovery_id)
+                    
+                    if not job:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    if job['status'] != 'running':
+                        return {
+                            "status": job['status'],
+                            "progress": 100 if job['status'] == 'completed' else 0,
+                            "message": f"Job is {job['status']}"
+                        }
+                    
+                    # Get task ID from configuration
+                    import json
+                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
+                    task_id = configuration.get('celery_task_id')
+                    
+                    if not task_id:
+                        return {
+                            "status": "running",
+                            "progress": 0,
+                            "message": "Job is starting..."
+                        }
+                    
+                    # Get task progress from Celery
+                    from celery import Celery
+                    import os
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
+                    
+                    task_result = celery_app.AsyncResult(task_id)
+                    
+                    if task_result.state == 'PROGRESS':
+                        progress_info = task_result.info or {}
+                        return {
+                            "status": "running",
+                            "progress": progress_info.get('current', 0),
+                            "total": progress_info.get('total', 100),
+                            "message": progress_info.get('status', 'Running...'),
+                            "phase": progress_info.get('phase', 'unknown'),
+                            "targets_found": progress_info.get('targets_found', 0),
+                            "targets_scanned": progress_info.get('targets_scanned', 0),
+                            "total_targets": progress_info.get('total_targets', 0),
+                            "current_target": progress_info.get('current_target')
+                        }
+                    elif task_result.state == 'SUCCESS':
+                        return {
+                            "status": "completed",
+                            "progress": 100,
+                            "message": "Discovery job completed successfully"
+                        }
+                    elif task_result.state == 'FAILURE':
+                        error_info = task_result.info or {}
+                        return {
+                            "status": "failed",
+                            "progress": 0,
+                            "message": f"Discovery job failed: {error_info.get('error', 'Unknown error')}"
+                        }
+                    else:
+                        return {
+                            "status": "running",
+                            "progress": 0,
+                            "message": f"Task state: {task_result.state}"
+                        }
+                        
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get discovery job progress", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get discovery job progress"
                 )
 
         @self.app.post("/discovery/discovery-jobs/{discovery_id}/cancel", response_model=dict)
@@ -1519,7 +1600,7 @@ class AssetService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     result = await conn.execute(
-                        "DELETE FROM discovery_jobs WHERE id = $1", discovery_id
+                        "DELETE FROM assets.discovery_scans WHERE id = $1", discovery_id
                     )
                     
                     if result == "DELETE 0":
@@ -1884,183 +1965,645 @@ class AssetService(BaseService):
                     detail="Failed to import targets"
                 )
 
-    # ============================================================================
-    # CREDENTIAL ENCRYPTION/DECRYPTION HELPER METHODS
-    # ============================================================================
-    
-    def _decrypt_credential_data(self, encrypted_data: str) -> dict:
-        """Decrypt credential data"""
-        import json
-        import base64
-        
-        try:
-            # For now, we'll assume the data is base64 encoded JSON
-            # In a real implementation, you'd use proper encryption (AES, etc.)
-            if not encrypted_data:
-                return {}
-            
-            # Try to decode as base64 first
+        @self.app.post("/discovery/validate-network-ranges", response_model=dict)
+        async def validate_network_ranges(request: dict):
+            """Validate network ranges for discovery"""
             try:
-                decoded_bytes = base64.b64decode(encrypted_data)
-                decoded_str = decoded_bytes.decode('utf-8')
-                return json.loads(decoded_str)
-            except:
-                # If base64 decoding fails, try to parse as JSON directly
-                return json.loads(encrypted_data)
+                ranges = request.get('ranges', [])
+                if not ranges:
+                    raise HTTPException(status_code=400, detail="No ranges provided")
                 
-        except Exception as e:
-            self.logger.error("Failed to decrypt credential data", error=str(e))
-            return {"error": "Failed to decrypt credential data"}
-    
-    def _encrypt_credential_data(self, credential_data: dict) -> str:
-        """Encrypt credential data"""
-        import json
-        import base64
+                results = []
+                for range_str in ranges:
+                    try:
+                        import ipaddress
+                        # Try to parse as CIDR
+                        network = ipaddress.ip_network(range_str, strict=False)
+                        
+                        # Calculate some basic info
+                        num_hosts = network.num_addresses
+                        if network.version == 4:
+                            # For IPv4, subtract network and broadcast addresses if not a single host
+                            if network.prefixlen < 31:
+                                num_hosts -= 2
+                        
+                        results.append({
+                            "range": range_str,
+                            "valid": True,
+                            "network": str(network),
+                            "num_hosts": num_hosts,
+                            "version": network.version,
+                            "is_private": network.is_private,
+                            "message": f"Valid {network.version} network with {num_hosts} hosts"
+                        })
+                    except ValueError as e:
+                        results.append({
+                            "range": range_str,
+                            "valid": False,
+                            "error": str(e),
+                            "message": f"Invalid network range: {str(e)}"
+                        })
+                
+                return {"success": True, "results": results}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to validate network ranges", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to validate network ranges"
+                )
+
+        # ============================================================================
+        # TARGET GROUPS ENDPOINTS
+        # ============================================================================
         
-        try:
-            # For now, we'll just base64 encode the JSON
-            # In a real implementation, you'd use proper encryption (AES, etc.)
-            json_str = json.dumps(credential_data)
-            encoded_bytes = base64.b64encode(json_str.encode('utf-8'))
-            return encoded_bytes.decode('utf-8')
-        except Exception as e:
-            self.logger.error("Failed to encrypt credential data", error=str(e))
-            return ""
+        @self.app.get("/target-groups", response_model=TargetGroupListResponse)
+        async def list_target_groups(
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000),
+            include_counts: bool = Query(False, description="Include target counts for each group")
+        ):
+            """List all target groups with optional target counts"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get groups with basic info
+                    groups_query = """
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups
+                        ORDER BY path
+                        OFFSET $1 LIMIT $2
+                    """
+                    groups = await conn.fetch(groups_query, skip, limit)
+                    
+                    # Get total count
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.target_groups")
+                    
+                    result_groups = []
+                    for group in groups:
+                        group_dict = dict(group)
+                        group_dict['created_at'] = group_dict['created_at'].isoformat()
+                        if group_dict['updated_at']:
+                            group_dict['updated_at'] = group_dict['updated_at'].isoformat()
+                        
+                        # Add target counts if requested
+                        if include_counts:
+                            # Direct targets in this group
+                            direct_count = await conn.fetchval("""
+                                SELECT COUNT(*) FROM assets.target_group_memberships 
+                                WHERE group_id = $1
+                            """, group['id'])
+                            
+                            # All targets including descendants
+                            total_count = await conn.fetchval("""
+                                SELECT COUNT(DISTINCT m.target_id) 
+                                FROM assets.target_group_memberships m
+                                JOIN assets.target_groups g ON m.group_id = g.id
+                                WHERE g.path LIKE $1
+                            """, group['path'] + '%')
+                            
+                            group_dict['direct_target_count'] = direct_count
+                            group_dict['target_count'] = total_count
+                        
+                        result_groups.append(group_dict)
+                    
+                    return TargetGroupListResponse(
+                        groups=result_groups,
+                        total=total
+                    )
+            except Exception as e:
+                self.logger.error("Failed to list target groups", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to list target groups"
+                )
+
+        @self.app.post("/target-groups", response_model=dict)
+        async def create_target_group(group_data: TargetGroupCreate):
+            """Create a new target group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Validate parent group exists if specified
+                    if group_data.parent_group_id:
+                        parent = await conn.fetchrow("""
+                            SELECT level FROM assets.target_groups WHERE id = $1
+                        """, group_data.parent_group_id)
+                        
+                        if not parent:
+                            raise HTTPException(status_code=404, detail="Parent group not found")
+                        
+                        if parent['level'] >= 3:
+                            raise HTTPException(
+                                status_code=400, 
+                                detail="Cannot create group: maximum depth of 3 levels exceeded"
+                            )
+                    
+                    # Check for duplicate name within same parent
+                    existing = await conn.fetchval("""
+                        SELECT id FROM assets.target_groups 
+                        WHERE name = $1 AND parent_group_id IS NOT DISTINCT FROM $2
+                    """, group_data.name, group_data.parent_group_id)
+                    
+                    if existing:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="Group name already exists at this level"
+                        )
+                    
+                    # Insert new group (triggers will handle path and level)
+                    group_id = await conn.fetchval("""
+                        INSERT INTO assets.target_groups (name, description, parent_group_id, color, icon)
+                        VALUES ($1, $2, $3, $4, $5)
+                        RETURNING id
+                    """, group_data.name, group_data.description, group_data.parent_group_id,
+                        group_data.color, group_data.icon)
+                    
+                    # Get the created group with computed path and level
+                    created_group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    result = dict(created_group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to create target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to create target group"
+                )
+
+        @self.app.get("/target-groups/{group_id}", response_model=dict)
+        async def get_target_group(group_id: int, include_children: bool = Query(False)):
+            """Get target group by ID with optional children"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get the group
+                    group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    result = dict(group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    # Add target counts
+                    direct_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM assets.target_group_memberships 
+                        WHERE group_id = $1
+                    """, group_id)
+                    
+                    total_count = await conn.fetchval("""
+                        SELECT COUNT(DISTINCT m.target_id) 
+                        FROM assets.target_group_memberships m
+                        JOIN assets.target_groups g ON m.group_id = g.id
+                        WHERE g.path LIKE $1
+                    """, group['path'] + '%')
+                    
+                    result['direct_target_count'] = direct_count
+                    result['target_count'] = total_count
+                    
+                    # Add children if requested
+                    if include_children:
+                        children = await conn.fetch("""
+                            SELECT id, name, description, parent_group_id, path, level, 
+                                   color, icon, created_at, updated_at
+                            FROM assets.target_groups 
+                            WHERE parent_group_id = $1
+                            ORDER BY name
+                        """, group_id)
+                        
+                        result['children'] = []
+                        for child in children:
+                            child_dict = dict(child)
+                            child_dict['created_at'] = child_dict['created_at'].isoformat()
+                            if child_dict['updated_at']:
+                                child_dict['updated_at'] = child_dict['updated_at'].isoformat()
+                            result['children'].append(child_dict)
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get target group"
+                )
+
+        @self.app.put("/target-groups/{group_id}", response_model=dict)
+        async def update_target_group(group_id: int, group_data: TargetGroupUpdate):
+            """Update target group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    existing = await conn.fetchrow("""
+                        SELECT id, parent_group_id FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not existing:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # Validate parent group if being changed
+                    if group_data.parent_group_id is not None and group_data.parent_group_id != existing['parent_group_id']:
+                        if group_data.parent_group_id:
+                            parent = await conn.fetchrow("""
+                                SELECT level FROM assets.target_groups WHERE id = $1
+                            """, group_data.parent_group_id)
+                            
+                            if not parent:
+                                raise HTTPException(status_code=404, detail="Parent group not found")
+                            
+                            if parent['level'] >= 3:
+                                raise HTTPException(
+                                    status_code=400, 
+                                    detail="Cannot move group: maximum depth of 3 levels exceeded"
+                                )
+                    
+                    # Check for duplicate name if name is being changed
+                    if group_data.name:
+                        duplicate = await conn.fetchval("""
+                            SELECT id FROM assets.target_groups 
+                            WHERE name = $1 AND parent_group_id IS NOT DISTINCT FROM $2 AND id != $3
+                        """, group_data.name, 
+                            group_data.parent_group_id if group_data.parent_group_id is not None else existing['parent_group_id'],
+                            group_id)
+                        
+                        if duplicate:
+                            raise HTTPException(
+                                status_code=400, 
+                                detail="Group name already exists at this level"
+                            )
+                    
+                    # Build update query dynamically
+                    update_fields = []
+                    update_values = []
+                    param_count = 1
+                    
+                    if group_data.name is not None:
+                        update_fields.append(f"name = ${param_count}")
+                        update_values.append(group_data.name)
+                        param_count += 1
+                    
+                    if group_data.description is not None:
+                        update_fields.append(f"description = ${param_count}")
+                        update_values.append(group_data.description)
+                        param_count += 1
+                    
+                    if group_data.parent_group_id is not None:
+                        update_fields.append(f"parent_group_id = ${param_count}")
+                        update_values.append(group_data.parent_group_id)
+                        param_count += 1
+                    
+                    if group_data.color is not None:
+                        update_fields.append(f"color = ${param_count}")
+                        update_values.append(group_data.color)
+                        param_count += 1
+                    
+                    if group_data.icon is not None:
+                        update_fields.append(f"icon = ${param_count}")
+                        update_values.append(group_data.icon)
+                        param_count += 1
+                    
+                    if not update_fields:
+                        raise HTTPException(status_code=400, detail="No fields to update")
+                    
+                    update_fields.append(f"updated_at = ${param_count}")
+                    update_values.append("CURRENT_TIMESTAMP")
+                    param_count += 1
+                    
+                    update_values.append(group_id)
+                    
+                    query = f"""
+                        UPDATE assets.target_groups 
+                        SET {', '.join(update_fields)}
+                        WHERE id = ${param_count}
+                    """
+                    
+                    await conn.execute(query, *update_values[:-1], group_id)
+                    
+                    # Get updated group
+                    updated_group = await conn.fetchrow("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    result = dict(updated_group)
+                    result['created_at'] = result['created_at'].isoformat()
+                    if result['updated_at']:
+                        result['updated_at'] = result['updated_at'].isoformat()
+                    
+                    return {"success": True, "group": result}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update target group"
+                )
+
+        @self.app.delete("/target-groups/{group_id}", response_model=dict)
+        async def delete_target_group(group_id: int):
+            """Delete target group (and all descendants)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group = await conn.fetchrow("""
+                        SELECT path FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # First count how many groups will be deleted
+                    deleted_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM assets.target_groups 
+                        WHERE path LIKE $1
+                    """, group['path'] + '%')
+                    
+                    # Delete all descendants (cascade will handle memberships)
+                    await conn.execute("""
+                        DELETE FROM assets.target_groups 
+                        WHERE path LIKE $1
+                    """, group['path'] + '%')
+                    
+                    return {"success": True, "deleted_groups": deleted_count}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to delete target group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to delete target group"
+                )
+
+        @self.app.get("/target-groups/{group_id}/targets", response_model=TargetGroupTargetsResponse)
+        async def get_group_targets(
+            group_id: int, 
+            include_descendants: bool = Query(False, description="Include targets from descendant groups"),
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000)
+        ):
+            """Get targets in a group, optionally including descendants"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group = await conn.fetchrow("""
+                        SELECT path FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    if include_descendants:
+                        # Get targets from this group and all descendants
+                        targets_query = """
+                            SELECT DISTINCT t.id, t.name, t.hostname, t.ip_address, t.os_type, 
+                                   t.os_version, t.description, t.tags, t.created_at, t.updated_at
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                            ORDER BY t.name
+                            OFFSET $2 LIMIT $3
+                        """
+                        targets = await conn.fetch(targets_query, group['path'] + '%', skip, limit)
+                        
+                        total = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT t.id)
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                        """, group['path'] + '%')
+                    else:
+                        # Get targets only from this specific group
+                        targets_query = """
+                            SELECT t.id, t.name, t.hostname, t.ip_address, t.os_type, 
+                                   t.os_version, t.description, t.tags, t.created_at, t.updated_at
+                            FROM assets.enhanced_targets t
+                            JOIN assets.target_group_memberships m ON t.id = m.target_id
+                            WHERE m.group_id = $1
+                            ORDER BY t.name
+                            OFFSET $2 LIMIT $3
+                        """
+                        targets = await conn.fetch(targets_query, group_id, skip, limit)
+                        
+                        total = await conn.fetchval("""
+                            SELECT COUNT(*)
+                            FROM assets.target_group_memberships
+                            WHERE group_id = $1
+                        """, group_id)
+                    
+                    # Format targets
+                    result_targets = []
+                    for target in targets:
+                        # Get services for this target (summary version)
+                        service_rows = await conn.fetch("""
+                            SELECT id, service_type, port, is_default, is_secure, is_enabled, notes,
+                                   credential_type, connection_status, last_tested_at, created_at
+                            FROM assets.target_services
+                            WHERE target_id = $1
+                            ORDER BY is_default DESC, service_type, port
+                        """, target['id'])
+                        
+                        services = []
+                        for service_row in service_rows:
+                            services.append(TargetServiceSummary(
+                                id=service_row['id'],
+                                target_id=target['id'],
+                                service_type=service_row['service_type'],
+                                port=service_row['port'],
+                                is_default=service_row['is_default'],
+                                is_secure=service_row['is_secure'],
+                                is_enabled=service_row['is_enabled'],
+                                notes=service_row['notes'],
+                                credential_type=service_row['credential_type'],
+                                connection_status=service_row['connection_status'],
+                                last_tested_at=service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None,
+                                created_at=service_row['created_at'].isoformat()
+                            ))
+                        
+                        import json
+                        result_targets.append(EnhancedTargetSummary(
+                            id=target['id'],
+                            name=target['name'],
+                            hostname=target['hostname'],
+                            ip_address=target['ip_address'],
+                            os_type=target['os_type'],
+                            os_version=target['os_version'],
+                            description=target['description'],
+                            tags=json.loads(target['tags']) if target['tags'] else [],
+                            services=services,
+                            created_at=target['created_at'].isoformat(),
+                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
+                        ))
+                    
+                    return TargetGroupTargetsResponse(
+                        targets=result_targets,
+                        total=total,
+                        include_descendants=include_descendants
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get group targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get group targets"
+                )
+
+        @self.app.post("/target-groups/{group_id}/targets", response_model=dict)
+        async def add_targets_to_group(group_id: int, membership_data: TargetGroupMembershipCreate):
+            """Add targets to a group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if group exists
+                    group_exists = await conn.fetchval("""
+                        SELECT id FROM assets.target_groups WHERE id = $1
+                    """, group_id)
+                    
+                    if not group_exists:
+                        raise HTTPException(status_code=404, detail="Target group not found")
+                    
+                    # Validate all targets exist
+                    existing_targets = await conn.fetch("""
+                        SELECT id FROM assets.enhanced_targets WHERE id = ANY($1)
+                    """, membership_data.target_ids)
+                    
+                    existing_ids = {t['id'] for t in existing_targets}
+                    missing_ids = set(membership_data.target_ids) - existing_ids
+                    
+                    if missing_ids:
+                        raise HTTPException(
+                            status_code=404, 
+                            detail=f"Targets not found: {list(missing_ids)}"
+                        )
+                    
+                    # Add memberships (ignore duplicates)
+                    added_count = 0
+                    for target_id in membership_data.target_ids:
+                        try:
+                            await conn.execute("""
+                                INSERT INTO assets.target_group_memberships (target_id, group_id)
+                                VALUES ($1, $2)
+                            """, target_id, group_id)
+                            added_count += 1
+                        except:
+                            # Ignore duplicate key errors
+                            pass
+                    
+                    return {
+                        "success": True, 
+                        "added": added_count,
+                        "skipped": len(membership_data.target_ids) - added_count
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to add targets to group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to add targets to group"
+                )
+
+        @self.app.delete("/target-groups/{group_id}/targets/{target_id}", response_model=dict)
+        async def remove_target_from_group(group_id: int, target_id: int):
+            """Remove a target from a group"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Remove membership
+                    deleted = await conn.fetchval("""
+                        DELETE FROM assets.target_group_memberships 
+                        WHERE group_id = $1 AND target_id = $2
+                        RETURNING id
+                    """, group_id, target_id)
+                    
+                    if not deleted:
+                        raise HTTPException(
+                            status_code=404, 
+                            detail="Target not found in this group"
+                        )
+                    
+                    return {"success": True, "removed": True}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to remove target from group", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to remove target from group"
+                )
+
+        @self.app.get("/target-groups-tree", response_model=dict)
+        async def get_target_groups_tree():
+            """Get target groups as a hierarchical tree structure"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get all groups ordered by path for efficient tree building
+                    groups = await conn.fetch("""
+                        SELECT id, name, description, parent_group_id, path, level, 
+                               color, icon, created_at, updated_at
+                        FROM assets.target_groups
+                        ORDER BY path
+                    """)
+                    
+                    # Build tree structure
+                    groups_dict = {}
+                    root_groups = []
+                    
+                    for group in groups:
+                        group_dict = dict(group)
+                        group_dict['created_at'] = group_dict['created_at'].isoformat()
+                        if group_dict['updated_at']:
+                            group_dict['updated_at'] = group_dict['updated_at'].isoformat()
+                        group_dict['children'] = []
+                        
+                        # Add target count
+                        target_count = await conn.fetchval("""
+                            SELECT COUNT(DISTINCT m.target_id) 
+                            FROM assets.target_group_memberships m
+                            JOIN assets.target_groups g ON m.group_id = g.id
+                            WHERE g.path LIKE $1
+                        """, group['path'] + '%')
+                        group_dict['target_count'] = target_count
+                        
+                        groups_dict[group['id']] = group_dict
+                        
+                        if group['parent_group_id'] is None:
+                            root_groups.append(group_dict)
+                        else:
+                            parent = groups_dict.get(group['parent_group_id'])
+                            if parent:
+                                parent['children'].append(group_dict)
+                    
+                    return {"success": True, "tree": root_groups}
+            except Exception as e:
+                self.logger.error("Failed to get target groups tree", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get target groups tree"
+                )
 
     # ============================================================================
-    # CONNECTION TESTING HELPER METHODS
+    # MAIN EXECUTION
     # ============================================================================
-    
-    def _determine_connection_type(self, target_type: str, port: int) -> str:
-        """Determine connection type based on target type and port"""
-        if target_type:
-            target_type_lower = target_type.lower()
-            if 'windows' in target_type_lower:
-                return 'winrm' if port in [5985, 5986] else 'rdp'
-            elif 'linux' in target_type_lower or 'unix' in target_type_lower:
-                return 'ssh'
-        
-        # Fallback to port-based detection
-        port_mappings = {
-            22: 'ssh',
-            23: 'telnet',
-            80: 'http',
-            443: 'https',
-            3389: 'rdp',
-            5985: 'winrm',
-            5986: 'winrm'
-        }
-        
-        return port_mappings.get(port, 'tcp')
-    
-    async def _test_connection(self, host: str, port: int, connection_type: str, credential_data: str = None) -> dict:
-        """Test connection to target based on connection type"""
-        import asyncio
-        import socket
-        import time
-        
-        start_time = time.time()
-        
-        try:
-            if connection_type == 'tcp':
-                # Basic TCP connection test
-                return await self._test_tcp_connection(host, port, start_time)
-            elif connection_type == 'ssh':
-                return await self._test_ssh_connection(host, port, credential_data, start_time)
-            elif connection_type == 'winrm':
-                return await self._test_winrm_connection(host, port, credential_data, start_time)
-            elif connection_type in ['http', 'https']:
-                return await self._test_http_connection(host, port, connection_type, start_time)
-            else:
-                # Default to TCP test
-                return await self._test_tcp_connection(host, port, start_time)
-                
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"Connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
-    
-    async def _test_tcp_connection(self, host: str, port: int, start_time: float) -> dict:
-        """Test basic TCP connection"""
-        import asyncio
-        import socket
-        import time
-        
-        try:
-            # Create socket with timeout
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)  # 10 second timeout
-            
-            result = sock.connect_ex((host, port))
-            sock.close()
-            
-            response_time = int((time.time() - start_time) * 1000)
-            
-            if result == 0:
-                return {
-                    "status": "success",
-                    "message": f"TCP connection to {host}:{port} successful",
-                    "response_time_ms": response_time
-                }
-            else:
-                return {
-                    "status": "failed",
-                    "message": f"TCP connection to {host}:{port} failed (error code: {result})",
-                    "response_time_ms": response_time
-                }
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"TCP connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
-    
-    async def _test_ssh_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
-        """Test SSH connection"""
-        # For now, just do a TCP test to port 22
-        # In a real implementation, you'd use paramiko or similar
-        tcp_result = await self._test_tcp_connection(host, port, start_time)
-        if tcp_result["status"] == "success":
-            tcp_result["message"] = f"SSH port {port} is reachable on {host}"
-        return tcp_result
-    
-    async def _test_winrm_connection(self, host: str, port: int, credential_data: str, start_time: float) -> dict:
-        """Test WinRM connection"""
-        # For now, just do a TCP test to WinRM ports
-        # In a real implementation, you'd use pywinrm or similar
-        tcp_result = await self._test_tcp_connection(host, port, start_time)
-        if tcp_result["status"] == "success":
-            tcp_result["message"] = f"WinRM port {port} is reachable on {host}"
-        return tcp_result
-    
-    async def _test_http_connection(self, host: str, port: int, protocol: str, start_time: float) -> dict:
-        """Test HTTP/HTTPS connection"""
-        import aiohttp
-        import time
-        
-        try:
-            url = f"{protocol}://{host}:{port}"
-            timeout = aiohttp.ClientTimeout(total=10)
-            
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
-                    response_time = int((time.time() - start_time) * 1000)
-                    return {
-                        "status": "success",
-                        "message": f"{protocol.upper()} connection to {host}:{port} successful (HTTP {response.status})",
-                        "response_time_ms": response_time
-                    }
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"{protocol.upper()} connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
 
 if __name__ == "__main__":
     service = AssetService()

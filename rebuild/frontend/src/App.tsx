@@ -19,6 +19,7 @@ import NotificationHistoryPage from './pages/NotificationHistory';
 import CeleryWorkersIframe from './pages/CeleryWorkersIframe';
 import SystemSettings from './pages/SystemSettings';
 import LegacySettings from './pages/LegacySettings';
+import RoleManagement from './pages/RoleManagement';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -72,6 +73,7 @@ const App: React.FC = () => {
                     <Route path="/history/celery-workers-iframe" element={<CeleryWorkersIframe />} />
                     <Route path="/notifications" element={<Navigate to="/settings/notification-preferences" />} />
                     <Route path="/settings" element={<Navigate to="/settings/step-library" />} />
+                    <Route path="/settings/roles" element={<RoleManagement />} />
                     <Route path="/settings/:section" element={<SystemSettings />} />
                     <Route path="/legacy-settings" element={<LegacySettings />} />
                     <Route path="*" element={<Navigate to="/" />} />

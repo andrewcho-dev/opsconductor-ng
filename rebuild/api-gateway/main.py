@@ -32,6 +32,7 @@ SERVICE_ROUTES = {
     "/api/v1/auth": "IDENTITY_SERVICE_URL",
     "/api/v1/users": "IDENTITY_SERVICE_URL",
     "/api/v1/roles": "IDENTITY_SERVICE_URL",
+    "/api/v1/available-roles": "IDENTITY_SERVICE_URL",
     
     # Asset Service
     "/api/v1/targets": "ASSET_SERVICE_URL",
@@ -292,7 +293,8 @@ class APIGateway:
                             detail="Invalid or expired token"
                         )
                     
-                    user_info = response.json()
+                    auth_response = response.json()
+                    user_info = auth_response.get("data", {}) if auth_response.get("success") else {}
                     
                 except httpx.RequestError:
                     raise HTTPException(
@@ -348,7 +350,8 @@ class APIGateway:
                 headers["x-user-id"] = str(user_info.get("id"))
                 headers["x-username"] = user_info.get("username", "")
                 headers["x-user-email"] = user_info.get("email", "")
-                headers["x-is-admin"] = str(user_info.get("is_admin", False)).lower()
+                headers["x-user-role"] = user_info.get("role", "viewer")
+                headers["x-user-permissions"] = ",".join(user_info.get("permissions", []))
                 headers["x-authenticated"] = "true"
             else:
                 headers["x-authenticated"] = "false"

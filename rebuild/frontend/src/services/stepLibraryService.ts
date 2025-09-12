@@ -63,15 +63,22 @@ export interface LibraryInfo {
   id: number;
   name: string;
   version: string;
-  display_name: string;
   description: string;
-  author: string;
-  is_enabled: boolean;
-  is_premium: boolean;
-  installation_date: string;
+  manifest: Record<string, any>;
+  is_active: boolean;
+  is_builtin: boolean;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  // Optional fields for backward compatibility
+  display_name?: string;
+  author?: string;
+  is_enabled?: boolean;
+  is_premium?: boolean;
+  installation_date?: string;
   last_used?: string;
-  step_count: number;
-  status: string;
+  step_count?: number;
+  status?: string;
 }
 
 export interface StepLibraryResponse {
@@ -120,7 +127,7 @@ class StepLibraryService {
       if (platform) params.append('platform', platform);
 
       const response = await api.get(
-        `/api/v1/step-libraries/steps?${params.toString()}`
+        `/api/v1/steps?${params.toString()}`
       );
 
       const data: StepLibraryResponse = response.data;
@@ -157,10 +164,10 @@ class StepLibraryService {
     try {
       const params = enabledOnly ? '?enabled_only=true' : '';
       const response = await api.get(
-        `/api/v1/step-libraries/libraries${params}`
+        `/api/v1/libraries${params}`
       );
 
-      const data: LibraryInfo[] = response.data;
+      const data: LibraryInfo[] = response.data.libraries || [];
       
       // Cache the result
       this.cache.set(cacheKey, {
@@ -187,7 +194,7 @@ class StepLibraryService {
       }
 
       const response = await api.post(
-        `/api/v1/step-libraries/libraries/install`,
+        `/api/v1/libraries`,
         formData,
         {
           headers: {
@@ -215,7 +222,7 @@ class StepLibraryService {
   async uninstallLibrary(libraryId: number): Promise<void> {
     try {
       await api.delete(
-        `/api/v1/step-libraries/libraries/${libraryId}`
+        `/api/v1/libraries/${libraryId}`
       );
 
       // Clear cache after uninstallation
@@ -235,7 +242,7 @@ class StepLibraryService {
   async toggleLibrary(libraryId: number, enabled: boolean): Promise<void> {
     try {
       await api.put(
-        `/api/v1/step-libraries/libraries/${libraryId}/toggle`,
+        `/api/v1/libraries/${libraryId}`,
         null,
         {
           params: { enabled }
@@ -259,7 +266,7 @@ class StepLibraryService {
   async getLibraryDetails(libraryId: number): Promise<any> {
     try {
       const response = await api.get(
-        `/api/v1/step-libraries/libraries/${libraryId}`
+        `/api/v1/libraries/${libraryId}`
       );
       return response.data;
     } catch (error) {
@@ -433,7 +440,7 @@ class StepLibraryService {
    */
   async checkServiceHealth(): Promise<boolean> {
     try {
-      const response = await api.get('/api/v1/step-libraries/health', {
+      const response = await api.get('/api/v1/health', {
         timeout: 5000
       });
       return response.status === 200;

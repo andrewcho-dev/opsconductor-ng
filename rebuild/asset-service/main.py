@@ -274,9 +274,8 @@ class DiscoveryJob(BaseModel):
 
 class DiscoveryCreate(BaseModel):
     name: str
-    target_range: str  # Changed from network_range to match DB
-    scan_type: str = "ping"
-    configuration: dict = {}
+    discovery_type: str = "network_scan"
+    config: dict = {}
 
 class DiscoveryUpdate(BaseModel):
     status: Optional[str] = None
@@ -1010,263 +1009,6 @@ class AssetService(BaseService):
                             target_range=row['target_range'],
                             scan_type=row['scan_type'],
                             status=row['status'],
-                            configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                            results=json.loads(row['results']) if row['results'] else {},
-                            started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                            completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                            created_by=row['created_by'],
-                            created_at=row['created_at'].isoformat()
-                        ))
-                    
-                    return DiscoveryListResponse(
-                        discovery_jobs=discovery_jobs,
-                        total=total,
-                        skip=skip,
-                        limit=limit
-                    )
-            except Exception as e:
-                self.logger.error("Failed to fetch discovery jobs", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch discovery jobs"
-                )
-
-        @self.app.get("/discovery/discovery-jobs", response_model=DiscoveryListResponse)
-        async def list_discovery_jobs(
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
-        ):
-            """List all discovery jobs"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
-                    
-                    # Get discovery jobs with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
-                    
-                    discovery_jobs = []
-                    for row in rows:
-                        import json
-                        discovery_jobs.append(DiscoveryJob(
-                            id=row['id'],
-                            name=row['name'],
-                            target_range=row['target_range'],
-                            scan_type=row['scan_type'],
-                            status=row['status'],
-                            configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                            results=json.loads(row['results']) if row['results'] else {},
-                            started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                            completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                            created_by=row['created_by'],
-                            created_at=row['created_at'].isoformat()
-                        ))
-                    
-                    return DiscoveryListResponse(
-                        discovery_jobs=discovery_jobs,
-                        total=total,
-                        skip=skip,
-                        limit=limit
-                    )
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to fetch discovery jobs", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch discovery jobs"
-                )
-
-        @self.app.post("/discovery/discovery-jobs", response_model=dict)
-        async def create_discovery_job(discovery_data: DiscoveryCreate):
-            """Create a new discovery job"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    import json
-                    row = await conn.fetchrow("""
-                        INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
-                                                          configuration, created_by)
-                        VALUES ($1, $2, $3, 'pending', $4, 1)
-                        RETURNING id, name, target_range, scan_type, status, configuration, results,
-                                  started_at, completed_at, created_by, created_at
-                    """, discovery_data.name, discovery_data.target_range, discovery_data.scan_type,
-                         json.dumps(discovery_data.configuration))
-                    
-                    discovery_job = DiscoveryJob(
-                        id=row['id'],
-                        name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
-                    )
-                    
-                    return {"success": True, "message": "Discovery job created", "data": discovery_job}
-            except Exception as e:
-                self.logger.error("Failed to create discovery job", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create discovery job"
-                )
-
-        @self.app.get("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
-        async def get_discovery_job(discovery_id: int):
-            """Get discovery job by ID"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    row = await conn.fetchrow("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans WHERE id = $1
-                    """, discovery_id)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
-                    
-                    import json
-                    discovery_job = DiscoveryJob(
-                        id=row['id'],
-                        name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
-                    )
-                    
-                    return {"success": True, "data": discovery_job}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to get discovery job", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get discovery job"
-                )
-
-        @self.app.put("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
-        async def update_discovery_job(discovery_id: int, discovery_data: DiscoveryUpdate):
-            """Update discovery job"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Build dynamic update query
-                    updates = []
-                    values = []
-                    param_count = 1
-                    
-                    if discovery_data.status is not None:
-                        updates.append(f"status = ${param_count}")
-                        values.append(discovery_data.status)
-                        param_count += 1
-                        
-                        # Set started_at if status is running
-                        if discovery_data.status == 'running':
-                            updates.append(f"started_at = ${param_count}")
-                            values.append(datetime.utcnow())
-                            param_count += 1
-                        # Set completed_at if status is completed or failed
-                        elif discovery_data.status in ['completed', 'failed']:
-                            updates.append(f"completed_at = ${param_count}")
-                            values.append(datetime.utcnow())
-                            param_count += 1
-                    
-                    if discovery_data.results is not None:
-                        import json
-                        updates.append(f"results = ${param_count}")
-                        values.append(json.dumps(discovery_data.results))
-                        param_count += 1
-                    
-                    if not updates:
-                        raise HTTPException(status_code=400, detail="No fields to update")
-                    
-                    values.append(discovery_id)
-                    
-                    query = f"""
-                        UPDATE assets.discovery_scans 
-                        SET {', '.join(updates)}
-                        WHERE id = ${param_count}
-                        RETURNING id, name, target_range, scan_type, status, configuration, results,
-                                  started_at, completed_at, created_by, created_at
-                    """
-                    
-                    row = await conn.fetchrow(query, *values)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
-                    
-                    import json
-                    discovery_job = DiscoveryJob(
-                        id=row['id'],
-                        name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
-                        results=json.loads(row['results']) if row['results'] else {},
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
-                    )
-                    
-                    return {"success": True, "message": "Discovery job updated", "data": discovery_job}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to update discovery job", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update discovery job"
-                )
-
-        # ============================================================================
-        # DISCOVERY CRUD ENDPOINTS
-        # ============================================================================
-        
-        @self.app.get("/discovery/discovery-jobs", response_model=DiscoveryListResponse)
-        async def list_discovery_jobs(
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
-        ):
-            """List all discovery jobs"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
-                    
-                    # Get discovery jobs with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
-                    
-                    discovery_jobs = []
-                    for row in rows:
-                        import json
-                        discovery_jobs.append(DiscoveryJob(
-                            id=row['id'],
-                            name=row['name'],
-                            target_range=row['target_range'],
-                            scan_type=row['scan_type'],
-                            status=row['status'],
                             configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
                             results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
                             started_at=row['started_at'].isoformat() if row['started_at'] else None,
@@ -1294,14 +1036,20 @@ class AssetService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     import json
+                    
+                    # Extract target range from config
+                    config = discovery_data.config or {}
+                    cidr_ranges = config.get('cidr_ranges', [])
+                    target_range = ', '.join(cidr_ranges) if cidr_ranges else ''
+                    
                     row = await conn.fetchrow("""
                         INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
                                                           configuration, created_by)
                         VALUES ($1, $2, $3, 'pending', $4, 1)
                         RETURNING id, name, target_range, scan_type, status, configuration, results,
                                   started_at, completed_at, created_by, created_at
-                    """, discovery_data.name, discovery_data.target_range, discovery_data.scan_type,
-                         json.dumps(discovery_data.configuration))
+                    """, discovery_data.name, target_range, discovery_data.discovery_type,
+                         json.dumps(discovery_data.config))
                     
                     import json
                     discovery_job = DiscoveryJob(
@@ -1451,16 +1199,21 @@ class AssetService(BaseService):
             """Run/start a discovery job"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Check if job exists
-                    job = await conn.fetchrow(
-                        "SELECT id, status FROM assets.discovery_scans WHERE id = $1", discovery_id
-                    )
+                    # Get job details
+                    job = await conn.fetchrow("""
+                        SELECT id, name, target_range, scan_type, status, configuration 
+                        FROM assets.discovery_scans WHERE id = $1
+                    """, discovery_id)
                     
                     if not job:
                         raise HTTPException(status_code=404, detail="Discovery job not found")
                     
                     if job['status'] == 'running':
                         raise HTTPException(status_code=400, detail="Job is already running")
+                    
+                    # Parse configuration
+                    import json
+                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
                     
                     # Update job status to running
                     await conn.execute("""
@@ -1469,7 +1222,30 @@ class AssetService(BaseService):
                         WHERE id = $1
                     """, discovery_id)
                     
-                    return {"success": True, "message": "Discovery job started"}
+                    # Execute discovery job directly using the worker task
+                    from celery import Celery
+                    import os
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
+                    
+                    task = celery_app.send_task(
+                        'worker.execute_discovery_job',
+                        args=[discovery_id, job['target_range'], job['scan_type'], configuration]
+                    )
+                    
+                    # Store task ID for progress tracking
+                    await conn.execute("""
+                        UPDATE assets.discovery_scans 
+                        SET configuration = $1
+                        WHERE id = $2
+                    """, json.dumps({**configuration, 'celery_task_id': task.id}), discovery_id)
+                    
+                    return {
+                        "success": True, 
+                        "message": "Discovery job started",
+                        "task_id": task.id
+                    }
             except HTTPException:
                 raise
             except Exception as e:
@@ -1477,6 +1253,90 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to run discovery job"
+                )
+
+        @self.app.get("/discovery/discovery-jobs/{discovery_id}/progress", response_model=dict)
+        async def get_discovery_job_progress(discovery_id: int):
+            """Get progress of a running discovery job"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get job details
+                    job = await conn.fetchrow("""
+                        SELECT id, status, configuration 
+                        FROM assets.discovery_scans WHERE id = $1
+                    """, discovery_id)
+                    
+                    if not job:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    if job['status'] != 'running':
+                        return {
+                            "status": job['status'],
+                            "progress": 100 if job['status'] == 'completed' else 0,
+                            "message": f"Job is {job['status']}"
+                        }
+                    
+                    # Get task ID from configuration
+                    import json
+                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
+                    task_id = configuration.get('celery_task_id')
+                    
+                    if not task_id:
+                        return {
+                            "status": "running",
+                            "progress": 0,
+                            "message": "Job is starting..."
+                        }
+                    
+                    # Get task progress from Celery
+                    from celery import Celery
+                    import os
+                    
+                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
+                    
+                    task_result = celery_app.AsyncResult(task_id)
+                    
+                    if task_result.state == 'PROGRESS':
+                        progress_info = task_result.info or {}
+                        return {
+                            "status": "running",
+                            "progress": progress_info.get('current', 0),
+                            "total": progress_info.get('total', 100),
+                            "message": progress_info.get('status', 'Running...'),
+                            "phase": progress_info.get('phase', 'unknown'),
+                            "targets_found": progress_info.get('targets_found', 0),
+                            "targets_scanned": progress_info.get('targets_scanned', 0),
+                            "total_targets": progress_info.get('total_targets', 0),
+                            "current_target": progress_info.get('current_target')
+                        }
+                    elif task_result.state == 'SUCCESS':
+                        return {
+                            "status": "completed",
+                            "progress": 100,
+                            "message": "Discovery job completed successfully"
+                        }
+                    elif task_result.state == 'FAILURE':
+                        error_info = task_result.info or {}
+                        return {
+                            "status": "failed",
+                            "progress": 0,
+                            "message": f"Discovery job failed: {error_info.get('error', 'Unknown error')}"
+                        }
+                    else:
+                        return {
+                            "status": "running",
+                            "progress": 0,
+                            "message": f"Task state: {task_result.state}"
+                        }
+                        
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get discovery job progress", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get discovery job progress"
                 )
 
         @self.app.post("/discovery/discovery-jobs/{discovery_id}/cancel", response_model=dict)
@@ -1518,7 +1378,7 @@ class AssetService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     result = await conn.execute(
-                        "DELETE FROM discovery_jobs WHERE id = $1", discovery_id
+                        "DELETE FROM assets.discovery_scans WHERE id = $1", discovery_id
                     )
                     
                     if result == "DELETE 0":
@@ -1883,6 +1743,55 @@ class AssetService(BaseService):
                     detail="Failed to import targets"
                 )
 
+        @self.app.post("/discovery/validate-network-ranges", response_model=dict)
+        async def validate_network_ranges(request: dict):
+            """Validate network ranges for discovery"""
+            try:
+                ranges = request.get('ranges', [])
+                if not ranges:
+                    raise HTTPException(status_code=400, detail="No ranges provided")
+                
+                results = []
+                for range_str in ranges:
+                    try:
+                        import ipaddress
+                        # Try to parse as CIDR
+                        network = ipaddress.ip_network(range_str, strict=False)
+                        
+                        # Calculate some basic info
+                        num_hosts = network.num_addresses
+                        if network.version == 4:
+                            # For IPv4, subtract network and broadcast addresses if not a single host
+                            if network.prefixlen < 31:
+                                num_hosts -= 2
+                        
+                        results.append({
+                            "range": range_str,
+                            "valid": True,
+                            "network": str(network),
+                            "num_hosts": num_hosts,
+                            "version": network.version,
+                            "is_private": network.is_private,
+                            "message": f"Valid {network.version} network with {num_hosts} hosts"
+                        })
+                    except ValueError as e:
+                        results.append({
+                            "range": range_str,
+                            "valid": False,
+                            "error": str(e),
+                            "message": f"Invalid network range: {str(e)}"
+                        })
+                
+                return {"success": True, "results": results}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to validate network ranges", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to validate network ranges"
+                )
+
         # ============================================================================
         # TARGET GROUPS ENDPOINTS
         # ============================================================================
@@ -2200,11 +2109,16 @@ class AssetService(BaseService):
                     if not group:
                         raise HTTPException(status_code=404, detail="Target group not found")
                     
-                    # Delete all descendants (cascade will handle memberships)
+                    # First count how many groups will be deleted
                     deleted_count = await conn.fetchval("""
+                        SELECT COUNT(*) FROM assets.target_groups 
+                        WHERE path LIKE $1
+                    """, group['path'] + '%')
+                    
+                    # Delete all descendants (cascade will handle memberships)
+                    await conn.execute("""
                         DELETE FROM assets.target_groups 
                         WHERE path LIKE $1
-                        RETURNING COUNT(*)
                     """, group['path'] + '%')
                     
                     return {"success": True, "deleted_groups": deleted_count}
@@ -2466,139 +2380,8 @@ class AssetService(BaseService):
                 )
 
     # ============================================================================
-    # CONNECTION TESTING HELPER METHODS
+    # MAIN EXECUTION
     # ============================================================================
-    
-    def _determine_connection_type(self, target_type: str, port: int) -> str:
-        """Determine connection type based on target type and port"""
-        if target_type:
-            target_type_lower = target_type.lower()
-            if 'windows' in target_type_lower:
-                return 'winrm' if port in [5985, 5986] else 'rdp'
-            elif 'linux' in target_type_lower or 'unix' in target_type_lower:
-                return 'ssh'
-        
-        # Fallback to port-based detection
-        port_mappings = {
-            22: 'ssh',
-            23: 'telnet',
-            80: 'http',
-            443: 'https',
-            3389: 'rdp',
-            5985: 'winrm',
-            5986: 'winrm'
-        }
-        
-        return port_mappings.get(port, 'tcp')
-    
-    async def _test_connection(self, host: str, port: int, connection_type: str) -> dict:
-        """Test connection to target based on connection type"""
-        import asyncio
-        import socket
-        import time
-        
-        start_time = time.time()
-        
-        try:
-            if connection_type == 'tcp':
-                # Basic TCP connection test
-                return await self._test_tcp_connection(host, port, start_time)
-            elif connection_type == 'ssh':
-                return await self._test_ssh_connection(host, port, start_time)
-            elif connection_type == 'winrm':
-                return await self._test_winrm_connection(host, port, start_time)
-            elif connection_type in ['http', 'https']:
-                return await self._test_http_connection(host, port, connection_type, start_time)
-            else:
-                # Default to TCP test
-                return await self._test_tcp_connection(host, port, start_time)
-                
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"Connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
-    
-    async def _test_tcp_connection(self, host: str, port: int, start_time: float) -> dict:
-        """Test basic TCP connection"""
-        import asyncio
-        import socket
-        import time
-        
-        try:
-            # Create socket with timeout
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(10)  # 10 second timeout
-            
-            result = sock.connect_ex((host, port))
-            sock.close()
-            
-            response_time = int((time.time() - start_time) * 1000)
-            
-            if result == 0:
-                return {
-                    "status": "success",
-                    "message": f"TCP connection to {host}:{port} successful",
-                    "response_time_ms": response_time
-                }
-            else:
-                return {
-                    "status": "failed",
-                    "message": f"TCP connection to {host}:{port} failed (error code: {result})",
-                    "response_time_ms": response_time
-                }
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"TCP connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
-    
-    async def _test_ssh_connection(self, host: str, port: int, start_time: float) -> dict:
-        """Test SSH connection"""
-        # For now, just do a TCP test to port 22
-        # In a real implementation, you'd use paramiko or similar
-        tcp_result = await self._test_tcp_connection(host, port, start_time)
-        if tcp_result["status"] == "success":
-            tcp_result["message"] = f"SSH port {port} is reachable on {host}"
-        return tcp_result
-    
-    async def _test_winrm_connection(self, host: str, port: int, start_time: float) -> dict:
-        """Test WinRM connection"""
-        # For now, just do a TCP test to WinRM ports
-        # In a real implementation, you'd use pywinrm or similar
-        tcp_result = await self._test_tcp_connection(host, port, start_time)
-        if tcp_result["status"] == "success":
-            tcp_result["message"] = f"WinRM port {port} is reachable on {host}"
-        return tcp_result
-    
-    async def _test_http_connection(self, host: str, port: int, protocol: str, start_time: float) -> dict:
-        """Test HTTP/HTTPS connection"""
-        import aiohttp
-        import time
-        
-        try:
-            url = f"{protocol}://{host}:{port}"
-            timeout = aiohttp.ClientTimeout(total=10)
-            
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as response:
-                    response_time = int((time.time() - start_time) * 1000)
-                    return {
-                        "status": "success",
-                        "message": f"{protocol.upper()} connection to {host}:{port} successful (HTTP {response.status})",
-                        "response_time_ms": response_time
-                    }
-        except Exception as e:
-            response_time = int((time.time() - start_time) * 1000)
-            return {
-                "status": "failed",
-                "message": f"{protocol.upper()} connection test failed: {str(e)}",
-                "response_time_ms": response_time
-            }
 
 if __name__ == "__main__":
     service = AssetService()

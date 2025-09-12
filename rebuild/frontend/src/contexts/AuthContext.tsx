@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User } from '../utils/permissions';
 
 interface AuthContextType {
   token: string | null;
-  user: any | null;
-  login: (token: string, user: any) => void;
+  user: User | null;
+  login: (token: string, user: User) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -25,7 +26,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -50,7 +51,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(false);
   }, []);
 
-  const login = (newToken: string, newUser: any) => {
+  const login = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('access_token', newToken);

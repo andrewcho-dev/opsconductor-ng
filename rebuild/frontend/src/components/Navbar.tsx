@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { authApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '../utils/permissions';
 import { 
   BarChart3, 
   Users, 
@@ -120,7 +121,7 @@ const Navbar: React.FC = () => {
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Target size={14} /></span>
-                    Manage Targets
+                    Target Management
                   </Link>
                   <Link 
                     to="/target-groups" 
@@ -130,16 +131,16 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><List size={14} /></span>
                     Manage Groups
                   </Link>
+                  <Link 
+                    to="/discovery" 
+                    className={`nav-submenu-item ${location.pathname === '/discovery' || location.pathname.startsWith('/discovery/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Search size={14} /></span>
+                    Target Discovery
+                  </Link>
                 </div>
               </div>
-              <Link 
-                to="/discovery" 
-                className={`nav-menu-item ${isActive('/discovery') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Search size={16} /></span>
-                Discovery
-              </Link>
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
                   <span className="nav-icon"><Settings size={16} /></span>
@@ -187,21 +188,21 @@ const Navbar: React.FC = () => {
                   </Link>
                   <Link 
                     to="/history/notifications" 
-                    className={`nav-submenu-item ${location.pathname === '/history/notifications' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    className={`nav-submenu-item ${location.pathname === '/history/notifications' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.NOTIFICATIONS_READ) ? 'disabled' : ''}`} 
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><ClipboardList size={14} /></span>
                     Notifications
-                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                    {!hasPermission(user, PERMISSIONS.NOTIFICATIONS_READ) && <span className="admin-badge">Admin</span>}
                   </Link>
                   <Link 
                     to="/history/celery-workers-iframe" 
-                    className={`nav-submenu-item ${location.pathname === '/history/celery-workers-iframe' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    className={`nav-submenu-item ${location.pathname === '/history/celery-workers-iframe' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SYSTEM_ADMIN) ? 'disabled' : ''}`} 
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Activity size={14} /></span>
                     Celery Workers
-                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                    {!hasPermission(user, PERMISSIONS.SYSTEM_ADMIN) && <span className="admin-badge">Admin</span>}
                   </Link>
                 </div>
               </div>
@@ -217,21 +218,21 @@ const Navbar: React.FC = () => {
                 <div className="nav-submenu">
                   <Link 
                     to="/settings/step-library" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/step-library' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    className={`nav-submenu-item ${location.pathname === '/settings/step-library' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.STEP_LIBRARIES_READ) ? 'disabled' : ''}`} 
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Code size={14} /></span>
                     Step Library
-                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                    {!hasPermission(user, PERMISSIONS.STEP_LIBRARIES_READ) && <span className="admin-badge">Admin</span>}
                   </Link>
                   <Link 
                     to="/settings/smtp" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${user?.role !== 'admin' ? 'disabled' : ''}`} 
+                    className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SMTP_CONFIG) ? 'disabled' : ''}`} 
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Mail size={14} /></span>
                     SMTP Config
-                    {user?.role !== 'admin' && <span className="admin-badge">Admin</span>}
+                    {!hasPermission(user, PERMISSIONS.SMTP_CONFIG) && <span className="admin-badge">Admin</span>}
                   </Link>
                   <Link 
                     to="/settings/notification-preferences" 
@@ -241,6 +242,16 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Bell size={14} /></span>
                     Notifications
                   </Link>
+                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
+                    <Link 
+                      to="/settings/roles" 
+                      className={`nav-submenu-item ${location.pathname === '/settings/roles' ? 'active' : ''}`} 
+                      onClick={closeMenu}
+                    >
+                      <span className="nav-icon"><Users size={14} /></span>
+                      Role Management
+                    </Link>
+                  )}
                 </div>
               </div>
               <button onClick={handleLogout} className="nav-menu-item logout">
