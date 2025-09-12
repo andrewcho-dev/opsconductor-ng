@@ -226,6 +226,8 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:3001
       ASSET_SERVICE_URL: http://asset-service:3002
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      HTTP_PROXY: http://nginx:8080
+      HTTPS_PROXY: http://nginx:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -298,6 +300,7 @@ services:
       - "80:80"
       - "443:443"
       - "3100:443"  # Additional HTTPS port for compatibility
+      - "8080:8080"  # Forward proxy port for outbound connections
     depends_on:
       - api-gateway
       - frontend

@@ -11,7 +11,7 @@ from celery import Celery
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
 app = Celery('automation-worker', broker=redis_url, backend=redis_url)
 
-# Configure Celery
+# Configure Celery with resource protection
 app.conf.update(
     task_serializer='json',
     accept_content=['json'],
@@ -19,10 +19,14 @@ app.conf.update(
     timezone='UTC',
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=30 * 60,  # 30 minutes
-    task_soft_time_limit=25 * 60,  # 25 minutes
-    worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=1000,
+    task_time_limit=20 * 60,  # 20 minutes max (reduced from 30)
+    task_soft_time_limit=18 * 60,  # 18 minutes soft limit
+    worker_prefetch_multiplier=1,  # Process one task at a time
+    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks (reduced from 1000)
+    worker_max_memory_per_child=512000,  # 512MB memory limit per worker
+    task_acks_late=True,  # Acknowledge tasks only after completion
+    worker_disable_rate_limits=False,
+    task_reject_on_worker_lost=True,
 )
 
 @app.task(bind=True)
@@ -71,13 +75,16 @@ def execute_job(self, job_id, workflow_definition, input_data=None):
 
 @app.task(bind=True)
 def execute_discovery_job(self, discovery_job_id, target_range, scan_type, configuration):
-    """Execute a discovery job with progress tracking"""
+    """Execute a discovery job with parallel scanning and progress tracking"""
     import asyncio
     import asyncpg
     import json
     import subprocess
     import ipaddress
     import socket
+    import concurrent.futures
+    import threading
+    import time
     from datetime import datetime
     
     try:
@@ -112,43 +119,65 @@ def execute_discovery_job(self, discovery_job_id, target_range, scan_type, confi
         if total_ips == 0:
             raise Exception("No valid IP addresses found in target range")
         
-        # Update progress
-        self.update_state(state='PROGRESS', meta={
-            'current': 10, 
-            'total': 100, 
-            'status': f'Scanning {total_ips} IP addresses...',
-            'phase': 'scanning',
-            'targets_found': 0,
-            'targets_scanned': 0,
-            'total_targets': total_ips
-        })
-        
         # Get enabled services from configuration
         enabled_services = []
         if configuration and 'services' in configuration:
             enabled_services = [s for s in configuration['services'] if s.get('enabled', False)]
         
-        discovered_targets = []
+        # Calculate timeouts based on job size
+        ping_timeout = 1 if total_ips > 50 else 2
+        port_timeout = 1 if total_ips > 50 else 2
+        hostname_timeout = 2 if total_ips > 50 else 5
         
-        # Scan each IP
-        for i, ip in enumerate(target_ips):
+        # RESOURCE PROTECTION: Limit workers based on system capacity
+        # Prevent memory exhaustion and system overload
+        if total_ips > 500:
+            raise Exception(f"Discovery job too large: {total_ips} IPs exceeds maximum of 500")
+        
+        total_operations = total_ips * len(enabled_services)
+        if total_operations > 5000:
+            raise Exception(f"Discovery job too complex: {total_operations} operations exceeds maximum of 5000")
+        
+        # Conservative worker limits to prevent system crashes
+        if total_ips <= 25:
+            max_workers = 3
+        elif total_ips <= 50:
+            max_workers = 5
+        elif total_ips <= 100:
+            max_workers = 8
+        elif total_ips <= 200:
+            max_workers = 10
+        else:
+            max_workers = 12  # Never exceed 12 workers to prevent overload
+        
+        # Update progress
+        self.update_state(state='PROGRESS', meta={
+            'current': 5, 
+            'total': 100, 
+            'status': f'Initializing parallel scan of {total_ips} IPs with {max_workers} workers...',
+            'phase': 'initialization',
+            'targets_found': 0,
+            'targets_scanned': 0,
+            'total_targets': total_ips,
+            'max_workers': max_workers
+        })
+        
+        # Shared state for progress tracking
+        progress_lock = threading.Lock()
+        progress_state = {
+            'scanned': 0,
+            'found': 0,
+            'discovered_targets': []
+        }
+        
+        def scan_single_ip(ip):
+            """Scan a single IP address with timeouts"""
             try:
-                # Update progress
-                progress = 10 + int((i / total_ips) * 80)  # 10-90% for scanning
-                self.update_state(state='PROGRESS', meta={
-                    'current': progress, 
-                    'total': 100, 
-                    'status': f'Scanning {ip}... ({i+1}/{total_ips})',
-                    'phase': 'scanning',
-                    'targets_found': len(discovered_targets),
-                    'targets_scanned': i + 1,
-                    'total_targets': total_ips,
-                    'current_target': ip
-                })
-                
-                # Ping test first
-                ping_result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
-                                           capture_output=True, text=True, timeout=2)
+                # Ping test first with timeout
+                ping_result = subprocess.run(
+                    ['ping', '-c', '1', '-W', str(ping_timeout), ip], 
+                    capture_output=True, text=True, timeout=ping_timeout + 1
+                )
                 
                 if ping_result.returncode == 0:
                     # Host is alive, scan services
@@ -160,38 +189,135 @@ def execute_discovery_job(self, discovery_job_id, target_range, scan_type, confi
                         'system_info': {}
                     }
                     
-                    # Try to get hostname
+                    # Try to get hostname with timeout
                     try:
+                        socket.setdefaulttimeout(hostname_timeout)
                         hostname = socket.gethostbyaddr(ip)[0]
                         target_info['hostname'] = hostname
                     except:
                         pass
+                    finally:
+                        socket.setdefaulttimeout(None)
                     
-                    # Scan enabled services
+                    # Scan enabled services with timeout
                     for service in enabled_services:
                         try:
                             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            sock.settimeout(1)
+                            sock.settimeout(port_timeout)
                             result = sock.connect_ex((ip, service['port']))
                             sock.close()
                             
                             if result == 0:
                                 target_info['services'].append({
-                                    'protocol': service.get('protocol', 'tcp'),
-                                    'port': service['port'],
                                     'service_name': service['name'],
-                                    'is_secure': service.get('name', '').lower().endswith('s')
+                                    'port': service['port'],
+                                    'protocol': service.get('protocol', 'tcp'),
+                                    'is_secure': service['port'] in [443, 993, 995, 5986]
                                 })
-                        except:
+                        except Exception:
                             pass
                     
-                    # Only add targets that have at least one open service or if no services configured
-                    if target_info['services'] or not enabled_services:
-                        discovered_targets.append(target_info)
+                    # Update shared progress state
+                    with progress_lock:
+                        progress_state['scanned'] += 1
+                        if target_info['services'] or target_info['hostname']:
+                            progress_state['found'] += 1
+                            progress_state['discovered_targets'].append(target_info)
+                        return target_info if (target_info['services'] or target_info['hostname']) else None
+                else:
+                    # Host not reachable
+                    with progress_lock:
+                        progress_state['scanned'] += 1
+                    return None
+                    
+            except Exception:
+                with progress_lock:
+                    progress_state['scanned'] += 1
+                return None
+        
+        def update_progress_periodically():
+            """Update progress every 2 seconds"""
+            while progress_state['scanned'] < total_ips:
+                with progress_lock:
+                    scanned = progress_state['scanned']
+                    found = progress_state['found']
                 
-            except Exception as e:
-                # Continue with next IP on error
-                continue
+                if scanned > 0:
+                    progress = 10 + int((scanned / total_ips) * 80)  # 10-90% for scanning
+                    self.update_state(state='PROGRESS', meta={
+                        'current': progress, 
+                        'total': 100, 
+                        'status': f'Scanning in progress... ({scanned}/{total_ips})',
+                        'phase': 'scanning',
+                        'targets_found': found,
+                        'targets_scanned': scanned,
+                        'total_targets': total_ips,
+                        'max_workers': max_workers,
+                        'scan_rate': f'{scanned/max(1, time.time() - start_time):.1f} IPs/sec'
+                    })
+                
+                time.sleep(2)  # Update every 2 seconds
+        
+        # Start progress update thread
+        start_time = time.time()
+        progress_thread = threading.Thread(target=update_progress_periodically, daemon=True)
+        progress_thread.start()
+        
+        # Execute parallel scanning with memory management
+        self.update_state(state='PROGRESS', meta={
+            'current': 10, 
+            'total': 100, 
+            'status': f'Starting parallel scan with {max_workers} workers...',
+            'phase': 'scanning',
+            'targets_found': 0,
+            'targets_scanned': 0,
+            'total_targets': total_ips,
+            'max_workers': max_workers
+        })
+        
+        discovered_targets = []
+        
+        # Process IPs in batches to prevent memory exhaustion
+        batch_size = min(50, max(10, total_ips // 4))  # Adaptive batch size
+        
+        for i in range(0, len(target_ips), batch_size):
+            batch_ips = target_ips[i:i + batch_size]
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit batch scanning tasks
+                future_to_ip = {executor.submit(scan_single_ip, ip): ip for ip in batch_ips}
+                
+                # Collect results as they complete with proper timeout
+                try:
+                    for future in concurrent.futures.as_completed(future_to_ip, timeout=configuration.get('timeout', 300)):
+                        try:
+                            result = future.result(timeout=15)  # Individual task timeout
+                            if result:
+                                discovered_targets.append(result)
+                        except concurrent.futures.TimeoutError:
+                            # Individual IP scan timeout - continue with others
+                            pass
+                        except Exception as e:
+                            # Log individual IP scan failure but continue
+                            pass
+                except concurrent.futures.TimeoutError:
+                    # Batch timeout - log and continue with next batch
+                    self.update_state(state='PROGRESS', meta={
+                        'current': 50, 
+                        'total': 100, 
+                        'status': f'Batch timeout occurred, continuing with remaining IPs...',
+                        'phase': 'scanning',
+                        'targets_found': len(discovered_targets),
+                        'targets_scanned': progress_state['scanned'],
+                        'total_targets': total_ips
+                    })
+                    continue
+        
+        # Wait for progress thread to finish
+        progress_thread.join(timeout=1)
+        
+        # Final progress update
+        scan_duration = time.time() - start_time
         
         # Update progress to saving results
         self.update_state(state='PROGRESS', meta={

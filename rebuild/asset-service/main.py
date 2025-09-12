@@ -1032,15 +1032,102 @@ class AssetService(BaseService):
 
         @self.app.post("/discovery/discovery-jobs", response_model=dict)
         async def create_discovery_job(discovery_data: DiscoveryCreate):
-            """Create a new discovery job"""
+            """Create a new discovery job with size estimation and warnings"""
             try:
                 async with self.db.pool.acquire() as conn:
                     import json
+                    import ipaddress
                     
                     # Extract target range from config
                     config = discovery_data.config or {}
                     cidr_ranges = config.get('cidr_ranges', [])
                     target_range = ', '.join(cidr_ranges) if cidr_ranges else ''
+                    
+                    # Calculate job size and estimated completion time
+                    total_ips = 0
+                    warnings = []
+                    
+                    for cidr_range in cidr_ranges:
+                        try:
+                            if '/' in cidr_range:  # CIDR notation
+                                network = ipaddress.ip_network(cidr_range, strict=False)
+                                total_ips += len(list(network.hosts()))
+                            elif '-' in cidr_range:  # Range notation
+                                start_ip, end_ip = cidr_range.split('-')
+                                start = ipaddress.ip_address(start_ip.strip())
+                                end = ipaddress.ip_address(end_ip.strip())
+                                total_ips += int(end) - int(start) + 1
+                            else:  # Single IP or comma-separated IPs
+                                ips = [ip.strip() for ip in cidr_range.split(',')]
+                                total_ips += len(ips)
+                        except Exception as e:
+                            warnings.append(f"Invalid range format '{cidr_range}': {str(e)}")
+                    
+                    # Calculate estimated completion time
+                    services_count = len(config.get('services', []))
+                    
+                    # Estimation: With parallel scanning (up to 20 workers)
+                    # - Small jobs (< 50 IPs): ~2-3 seconds per IP
+                    # - Medium jobs (50-200 IPs): ~1-2 seconds per IP  
+                    # - Large jobs (200+ IPs): ~0.5-1 second per IP
+                    if total_ips <= 50:
+                        estimated_seconds = total_ips * 2.5
+                        max_workers = 5
+                    elif total_ips <= 200:
+                        estimated_seconds = total_ips * 1.5
+                        max_workers = min(10, total_ips // 5)
+                    else:
+                        estimated_seconds = total_ips * 0.75
+                        max_workers = min(20, total_ips // 10)
+                    
+                    # HARD LIMITS - Prevent system crashes
+                    MAX_IPS_PER_JOB = 500  # Hard limit to prevent system overload
+                    MAX_TOTAL_OPERATIONS = 5000  # IPs × Services limit
+                    
+                    total_operations = total_ips * services_count
+                    
+                    # Enforce hard limits
+                    if total_ips > MAX_IPS_PER_JOB:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Discovery job too large: {total_ips} IPs exceeds maximum of {MAX_IPS_PER_JOB}. Please break into smaller ranges."
+                        )
+                    
+                    if total_operations > MAX_TOTAL_OPERATIONS:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Discovery job too complex: {total_operations} total operations (IPs × Services) exceeds maximum of {MAX_TOTAL_OPERATIONS}. Reduce IP range or disable some services."
+                        )
+                    
+                    # Add warnings for large jobs
+                    if total_ips > 50:
+                        if estimated_seconds > 300:  # > 5 minutes
+                            minutes = int(estimated_seconds // 60)
+                            warnings.append(f"Large job detected: {total_ips} IPs will take approximately {minutes} minutes to complete")
+                        else:
+                            warnings.append(f"Medium job detected: {total_ips} IPs will take approximately {int(estimated_seconds)} seconds to complete")
+                    
+                    if total_ips > 200:
+                        warnings.append("Large job: Consider breaking this into smaller ranges for better performance")
+                    
+                    if total_operations > 2000:
+                        warnings.append(f"Complex job: {total_operations} total operations may impact system performance")
+                    
+                    # Require confirmation for jobs over certain thresholds
+                    requires_confirmation = total_ips > 100 or total_operations > 1000
+                    
+                    # Add job size metadata to config
+                    enhanced_config = config.copy()
+                    enhanced_config['job_metadata'] = {
+                        'total_ips': total_ips,
+                        'total_operations': total_operations,
+                        'estimated_duration_seconds': int(estimated_seconds),
+                        'estimated_workers': max_workers,
+                        'services_count': services_count,
+                        'created_with_warnings': len(warnings) > 0,
+                        'requires_confirmation': requires_confirmation,
+                        'warnings': warnings
+                    }
                     
                     row = await conn.fetchrow("""
                         INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
@@ -1049,7 +1136,7 @@ class AssetService(BaseService):
                         RETURNING id, name, target_range, scan_type, status, configuration, results,
                                   started_at, completed_at, created_by, created_at
                     """, discovery_data.name, target_range, discovery_data.discovery_type,
-                         json.dumps(discovery_data.config))
+                         json.dumps(enhanced_config))
                     
                     import json
                     discovery_job = DiscoveryJob(
@@ -1066,7 +1153,23 @@ class AssetService(BaseService):
                         created_at=row['created_at'].isoformat()
                     )
                     
-                    return {"success": True, "message": "Discovery job created", "data": discovery_job}
+                    response = {
+                        "success": True, 
+                        "message": "Discovery job created", 
+                        "data": discovery_job,
+                        "job_size_info": {
+                            "total_ips": total_ips,
+                            "estimated_duration_seconds": int(estimated_seconds),
+                            "estimated_duration_human": f"{int(estimated_seconds // 60)}m {int(estimated_seconds % 60)}s" if estimated_seconds >= 60 else f"{int(estimated_seconds)}s",
+                            "max_workers": max_workers,
+                            "services_count": services_count
+                        }
+                    }
+                    
+                    if warnings:
+                        response["warnings"] = warnings
+                    
+                    return response
             except Exception as e:
                 self.logger.error("Failed to create discovery job", error=str(e))
                 raise HTTPException(
@@ -1226,8 +1329,9 @@ class AssetService(BaseService):
                     from celery import Celery
                     import os
                     
-                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
-                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
+                    # Use the worker's Redis database (database 3) for Celery tasks
+                    worker_redis_url = "redis://redis:6379/3"
+                    celery_app = Celery('automation-worker', broker=worker_redis_url, backend=worker_redis_url)
                     
                     task = celery_app.send_task(
                         'worker.execute_discovery_job',
