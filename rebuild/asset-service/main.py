@@ -981,44 +981,62 @@ class AssetService(BaseService):
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000)
         ):
-            """List all discovery jobs"""
+            """List all discovery jobs from automation service"""
             try:
-                async with self.db.pool.acquire() as conn:
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.discovery_scans")
-                    
-                    # Get discovery jobs with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
-                    
-                    discovery_jobs = []
-                    for row in rows:
-                        import json
-                        discovery_jobs.append(DiscoveryJob(
-                            id=row['id'],
-                            name=row['name'],
-                            target_range=row['target_range'],
-                            scan_type=row['scan_type'],
-                            status=row['status'],
-                            configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
-                            results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
-                            started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                            completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                            created_by=row['created_by'],
-                            created_at=row['created_at'].isoformat()
-                        ))
-                    
-                    return DiscoveryListResponse(
-                        discovery_jobs=discovery_jobs,
-                        total=total,
-                        skip=skip,
-                        limit=limit
+                import httpx
+                
+                # Get discovery jobs from automation service
+                async with httpx.AsyncClient() as client:
+                    automation_response = await client.get(
+                        f"http://automation-service:3003/jobs?skip={skip}&limit={limit}&job_type=discovery",
+                        timeout=30.0
                     )
+                    
+                    if automation_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to fetch jobs from automation service: {automation_response.text}"
+                        )
+                    
+                    automation_jobs = automation_response.json()
+                
+                # Convert automation jobs to discovery job format
+                discovery_jobs = []
+                for job in automation_jobs.get("jobs", []):
+                    # All jobs returned are discovery jobs (filtered by job_type)
+                    metadata = job.get("metadata", {})
+                    
+                    # Map automation job status to discovery status
+                    status_mapping = {
+                        "enabled": "pending",
+                        "disabled": "cancelled",
+                        "running": "running",
+                        "completed": "completed",
+                        "failed": "failed"
+                    }
+                    
+                    discovery_job = DiscoveryJob(
+                        id=job["id"],
+                        name=metadata.get("original_discovery_name", job["name"].replace("Discovery: ", "")),
+                        target_range=metadata.get("target_range", ""),
+                        scan_type=metadata.get("discovery_config", {}).get("discovery_type", "network_scan"),
+                        status=status_mapping.get(job.get("status", "enabled"), "pending"),
+                        configuration=metadata.get("discovery_config", {}),
+                        results={},  # Would need to get from job execution results
+                        started_at=None,  # Would need to get from job executions
+                        completed_at=None,  # Would need to get from job executions
+                        created_by=job["created_by"],
+                        created_at=job["created_at"]
+                    )
+                    discovery_jobs.append(discovery_job)
+                
+                return DiscoveryListResponse(
+                    discovery_jobs=discovery_jobs,
+                    total=automation_jobs.get("total", len(discovery_jobs)),
+                    skip=skip,
+                    limit=limit
+                )
+                
             except Exception as e:
                 self.logger.error("Failed to fetch discovery jobs", error=str(e))
                 raise HTTPException(
@@ -1028,144 +1046,203 @@ class AssetService(BaseService):
 
         @self.app.post("/discovery/discovery-jobs", response_model=dict)
         async def create_discovery_job(discovery_data: DiscoveryCreate):
-            """Create a new discovery job with size estimation and warnings"""
+            """Create a new discovery job using the automation engine"""
             try:
-                async with self.db.pool.acquire() as conn:
-                    import json
-                    import ipaddress
-                    
-                    # Extract target range from config
-                    config = discovery_data.config or {}
-                    cidr_ranges = config.get('cidr_ranges', [])
-                    target_range = ', '.join(cidr_ranges) if cidr_ranges else ''
-                    
-                    # Calculate job size and estimated completion time
-                    total_ips = 0
-                    warnings = []
-                    
-                    for cidr_range in cidr_ranges:
-                        try:
-                            if '/' in cidr_range:  # CIDR notation
-                                network = ipaddress.ip_network(cidr_range, strict=False)
-                                total_ips += len(list(network.hosts()))
-                            elif '-' in cidr_range:  # Range notation
-                                start_ip, end_ip = cidr_range.split('-')
-                                start = ipaddress.ip_address(start_ip.strip())
-                                end = ipaddress.ip_address(end_ip.strip())
-                                total_ips += int(end) - int(start) + 1
-                            else:  # Single IP or comma-separated IPs
-                                ips = [ip.strip() for ip in cidr_range.split(',')]
-                                total_ips += len(ips)
-                        except Exception as e:
-                            warnings.append(f"Invalid range format '{cidr_range}': {str(e)}")
-                    
-                    # Calculate estimated completion time
-                    services_count = len(config.get('services', []))
-                    
-                    # Estimation: With parallel scanning (up to 20 workers)
-                    # - Small jobs (< 50 IPs): ~2-3 seconds per IP
-                    # - Medium jobs (50-200 IPs): ~1-2 seconds per IP  
-                    # - Large jobs (200+ IPs): ~0.5-1 second per IP
-                    if total_ips <= 50:
-                        estimated_seconds = total_ips * 2.5
-                        max_workers = 5
-                    elif total_ips <= 200:
-                        estimated_seconds = total_ips * 1.5
-                        max_workers = min(10, total_ips // 5)
+                import json
+                import ipaddress
+                import httpx
+                
+                # Extract target range from config
+                config = discovery_data.config or {}
+                cidr_ranges = config.get('cidr_ranges', [])
+                target_range = ', '.join(cidr_ranges) if cidr_ranges else ''
+                
+                # Calculate job size and estimated completion time (same validation as before)
+                total_ips = 0
+                warnings = []
+                
+                for cidr_range in cidr_ranges:
+                    try:
+                        if '/' in cidr_range:  # CIDR notation
+                            network = ipaddress.ip_network(cidr_range, strict=False)
+                            total_ips += len(list(network.hosts()))
+                        elif '-' in cidr_range:  # Range notation
+                            start_ip, end_ip = cidr_range.split('-')
+                            start = ipaddress.ip_address(start_ip.strip())
+                            end = ipaddress.ip_address(end_ip.strip())
+                            total_ips += int(end) - int(start) + 1
+                        else:  # Single IP or comma-separated IPs
+                            ips = [ip.strip() for ip in cidr_range.split(',')]
+                            total_ips += len(ips)
+                    except Exception as e:
+                        warnings.append(f"Invalid range format '{cidr_range}': {str(e)}")
+                
+                # Calculate estimated completion time
+                services_count = len(config.get('services', []))
+                
+                if total_ips <= 50:
+                    estimated_seconds = total_ips * 2.5
+                    max_workers = 5
+                elif total_ips <= 200:
+                    estimated_seconds = total_ips * 1.5
+                    max_workers = min(10, total_ips // 5)
+                else:
+                    estimated_seconds = total_ips * 0.75
+                    max_workers = min(20, total_ips // 10)
+                
+                # HARD LIMITS - Prevent system crashes
+                MAX_IPS_PER_JOB = 500
+                MAX_TOTAL_OPERATIONS = 5000
+                
+                total_operations = total_ips * services_count
+                
+                # Enforce hard limits
+                if total_ips > MAX_IPS_PER_JOB:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Discovery job too large: {total_ips} IPs exceeds maximum of {MAX_IPS_PER_JOB}. Please break into smaller ranges."
+                    )
+                
+                if total_operations > MAX_TOTAL_OPERATIONS:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Discovery job too complex: {total_operations} total operations (IPs × Services) exceeds maximum of {MAX_TOTAL_OPERATIONS}. Reduce IP range or disable some services."
+                    )
+                
+                # Add warnings for large jobs
+                if total_ips > 50:
+                    if estimated_seconds > 300:  # > 5 minutes
+                        minutes = int(estimated_seconds // 60)
+                        warnings.append(f"Large job detected: {total_ips} IPs will take approximately {minutes} minutes to complete")
                     else:
-                        estimated_seconds = total_ips * 0.75
-                        max_workers = min(20, total_ips // 10)
-                    
-                    # HARD LIMITS - Prevent system crashes
-                    MAX_IPS_PER_JOB = 500  # Hard limit to prevent system overload
-                    MAX_TOTAL_OPERATIONS = 5000  # IPs × Services limit
-                    
-                    total_operations = total_ips * services_count
-                    
-                    # Enforce hard limits
-                    if total_ips > MAX_IPS_PER_JOB:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Discovery job too large: {total_ips} IPs exceeds maximum of {MAX_IPS_PER_JOB}. Please break into smaller ranges."
-                        )
-                    
-                    if total_operations > MAX_TOTAL_OPERATIONS:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Discovery job too complex: {total_operations} total operations (IPs × Services) exceeds maximum of {MAX_TOTAL_OPERATIONS}. Reduce IP range or disable some services."
-                        )
-                    
-                    # Add warnings for large jobs
-                    if total_ips > 50:
-                        if estimated_seconds > 300:  # > 5 minutes
-                            minutes = int(estimated_seconds // 60)
-                            warnings.append(f"Large job detected: {total_ips} IPs will take approximately {minutes} minutes to complete")
-                        else:
-                            warnings.append(f"Medium job detected: {total_ips} IPs will take approximately {int(estimated_seconds)} seconds to complete")
-                    
-                    if total_ips > 200:
-                        warnings.append("Large job: Consider breaking this into smaller ranges for better performance")
-                    
-                    if total_operations > 2000:
-                        warnings.append(f"Complex job: {total_operations} total operations may impact system performance")
-                    
-                    # Require confirmation for jobs over certain thresholds
-                    requires_confirmation = total_ips > 100 or total_operations > 1000
-                    
-                    # Add job size metadata to config
-                    enhanced_config = config.copy()
-                    enhanced_config['job_metadata'] = {
-                        'total_ips': total_ips,
-                        'total_operations': total_operations,
-                        'estimated_duration_seconds': int(estimated_seconds),
-                        'estimated_workers': max_workers,
-                        'services_count': services_count,
-                        'created_with_warnings': len(warnings) > 0,
-                        'requires_confirmation': requires_confirmation,
-                        'warnings': warnings
+                        warnings.append(f"Medium job detected: {total_ips} IPs will take approximately {int(estimated_seconds)} seconds to complete")
+                
+                if total_ips > 200:
+                    warnings.append("Large job: Consider breaking this into smaller ranges for better performance")
+                
+                if total_operations > 2000:
+                    warnings.append(f"Complex job: {total_operations} total operations may impact system performance")
+                
+                # Create discovery workflow definition
+                discovery_workflow = {
+                    "steps": [
+                        {
+                            "id": "ping_sweep",
+                            "name": "Ping Sweep",
+                            "library": "discovery-tools",
+                            "function": "ping_sweep",
+                            "inputs": {
+                                "target_range": target_range,
+                                "timeout": config.get('ping_timeout', 1)
+                            },
+                            "outputs": ["active_hosts", "active_count"]
+                        },
+                        {
+                            "id": "port_scan",
+                            "name": "Port Scan",
+                            "library": "discovery-tools", 
+                            "function": "port_scan",
+                            "inputs": {
+                                "hosts": "{{steps.ping_sweep.outputs.active_hosts}}",
+                                "ports": config.get('ports', [21, 22, 23, 25, 53, 80, 135, 139, 443, 3389, 5985, 5986]),
+                                "timeout": config.get('port_timeout', 3)
+                            },
+                            "outputs": ["scan_results", "hosts_with_open_ports"],
+                            "depends_on": ["ping_sweep"]
+                        },
+                        {
+                            "id": "service_detection",
+                            "name": "Service Detection",
+                            "library": "discovery-tools",
+                            "function": "service_detection", 
+                            "inputs": {
+                                "scan_results": "{{steps.port_scan.outputs.scan_results}}"
+                            },
+                            "outputs": ["enhanced_results"],
+                            "depends_on": ["port_scan"]
+                        },
+                        {
+                            "id": "save_assets",
+                            "name": "Save Discovered Assets",
+                            "library": "discovery-tools",
+                            "function": "save_discovered_assets",
+                            "inputs": {
+                                "discovery_results": "{{steps.service_detection.outputs.enhanced_results}}"
+                            },
+                            "outputs": ["saved_targets", "targets_saved"],
+                            "depends_on": ["service_detection"]
+                        }
+                    ]
+                }
+                
+                # Create automation job via API call
+                automation_job_data = {
+                    "name": f"Discovery: {discovery_data.name}",
+                    "description": f"Network discovery job for {target_range}",
+                    "workflow_definition": discovery_workflow,
+                    "is_enabled": True,
+                    "tags": ["discovery", "network-scan", discovery_data.discovery_type],
+                    "job_type": "discovery",
+                    "metadata": {
+                        "discovery_config": config,
+                        "target_range": target_range,
+                        "total_ips": total_ips,
+                        "estimated_duration_seconds": int(estimated_seconds),
+                        "created_from": "asset-service",
+                        "original_discovery_name": discovery_data.name
                     }
-                    
-                    row = await conn.fetchrow("""
-                        INSERT INTO assets.discovery_scans (name, target_range, scan_type, status, 
-                                                          configuration, created_by)
-                        VALUES ($1, $2, $3, 'pending', $4, 1)
-                        RETURNING id, name, target_range, scan_type, status, configuration, results,
-                                  started_at, completed_at, created_by, created_at
-                    """, discovery_data.name, target_range, discovery_data.discovery_type,
-                         json.dumps(enhanced_config))
-                    
-                    import json
-                    discovery_job = DiscoveryJob(
-                        id=row['id'],
-                        name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
-                        results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
+                }
+                
+                # Call automation service to create job
+                async with httpx.AsyncClient() as client:
+                    automation_response = await client.post(
+                        "http://automation-service:3003/jobs",
+                        json=automation_job_data,
+                        timeout=30.0
                     )
                     
-                    response = {
-                        "success": True, 
-                        "message": "Discovery job created", 
-                        "data": discovery_job,
-                        "job_size_info": {
-                            "total_ips": total_ips,
-                            "estimated_duration_seconds": int(estimated_seconds),
-                            "estimated_duration_human": f"{int(estimated_seconds // 60)}m {int(estimated_seconds % 60)}s" if estimated_seconds >= 60 else f"{int(estimated_seconds)}s",
-                            "max_workers": max_workers,
-                            "services_count": services_count
-                        }
+                    if automation_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to create automation job: {automation_response.text}"
+                        )
+                    
+                    automation_job = automation_response.json()
+                
+                # Create a discovery job record that references the automation job
+                discovery_job = DiscoveryJob(
+                    id=automation_job["data"]["id"],  # Use automation job ID
+                    name=discovery_data.name,
+                    target_range=target_range,
+                    scan_type=discovery_data.discovery_type,
+                    status="pending",
+                    configuration=config,
+                    results={},
+                    started_at=None,
+                    completed_at=None,
+                    created_by=1,  # TODO: Get from auth context
+                    created_at=automation_job["data"]["created_at"]
+                )
+                
+                response = {
+                    "success": True,
+                    "message": "Discovery job created using automation engine",
+                    "data": discovery_job,
+                    "automation_job_id": automation_job["data"]["id"],
+                    "job_size_info": {
+                        "total_ips": total_ips,
+                        "estimated_duration_seconds": int(estimated_seconds),
+                        "estimated_duration_human": f"{int(estimated_seconds // 60)}m {int(estimated_seconds % 60)}s" if estimated_seconds >= 60 else f"{int(estimated_seconds)}s",
+                        "max_workers": max_workers,
+                        "services_count": services_count
                     }
-                    
-                    if warnings:
-                        response["warnings"] = warnings
-                    
-                    return response
+                }
+                
+                if warnings:
+                    response["warnings"] = warnings
+                
+                return response
+                
             except Exception as e:
                 self.logger.error("Failed to create discovery job", error=str(e))
                 raise HTTPException(
@@ -1175,34 +1252,74 @@ class AssetService(BaseService):
 
         @self.app.get("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
         async def get_discovery_job(discovery_id: int):
-            """Get discovery job by ID"""
+            """Get discovery job by ID from automation service"""
             try:
-                async with self.db.pool.acquire() as conn:
-                    row = await conn.fetchrow("""
-                        SELECT id, name, target_range, scan_type, status, configuration, results,
-                               started_at, completed_at, created_by, created_at
-                        FROM assets.discovery_scans WHERE id = $1
-                    """, discovery_id)
-                    
-                    if not row:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
-                    
-                    import json
-                    discovery_job = DiscoveryJob(
-                        id=row['id'],
-                        name=row['name'],
-                        target_range=row['target_range'],
-                        scan_type=row['scan_type'],
-                        status=row['status'],
-                        configuration=row['configuration'] if isinstance(row['configuration'], dict) else (json.loads(row['configuration']) if row['configuration'] else {}),
-                        results=row['results'] if isinstance(row['results'], dict) else (json.loads(row['results']) if row['results'] else {}),
-                        started_at=row['started_at'].isoformat() if row['started_at'] else None,
-                        completed_at=row['completed_at'].isoformat() if row['completed_at'] else None,
-                        created_by=row['created_by'],
-                        created_at=row['created_at'].isoformat()
+                import httpx
+                
+                # Get job from automation service
+                async with httpx.AsyncClient() as client:
+                    automation_response = await client.get(
+                        f"http://automation-service:3003/jobs/{discovery_id}",
+                        timeout=30.0
                     )
                     
-                    return {"success": True, "data": discovery_job}
+                    if automation_response.status_code == 404:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    elif automation_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to fetch job from automation service: {automation_response.text}"
+                        )
+                    
+                    automation_job = automation_response.json()
+                    job = automation_job.get("data", {})
+                
+                # Check if this is a discovery job
+                if job.get("job_type") != "discovery":
+                    raise HTTPException(status_code=404, detail="Discovery job not found")
+                
+                metadata = job.get("metadata", {})
+                
+                # Map automation job status to discovery status
+                status_mapping = {
+                    "enabled": "pending",
+                    "disabled": "cancelled", 
+                    "running": "running",
+                    "completed": "completed",
+                    "failed": "failed"
+                }
+                
+                # Get job execution status if available
+                try:
+                    executions_response = await client.get(
+                        f"http://automation-service:3003/executions?job_id={discovery_id}&limit=1",
+                        timeout=30.0
+                    )
+                    
+                    execution_data = None
+                    if executions_response.status_code == 200:
+                        executions = executions_response.json()
+                        if executions.get("executions"):
+                            execution_data = executions["executions"][0]
+                except:
+                    execution_data = None
+                
+                discovery_job = DiscoveryJob(
+                    id=job["id"],
+                    name=metadata.get("original_discovery_name", job["name"].replace("Discovery: ", "")),
+                    target_range=metadata.get("target_range", ""),
+                    scan_type=metadata.get("discovery_config", {}).get("discovery_type", "network_scan"),
+                    status=execution_data.get("status", status_mapping.get(job.get("status", "enabled"), "pending")) if execution_data else status_mapping.get(job.get("status", "enabled"), "pending"),
+                    configuration=metadata.get("discovery_config", {}),
+                    results=execution_data.get("output_data", {}) if execution_data else {},
+                    started_at=execution_data.get("started_at") if execution_data else None,
+                    completed_at=execution_data.get("completed_at") if execution_data else None,
+                    created_by=job["created_by"],
+                    created_at=job["created_at"]
+                )
+                
+                return {"success": True, "data": discovery_job}
+                
             except HTTPException:
                 raise
             except Exception as e:
@@ -1210,6 +1327,46 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to get discovery job"
+                )
+
+        @self.app.post("/discovery/discovery-jobs/{discovery_id}/run", response_model=dict)
+        async def run_discovery_job(discovery_id: int):
+            """Execute/run a discovery job via automation service"""
+            try:
+                import httpx
+                
+                # Execute the job via automation service using new direct endpoint
+                async with httpx.AsyncClient() as client:
+                    execution_response = await client.post(
+                        f"http://automation-service:3003/jobs/{discovery_id}/run",
+                        json={},
+                        timeout=30.0
+                    )
+                    
+                    if execution_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to execute discovery job: {execution_response.text}"
+                        )
+                    
+                    execution_result = execution_response.json()
+                    execution_data = execution_result.get("data", {})
+                
+                return {
+                    "success": True,
+                    "message": "Discovery job execution started",
+                    "execution_id": execution_data.get("execution_id"),
+                    "task_id": execution_data.get("task_id"),
+                    "automation_job_id": discovery_id,
+                    "status_url": f"http://automation-service:3003{execution_data.get('status_url', '')}",
+                    "job_status_url": f"http://automation-service:3003{execution_data.get('job_status_url', '')}"
+                }
+                
+            except Exception as e:
+                self.logger.error("Failed to run discovery job", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to run discovery job"
                 )
 
         @self.app.put("/discovery/discovery-jobs/{discovery_id}", response_model=dict)
@@ -1330,13 +1487,40 @@ class AssetService(BaseService):
         async def delete_discovery_job(discovery_id: int):
             """Delete discovery job"""
             try:
-                async with self.db.pool.acquire() as conn:
-                    result = await conn.execute(
-                        "DELETE FROM assets.discovery_scans WHERE id = $1", discovery_id
+                import httpx
+                
+                # First verify this is a discovery job
+                async with httpx.AsyncClient() as client:
+                    get_response = await client.get(
+                        f"http://automation-service:3003/jobs/{discovery_id}",
+                        timeout=30.0
                     )
                     
-                    if result == "DELETE 0":
+                    if get_response.status_code == 404:
                         raise HTTPException(status_code=404, detail="Discovery job not found")
+                    elif get_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to verify job: {get_response.text}"
+                        )
+                    
+                    job_data = get_response.json().get("data", {})
+                    if job_data.get("job_type") != "discovery":
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    
+                    # Delete the job from automation service
+                    delete_response = await client.delete(
+                        f"http://automation-service:3003/jobs/{discovery_id}",
+                        timeout=30.0
+                    )
+                    
+                    if delete_response.status_code == 404:
+                        raise HTTPException(status_code=404, detail="Discovery job not found")
+                    elif delete_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to delete job: {delete_response.text}"
+                        )
                     
                     return {"success": True, "message": "Discovery job deleted"}
             except HTTPException:

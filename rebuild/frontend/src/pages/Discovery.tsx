@@ -85,6 +85,9 @@ const Discovery: React.FC = () => {
   // Progress tracking state
   const [jobProgress, setJobProgress] = useState<{[key: number]: any}>({});
   
+  // Task ID tracking for direct Celery status
+  const [jobTaskIds, setJobTaskIds] = useState<{[key: number]: string}>({});
+  
   // Form state for creating new discovery job
   const [newJob, setNewJob] = useState<DiscoveryJobCreate>({
     name: '',
@@ -102,40 +105,7 @@ const Discovery: React.FC = () => {
     // Don't load targets initially - wait for job selection
   }, []);
 
-  // Poll for progress of running jobs
-  useEffect(() => {
-    const runningJobs = jobs.filter(job => job.status === 'running');
-    if (runningJobs.length === 0) return;
 
-    const pollProgress = async () => {
-      const progressUpdates: {[key: number]: any} = {};
-      
-      for (const job of runningJobs) {
-        try {
-          const progress = await discoveryApi.getJobProgress(job.id);
-          progressUpdates[job.id] = progress;
-          
-          // If job completed, reload jobs list
-          if (progress.status === 'completed' || progress.status === 'failed') {
-            loadJobs();
-            if (selectedJob && selectedJob.id === job.id) {
-              loadTargets(currentPage, job.id);
-            }
-          }
-        } catch (error) {
-          console.error(`Failed to get progress for job ${job.id}:`, error);
-        }
-      }
-      
-      setJobProgress(prev => ({ ...prev, ...progressUpdates }));
-    };
-
-    // Poll immediately and then every 2 seconds
-    pollProgress();
-    const interval = setInterval(pollProgress, 2000);
-
-    return () => clearInterval(interval);
-  }, [jobs, selectedJob, currentPage]);
 
   // Load targets when selected job changes
   useEffect(() => {
@@ -309,12 +279,55 @@ const Discovery: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      await discoveryApi.runJob(jobId);
+      const result = await discoveryApi.runJob(jobId);
+      
+      // Immediate feedback - job has been sent
+      if (result.task_id) {
+        // Store the task_id for status tracking
+        setJobTaskIds(prev => ({ ...prev, [jobId]: result.task_id! }));
+        // Set initial status to "running" for immediate UI feedback
+        setJobProgress(prev => ({ ...prev, [jobId]: { status: 'running', message: 'Job started...' } }));
+        
+        // Start polling immediately for this job
+        pollJobStatus(jobId, result.task_id);
+      }
+      
       await loadJobs();
     } catch (err: any) {
       setError(err.message || 'Failed to run discovery job');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const pollJobStatus = async (jobId: number, taskId: string) => {
+    try {
+      const progress = await discoveryApi.getJobProgress(jobId, taskId);
+      setJobProgress(prev => ({ ...prev, [jobId]: progress }));
+      
+      // If job is still running, poll again in 3 seconds
+      if (progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'SUCCESS') {
+        setTimeout(() => pollJobStatus(jobId, taskId), 3000);
+      } else {
+        // Job finished, remove from tracking and refresh
+        setJobTaskIds(prev => {
+          const updated = { ...prev };
+          delete updated[jobId];
+          return updated;
+        });
+        loadJobs();
+        if (selectedJob && selectedJob.id === jobId) {
+          loadTargets(currentPage, jobId);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to get progress for job ${jobId}:`, error);
+      // On error, stop tracking this job
+      setJobTaskIds(prev => {
+        const updated = { ...prev };
+        delete updated[jobId];
+        return updated;
+      });
     }
   };
 
@@ -1042,11 +1055,11 @@ const Discovery: React.FC = () => {
                       >
                         <td style={{ fontWeight: '500' }}>{job.name}</td>
                         <td>
-                          {job.status === 'running' && jobProgress[job.id] ? (
+                          {jobTaskIds[job.id] && jobProgress[job.id] ? (
                             <div style={{ minWidth: '120px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                                <span className={`status-badge ${getStatusBadge(job.status)}`} style={{ fontSize: '10px' }}>
-                                  running
+                                <span className={`status-badge ${getStatusBadge(jobProgress[job.id].status)}`} style={{ fontSize: '10px' }}>
+                                  {jobProgress[job.id].status}
                                 </span>
                                 <span style={{ fontSize: '10px', color: 'var(--neutral-600)' }}>
                                   {jobProgress[job.id].progress}%
@@ -1081,8 +1094,8 @@ const Discovery: React.FC = () => {
                               )}
                             </div>
                           ) : (
-                            <span className={`status-badge ${getStatusBadge(job.status)}`}>
-                              {job.status}
+                            <span className={`status-badge ${getStatusBadge(jobProgress[job.id]?.status || job.status)}`}>
+                              {jobProgress[job.id]?.status || job.status}
                             </span>
                           )}
                         </td>
@@ -1099,7 +1112,7 @@ const Discovery: React.FC = () => {
                         <td>
                           <div style={{ display: 'flex', gap: '4px' }}>
                             {/* Run/Cancel button - conditional based on status */}
-                            {job.status === 'running' ? (
+                            {jobTaskIds[job.id] ? (
                               <button
                                 className="btn-icon btn-ghost"
                                 onClick={(e) => {
@@ -1118,7 +1131,7 @@ const Discovery: React.FC = () => {
                                   handleRunJob(job.id);
                                 }}
                                 title="Run job"
-                                disabled={job.status === 'running'}
+                                disabled={jobTaskIds[job.id] !== undefined}
                               >
                                 <Play size={14} />
                               </button>
@@ -1132,7 +1145,7 @@ const Discovery: React.FC = () => {
                                 handleEditJob(job);
                               }}
                               title="Edit job"
-                              disabled={job.status === 'running'}
+                              disabled={jobTaskIds[job.id] !== undefined}
                             >
                               <Edit3 size={14} />
                             </button>

@@ -518,10 +518,29 @@ export const notificationApi = {
 export const discoveryApi = {
   // Discovery Jobs
   listJobs: async (skip = 0, limit = 100): Promise<DiscoveryJobListResponse> => {
-    const response: AxiosResponse<DiscoveryJobListResponse> = await api.get('/api/v1/discovery/discovery-jobs', {
-      params: { skip, limit }
+    const response: AxiosResponse<JobListResponse> = await api.get('/api/v1/jobs', {
+      params: { skip, limit, job_type: 'discovery' }
     });
-    return response.data;
+    
+    // Transform automation jobs to discovery job format for compatibility
+    const discoveryJobs = response.data.jobs?.map(job => ({
+      id: job.id,
+      name: job.name,
+      description: job.description,
+      scan_type: 'network_scan', // Default for discovery jobs
+      status: 'idle', // Will be updated by progress polling
+      configuration: job.workflow_definition?.inputs || {},
+      created_at: job.created_at,
+      updated_at: job.updated_at,
+      results: {}
+    })) || [];
+    
+    return {
+      discovery_jobs: discoveryJobs,
+      total: response.data.total || 0,
+      skip: response.data.skip || 0,
+      limit: response.data.limit || 100
+    };
   },
 
   getJob: async (id: number): Promise<DiscoveryJob> => {
@@ -543,9 +562,13 @@ export const discoveryApi = {
     await api.delete(`/api/v1/discovery/discovery-jobs/${id}`);
   },
 
-  runJob: async (id: number): Promise<{ message: string }> => {
-    const response: AxiosResponse<{ message: string }> = await api.post(`/api/v1/discovery/discovery-jobs/${id}/run`);
-    return response.data;
+  runJob: async (id: number): Promise<{ message: string; task_id?: string; status_url?: string }> => {
+    const response: AxiosResponse<{ success: boolean; message: string; data: any }> = await api.post(`/api/v1/jobs/${id}/run`);
+    return {
+      message: response.data.message,
+      task_id: response.data.data?.task_id,
+      status_url: response.data.data?.status_url
+    };
   },
 
   cancelJob: async (id: number): Promise<{ message: string }> => {
@@ -553,9 +576,9 @@ export const discoveryApi = {
     return response.data;
   },
 
-  getJobProgress: async (id: number): Promise<{
+  getJobProgress: async (id: number, taskId?: string): Promise<{
     status: string;
-    progress: number;
+    progress?: number;
     total?: number;
     message: string;
     phase?: string;
@@ -563,9 +586,37 @@ export const discoveryApi = {
     targets_scanned?: number;
     total_targets?: number;
     current_target?: string;
+    result?: any;
+    ready?: boolean;
+    successful?: boolean;
+    failed?: boolean;
   }> => {
-    const response = await api.get(`/api/v1/discovery/discovery-jobs/${id}/progress`);
-    return response.data;
+    if (taskId) {
+      // Use direct Celery status if we have task_id
+      const response = await api.get(`/api/v1/tasks/${taskId}/status`);
+      const celeryData = response.data;
+      
+      // Transform Celery response to expected format
+      return {
+        status: celeryData.status === 'SUCCESS' ? 'completed' : 
+                celeryData.status === 'FAILURE' ? 'failed' : 
+                celeryData.status === 'PENDING' ? 'running' : celeryData.status.toLowerCase(),
+        message: celeryData.result?.message || `Task ${celeryData.status}`,
+        result: celeryData.result,
+        ready: celeryData.ready,
+        successful: celeryData.successful,
+        failed: celeryData.failed,
+        progress: celeryData.result?.progress || (celeryData.ready ? 100 : 0)
+      };
+    } else {
+      // Fallback to job execution status
+      const response = await api.get(`/api/v1/jobs/${id}/execution-status`);
+      return {
+        status: response.data.status || 'unknown',
+        message: response.data.message || 'No status available',
+        progress: 0
+      };
+    }
   },
 
   // Discovered Targets

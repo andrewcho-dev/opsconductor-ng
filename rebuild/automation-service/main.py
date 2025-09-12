@@ -28,6 +28,7 @@ class Job(BaseModel):
     is_enabled: bool
     tags: List[str] = []
     metadata: dict = {}
+    job_type: str = "general"
     created_by: int
     updated_by: int
     created_at: str
@@ -41,6 +42,7 @@ class JobCreate(BaseModel):
     is_enabled: bool = True
     tags: List[str] = []
     metadata: dict = {}
+    job_type: str = "general"
 
 class JobUpdate(BaseModel):
     name: Optional[str] = None
@@ -50,6 +52,7 @@ class JobUpdate(BaseModel):
     is_enabled: Optional[bool] = None
     tags: Optional[List[str]] = None
     metadata: Optional[dict] = None
+    job_type: Optional[str] = None
 
 class JobListResponse(BaseModel):
     jobs: List[Job]
@@ -212,22 +215,46 @@ class AutomationService(BaseService):
         @self.app.get("/jobs", response_model=JobListResponse)
         async def list_jobs(
             skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
+            limit: int = Query(100, ge=1, le=1000),
+            job_type: Optional[str] = Query(None, description="Filter by job type")
         ):
             """List all jobs"""
             try:
                 async with self.db.pool.acquire() as conn:
+                    # Build WHERE clause for job_type filter
+                    where_clause = ""
+                    count_params = []
+                    query_params = []
+                    
+                    if job_type:
+                        where_clause = "WHERE job_type = $1"
+                        count_params = [job_type]
+                        query_params = [job_type, limit, skip]
+                    else:
+                        query_params = [limit, skip]
+                    
                     # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM jobs")
+                    count_query = f"SELECT COUNT(*) FROM jobs {where_clause}"
+                    total = await conn.fetchval(count_query, *count_params)
                     
                     # Get jobs with pagination
-                    rows = await conn.fetch("""
-                        SELECT id, name, description, workflow_definition, schedule_expression,
-                               is_enabled, tags, metadata, created_by, updated_by, created_at, updated_at
-                        FROM jobs 
-                        ORDER BY created_at DESC 
-                        LIMIT $1 OFFSET $2
-                    """, limit, skip)
+                    if job_type:
+                        rows = await conn.fetch("""
+                            SELECT id, name, description, workflow_definition, schedule_expression,
+                                   is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
+                            FROM jobs 
+                            WHERE job_type = $1
+                            ORDER BY created_at DESC 
+                            LIMIT $2 OFFSET $3
+                        """, *query_params)
+                    else:
+                        rows = await conn.fetch("""
+                            SELECT id, name, description, workflow_definition, schedule_expression,
+                                   is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
+                            FROM jobs 
+                            ORDER BY created_at DESC 
+                            LIMIT $1 OFFSET $2
+                        """, *query_params)
                     
                     jobs = []
                     for row in rows:
@@ -241,6 +268,7 @@ class AutomationService(BaseService):
                             is_enabled=row['is_enabled'],
                             tags=json.loads(row['tags']) if row['tags'] else [],
                             metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                            job_type=row['job_type'],
                             created_by=row['created_by'],
                             updated_by=row['updated_by'],
                             created_at=row['created_at'].isoformat(),
@@ -322,14 +350,14 @@ class AutomationService(BaseService):
                     import json
                     row = await conn.fetchrow("""
                         INSERT INTO automation.jobs (name, description, workflow_definition, 
-                                                   schedule_expression, is_enabled, tags, metadata, 
+                                                   schedule_expression, is_enabled, tags, metadata, job_type,
                                                    created_by, updated_by)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 1)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 1)
                         RETURNING id, name, description, workflow_definition, schedule_expression,
-                                  is_enabled, tags, metadata, created_by, updated_by, created_at, updated_at
+                                  is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
                     """, job_data.name, job_data.description, json.dumps(job_data.workflow_definition or {}),
                          job_data.schedule_expression, job_data.is_enabled, json.dumps(job_data.tags or []),
-                         json.dumps(job_data.metadata or {}))
+                         json.dumps(job_data.metadata or {}), job_data.job_type)
                     
                     import json
                     job = Job(
@@ -341,6 +369,7 @@ class AutomationService(BaseService):
                         is_enabled=row['is_enabled'],
                         tags=json.loads(row['tags']) if row['tags'] else [],
                         metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        job_type=row['job_type'],
                         created_by=row['created_by'],
                         updated_by=row['updated_by'],
                         created_at=row['created_at'].isoformat(),
@@ -362,7 +391,7 @@ class AutomationService(BaseService):
                 async with self.db.pool.acquire() as conn:
                     row = await conn.fetchrow("""
                         SELECT id, name, description, workflow_definition, schedule_expression,
-                               is_enabled, tags, metadata, created_by, updated_by, created_at, updated_at
+                               is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
                         FROM automation.jobs WHERE id = $1
                     """, job_id)
                     
@@ -379,6 +408,7 @@ class AutomationService(BaseService):
                         is_enabled=row['is_enabled'],
                         tags=json.loads(row['tags']) if row['tags'] else [],
                         metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        job_type=row['job_type'],
                         created_by=row['created_by'],
                         updated_by=row['updated_by'],
                         created_at=row['created_at'].isoformat(),
@@ -479,6 +509,10 @@ class AutomationService(BaseService):
                         updates.append(f"metadata = ${param_count}")
                         values.append(job_data.metadata)
                         param_count += 1
+                    if job_data.job_type is not None:
+                        updates.append(f"job_type = ${param_count}")
+                        values.append(job_data.job_type)
+                        param_count += 1
                     
                     if not updates:
                         raise HTTPException(status_code=400, detail="No fields to update")
@@ -496,7 +530,7 @@ class AutomationService(BaseService):
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
                         RETURNING id, name, description, workflow_definition, schedule_expression,
-                                  is_enabled, tags, metadata, created_by, updated_by, created_at, updated_at
+                                  is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
                     """
                     
                     row = await conn.fetchrow(query, *values)
@@ -514,6 +548,7 @@ class AutomationService(BaseService):
                         is_enabled=row['is_enabled'],
                         tags=json.loads(row['tags']) if row['tags'] else [],
                         metadata=json.loads(row['metadata']) if row['metadata'] else {},
+                        job_type=row['job_type'],
                         created_by=row['created_by'],
                         updated_by=row['updated_by'],
                         created_at=row['created_at'].isoformat(),
@@ -599,18 +634,18 @@ class AutomationService(BaseService):
                     import uuid
                     execution_id = str(uuid.uuid4())
                     
+                    # Store minimal execution record with task_id for tracking
                     execution_row = await conn.fetchrow("""
                         INSERT INTO automation.job_executions 
                         (job_id, execution_id, status, trigger_type, input_data, started_by, created_at)
-                        VALUES ($1, $2, 'pending', 'manual', $3, 'api', NOW())
+                        VALUES ($1, $2, 'queued', 'manual', $3, 1, NOW())
                         RETURNING id
-                    """, job_id, execution_id, input_data or {})
+                    """, job_id, execution_id, json.dumps(input_data or {}))
                     
                     # Queue the job for execution using Celery
-                    from shared.tasks import execute_job_task
-                    task = execute_job_task.delay(
+                    from worker import execute_job
+                    task = execute_job.delay(
                         job_id=job_id,
-                        execution_id=execution_id,
                         workflow_definition=job_row['workflow_definition'],
                         input_data=input_data or {}
                     )
@@ -623,7 +658,9 @@ class AutomationService(BaseService):
                             "job_id": job_id,
                             "job_name": job_row['name'],
                             "task_id": task.id,
-                            "status": "pending"
+                            "status": "queued",
+                            "status_url": f"/tasks/{task.id}/status",
+                            "job_status_url": f"/jobs/{job_id}/status/{task.id}"
                         }
                     }
             except HTTPException:
@@ -633,6 +670,125 @@ class AutomationService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to run job"
+                )
+
+        @self.app.get("/jobs/{job_id}/status/{task_id}", response_model=dict)
+        async def get_job_status(job_id: int, task_id: str):
+            """Get job execution status directly from Celery"""
+            try:
+                from celery import Celery
+                from worker import execute_job
+                
+                # Get the Celery app instance
+                celery_app = execute_job.app
+                
+                # Get task result directly from Celery
+                task_result = celery_app.AsyncResult(task_id)
+                
+                # Get basic task info
+                status = task_result.status
+                result = task_result.result
+                traceback = task_result.traceback
+                
+                # Format the response
+                response_data = {
+                    "job_id": job_id,
+                    "task_id": task_id,
+                    "status": status,
+                    "result": result,
+                    "traceback": traceback,
+                    "ready": task_result.ready(),
+                    "successful": task_result.successful() if task_result.ready() else None,
+                    "failed": task_result.failed() if task_result.ready() else None
+                }
+                
+                # Add additional info if available
+                if hasattr(task_result, 'info') and task_result.info:
+                    response_data["info"] = task_result.info
+                
+                return {
+                    "success": True,
+                    "data": response_data
+                }
+                
+            except Exception as e:
+                self.logger.error(f"Failed to get job status: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get job status: {str(e)}"
+                )
+
+        @self.app.get("/tasks/{task_id}/status", response_model=dict)
+        async def get_task_status(task_id: str):
+            """Get task status directly from Celery (simplified)"""
+            try:
+                from celery import Celery
+                from worker import execute_job
+                
+                # Get the Celery app instance
+                celery_app = execute_job.app
+                
+                # Get task result directly from Celery
+                task_result = celery_app.AsyncResult(task_id)
+                
+                return {
+                    "task_id": task_id,
+                    "status": task_result.status,
+                    "result": task_result.result,
+                    "traceback": task_result.traceback,
+                    "ready": task_result.ready(),
+                    "successful": task_result.successful() if task_result.ready() else None,
+                    "failed": task_result.failed() if task_result.ready() else None,
+                    "info": getattr(task_result, 'info', None)
+                }
+                
+            except Exception as e:
+                self.logger.error(f"Failed to get task status: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get task status: {str(e)}"
+                )
+
+        @self.app.get("/jobs/{job_id}/execution-status", response_model=dict)
+        async def get_job_execution_status(job_id: int):
+            """Get the latest execution status for a job (simplified for UI)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get the most recent execution for this job
+                    execution_row = await conn.fetchrow("""
+                        SELECT job_id, execution_id, status, trigger_type, input_data, 
+                               started_at, completed_at, created_at
+                        FROM automation.job_executions 
+                        WHERE job_id = $1 
+                        ORDER BY created_at DESC 
+                        LIMIT 1
+                    """, job_id)
+                    
+                    if not execution_row:
+                        return {
+                            "job_id": job_id,
+                            "status": "never_run",
+                            "message": "Job has never been executed"
+                        }
+                    
+                    # If we have a recent execution, we can try to get its Celery status
+                    # For now, just return the database status
+                    return {
+                        "job_id": job_id,
+                        "execution_id": execution_row['execution_id'],
+                        "status": execution_row['status'],
+                        "trigger_type": execution_row['trigger_type'],
+                        "started_at": execution_row['started_at'].isoformat() if execution_row['started_at'] else None,
+                        "completed_at": execution_row['completed_at'].isoformat() if execution_row['completed_at'] else None,
+                        "created_at": execution_row['created_at'].isoformat(),
+                        "message": f"Last execution: {execution_row['status']}"
+                    }
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to get job execution status: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get job execution status: {str(e)}"
                 )
 
         @self.app.post("/jobs/export", response_model=dict)
@@ -1161,6 +1317,17 @@ class AutomationService(BaseService):
                     import uuid
                     execution_id = str(uuid.uuid4())
                     
+                    # Get job details including workflow definition
+                    job_row = await conn.fetchrow("""
+                        SELECT name, workflow_definition FROM automation.jobs WHERE id = $1
+                    """, execution_data.job_id)
+                    
+                    if not job_row:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Job not found"
+                        )
+                    
                     import json
                     row = await conn.fetchrow("""
                         INSERT INTO automation.job_executions (job_id, execution_id, status, trigger_type, 
@@ -1171,14 +1338,28 @@ class AutomationService(BaseService):
                     """, execution_data.job_id, execution_id, execution_data.trigger_type, 
                          json.dumps(execution_data.input_data) if execution_data.input_data else '{}')
                     
-                    # Get job name
-                    job_row = await conn.fetchrow("SELECT name FROM automation.jobs WHERE id = $1", execution_data.job_id)
-                    job_name = job_row['name'] if job_row else "Unknown"
+                    # Queue the job for execution using Celery
+                    try:
+                        from worker import execute_job
+                        task = execute_job.delay(
+                            job_id=execution_data.job_id,
+                            workflow_definition=job_row['workflow_definition'],
+                            input_data=execution_data.input_data or {}
+                        )
+                        self.logger.info(f"Queued execution {execution_id} with task ID {task.id}")
+                    except Exception as task_error:
+                        self.logger.error(f"Failed to queue task for execution {execution_id}: {task_error}")
+                        # Update execution status to failed
+                        await conn.execute("""
+                            UPDATE automation.job_executions 
+                            SET status = 'failed', error_message = $1 
+                            WHERE execution_id = $2
+                        """, f"Failed to queue task: {str(task_error)}", execution_id)
                     
                     execution = JobExecution(
                         id=row['id'],
                         job_id=row['job_id'],
-                        job_name=job_name,
+                        job_name=job_row['name'],
                         execution_id=str(row['execution_id']),
                         status=row['status'],
                         trigger_type=row['trigger_type'],
@@ -1191,7 +1372,7 @@ class AutomationService(BaseService):
                         created_at=row['created_at'].isoformat()
                     )
                     
-                    return {"success": True, "message": "Execution created", "data": execution}
+                    return {"success": True, "message": "Execution created and queued", "data": execution}
             except Exception as e:
                 self.logger.error("Failed to create execution", error=str(e))
                 raise HTTPException(

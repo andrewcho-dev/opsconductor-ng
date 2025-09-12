@@ -1,0 +1,143 @@
+{
+  "name": "discovery-tools",
+  "version": "1.0.0",
+  "category": "discovery",
+  "description": "Network discovery, port scanning, and service detection",
+  "steps_definition": {
+    "name": "discovery-tools",
+    "version": "1.0.0",
+    "description": "Network discovery, port scanning, and service detection",
+    "author": "OpsConductor",
+    "steps": [
+      {
+        "id": "ping_sweep",
+        "name": "Ping Sweep",
+        "description": "Discover active hosts in a network range",
+        "category": "discovery",
+        "inputs": [
+          {
+            "name": "target_range",
+            "type": "string",
+            "required": true,
+            "description": "Network range (CIDR, range, or single IP)"
+          },
+          {
+            "name": "timeout",
+            "type": "integer",
+            "required": false,
+            "default": 1,
+            "description": "Ping timeout in seconds"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "active_hosts",
+            "type": "array",
+            "description": "List of active hosts with IP and hostname"
+          },
+          {
+            "name": "active_count",
+            "type": "integer",
+            "description": "Number of active hosts found"
+          }
+        ]
+      },
+      {
+        "id": "port_scan",
+        "name": "Port Scan",
+        "description": "Scan ports on active hosts",
+        "category": "discovery",
+        "inputs": [
+          {
+            "name": "hosts",
+            "type": "array",
+            "required": true,
+            "description": "List of IP addresses to scan"
+          },
+          {
+            "name": "ports",
+            "type": "array",
+            "required": false,
+            "description": "List of ports to scan (default: common ports)"
+          },
+          {
+            "name": "timeout",
+            "type": "integer",
+            "required": false,
+            "default": 3,
+            "description": "Connection timeout in seconds"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "scan_results",
+            "type": "array",
+            "description": "Scan results with open ports and services"
+          },
+          {
+            "name": "hosts_with_open_ports",
+            "type": "integer",
+            "description": "Number of hosts with open ports"
+          }
+        ]
+      },
+      {
+        "id": "service_detection",
+        "name": "Service Detection",
+        "description": "Enhanced service detection and OS fingerprinting",
+        "category": "discovery",
+        "inputs": [
+          {
+            "name": "scan_results",
+            "type": "array",
+            "required": true,
+            "description": "Results from port scan"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "enhanced_results",
+            "type": "array",
+            "description": "Enhanced results with service details and OS detection"
+          }
+        ]
+      },
+      {
+        "id": "save_discovered_assets",
+        "name": "Save Discovered Assets",
+        "description": "Save discovered assets to the database",
+        "category": "discovery",
+        "inputs": [
+          {
+            "name": "discovery_results",
+            "type": "array",
+            "required": true,
+            "description": "Enhanced discovery results to save"
+          },
+          {
+            "name": "discovery_job_id",
+            "type": "integer",
+            "required": false,
+            "description": "Discovery job ID for tracking"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "saved_targets",
+            "type": "array",
+            "description": "List of saved target data"
+          },
+          {
+            "name": "targets_saved",
+            "type": "integer",
+            "description": "Number of targets saved"
+          }
+        ]
+      }
+    ]
+  },
+  "metadata": {
+    "author": "OpsConductor",
+    "tags": ["discovery", "network", "scanning"]
+  }
+}
