@@ -262,8 +262,62 @@ class AutomationService(BaseService):
 
         @self.app.post("/jobs", response_model=dict)
         async def create_job(job_data: JobCreate):
-            """Create a new job"""
+            """Create a new job with workflow complexity validation"""
             try:
+                # ============================================================================
+                # AUTOMATION JOB LIMITS - Prevent resource exhaustion
+                # ============================================================================
+                
+                workflow_def = job_data.workflow_definition or {}
+                
+                # Limit 1: Maximum workflow steps (prevents infinite loops and memory issues)
+                max_steps = 100
+                steps = workflow_def.get('steps', [])
+                nodes = workflow_def.get('nodes', [])
+                total_steps = len(steps) + len(nodes)
+                
+                if total_steps > max_steps:
+                    self.logger.error(f"Workflow too complex: {total_steps} steps exceeds limit of {max_steps}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Workflow too complex: {total_steps} steps exceeds maximum of {max_steps} steps"
+                    )
+                
+                # Limit 2: Maximum workflow depth (prevents deep recursion)
+                max_depth = 20
+                workflow_depth = self._calculate_workflow_depth(workflow_def)
+                
+                if workflow_depth > max_depth:
+                    self.logger.error(f"Workflow too deep: {workflow_depth} levels exceeds limit of {max_depth}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Workflow too deep: {workflow_depth} levels exceeds maximum of {max_depth} levels"
+                    )
+                
+                # Limit 3: Maximum parallel branches (prevents worker exhaustion)
+                max_parallel = 10
+                parallel_branches = self._count_parallel_branches(workflow_def)
+                
+                if parallel_branches > max_parallel:
+                    self.logger.error(f"Too many parallel branches: {parallel_branches} exceeds limit of {max_parallel}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Too many parallel branches: {parallel_branches} exceeds maximum of {max_parallel}"
+                    )
+                
+                # Limit 4: Maximum loop iterations (prevents infinite loops)
+                max_iterations = 1000
+                total_iterations = self._estimate_loop_iterations(workflow_def)
+                
+                if total_iterations > max_iterations:
+                    self.logger.error(f"Too many loop iterations: {total_iterations} exceeds limit of {max_iterations}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Estimated loop iterations {total_iterations} exceeds maximum of {max_iterations}"
+                    )
+                
+                self.logger.info(f"Workflow validation passed: {total_steps} steps, {workflow_depth} depth, {parallel_branches} parallel, {total_iterations} iterations")
+                
                 async with self.db.pool.acquire() as conn:
                     import json
                     row = await conn.fetchrow("""
@@ -343,8 +397,53 @@ class AutomationService(BaseService):
 
         @self.app.put("/jobs/{job_id}", response_model=dict)
         async def update_job(job_id: int, job_data: JobUpdate):
-            """Update job"""
+            """Update job with workflow validation"""
             try:
+                # ============================================================================
+                # VALIDATE WORKFLOW UPDATES - Prevent dangerous modifications
+                # ============================================================================
+                
+                if job_data.workflow_definition is not None:
+                    workflow_def = job_data.workflow_definition
+                    
+                    # Apply same validation as job creation
+                    steps = workflow_def.get('steps', [])
+                    nodes = workflow_def.get('nodes', [])
+                    total_steps = len(steps) + len(nodes)
+                    
+                    if total_steps > 100:
+                        self.logger.error(f"Workflow update rejected: {total_steps} steps exceeds limit of 100")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Workflow update rejected: {total_steps} steps exceeds maximum of 100 steps"
+                        )
+                    
+                    workflow_depth = self._calculate_workflow_depth(workflow_def)
+                    if workflow_depth > 20:
+                        self.logger.error(f"Workflow update rejected: {workflow_depth} depth exceeds limit of 20")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Workflow update rejected: {workflow_depth} levels exceeds maximum of 20 levels"
+                        )
+                    
+                    parallel_branches = self._count_parallel_branches(workflow_def)
+                    if parallel_branches > 10:
+                        self.logger.error(f"Workflow update rejected: {parallel_branches} parallel branches exceeds limit of 10")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Workflow update rejected: {parallel_branches} parallel branches exceeds maximum of 10"
+                        )
+                    
+                    total_iterations = self._estimate_loop_iterations(workflow_def)
+                    if total_iterations > 1000:
+                        self.logger.error(f"Workflow update rejected: {total_iterations} iterations exceeds limit of 1000")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Workflow update rejected: estimated {total_iterations} iterations exceeds maximum of 1000"
+                        )
+                    
+                    self.logger.info(f"Workflow update validation passed: {total_steps} steps, {workflow_depth} depth, {parallel_branches} parallel, {total_iterations} iterations")
+                
                 async with self.db.pool.acquire() as conn:
                     # Build dynamic update query
                     updates = []
@@ -360,8 +459,9 @@ class AutomationService(BaseService):
                         values.append(job_data.description)
                         param_count += 1
                     if job_data.workflow_definition is not None:
+                        import json
                         updates.append(f"workflow_definition = ${param_count}")
-                        values.append(job_data.workflow_definition)
+                        values.append(json.dumps(job_data.workflow_definition))
                         param_count += 1
                     if job_data.schedule_expression is not None:
                         updates.append(f"schedule_expression = ${param_count}")
@@ -454,7 +554,7 @@ class AutomationService(BaseService):
 
         @self.app.post("/jobs/{job_id}/run", response_model=dict)
         async def run_job(job_id: int, input_data: dict = None):
-            """Execute a job immediately"""
+            """Execute a job immediately with runtime validation"""
             try:
                 async with self.db.pool.acquire() as conn:
                     # Get job details
@@ -465,6 +565,35 @@ class AutomationService(BaseService):
                     
                     if not job_row:
                         raise HTTPException(status_code=404, detail="Job not found or disabled")
+                    
+                    # ============================================================================
+                    # RUNTIME VALIDATION - Re-validate workflow before execution
+                    # ============================================================================
+                    
+                    import json
+                    workflow_def = json.loads(job_row['workflow_definition']) if job_row['workflow_definition'] else {}
+                    
+                    # Re-validate workflow complexity at runtime (in case job was modified)
+                    steps = workflow_def.get('steps', [])
+                    nodes = workflow_def.get('nodes', [])
+                    total_steps = len(steps) + len(nodes)
+                    
+                    if total_steps > 100:
+                        self.logger.error(f"Runtime validation failed: {total_steps} steps exceeds limit")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot execute: workflow has {total_steps} steps (max 100)"
+                        )
+                    
+                    workflow_depth = self._calculate_workflow_depth(workflow_def)
+                    if workflow_depth > 20:
+                        self.logger.error(f"Runtime validation failed: {workflow_depth} depth exceeds limit")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Cannot execute: workflow depth {workflow_depth} exceeds maximum of 20"
+                        )
+                    
+                    self.logger.info(f"Runtime validation passed for job {job_id}: {total_steps} steps, {workflow_depth} depth")
                     
                     # Create execution record
                     import uuid
@@ -587,7 +716,7 @@ class AutomationService(BaseService):
 
         @self.app.post("/jobs/import", response_model=dict)
         async def import_jobs(import_request: JobImportRequest):
-            """Import jobs from JSON format"""
+            """Import jobs from JSON format with validation"""
             try:
                 async with self.db.pool.acquire() as conn:
                     jobs_data = import_request.jobs_data.get('jobs', [])
@@ -597,6 +726,42 @@ class AutomationService(BaseService):
                     
                     for job_data in jobs_data:
                         try:
+                            # ============================================================================
+                            # VALIDATE IMPORTED WORKFLOWS - Prevent dangerous imports
+                            # ============================================================================
+                            
+                            workflow_def = job_data.get('workflow_definition', {})
+                            if workflow_def:
+                                # Apply same validation as job creation
+                                steps = workflow_def.get('steps', [])
+                                nodes = workflow_def.get('nodes', [])
+                                total_steps = len(steps) + len(nodes)
+                                
+                                if total_steps > 100:
+                                    errors.append(f"Job '{job_data['name']}': {total_steps} steps exceeds limit of 100")
+                                    skipped_count += 1
+                                    continue
+                                
+                                workflow_depth = self._calculate_workflow_depth(workflow_def)
+                                if workflow_depth > 20:
+                                    errors.append(f"Job '{job_data['name']}': workflow depth {workflow_depth} exceeds limit of 20")
+                                    skipped_count += 1
+                                    continue
+                                
+                                parallel_branches = self._count_parallel_branches(workflow_def)
+                                if parallel_branches > 10:
+                                    errors.append(f"Job '{job_data['name']}': {parallel_branches} parallel branches exceeds limit of 10")
+                                    skipped_count += 1
+                                    continue
+                                
+                                total_iterations = self._estimate_loop_iterations(workflow_def)
+                                if total_iterations > 1000:
+                                    errors.append(f"Job '{job_data['name']}': estimated {total_iterations} iterations exceeds limit of 1000")
+                                    skipped_count += 1
+                                    continue
+                                
+                                self.logger.info(f"Import validation passed for '{job_data['name']}': {total_steps} steps, {workflow_depth} depth")
+                            
                             # Check if job already exists
                             existing_job = await conn.fetchrow(
                                 "SELECT id FROM automation.jobs WHERE name = $1",
@@ -705,9 +870,65 @@ class AutomationService(BaseService):
 
         @self.app.post("/schedules", response_model=dict)
         async def create_schedule(schedule_data: ScheduleCreate):
-            """Create a new schedule"""
+            """Create a new schedule with workflow validation"""
             try:
                 async with self.db.pool.acquire() as conn:
+                    # ============================================================================
+                    # VALIDATE SCHEDULED WORKFLOW - Prevent scheduling dangerous workflows
+                    # ============================================================================
+                    
+                    # Get the job's workflow definition
+                    job_row = await conn.fetchrow(
+                        "SELECT workflow_definition FROM automation.jobs WHERE id = $1",
+                        schedule_data.job_id
+                    )
+                    
+                    if not job_row:
+                        raise HTTPException(status_code=404, detail="Job not found")
+                    
+                    import json
+                    workflow_def = json.loads(job_row['workflow_definition']) if job_row['workflow_definition'] else {}
+                    
+                    if workflow_def:
+                        # Validate the workflow before allowing it to be scheduled
+                        steps = workflow_def.get('steps', [])
+                        nodes = workflow_def.get('nodes', [])
+                        total_steps = len(steps) + len(nodes)
+                        
+                        if total_steps > 100:
+                            self.logger.error(f"Schedule creation rejected: job {schedule_data.job_id} has {total_steps} steps exceeds limit")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Cannot schedule: job workflow has {total_steps} steps (max 100)"
+                            )
+                        
+                        workflow_depth = self._calculate_workflow_depth(workflow_def)
+                        if workflow_depth > 20:
+                            self.logger.error(f"Schedule creation rejected: job {schedule_data.job_id} depth {workflow_depth} exceeds limit")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Cannot schedule: workflow depth {workflow_depth} exceeds maximum of 20"
+                            )
+                        
+                        # Additional validation for scheduled jobs - be more restrictive
+                        parallel_branches = self._count_parallel_branches(workflow_def)
+                        if parallel_branches > 5:  # Lower limit for scheduled jobs
+                            self.logger.error(f"Schedule creation rejected: job {schedule_data.job_id} has {parallel_branches} parallel branches")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Cannot schedule: {parallel_branches} parallel branches exceeds maximum of 5 for scheduled jobs"
+                            )
+                        
+                        total_iterations = self._estimate_loop_iterations(workflow_def)
+                        if total_iterations > 500:  # Lower limit for scheduled jobs
+                            self.logger.error(f"Schedule creation rejected: job {schedule_data.job_id} has {total_iterations} iterations")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Cannot schedule: estimated {total_iterations} iterations exceeds maximum of 500 for scheduled jobs"
+                            )
+                        
+                        self.logger.info(f"Schedule validation passed for job {schedule_data.job_id}: {total_steps} steps, {workflow_depth} depth")
+                    
                     row = await conn.fetchrow("""
                         INSERT INTO job_schedules (job_id, schedule_expression, timezone, is_active)
                         VALUES ($1, $2, $3, $4)
@@ -1838,6 +2059,122 @@ class AutomationService(BaseService):
                 return 'failed'
         else:
             return 'pending'
+    
+    # ============================================================================
+    # WORKFLOW VALIDATION HELPER METHODS
+    # ============================================================================
+    
+    def _calculate_workflow_depth(self, workflow_def: dict) -> int:
+        """Calculate maximum depth of workflow (nested steps/conditions)"""
+        try:
+            nodes = workflow_def.get('nodes', [])
+            steps = workflow_def.get('steps', [])
+            
+            if not nodes and not steps:
+                return 1
+            
+            max_depth = 1
+            
+            # Check for nested structures in nodes
+            for node in nodes:
+                node_depth = self._calculate_node_depth(node, 1)
+                max_depth = max(max_depth, node_depth)
+            
+            # Check for nested structures in steps
+            for step in steps:
+                step_depth = self._calculate_step_depth(step, 1)
+                max_depth = max(max_depth, step_depth)
+            
+            return max_depth
+        except Exception:
+            return 1
+    
+    def _calculate_node_depth(self, node: dict, current_depth: int) -> int:
+        """Recursively calculate depth of a workflow node"""
+        max_depth = current_depth
+        
+        # Check for nested conditions, loops, or sub-workflows
+        if 'conditions' in node:
+            for condition in node.get('conditions', []):
+                if isinstance(condition, dict) and 'steps' in condition:
+                    for step in condition['steps']:
+                        step_depth = self._calculate_step_depth(step, current_depth + 1)
+                        max_depth = max(max_depth, step_depth)
+        
+        if 'children' in node:
+            for child in node.get('children', []):
+                child_depth = self._calculate_node_depth(child, current_depth + 1)
+                max_depth = max(max_depth, child_depth)
+        
+        return max_depth
+    
+    def _calculate_step_depth(self, step: dict, current_depth: int) -> int:
+        """Recursively calculate depth of a workflow step"""
+        max_depth = current_depth
+        
+        # Check for nested steps
+        if 'steps' in step:
+            for nested_step in step.get('steps', []):
+                nested_depth = self._calculate_step_depth(nested_step, current_depth + 1)
+                max_depth = max(max_depth, nested_depth)
+        
+        return max_depth
+    
+    def _count_parallel_branches(self, workflow_def: dict) -> int:
+        """Count maximum number of parallel execution branches"""
+        try:
+            nodes = workflow_def.get('nodes', [])
+            steps = workflow_def.get('steps', [])
+            
+            max_parallel = 1
+            
+            # Check nodes for parallel execution
+            for node in nodes:
+                if node.get('type') == 'parallel' or node.get('parallel', False):
+                    branches = len(node.get('branches', [])) or len(node.get('children', [])) or 1
+                    max_parallel = max(max_parallel, branches)
+            
+            # Check steps for parallel execution
+            for step in steps:
+                if step.get('type') == 'parallel' or step.get('parallel', False):
+                    branches = len(step.get('branches', [])) or len(step.get('steps', [])) or 1
+                    max_parallel = max(max_parallel, branches)
+            
+            return max_parallel
+        except Exception:
+            return 1
+    
+    def _estimate_loop_iterations(self, workflow_def: dict) -> int:
+        """Estimate total loop iterations in workflow"""
+        try:
+            nodes = workflow_def.get('nodes', [])
+            steps = workflow_def.get('steps', [])
+            
+            total_iterations = 0
+            
+            # Check nodes for loops
+            for node in nodes:
+                if node.get('type') in ['loop', 'while', 'for', 'repeat']:
+                    # Estimate iterations based on configuration
+                    iterations = node.get('iterations', node.get('max_iterations', 10))
+                    if isinstance(iterations, int):
+                        total_iterations += iterations
+                    else:
+                        total_iterations += 10  # Default estimate
+            
+            # Check steps for loops
+            for step in steps:
+                if step.get('type') in ['loop', 'while', 'for', 'repeat']:
+                    iterations = step.get('iterations', step.get('max_iterations', 10))
+                    if isinstance(iterations, int):
+                        total_iterations += iterations
+                    else:
+                        total_iterations += 10  # Default estimate
+            
+            # If no explicit loops found, assume linear execution
+            return max(total_iterations, 1)
+        except Exception:
+            return 1
 
 if __name__ == "__main__":
     service = AutomationService()
