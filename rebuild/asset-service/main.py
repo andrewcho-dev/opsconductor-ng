@@ -257,8 +257,6 @@ class TargetListResponse(BaseModel):
     skip: int
     limit: int
 
-
-
 class DiscoveryJob(BaseModel):
     id: int
     name: str
@@ -974,8 +972,6 @@ class AssetService(BaseService):
                     detail="Failed to test service connection"
                 )
 
-
-
         # ============================================================================
         # DISCOVERY CRUD ENDPOINTS
         # ============================================================================
@@ -1295,152 +1291,6 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update discovery job"
-                )
-
-        @self.app.post("/discovery/discovery-jobs/{discovery_id}/run", response_model=dict)
-        async def run_discovery_job(discovery_id: int):
-            """Run/start a discovery job"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get job details
-                    job = await conn.fetchrow("""
-                        SELECT id, name, target_range, scan_type, status, configuration 
-                        FROM assets.discovery_scans WHERE id = $1
-                    """, discovery_id)
-                    
-                    if not job:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
-                    
-                    if job['status'] == 'running':
-                        raise HTTPException(status_code=400, detail="Job is already running")
-                    
-                    # Parse configuration
-                    import json
-                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
-                    
-                    # Update job status to running
-                    await conn.execute("""
-                        UPDATE assets.discovery_scans 
-                        SET status = 'running', started_at = NOW()
-                        WHERE id = $1
-                    """, discovery_id)
-                    
-                    # Execute discovery job directly using the worker task
-                    from celery import Celery
-                    import os
-                    
-                    # Use the worker's Redis database (database 3) for Celery tasks
-                    worker_redis_url = "redis://redis:6379/3"
-                    celery_app = Celery('automation-worker', broker=worker_redis_url, backend=worker_redis_url)
-                    
-                    task = celery_app.send_task(
-                        'worker.execute_discovery_job',
-                        args=[discovery_id, job['target_range'], job['scan_type'], configuration]
-                    )
-                    
-                    # Store task ID for progress tracking
-                    await conn.execute("""
-                        UPDATE assets.discovery_scans 
-                        SET configuration = $1
-                        WHERE id = $2
-                    """, json.dumps({**configuration, 'celery_task_id': task.id}), discovery_id)
-                    
-                    return {
-                        "success": True, 
-                        "message": "Discovery job started",
-                        "task_id": task.id
-                    }
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to run discovery job", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to run discovery job"
-                )
-
-        @self.app.get("/discovery/discovery-jobs/{discovery_id}/progress", response_model=dict)
-        async def get_discovery_job_progress(discovery_id: int):
-            """Get progress of a running discovery job"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get job details
-                    job = await conn.fetchrow("""
-                        SELECT id, status, configuration 
-                        FROM assets.discovery_scans WHERE id = $1
-                    """, discovery_id)
-                    
-                    if not job:
-                        raise HTTPException(status_code=404, detail="Discovery job not found")
-                    
-                    if job['status'] != 'running':
-                        return {
-                            "status": job['status'],
-                            "progress": 100 if job['status'] == 'completed' else 0,
-                            "message": f"Job is {job['status']}"
-                        }
-                    
-                    # Get task ID from configuration
-                    import json
-                    configuration = json.loads(job['configuration']) if job['configuration'] else {}
-                    task_id = configuration.get('celery_task_id')
-                    
-                    if not task_id:
-                        return {
-                            "status": "running",
-                            "progress": 0,
-                            "message": "Job is starting..."
-                        }
-                    
-                    # Get task progress from Celery
-                    from celery import Celery
-                    import os
-                    
-                    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
-                    celery_app = Celery('automation-worker', broker=redis_url, backend=redis_url)
-                    
-                    task_result = celery_app.AsyncResult(task_id)
-                    
-                    if task_result.state == 'PROGRESS':
-                        progress_info = task_result.info or {}
-                        return {
-                            "status": "running",
-                            "progress": progress_info.get('current', 0),
-                            "total": progress_info.get('total', 100),
-                            "message": progress_info.get('status', 'Running...'),
-                            "phase": progress_info.get('phase', 'unknown'),
-                            "targets_found": progress_info.get('targets_found', 0),
-                            "targets_scanned": progress_info.get('targets_scanned', 0),
-                            "total_targets": progress_info.get('total_targets', 0),
-                            "current_target": progress_info.get('current_target')
-                        }
-                    elif task_result.state == 'SUCCESS':
-                        return {
-                            "status": "completed",
-                            "progress": 100,
-                            "message": "Discovery job completed successfully"
-                        }
-                    elif task_result.state == 'FAILURE':
-                        error_info = task_result.info or {}
-                        return {
-                            "status": "failed",
-                            "progress": 0,
-                            "message": f"Discovery job failed: {error_info.get('error', 'Unknown error')}"
-                        }
-                    else:
-                        return {
-                            "status": "running",
-                            "progress": 0,
-                            "message": f"Task state: {task_result.state}"
-                        }
-                        
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to get discovery job progress", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get discovery job progress"
                 )
 
         @self.app.post("/discovery/discovery-jobs/{discovery_id}/cancel", response_model=dict)
