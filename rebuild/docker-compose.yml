@@ -257,26 +257,7 @@ services:
       - scheduler_data:/app/data
     restart: unless-stopped
 
-  # Monitoring
-  flower:
-    build: ./automation-service
-    container_name: opsconductor-flower
-    command: celery -A worker flower --port=5555
-    ports:
-      - "5555:5555"
-    environment:
-      REDIS_URL: redis://redis:6379/3
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - opsconductor-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5555"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
+
 
   # Frontend
   frontend:

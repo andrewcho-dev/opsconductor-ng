@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Job } from '../types';
-import { stepLibraryService } from '../services/stepLibraryService';
-import StepConfigModal from './StepConfigModal';
+
+
 import { FileText, X, Play, Square, Target, MousePointer, AlertTriangle, RefreshCw, RotateCcw, Grid3X3, Package, Hand, ZoomIn, ZoomOut, Maximize2, AlignStartVertical, AlignCenterVertical, AlignEndVertical, AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal } from 'lucide-react';
 
 // Inject CSS styles for the Visual Job Builder
@@ -215,8 +215,8 @@ const visualJobBuilderStyles = `
     box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2) !important;
   }
 
-  /* Step library styles */}
-  .step-library-search {
+  /* Step search styles */
+  .step-search {
     width: 100%;
     padding: var(--space-2);
     border: 1px solid var(--neutral-300);
@@ -225,20 +225,7 @@ const visualJobBuilderStyles = `
     margin-bottom: var(--space-2);
   }
 
-  .step-library-filters {
-    display: flex;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
-  }
 
-  .step-library-filters select {
-    flex: 1;
-    padding: var(--space-1);
-    border: 1px solid var(--neutral-300);
-    border-radius: var(--radius-sm);
-    font-size: 11px;
-    background-color: var(--neutral-0);
-  }
 
   .step-template {
     padding: var(--space-1);
@@ -278,72 +265,7 @@ const visualJobBuilderStyles = `
     color: var(--neutral-600);
   }
 
-  /* Library Navigator Styles */
-  .library-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 16px;
-  }
 
-  .library-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background-color 0.2s;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .library-item:hover {
-    background-color: var(--neutral-100);
-  }
-
-  .library-item.selected {
-    background-color: var(--primary-blue-100);
-    color: var(--primary-blue-700);
-  }
-
-  .category-section {
-    border-top: 1px solid var(--neutral-200);
-    padding-top: 16px;
-  }
-
-  .category-header {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--neutral-600);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin: 0 0 8px 0;
-  }
-
-  .category-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .category-item {
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background-color 0.2s;
-    font-size: 11px;
-    font-weight: 500;
-  }
-
-  .category-item:hover {
-    background-color: var(--neutral-100);
-  }
-
-  .category-item.selected {
-    background-color: var(--primary-blue-100);
-    color: var(--primary-blue-700);
-  }
 
   /* Job Controls in Right Panel */
   .job-controls {
@@ -413,25 +335,7 @@ const visualJobBuilderStyles = `
 
 
 
-  /* Loading and error states */}
-  .step-load-status {
-    padding: var(--space-3);
-    text-align: center;
-    font-size: 12px;
-  }
 
-  .step-load-error {
-    color: var(--semantic-error-600);
-    background-color: var(--semantic-error-50);
-    border: 1px solid var(--semantic-error-200);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2);
-    margin-bottom: var(--space-2);
-  }
-
-  .step-load-retry {
-    margin-top: var(--space-2);
-  }
 `;
 
 // Inject styles into head if not already present
@@ -503,7 +407,6 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedLibrary, setSelectedLibrary] = useState<string>('');
   const [draggedTemplate, setDraggedTemplate] = useState<NodeTemplate | null>(null);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -527,8 +430,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   
   // Dynamic step loading state
   const [nodeTemplates, setNodeTemplates] = useState<NodeTemplate[]>([]);
-  const [loadingSteps, setLoadingSteps] = useState(true);
-  const [stepLoadError, setStepLoadError] = useState<string | null>(null);
+
   
   // Target selection state
 
@@ -536,52 +438,54 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // Load step definitions from service
-  const loadStepDefinitions = useCallback(async () => {
-    console.log('Loading step definitions from service...');
-    setLoadingSteps(true);
-    setStepLoadError(null);
-    
-    try {
-      const response = await stepLibraryService.getAvailableSteps();
-      console.log('Loaded step definitions:', response);
-      
-      // Convert step definitions to node templates
-      const templates: NodeTemplate[] = response.steps.map(step => 
-        stepLibraryService.convertToNodeTemplate(step)
-      );
-      
-      setNodeTemplates(templates);
-      setLoadingSteps(false);
-    } catch (error) {
-      console.error('Failed to load step definitions:', error);
-      setStepLoadError('Failed to load step library. Using default steps.');
-      
-      // Use fallback steps if service fails
-      const fallbackResponse = await stepLibraryService.getAvailableSteps();
-      const templates: NodeTemplate[] = fallbackResponse.steps.map(step => 
-        stepLibraryService.convertToNodeTemplate(step)
-      );
-      
-      setNodeTemplates(templates);
-      setLoadingSteps(false);
-    }
-  }, []);
-
+  // Initialize with default step templates
   useEffect(() => {
-    loadStepDefinitions();
+    const defaultTemplates: NodeTemplate[] = [
+      {
+        id: 'flow.start',
+        type: 'flow.start',
+        name: 'Start',
+        category: 'Flow Control',
+        description: 'Starting point of the job',
+        icon: 'Play',
+        color: '#10b981',
+        inputs: [],
+        outputs: [{ name: 'next', type: 'flow' }],
+        parameters: [],
+        library: 'builtin'
+      },
+      {
+        id: 'flow.end',
+        type: 'flow.end',
+        name: 'End',
+        category: 'Flow Control',
+        description: 'End point of the job',
+        icon: 'Square',
+        color: '#ef4444',
+        inputs: [{ name: 'previous', type: 'flow' }],
+        outputs: [],
+        parameters: [],
+        library: 'builtin'
+      },
+      {
+        id: 'basic.shell',
+        type: 'basic.shell',
+        name: 'Shell Command',
+        category: 'Basic',
+        description: 'Execute a shell command',
+        icon: 'Terminal',
+        color: '#6366f1',
+        inputs: [{ name: 'previous', type: 'flow' }],
+        outputs: [{ name: 'next', type: 'flow' }],
+        parameters: [
+          { name: 'command', type: 'string', required: true, description: 'Shell command to execute' }
+        ],
+        library: 'builtin'
+      }
+    ];
     
-    // Listen for library changes
-    const handleLibraryChange = () => {
-      loadStepDefinitions();
-    };
-    
-    stepLibraryService.addChangeListener(handleLibraryChange);
-    
-    return () => {
-      stepLibraryService.removeChangeListener(handleLibraryChange);
-    };
-  }, [loadStepDefinitions]);
+    setNodeTemplates(defaultTemplates);
+  }, []);
 
   useEffect(() => {
     // Add default start node if no nodes exist and we're not editing a job
@@ -1149,83 +1053,34 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
 
   // Listen for custom events from header buttons
   useEffect(() => {
-    const handleRefreshSteps = () => {
-      loadStepDefinitions();
-    };
-
     const handleSaveJob = () => {
       handleSave();
     };
 
-    window.addEventListener('refreshSteps', handleRefreshSteps);
     window.addEventListener('saveJob', handleSaveJob);
     
     return () => {
-      window.removeEventListener('refreshSteps', handleRefreshSteps);
       window.removeEventListener('saveJob', handleSaveJob);
     };
-  }, [loadStepDefinitions, handleSave]);
+  }, [handleSave]);
 
-  // Get unique categories and libraries (no "all" option)
+  // Get unique categories (no "all" option)
   const categories = Array.from(new Set(nodeTemplates.map(t => t.category)));
-  const libraries = Array.from(new Set(nodeTemplates.map(t => t.library)));
 
   // Filter templates
   const filteredTemplates = nodeTemplates.filter(template => {
     const categoryMatch = !selectedCategory || template.category === selectedCategory;
-    const libraryMatch = !selectedLibrary || template.library === selectedLibrary;
     const searchMatch = searchTerm === '' || 
       template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       template.type.toLowerCase().includes(searchTerm.toLowerCase());
     
-    return categoryMatch && libraryMatch && searchMatch;
+    return categoryMatch && searchMatch;
   });
 
   return (
     <div className="visual-job-builder dashboard-grid">
-      {/* Step Libraries Navigator (1fr width) */}
-      <div className="dashboard-section">
-        <div className="section-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Package size={14} />
-            Libraries
-          </div>
-        </div>
-        <div className="section-content">
-          {/* Libraries List */}
-          <div className="library-list">
-            {libraries.map(lib => (
-              <div
-                key={lib}
-                className={`library-item ${selectedLibrary === lib ? 'selected' : ''}`}
-                onClick={() => setSelectedLibrary(lib)}
-              >
-                <Package size={14} />
-                <span>{lib}</span>
-              </div>
-            ))}
-          </div>
 
-          {/* Categories for selected library */}
-          {selectedLibrary && (
-            <div className="category-section">
-              <h4 className="category-header">Categories</h4>
-              <div className="category-list">
-                {categories.map(cat => (
-                  <div
-                    key={cat}
-                    className={`category-item ${selectedCategory === cat ? 'selected' : ''}`}
-                    onClick={() => setSelectedCategory(cat)}
-                  >
-                    <span>{cat}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Step Blocks (1fr width) */}
       <div className="dashboard-section">
@@ -1242,31 +1097,12 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
             placeholder="Search steps..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="step-library-search"
+            className="step-search"
           />
-
-          {/* Loading and Error States */}
-          {loadingSteps ? (
-            <div className="step-load-status">
-              <div>Loading step libraries...</div>
-            </div>
-          ) : stepLoadError ? (
-            <div className="step-load-error">
-              <AlertTriangle size={14} style={{ marginRight: 'var(--space-1)' }} />
-              {stepLoadError}
-              <button 
-                className="btn btn-ghost btn-sm step-load-retry"
-                onClick={loadStepDefinitions}
-              >
-                <RefreshCw size={12} />
-                Retry
-              </button>
-            </div>
-          ) : null}
 
           {/* Step Templates */}
           <div className="step-templates-container">
-            {!loadingSteps && !stepLoadError && filteredTemplates.length === 0 && (
+            {filteredTemplates.length === 0 && (
               <div className="no-selection">
                 <p>No steps found matching your filters</p>
               </div>

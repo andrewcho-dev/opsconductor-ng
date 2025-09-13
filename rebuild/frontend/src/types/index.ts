@@ -280,42 +280,7 @@ export interface JobRunListResponse {
 
 
 
-// Notification Types
-export interface NotificationPreferences {
-  email_enabled: boolean;
-  email_address?: string;
-  webhook_enabled: boolean;
-  webhook_url?: string;
-  slack_enabled: boolean;
-  slack_webhook_url?: string;
-  slack_channel?: string;
-  teams_enabled: boolean;
-  teams_webhook_url?: string;
-  notify_on_success: boolean;
-  notify_on_failure: boolean;
-  notify_on_start: boolean;
-  quiet_hours_enabled: boolean;
-  quiet_hours_start?: string;
-  quiet_hours_end?: string;
-  quiet_hours_timezone: string;
-}
 
-export interface NotificationPreferencesResponse extends NotificationPreferences {
-  id: number;
-  user_id: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface NotificationChannel {
-  id: number;
-  name: string;
-  display_name: string;
-  description?: string;
-  is_active: boolean;
-  configuration_schema?: Record<string, any>;
-  created_at: string;
-}
 
 export interface SMTPSettings {
   host: string;

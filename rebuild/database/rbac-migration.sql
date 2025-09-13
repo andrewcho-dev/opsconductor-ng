@@ -9,7 +9,7 @@ UPDATE identity.roles SET permissions = '["*"]' WHERE name = 'admin';
 UPDATE identity.roles SET permissions = '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute", "jobs:delete",
   "targets:read", "targets:create", "targets:update", "targets:delete",
-  "executions:read", "step-libraries:read"
+  "executions:read"
 ]' WHERE name = 'operator';
 UPDATE identity.roles SET permissions = '[
   "jobs:read", "targets:read", "executions:read"
@@ -20,11 +20,11 @@ INSERT INTO identity.roles (name, description, permissions, is_active) VALUES
 ('manager', 'Team Manager', '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
   "targets:read", "targets:create", "targets:update",
-  "executions:read", "users:read", "step-libraries:read"
+  "executions:read", "users:read"
 ]', true),
 ('developer', 'Developer', '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
-  "targets:read", "executions:read", "step-libraries:read", "step-libraries:create", "step-libraries:update"
+  "targets:read", "executions:read"
 ]', true)
 ON CONFLICT (name) DO NOTHING;
 

@@ -11,7 +11,7 @@ import {
   Settings, 
   Calendar, 
   Play, 
-  Bell, 
+ 
   LogOut,
   Menu,
   ChevronRight,
@@ -20,8 +20,7 @@ import {
   ClipboardList,
   History,
   Plus,
-  List,
-  Activity
+  List
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -179,24 +178,8 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Play size={14} /></span>
                     Job Runs
                   </Link>
-                  <Link 
-                    to="/history/notifications" 
-                    className={`nav-submenu-item ${location.pathname === '/history/notifications' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.NOTIFICATIONS_READ) ? 'disabled' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><ClipboardList size={14} /></span>
-                    Notifications
-                    {!hasPermission(user, PERMISSIONS.NOTIFICATIONS_READ) && <span className="admin-badge">Admin</span>}
-                  </Link>
-                  <Link 
-                    to="/history/celery-workers-iframe" 
-                    className={`nav-submenu-item ${location.pathname === '/history/celery-workers-iframe' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SYSTEM_ADMIN) ? 'disabled' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Activity size={14} /></span>
-                    Celery Workers
-                    {!hasPermission(user, PERMISSIONS.SYSTEM_ADMIN) && <span className="admin-badge">Admin</span>}
-                  </Link>
+
+
                 </div>
               </div>
               <div className="nav-divider"></div>
@@ -209,15 +192,7 @@ const Navbar: React.FC = () => {
                   </span>
                 </div>
                 <div className="nav-submenu">
-                  <Link 
-                    to="/settings/step-library" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/step-library' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.STEP_LIBRARIES_READ) ? 'disabled' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Code size={14} /></span>
-                    Step Library
-                    {!hasPermission(user, PERMISSIONS.STEP_LIBRARIES_READ) && <span className="admin-badge">Admin</span>}
-                  </Link>
+
                   <Link 
                     to="/settings/smtp" 
                     className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SMTP_CONFIG) ? 'disabled' : ''}`} 
@@ -227,14 +202,7 @@ const Navbar: React.FC = () => {
                     SMTP Config
                     {!hasPermission(user, PERMISSIONS.SMTP_CONFIG) && <span className="admin-badge">Admin</span>}
                   </Link>
-                  <Link 
-                    to="/settings/notification-preferences" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/notification-preferences' ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Bell size={14} /></span>
-                    Notifications
-                  </Link>
+
                   {hasPermission(user, PERMISSIONS.ROLES_READ) && (
                     <Link 
                       to="/settings/roles" 

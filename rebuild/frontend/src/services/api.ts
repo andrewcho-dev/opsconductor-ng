@@ -7,7 +7,7 @@ import {
   JobRun, JobRunListResponse, JobRunStep,
 
   LoginRequest, AuthResponse,
-  NotificationPreferences, NotificationPreferencesResponse, NotificationChannel,
+
   SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse
 } from '../types';
 
@@ -23,8 +23,8 @@ console.log('🔥 API SERVICE LOADED AT', new Date().toISOString());
 //   targets: 3005,
 //   jobs: 3006,
 //   executor: 3007,
-//   notifications: 3009,
-//   stepLibraries: 3011
+
+
 // };
 
 export const getApiBaseUrl = () => {
@@ -374,9 +374,8 @@ export const healthApi = {
           } else if (serviceName.includes('automation')) {
             results['jobs'] = { ...check, service: 'jobs', responseTime };
             results['executor'] = { ...check, service: 'executor', responseTime };
-            results['step-libraries'] = { ...check, service: 'step-libraries', responseTime };
-          } else if (serviceName.includes('communication')) {
-            results['notification'] = { ...check, service: 'notification', responseTime };
+
+
           } else {
             // For database, redis, etc.
             results[serviceName.toLowerCase()] = { ...check, service: serviceName.toLowerCase(), responseTime };
@@ -387,7 +386,7 @@ export const healthApi = {
       // Add default status for services not explicitly reported
       const expectedServices = [
         'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 
-        'notification', 'step-libraries', 'redis', 'postgres'
+        'redis', 'postgres'
       ];
       
       expectedServices.forEach(service => {
@@ -409,7 +408,7 @@ export const healthApi = {
       // Return error status for all services if health check fails
       const services = [
         'api-gateway', 'auth', 'users', 'credentials', 'targets', 'jobs', 'executor',
-        'notification', 'step-libraries', 'redis', 'postgres'
+        'redis', 'postgres'
       ];
       
       const results: Record<string, any> = {};
@@ -475,26 +474,8 @@ export const healthApi = {
   }
 };
 
-// Notification Preferences API
-export const notificationApi = {
-  // User notification preferences
-  getUserPreferences: async (userId: number): Promise<NotificationPreferencesResponse> => {
-    const response = await api.get(`/api/v1/users/${userId}/notification-preferences`);
-    return response.data;
-  },
-
-  updateUserPreferences: async (userId: number, preferences: NotificationPreferences): Promise<NotificationPreferencesResponse> => {
-    const response = await api.put(`/api/v1/users/${userId}/notification-preferences`, preferences);
-    return response.data;
-  },
-
-  // Notification channels
-  getChannels: async (): Promise<NotificationChannel[]> => {
-    const response = await api.get('/api/v1/channels');
-    return response.data;
-  },
-
-  // SMTP settings (admin only)
+// SMTP Settings API
+export const smtpApi = {
   getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
     const response = await api.get('/api/v1/notifications/smtp');
     return response.data;
@@ -513,22 +494,6 @@ export const notificationApi = {
 
 
 
-// Celery Monitoring API
-export const celeryApi = {
-  getStatus: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executor/celery/status');
-    return response.data;
-  },
 
-  getMetrics: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executor/celery/metrics');
-    return response.data;
-  },
-
-  getQueues: async (): Promise<any> => {
-    const response = await api.get('/api/v1/executor/celery/queues');
-    return response.data;
-  }
-};
 
 export default api;

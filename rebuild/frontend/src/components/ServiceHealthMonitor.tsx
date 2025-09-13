@@ -16,10 +16,8 @@ const ServiceHealthMonitor: React.FC = () => {
 
   // Group services by category
   const serviceGroups = {
-    'Core Services': ['auth', 'users', 'targets', 'jobs'],
-    'Processing': ['executor', 'celery-worker', 'celery-beat'],
-    'Infrastructure': ['nginx', 'frontend', 'redis', 'postgres'],
-    'Monitoring': ['notification', 'step-libraries', 'flower']
+    'Core Services': ['auth-service', 'users-service', 'targets-service', 'automation-service'],
+    'Infrastructure': ['nginx', 'frontend', 'redis', 'postgres']
   };
 
   const fetchServiceHealth = async () => {

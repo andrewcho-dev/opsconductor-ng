@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SMTPSettingsComponent from '../components/SMTPSettings';
-import StepLibrarySettings from '../components/StepLibrarySettings';
+
 import { Lightbulb } from 'lucide-react';
 
 const LegacySettings: React.FC = () => {
@@ -14,7 +14,7 @@ const LegacySettings: React.FC = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">System Settings</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Configure system-wide settings, step libraries, and email server configuration.
+            Configure system-wide settings and email server configuration.
           </p>
         </div>
 
@@ -22,8 +22,7 @@ const LegacySettings: React.FC = () => {
         <div className="space-y-6">
           {user?.role === 'admin' ? (
             <>
-              {/* Step Library Management */}
-              <StepLibrarySettings />
+
               
               {/* SMTP Settings */}
               <SMTPSettingsComponent />
@@ -31,7 +30,7 @@ const LegacySettings: React.FC = () => {
           ) : (
             <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
               <h3 className="font-medium">Access Restricted</h3>
-              <p className="mt-1">Only administrators can access system settings. For notification preferences, visit the <a href="/notifications" className="underline">Notifications</a> page.</p>
+              <p className="mt-1">Only administrators can access system settings.</p>
             </div>
           )}
         </div>
@@ -43,13 +42,10 @@ const LegacySettings: React.FC = () => {
               <Lightbulb size={20} className="inline mr-2" />Administrator Help
             </h3>
             <div className="space-y-3 text-sm text-blue-700">
-              <div>
-                <strong>Step Libraries:</strong> Manage job step libraries that provide reusable components 
-                for job creation. Install new libraries, enable/disable existing ones, or remove unused libraries.
-              </div>
+
               <div>
                 <strong>SMTP Settings:</strong> Configure the email server settings that will be used for all 
-                system notifications. Make sure to test the configuration after making changes.
+system emails. Make sure to test the configuration after making changes.
               </div>
               <div>
                 <strong>Security:</strong> Use app passwords for Gmail and other providers that support 2FA. 
@@ -57,7 +53,7 @@ const LegacySettings: React.FC = () => {
               </div>
               <div>
                 <strong>Testing:</strong> Use the test functionality to verify your SMTP configuration before 
-                saving. This helps ensure notifications will be delivered properly.
+                saving. This helps ensure emails will be delivered properly.
               </div>
             </div>
           </div>

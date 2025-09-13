@@ -44,12 +44,12 @@ SERVICE_ROUTES = {
     "/api/v1/schedules": "AUTOMATION_SERVICE_URL",
     "/api/v1/workflows": "AUTOMATION_SERVICE_URL",
     "/api/v1/executions": "AUTOMATION_SERVICE_URL",
-    "/api/v1/libraries": "AUTOMATION_SERVICE_URL",
-    "/api/v1/step-libraries": "AUTOMATION_SERVICE_URL",
+
+
     "/api/v1/tasks": "AUTOMATION_SERVICE_URL",  # Direct Celery task status
     
     # Communication Service
-    "/api/v1/notifications": "COMMUNICATION_SERVICE_URL",
+
     "/api/v1/templates": "COMMUNICATION_SERVICE_URL",
     "/api/v1/channels": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
@@ -311,10 +311,7 @@ class APIGateway:
                 # Map /api/v1/runs/* to /api/v1/executions/*
                 service_url = self.service_urls.get("/api/v1/executions")
                 service_path = path.replace("api/v1/runs", "api/v1/executions", 1)
-            elif path.startswith("api/v1/step-libraries/"):
-                # Map /api/v1/step-libraries/* to automation service /*
-                service_url = self.service_urls.get("/api/v1/step-libraries")
-                service_path = path.replace("api/v1/step-libraries/", "", 1)
+
             elif path.startswith("api/v1/jobs/") and path.endswith("/run"):
                 # Map /api/v1/jobs/{id}/run to POST /api/v1/jobs/{id}/run (automation service)
                 service_url = self.service_urls.get("/api/v1/jobs")

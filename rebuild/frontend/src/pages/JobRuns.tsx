@@ -2,77 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { jobRunApi, jobApi, userApi, targetApi } from '../services/api';
 import { JobRun, JobRunStep, Job, User, Target } from '../types';
-import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, ExternalLink, Maximize2, Upload } from 'lucide-react';
+import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, Maximize2, Upload } from 'lucide-react';
 
-// Component to check if Celery task exists and render appropriate link
-const CeleryTaskLink: React.FC<{ jobRunId: number; correlationId: string }> = ({ jobRunId, correlationId }) => {
-  const [taskExists, setTaskExists] = useState<boolean | null>(null);
-  const [checking, setChecking] = useState(true);
-  
-  const taskId = `job_run_${jobRunId}_${correlationId}`;
-  
-  useEffect(() => {
-    const checkTaskExists = async () => {
-      try {
-        // Check if task exists in Flower/Celery
-        const response = await fetch(`/flower/api/task/info/${taskId}`);
-        setTaskExists(response.ok);
-      } catch (error) {
-        console.log('Could not check task existence:', error);
-        setTaskExists(false);
-      } finally {
-        setChecking(false);
-      }
-    };
-    
-    checkTaskExists();
-  }, [taskId]);
-  
-  if (checking) {
-    return (
-      <span style={{ color: 'var(--neutral-500)' }}>
-        {correlationId} <span style={{ opacity: 0.7 }}>(checking...)</span>
-      </span>
-    );
-  }
-  
-  if (taskExists) {
-    return (
-      <a 
-        href={`/history/celery-workers-iframe?task=${taskId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ 
-          color: 'var(--primary)', 
-          textDecoration: 'none',
-          borderBottom: '1px dotted var(--primary)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}
-        title="View task in Celery monitoring"
-      >
-        {correlationId}
-        <ExternalLink size={12} />
-      </a>
-    );
-  } else {
-    return (
-      <span 
-        style={{ 
-          color: 'var(--neutral-600)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}
-        title="Task no longer available in Celery (expired or deleted)"
-      >
-        {correlationId}
-        <span style={{ fontSize: '12px', opacity: 0.7 }}>(expired)</span>
-      </span>
-    );
-  }
-};
+
 
 const JobRuns: React.FC = () => {
   const navigate = useNavigate();
@@ -1086,10 +1018,9 @@ const JobRuns: React.FC = () => {
                       <div className="detail-item detail-item-span-2-3">
                         <label>Execution ID</label>
                         <div className="detail-value">
-                          <CeleryTaskLink 
-                            jobRunId={selectedRun.id} 
-                            correlationId={selectedRun.execution_id} 
-                          />
+                          <span style={{ color: 'var(--neutral-600)', fontFamily: 'monospace' }}>
+                            {selectedRun.execution_id}
+                          </span>
                         </div>
                       </div>
                     )}

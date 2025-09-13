@@ -2,13 +2,13 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import SMTPSettingsComponent from '../components/SMTPSettings';
-import StepLibrarySettings from '../components/StepLibrarySettings';
-import NotificationSettings from '../components/NotificationSettings';
+
+
 import { 
   Settings, 
   Mail, 
-  Code, 
-  Bell, 
+ 
+ 
   ChevronRight,
   AlertCircle
 } from 'lucide-react';
@@ -30,29 +30,16 @@ const SystemSettings: React.FC = () => {
       description: 'System settings overview and navigation',
       component: null
     },
-    {
-      id: 'step-library',
-      name: 'Step Library',
-      icon: <Code size={16} />,
-      description: 'Manage job step libraries and reusable components',
-      component: StepLibrarySettings,
-      adminOnly: true
-    },
+
     {
       id: 'smtp',
       name: 'SMTP Configuration',
       icon: <Mail size={16} />,
-      description: 'Configure email server settings for notifications',
+      description: 'Configure email server settings for system emails',
       component: SMTPSettingsComponent,
       adminOnly: true
     },
-    {
-      id: 'notification-preferences',
-      name: 'Notifications',
-      icon: <Bell size={16} />,
-      description: 'Configure notification preferences and worker management',
-      component: NotificationSettings
-    },
+
 
   ];
 
@@ -337,7 +324,7 @@ const SystemSettings: React.FC = () => {
       <div className="dashboard-header">
         <div className="header-left">
           <h1>System Settings</h1>
-          <p className="header-subtitle">Configure system-wide settings, notifications, and preferences</p>
+          <p className="header-subtitle">Configure system-wide settings and preferences</p>
         </div>
       </div>
 
@@ -371,26 +358,7 @@ const SystemSettings: React.FC = () => {
               ) : currentSection === 'overview' ? (
                 /* Overview Section */
                 <div className="overview-grid">
-                  <div className="overview-card">
-                    <h3>
-                      <Code size={16} />
-                      Step Library Management
-                      <span className="admin-badge">Admin</span>
-                    </h3>
-                    <p>
-                      Manage job step libraries that provide reusable components for job creation. 
-                      Install new libraries, enable/disable existing ones, or remove unused libraries.
-                    </p>
-                    <div className="card-actions">
-                      <button 
-                        className="btn-card"
-                        onClick={() => handleSectionChange('step-library')}
-                        disabled={user?.role !== 'admin'}
-                      >
-                        Manage Libraries
-                      </button>
-                    </div>
-                  </div>
+
 
                   <div className="overview-card">
                     <h3>
@@ -399,8 +367,8 @@ const SystemSettings: React.FC = () => {
                       <span className="admin-badge">Admin</span>
                     </h3>
                     <p>
-                      Configure the email server settings that will be used for all system notifications. 
-                      Test the configuration to ensure notifications are delivered properly.
+                      Configure the email server settings that will be used for all system emails. 
+                      Test the configuration to ensure emails are delivered properly.
                     </p>
                     <div className="card-actions">
                       <button 
@@ -413,24 +381,7 @@ const SystemSettings: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="overview-card">
-                    <h3>
-                      <Bell size={16} />
-                      Notification Preferences
-                    </h3>
-                    <p>
-                      Configure your personal notification settings including email, webhooks, Slack, and Teams. 
-                      Set up quiet hours and choose which events trigger notifications.
-                    </p>
-                    <div className="card-actions">
-                      <button 
-                        className="btn-card"
-                        onClick={() => handleSectionChange('notification-preferences')}
-                      >
-                        Manage Preferences
-                      </button>
-                    </div>
-                  </div>
+
 
 
                 </div>

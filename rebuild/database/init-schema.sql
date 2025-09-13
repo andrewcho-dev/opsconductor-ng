@@ -150,20 +150,7 @@ WHERE is_default = true;
 -- AUTOMATION SERVICE SCHEMA
 -- ============================================================================
 
--- Step libraries
-CREATE TABLE automation.step_libraries (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,
-    version VARCHAR(50) NOT NULL,
-    description TEXT,
-    manifest JSONB NOT NULL,
-    is_active BOOLEAN DEFAULT true,
-    is_builtin BOOLEAN DEFAULT false,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, version)
-);
+
 
 -- Jobs/Workflows
 CREATE TABLE automation.jobs (

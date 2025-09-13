@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { notificationApi } from '../services/api';
+import { smtpApi } from '../services/api';
 import { SMTPSettings, SMTPSettingsResponse, SMTPTestRequest } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { CheckCircle, XCircle } from 'lucide-react';
@@ -44,7 +44,7 @@ const SMTPSettingsComponent: React.FC = () => {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await notificationApi.getSMTPSettings();
+      const response = await smtpApi.getSMTPSettings();
       setCurrentSettings(response);
       
       // Populate form with current settings (password will be masked)
@@ -73,7 +73,7 @@ const SMTPSettingsComponent: React.FC = () => {
       setError(null);
       setSuccess(null);
       
-      const response = await notificationApi.updateSMTPSettings(settings);
+      const response = await smtpApi.updateSMTPSettings(settings);
       setCurrentSettings(response);
       setSuccess('SMTP settings saved successfully!');
       
@@ -99,7 +99,7 @@ const SMTPSettingsComponent: React.FC = () => {
       setTestResult(null);
       
       const testRequest: SMTPTestRequest = { test_email: testEmail };
-      const response = await notificationApi.testSMTPSettings(testRequest);
+      const response = await smtpApi.testSMTPSettings(testRequest);
       
       if (response.success) {
         setTestResult(response.message);
@@ -343,7 +343,7 @@ const SMTPSettingsComponent: React.FC = () => {
         </div>
         <div className="smtp-content">
           <p style={{ fontSize: '11px', color: 'var(--neutral-500)', marginBottom: '12px' }}>
-            Configure SMTP settings for system-wide email notifications
+            Configure SMTP settings for system-wide emails
           </p>
           
           {currentSettings?.is_configured && (

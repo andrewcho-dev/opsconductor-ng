@@ -40,22 +40,14 @@ export const PERMISSIONS = {
   // Execution monitoring
   EXECUTIONS_READ: 'executions:read',
   
-  // Step library management
-  STEP_LIBRARIES_READ: 'step-libraries:read',
-  STEP_LIBRARIES_CREATE: 'step-libraries:create',
-  STEP_LIBRARIES_UPDATE: 'step-libraries:update',
-  STEP_LIBRARIES_DELETE: 'step-libraries:delete',
+
   
   // Settings
   SETTINGS_READ: 'settings:read',
   SETTINGS_UPDATE: 'settings:update',
   SMTP_CONFIG: 'smtp:config',
   
-  // Notifications
-  NOTIFICATIONS_READ: 'notifications:read',
-  NOTIFICATIONS_CREATE: 'notifications:create',
-  NOTIFICATIONS_UPDATE: 'notifications:update',
-  NOTIFICATIONS_DELETE: 'notifications:delete',
+
   
   // System administration
   SYSTEM_ADMIN: 'system:admin',
@@ -88,23 +80,13 @@ export const PERMISSION_GROUPS = {
     PERMISSIONS.TARGETS_UPDATE,
     PERMISSIONS.TARGETS_DELETE,
   ],
-  STEP_LIBRARY_MANAGEMENT: [
-    PERMISSIONS.STEP_LIBRARIES_READ,
-    PERMISSIONS.STEP_LIBRARIES_CREATE,
-    PERMISSIONS.STEP_LIBRARIES_UPDATE,
-    PERMISSIONS.STEP_LIBRARIES_DELETE,
-  ],
+
   SETTINGS_MANAGEMENT: [
     PERMISSIONS.SETTINGS_READ,
     PERMISSIONS.SETTINGS_UPDATE,
     PERMISSIONS.SMTP_CONFIG,
   ],
-  NOTIFICATION_MANAGEMENT: [
-    PERMISSIONS.NOTIFICATIONS_READ,
-    PERMISSIONS.NOTIFICATIONS_CREATE,
-    PERMISSIONS.NOTIFICATIONS_UPDATE,
-    PERMISSIONS.NOTIFICATIONS_DELETE,
-  ],
+
 } as const;
 
 /**
