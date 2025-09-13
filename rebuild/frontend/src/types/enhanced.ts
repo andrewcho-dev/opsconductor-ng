@@ -55,6 +55,7 @@ export interface TargetService {
   is_secure: boolean;
   is_enabled: boolean;
   notes?: string;
+  connection_status?: 'connected' | 'failed' | 'unknown';
   
   // Embedded credential fields (masked in responses)
   credential_type?: string;

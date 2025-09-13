@@ -105,7 +105,7 @@ const TargetGroupsManagement: React.FC = () => {
     try {
       const data = await targetGroupApi.list(true);
       setGroups(data.groups);
-      console.log('Groups refreshed with counts:', data.groups.map(g => ({ name: g.name, count: g.target_count })));
+      console.log('Groups refreshed with counts:', data.groups.map((g: any) => ({ name: g.name, count: g.target_count })));
     } catch (err) {
       console.error('Failed to load groups:', err);
     }
@@ -378,7 +378,7 @@ const TargetGroupsManagement: React.FC = () => {
   const startAddingMembers = () => {
     setAddingMembers(true);
     setSelectedTargets([]);
-    setSelectedGroups([]);
+    // setSelectedGroups([]);
   };
 
   const cancelAddingMembers = () => {
@@ -1046,7 +1046,7 @@ const TargetGroupsManagement: React.FC = () => {
                 <button
                   className="btn-icon btn-success"
                   onClick={handleAddMembers}
-                  disabled={saving || (selectedTargets.length === 0 && selectedGroups.length === 0)}
+                  disabled={saving || selectedTargets.length === 0}
                   title="Add selected items"
                 >
                   <ArrowLeft size={14} />

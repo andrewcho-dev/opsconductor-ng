@@ -162,6 +162,20 @@ interface NewTargetState {
     service_type: string;
     port: number;
     credential_id?: number;
+    notes?: string;
+    is_default?: boolean;
+    is_secure?: boolean;
+    is_enabled?: boolean;
+    credential_type?: string;
+    username?: string;
+    password?: string;
+    private_key?: string;
+    public_key?: string;
+    api_key?: string;
+    bearer_token?: string;
+    certificate?: string;
+    passphrase?: string;
+    domain?: string;
   }>;
 }
 
@@ -174,6 +188,20 @@ interface EditTargetState {
     service_type: string;
     port: number | string;
     credential_id?: number | string;
+    notes?: string;
+    is_default?: boolean;
+    is_secure?: boolean;
+    is_enabled?: boolean;
+    credential_type?: string;
+    username?: string;
+    password?: string;
+    private_key?: string;
+    public_key?: string;
+    api_key?: string;
+    bearer_token?: string;
+    certificate?: string;
+    passphrase?: string;
+    domain?: string;
   }>;
 }
 
@@ -181,6 +209,7 @@ const Targets: React.FC = () => {
   const navigate = useNavigate();
   const { action, id } = useParams<{ action?: string; id?: string }>();
   const [targets, setTargets] = useState<EnhancedTarget[]>([]);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -208,6 +237,7 @@ const Targets: React.FC = () => {
 
   useEffect(() => {
     fetchTargets();
+    fetchCredentials();
   }, []);
 
   // Add a retry mechanism for initial load
@@ -263,7 +293,19 @@ const Targets: React.FC = () => {
     }
   };
 
-
+  const fetchCredentials = async () => {
+    try {
+      console.log('Fetching credentials...');
+      // TODO: Implement credentials API endpoint
+      // const response = await targetApi.listCredentials();
+      // console.log('Credentials response:', response);
+      // setCredentials(response.credentials || []);
+      setCredentials([]);
+    } catch (error: any) {
+      console.error('Failed to fetch credentials:', error);
+      setCredentials([]);
+    }
+  };
 
   const startAddingNew = () => {
     setAddingNew(true);
@@ -276,6 +318,7 @@ const Targets: React.FC = () => {
       description: '',
       services: []
     });
+    fetchCredentials(); // Fetch credentials when adding new target
   };
 
   const cancelAddingNew = () => {
@@ -300,6 +343,7 @@ const Targets: React.FC = () => {
     });
     setAddingNew(false);
     setSelectedTarget(null);
+    fetchCredentials(); // Fetch credentials when editing
   };
 
   const handleCancelEdit = () => {
@@ -1673,7 +1717,7 @@ const Targets: React.FC = () => {
                                 style={{ fontSize: '12px', padding: '6px 8px' }}
                               >
                                 <option value="">No Credential</option>
-                                {credentials.map(cred => (
+                                {credentials.map((cred: Credential) => (
                                   <option key={cred.id} value={cred.id}>
                                     {cred.name}
                                   </option>

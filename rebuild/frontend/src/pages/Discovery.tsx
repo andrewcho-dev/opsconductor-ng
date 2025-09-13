@@ -279,10 +279,13 @@ const Discovery: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
+      console.log('Running job:', jobId);
       const result = await discoveryApi.runJob(jobId);
+      console.log('Job run result:', result);
       
       // Immediate feedback - job has been sent
       if (result.task_id) {
+        console.log('Task ID found, starting polling:', result.task_id);
         // Store the task_id for status tracking
         setJobTaskIds(prev => ({ ...prev, [jobId]: result.task_id! }));
         // Set initial status to "running" for immediate UI feedback
@@ -290,10 +293,13 @@ const Discovery: React.FC = () => {
         
         // Start polling immediately for this job
         pollJobStatus(jobId, result.task_id);
+      } else {
+        console.log('No task_id in result, cannot start polling');
       }
       
       await loadJobs();
     } catch (err: any) {
+      console.error('Error running job:', err);
       setError(err.message || 'Failed to run discovery job');
     } finally {
       setLoading(false);
@@ -301,14 +307,18 @@ const Discovery: React.FC = () => {
   };
 
   const pollJobStatus = async (jobId: number, taskId: string) => {
+    console.log(`Polling job status for job ${jobId}, task ${taskId}`);
     try {
       const progress = await discoveryApi.getJobProgress(jobId, taskId);
+      console.log(`Job ${jobId} progress:`, progress);
       setJobProgress(prev => ({ ...prev, [jobId]: progress }));
       
       // If job is still running, poll again in 3 seconds
       if (progress.status !== 'completed' && progress.status !== 'failed' && progress.status !== 'SUCCESS') {
+        console.log(`Job ${jobId} still running (${progress.status}), scheduling next poll in 3 seconds`);
         setTimeout(() => pollJobStatus(jobId, taskId), 3000);
       } else {
+        console.log(`Job ${jobId} finished with status: ${progress.status}`);
         // Job finished, remove from tracking and refresh
         setJobTaskIds(prev => {
           const updated = { ...prev };

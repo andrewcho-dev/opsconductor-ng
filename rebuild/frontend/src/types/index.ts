@@ -11,6 +11,7 @@ export interface User {
   email: string;
   username: string;
   role: 'admin' | 'operator' | 'viewer';
+  permissions?: string[];
   is_admin: boolean; // For backward compatibility
   is_active: boolean;
   created_at: string;
@@ -408,6 +409,7 @@ export interface DiscoveredService {
   service_name?: string;
   version?: string;
   is_secure?: boolean;
+  connection_status?: 'connected' | 'failed' | 'unknown';
 }
 
 export interface DiscoveryTemplate {
@@ -448,6 +450,8 @@ export interface DiscoveryTemplateCreate {
 export interface DiscoveryJobListResponse {
   discovery_jobs: DiscoveryJob[];
   total: number;
+  skip: number;
+  limit: number;
 }
 
 export interface DiscoveredTargetListResponse {

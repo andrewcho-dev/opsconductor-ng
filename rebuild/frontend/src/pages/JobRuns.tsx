@@ -284,7 +284,8 @@ const JobRuns: React.FC = () => {
     try {
       setLoadingSteps(true);
       const response = await jobRunApi.getSteps(runId);
-      setRunSteps(response || []);
+      // Ensure response is always an array
+      setRunSteps(Array.isArray(response) ? response : []);
     } catch (error: any) {
       console.error('Failed to fetch run steps:', error);
       setRunSteps([]);
@@ -329,7 +330,7 @@ const JobRuns: React.FC = () => {
   };
 
   const hasStatusInconsistency = () => {
-    if (!selectedRun || runSteps.length === 0) return false;
+    if (!selectedRun || !Array.isArray(runSteps) || runSteps.length === 0) return false;
     
     const jobStatus = selectedRun.status;
     const activeSteps = runSteps.filter(step => step.status !== 'skipped');
@@ -1107,7 +1108,7 @@ const JobRuns: React.FC = () => {
 
                 {/* Steps Section */}
                 <div className="detail-section">
-                  <div className="detail-section-title">Steps ({runSteps.length})</div>
+                  <div className="detail-section-title">Steps ({Array.isArray(runSteps) ? runSteps.length : 0})</div>
                   {hasStatusInconsistency() && (
                     <div style={{ 
                       background: 'var(--warning-light)', 
@@ -1125,7 +1126,7 @@ const JobRuns: React.FC = () => {
                     <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neutral-500)' }}>
                       Loading steps...
                     </div>
-                  ) : runSteps.length === 0 ? (
+                  ) : !Array.isArray(runSteps) || runSteps.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px', color: 'var(--neutral-500)' }}>
                       No steps found
                     </div>
@@ -1285,9 +1286,9 @@ const JobRuns: React.FC = () => {
                 <button
                   onClick={() => {
                     // Find the step data for export
-                    const step = runSteps.find(s => 
+                    const step = Array.isArray(runSteps) ? runSteps.find(s => 
                       `Step ${s.execution_order + 1}: ${s.step_type}` === modalOutputData.stepName
-                    );
+                    ) : null;
                     if (step) exportOutput(step);
                   }}
                   style={{

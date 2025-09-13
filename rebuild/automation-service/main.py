@@ -2148,6 +2148,110 @@ class AutomationService(BaseService):
                     detail="Failed to get run steps"
                 )
 
+        # ============================================================================
+        # DISCOVERED TARGETS ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/discovered-targets", response_model=dict)
+        async def list_discovered_targets(
+            skip: int = Query(0, ge=0),
+            limit: int = Query(100, ge=1, le=1000),
+            job_id: Optional[int] = Query(None)
+        ):
+            """List discovered targets from discovery jobs"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Build query based on filters
+                    where_clause = ""
+                    params = []
+                    param_count = 0
+                    
+                    if job_id is not None:
+                        # For now, return all targets since we don't have job_id in discovered_targets table
+                        # In the future, we could add job_id to the table or join with job_executions
+                        pass
+                    
+                    # Get total count
+                    count_query = f"SELECT COUNT(*) FROM assets.discovered_targets{where_clause}"
+                    total = await conn.fetchval(count_query, *params)
+                    
+                    # Get targets with pagination
+                    query = f"""
+                        SELECT id, ip_address, hostname, services, system_info, 
+                               os_type, os_version, discovered_at
+                        FROM assets.discovered_targets
+                        {where_clause}
+                        ORDER BY discovered_at DESC
+                        LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}
+                    """
+                    params.extend([limit, skip])
+                    
+                    rows = await conn.fetch(query, *params)
+                    
+                    targets = []
+                    for row in rows:
+                        targets.append({
+                            "id": row['id'],
+                            "ip_address": str(row['ip_address']),  # Convert IP address to string
+                            "hostname": row['hostname'],
+                            "services": json.loads(row['services']) if row['services'] else [],
+                            "system_info": json.loads(row['system_info']) if row['system_info'] else {},
+                            "os_type": row['os_type'],
+                            "os_version": row['os_version'],
+                            "discovered_at": row['discovered_at'].isoformat() if row['discovered_at'] else None,
+                            "status": "discovered"  # Default status for compatibility
+                        })
+                    
+                    return {
+                        "targets": targets,
+                        "total": total,
+                        "skip": skip,
+                        "limit": limit
+                    }
+            except Exception as e:
+                self.logger.error("Failed to list discovered targets", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to list discovered targets"
+                )
+
+        @self.app.get("/discovered-targets/{target_id}", response_model=dict)
+        async def get_discovered_target(target_id: int):
+            """Get a specific discovered target"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    row = await conn.fetchrow("""
+                        SELECT id, ip_address, hostname, services, system_info, 
+                               os_type, os_version, discovered_at
+                        FROM assets.discovered_targets
+                        WHERE id = $1
+                    """, target_id)
+                    
+                    if not row:
+                        raise HTTPException(status_code=404, detail="Target not found")
+                    
+                    target = {
+                        "id": row['id'],
+                        "ip_address": str(row['ip_address']),  # Convert IP address to string
+                        "hostname": row['hostname'],
+                        "services": json.loads(row['services']) if row['services'] else [],
+                        "system_info": json.loads(row['system_info']) if row['system_info'] else {},
+                        "os_type": row['os_type'],
+                        "os_version": row['os_version'],
+                        "discovered_at": row['discovered_at'].isoformat() if row['discovered_at'] else None,
+                        "status": "discovered"
+                    }
+                    
+                    return {"success": True, "data": target}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get discovered target", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get discovered target"
+                )
+
     # ============================================================================
     # EXECUTION HELPER METHODS
     # ============================================================================

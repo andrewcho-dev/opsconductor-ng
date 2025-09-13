@@ -5,7 +5,7 @@ export interface User {
   username: string;
   email: string;
   role: string;
-  permissions: string[];
+  permissions?: string[];
   first_name?: string;
   last_name?: string;
 }
@@ -136,7 +136,7 @@ export const hasAnyPermission = (user: User | null, permissions: string[]): bool
     return true;
   }
   
-  return permissions.some(permission => user.permissions.includes(permission));
+  return permissions.some(permission => user.permissions!.includes(permission));
 };
 
 /**
@@ -152,7 +152,7 @@ export const hasAllPermissions = (user: User | null, permissions: string[]): boo
     return true;
   }
   
-  return permissions.every(permission => user.permissions.includes(permission));
+  return permissions.every(permission => user.permissions!.includes(permission));
 };
 
 /**
@@ -185,7 +185,7 @@ export const isAdmin = (user: User | null): boolean => {
     return false;
   }
   
-  return user.role === 'admin' || (user.permissions && user.permissions.includes('*'));
+  return user.role === 'admin' || !!(user.permissions && user.permissions.includes('*'));
 };
 
 /**

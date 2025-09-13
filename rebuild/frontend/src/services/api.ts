@@ -14,6 +14,8 @@ import {
   DiscoveryTemplate, DiscoveryTemplateCreate, DiscoveryTemplateListResponse
 } from '../types';
 
+console.log('🔥 API SERVICE LOADED AT', new Date().toISOString());
+
 // Base API configuration
 // Explicitly construct the API URL to ensure HTTPS and correct port
 // Service port mapping for development (kept for reference)
@@ -527,9 +529,11 @@ export const discoveryApi = {
       id: job.id,
       name: job.name,
       description: job.description,
+      target_range: job.workflow_definition?.inputs?.cidr_ranges?.join(', ') || 'N/A',
       scan_type: 'network_scan', // Default for discovery jobs
-      status: 'idle', // Will be updated by progress polling
+      status: 'pending' as const, // Will be updated by progress polling
       configuration: job.workflow_definition?.inputs || {},
+      created_by: job.created_by,
       created_at: job.created_at,
       updated_at: job.updated_at,
       results: {}
@@ -621,24 +625,25 @@ export const discoveryApi = {
 
   // Discovered Targets
   listTargets: async (skip = 0, limit = 100, jobId?: number, status?: string): Promise<DiscoveredTargetListResponse> => {
-    const response: AxiosResponse<DiscoveredTargetListResponse> = await api.get('/api/v1/discovery/targets', {
+    console.log('🚀🚀🚀 CALLING NEW ENDPOINT: /api/v1/discovered-targets AT', new Date().toISOString(), '🚀🚀🚀');
+    const response: AxiosResponse<DiscoveredTargetListResponse> = await api.get('/api/v1/discovered-targets', {
       params: { skip, limit, job_id: jobId, status }
     });
     return response.data;
   },
 
   getTarget: async (id: number): Promise<DiscoveredTarget> => {
-    const response: AxiosResponse<DiscoveredTarget> = await api.get(`/api/v1/discovery/targets/${id}`);
-    return response.data;
+    const response: AxiosResponse<{success: boolean, data: DiscoveredTarget}> = await api.get(`/api/v1/discovered-targets/${id}`);
+    return response.data.data;
   },
 
   updateTarget: async (id: number, targetData: Partial<DiscoveredTarget>): Promise<DiscoveredTarget> => {
-    const response: AxiosResponse<DiscoveredTarget> = await api.put(`/api/v1/discovery/targets/${id}`, targetData);
+    const response: AxiosResponse<DiscoveredTarget> = await api.put(`/api/v1/discovered-targets/${id}`, targetData);
     return response.data;
   },
 
   deleteTarget: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/discovery/targets/${id}`);
+    await api.delete(`/api/v1/discovered-targets/${id}`);
   },
 
   importTargets: async (importRequest: TargetImportRequest): Promise<{ imported: number; failed: number; details: any[] }> => {
@@ -647,12 +652,12 @@ export const discoveryApi = {
   },
 
   ignoreTargets: async (targetIds: number[]): Promise<{ ignored: number }> => {
-    const response = await api.post('/api/v1/discovery/targets/ignore', { target_ids: targetIds });
+    const response = await api.post('/api/v1/discovered-targets/ignore', { target_ids: targetIds });
     return response.data;
   },
 
   bulkDeleteTargets: async (targetIds: number[]): Promise<{ deleted: number }> => {
-    const response = await api.post('/api/v1/discovery/targets/bulk-delete', { 
+    const response = await api.post('/api/v1/discovered-targets/bulk-delete', { 
       target_ids: targetIds
     });
     return response.data;

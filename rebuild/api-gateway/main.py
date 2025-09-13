@@ -38,6 +38,7 @@ SERVICE_ROUTES = {
     "/api/v1/targets": "ASSET_SERVICE_URL",
     "/api/v1/target-groups": "ASSET_SERVICE_URL",
     "/api/v1/discovery": "ASSET_SERVICE_URL",
+    "/api/v1/discovered-targets": "ASSET_SERVICE_URL",  # New unified endpoint
     
     # Automation Service
     "/api/v1/jobs": "AUTOMATION_SERVICE_URL",
@@ -312,6 +313,10 @@ class APIGateway:
                 # Map /api/v1/runs/* to /api/v1/executions/*
                 service_url = self.service_urls.get("/api/v1/executions")
                 service_path = path.replace("api/v1/runs", "api/v1/executions", 1)
+            elif path.startswith("api/v1/discovered-targets"):
+                # Map /api/v1/discovered-targets/* to /discovery/targets/*
+                service_url = self.service_urls.get("/api/v1/discovered-targets")
+                service_path = path.replace("api/v1/discovered-targets", "discovery/targets", 1)
             elif path.startswith("api/v1/step-libraries/"):
                 # Map /api/v1/step-libraries/* to automation service /*
                 service_url = self.service_urls.get("/api/v1/step-libraries")

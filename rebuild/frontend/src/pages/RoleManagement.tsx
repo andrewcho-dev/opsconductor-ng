@@ -892,7 +892,7 @@ const RoleManagement: React.FC = () => {
                                   className="permission-checkbox"
                                 />
                                 <span className="permission-label">
-                                  {permission.replace(':', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  {permission.replace(':', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                                 </span>
                               </label>
                             );
@@ -952,14 +952,14 @@ const RoleManagement: React.FC = () => {
                       const rolePermissions = selectedRole.permissions || [];
                       // For admin role or wildcard, show all permissions in each group
                       const isAdminOrWildcard = selectedRole.name === 'admin' || rolePermissions.includes('*');
-                      const groupPermissions = isAdminOrWildcard ? permissions : permissions.filter(p => rolePermissions.includes(p));
+                      const groupPermissions = isAdminOrWildcard ? permissions : (permissions as unknown as string[]).filter(p => rolePermissions.includes(p));
                       
                       if (groupPermissions.length === 0) return null;
                       
                       return (
                         <div key={groupName} className="readonly-permission-group">
                           <div className="permission-group-header">
-                            {groupName.replace('_', ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())} ({groupPermissions.length})
+                            {groupName.replace('_', ' ').toLowerCase().replace(/\b\w/g, (l: string) => l.toUpperCase())} ({groupPermissions.length})
                             {isAdminOrWildcard && (
                               <span style={{ fontSize: '9px', color: 'var(--success)', fontWeight: '500', marginLeft: '6px' }}>
                                 (All)
@@ -967,9 +967,9 @@ const RoleManagement: React.FC = () => {
                             )}
                           </div>
                           <div className="readonly-permission-items">
-                            {groupPermissions.map((permission) => (
+                            {groupPermissions.map((permission: string) => (
                               <div key={permission} className="readonly-permission-item">
-                                {permission.replace(':', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                {permission.replace(':', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
                               </div>
                             ))}
                           </div>
