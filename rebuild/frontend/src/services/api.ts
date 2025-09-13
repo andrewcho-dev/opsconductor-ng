@@ -364,28 +364,18 @@ export const healthApi = {
           // Map service names from the health check response
           let serviceName = check.service || check.name || 'unknown';
           
-          // Normalize service names to match frontend expectations
-          if (serviceName.includes('identity')) {
-            results['auth'] = { ...check, service: 'auth', responseTime };
-            results['users'] = { ...check, service: 'users', responseTime };
-          } else if (serviceName.includes('asset')) {
-            results['credentials'] = { ...check, service: 'credentials', responseTime };
-            results['targets'] = { ...check, service: 'targets', responseTime };
-          } else if (serviceName.includes('automation')) {
-            results['jobs'] = { ...check, service: 'jobs', responseTime };
-            results['executor'] = { ...check, service: 'executor', responseTime };
-
-
-          } else {
-            // For database, redis, etc.
-            results[serviceName.toLowerCase()] = { ...check, service: serviceName.toLowerCase(), responseTime };
-          }
+          // Use the service names as returned by the API Gateway
+          results[serviceName.toLowerCase()] = { 
+            ...check, 
+            service: serviceName.toLowerCase(), 
+            responseTime 
+          };
         });
       }
       
       // Add default status for services not explicitly reported
       const expectedServices = [
-        'auth', 'users', 'credentials', 'targets', 'jobs', 'executor', 
+        'identity', 'asset', 'automation', 'communication',
         'redis', 'postgres'
       ];
       
