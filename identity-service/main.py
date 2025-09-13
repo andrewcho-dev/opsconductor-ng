@@ -678,10 +678,12 @@ class IdentityService(BaseService):
                 )
 
         # ============================================================================
-        # ROLE CRUD ENDPOINTS (moved to ROLE MANAGEMENT ENDPOINTS section)
+        # ROLE CRUD ENDPOINTS - REMOVED (duplicates of ROLE MANAGEMENT ENDPOINTS)
+        # These endpoints were duplicates without proper permission checks.
+        # The proper endpoints with permission checks are in the ROLE MANAGEMENT section.
         # ============================================================================
 
-        @self.app.post("/roles", response_model=dict)
+        # @self.app.post("/roles", response_model=dict) # REMOVED - duplicate
         async def create_role(role_data: RoleCreate):
             """Create a new role"""
             try:
@@ -710,7 +712,7 @@ class IdentityService(BaseService):
                     detail="Failed to create role"
                 )
 
-        @self.app.get("/roles/{role_id}", response_model=dict)
+        #@self.app.get("/roles/{role_id}", response_model=dict)
         async def get_role(role_id: int):
             """Get role by ID"""
             try:
@@ -743,7 +745,7 @@ class IdentityService(BaseService):
                     detail="Failed to get role"
                 )
 
-        @self.app.put("/roles/{role_id}", response_model=dict)
+        #@self.app.put("/roles/{role_id}", response_model=dict)
         async def update_role(role_id: int, role_data: RoleUpdate):
             """Update role"""
             try:
@@ -810,7 +812,7 @@ class IdentityService(BaseService):
                     detail="Failed to update role"
                 )
 
-        @self.app.delete("/roles/{role_id}", response_model=dict)
+        #@self.app.delete("/roles/{role_id}", response_model=dict)
         async def delete_role(role_id: int):
             """Delete role"""
             try:
