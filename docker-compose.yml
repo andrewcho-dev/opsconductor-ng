@@ -50,6 +50,7 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      AI_SERVICE_URL: http://ai-service:3005
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -205,6 +206,34 @@ services:
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  ai-service:
+    build: ./ai-service
+    container_name: opsconductor-ai
+    ports:
+      - "3005:3005"
+    environment:
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      REDIS_URL: redis://redis:6379/5
+    depends_on:
+      redis:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./ai-service:/app
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
       timeout: 10s
       retries: 3
