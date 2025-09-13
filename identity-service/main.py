@@ -146,7 +146,7 @@ class IdentityService(BaseService):
                                r.name as role_name, r.permissions
                         FROM identity.users u
                         LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
-                        LEFT JOIN identity.roles r ON ur.role_id = r.id AND r.is_active = true
+                        LEFT JOIN identity.roles r ON ur.role_id = r.id
                         WHERE u.username = $1 AND u.is_active = true
                     """, login_data.username)
                     
@@ -235,7 +235,7 @@ class IdentityService(BaseService):
                                    u.is_active, r.name as role_name, r.permissions
                             FROM identity.users u
                             LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
-                            LEFT JOIN identity.roles r ON ur.role_id = r.id AND r.is_active = true
+                            LEFT JOIN identity.roles r ON ur.role_id = r.id
                             WHERE u.id = $1 AND u.is_active = true
                         """, user_id)
                         
@@ -274,6 +274,74 @@ class IdentityService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to get user information"
+                )
+
+        @self.app.get("/auth/verify")
+        async def verify_token(request: Request):
+            """Verify token and return user info (alias for /auth/me for frontend compatibility)"""
+            try:
+                # Extract token from Authorization header
+                auth_header = request.headers.get("authorization")
+                if not auth_header or not auth_header.startswith("Bearer "):
+                    raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+                
+                token = auth_header.split(" ")[1]
+                
+                # Decode JWT token (simplified for demo)
+                import jwt
+                try:
+                    payload = jwt.decode(token, "secret", algorithms=["HS256"])
+                    user_id = payload.get("user_id")
+                    
+                    if not user_id:
+                        raise HTTPException(status_code=401, detail="Invalid token")
+                    
+                    # Get fresh user data with role and permissions
+                    async with self.db.pool.acquire() as conn:
+                        row = await conn.fetchrow("""
+                            SELECT u.id, u.username, u.email, u.first_name, u.last_name, 
+                                   u.is_active, r.name as role_name, r.permissions
+                            FROM identity.users u
+                            LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
+                            LEFT JOIN identity.roles r ON ur.role_id = r.id
+                            WHERE u.id = $1 AND u.is_active = true
+                        """, user_id)
+                        
+                        if not row:
+                            raise HTTPException(status_code=401, detail="User not found or inactive")
+                        
+                        # Get user permissions
+                        permissions = []
+                        role_name = row['role_name']  # Role should always be assigned via RBAC
+                        if row['permissions']:
+                            import json
+                            permissions = json.loads(row['permissions']) if isinstance(row['permissions'], str) else row['permissions']
+                        
+                        return {
+                            "valid": True,
+                            "user": {
+                                "id": row['id'],
+                                "username": row['username'],
+                                "email": row['email'],
+                                "first_name": row['first_name'],
+                                "last_name": row['last_name'],
+                                "role": role_name,
+                                "permissions": permissions
+                            }
+                        }
+                        
+                except jwt.ExpiredSignatureError:
+                    raise HTTPException(status_code=401, detail="Token expired")
+                except jwt.InvalidTokenError:
+                    raise HTTPException(status_code=401, detail="Invalid token")
+                    
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to verify token", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to verify token"
                 )
 
         # ============================================================================

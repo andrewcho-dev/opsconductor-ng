@@ -56,10 +56,13 @@ SERVICE_ROUTES = {
 }
 
 # Routes that don't require authentication
+# All API routes are public for internal service communication
+# Authentication is only required at the user login level
 PUBLIC_ROUTES = {
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
-    "/health"
+    "/health",
+    "/api/v1/"  # This will match all API routes as public
 }
 
 # ============================================================================

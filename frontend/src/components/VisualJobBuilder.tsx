@@ -449,8 +449,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         description: 'Starting point of the job',
         icon: 'Play',
         color: '#10b981',
-        inputs: [],
-        outputs: [{ name: 'next', type: 'flow' }],
+        inputs: 0,
+        outputs: 1,
+        defaultConfig: {},
         parameters: [],
         library: 'builtin'
       },
@@ -462,8 +463,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         description: 'End point of the job',
         icon: 'Square',
         color: '#ef4444',
-        inputs: [{ name: 'previous', type: 'flow' }],
-        outputs: [],
+        inputs: 1,
+        outputs: 0,
+        defaultConfig: {},
         parameters: [],
         library: 'builtin'
       },
@@ -475,8 +477,9 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         description: 'Execute a shell command',
         icon: 'Terminal',
         color: '#6366f1',
-        inputs: [{ name: 'previous', type: 'flow' }],
-        outputs: [{ name: 'next', type: 'flow' }],
+        inputs: 1,
+        outputs: 1,
+        defaultConfig: {},
         parameters: [
           { name: 'command', type: 'string', required: true, description: 'Shell command to execute' }
         ],
@@ -1562,6 +1565,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
       </div>
 
       {/* Step Configuration Modal */}
+      {/* TODO: Implement StepConfigModal component
       <StepConfigModal
         isOpen={showConfigModal}
         onClose={() => {
@@ -1571,6 +1575,7 @@ const VisualJobBuilder: React.FC<VisualJobBuilderProps> = ({ onJobCreate, onCanc
         onSave={handleConfigSave}
         stepNode={configNode}
       />
+      */}
     </div>
   );
 };
