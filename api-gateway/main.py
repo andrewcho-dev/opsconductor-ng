@@ -49,7 +49,6 @@ SERVICE_ROUTES = {
     "/api/v1/tasks": "AUTOMATION_SERVICE_URL",  # Direct Celery task status
     
     # Communication Service
-
     "/api/v1/templates": "COMMUNICATION_SERVICE_URL",
     "/api/v1/channels": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",

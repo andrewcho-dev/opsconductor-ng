@@ -1211,6 +1211,85 @@ class CommunicationService(BaseService):
                     detail="Failed to create channel"
                 )
 
+        @self.app.put("/channels/{channel_id}", response_model=dict)
+        async def update_channel(channel_id: int, channel_data: ChannelUpdate):
+            """Update an existing notification channel"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    import json
+                    
+                    # Build update query dynamically based on provided fields
+                    update_fields = []
+                    update_values = []
+                    param_count = 1
+                    
+                    if channel_data.name is not None:
+                        update_fields.append(f"name = ${param_count}")
+                        update_values.append(channel_data.name)
+                        param_count += 1
+                    
+                    if channel_data.channel_type is not None:
+                        update_fields.append(f"channel_type = ${param_count}")
+                        update_values.append(channel_data.channel_type)
+                        param_count += 1
+                    
+                    if channel_data.configuration is not None:
+                        update_fields.append(f"configuration = ${param_count}")
+                        update_values.append(json.dumps(channel_data.configuration))
+                        param_count += 1
+                    
+                    if channel_data.is_active is not None:
+                        update_fields.append(f"is_active = ${param_count}")
+                        update_values.append(channel_data.is_active)
+                        param_count += 1
+                    
+                    if not update_fields:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No fields to update"
+                        )
+                    
+                    # Add updated_at field
+                    update_fields.append(f"updated_at = NOW()")
+                    
+                    # Add channel_id for WHERE clause
+                    update_values.append(channel_id)
+                    
+                    query = f"""
+                        UPDATE communication.notification_channels 
+                        SET {', '.join(update_fields)}
+                        WHERE id = ${param_count}
+                        RETURNING id, name, channel_type, configuration, is_active, created_by, created_at, updated_at
+                    """
+                    
+                    row = await conn.fetchrow(query, *update_values)
+                    
+                    if not row:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Channel not found"
+                        )
+                    
+                    channel = NotificationChannel(
+                        id=row['id'],
+                        name=row['name'],
+                        channel_type=row['channel_type'],
+                        configuration=json.loads(row['configuration']) if row['configuration'] else {},
+                        is_active=row['is_active'],
+                        created_by=row['created_by'],
+                        created_at=row['created_at'].isoformat(),
+                        updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
+                    )
+                    
+                    return {"success": True, "message": "Channel updated", "data": channel}
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update channel", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update channel"
+                )
 
 
 if __name__ == "__main__":

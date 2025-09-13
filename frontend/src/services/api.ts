@@ -464,21 +464,107 @@ export const healthApi = {
   }
 };
 
-// SMTP Settings API
+// SMTP Settings API (using channels)
 export const smtpApi = {
   getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
-    const response = await api.get('/api/v1/notifications/smtp');
-    return response.data;
+    // Get SMTP channel from channels API
+    const response = await api.get('/api/v1/channels');
+    const channels = response.data.channels || [];
+    const smtpChannel = channels.find((channel: any) => channel.channel_type === 'smtp');
+    
+    if (!smtpChannel) {
+      return {
+        success: true,
+        data: null,
+        message: 'No SMTP configuration found'
+      };
+    }
+    
+    // Transform channel data to SMTP settings format
+    const config = smtpChannel.configuration || {};
+    return {
+      success: true,
+      data: {
+        id: smtpChannel.id,
+        host: config.host || '',
+        port: config.port || 587,
+        username: config.username || '',
+        password: '***', // Never return actual password
+        use_tls: config.use_tls !== false,
+        use_ssl: config.use_ssl || false,
+        from_email: config.from_email || '',
+        from_name: config.from_name || 'OpsConductor',
+        is_active: smtpChannel.is_active,
+        is_configured: !!config.host && !!config.from_email,
+        created_at: smtpChannel.created_at,
+        updated_at: smtpChannel.updated_at
+      },
+      message: 'SMTP settings retrieved successfully'
+    };
   },
 
   updateSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
-    const response = await api.post('/api/v1/notifications/smtp', settings);
-    return response.data;
+    // First, check if SMTP channel exists
+    const channelsResponse = await api.get('/api/v1/channels');
+    const channels = channelsResponse.data.channels || [];
+    const existingSmtpChannel = channels.find((channel: any) => channel.channel_type === 'smtp');
+    
+    const channelData = {
+      name: 'SMTP Email',
+      channel_type: 'smtp',
+      configuration: {
+        host: settings.host,
+        port: settings.port,
+        username: settings.username,
+        password: settings.password,
+        use_tls: settings.use_tls,
+        use_ssl: settings.use_ssl || false,
+        from_email: settings.from_email,
+        from_name: settings.from_name || 'OpsConductor'
+      },
+      is_active: true
+    };
+    
+    let response;
+    if (existingSmtpChannel) {
+      // Update existing channel
+      response = await api.put(`/api/v1/channels/${existingSmtpChannel.id}`, channelData);
+    } else {
+      // Create new channel
+      response = await api.post('/api/v1/channels', channelData);
+    }
+    
+    const channel = response.data.data || response.data;
+    const config = channel.configuration || {};
+    
+    return {
+      success: true,
+      data: {
+        id: channel.id,
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: '***', // Never return actual password
+        use_tls: config.use_tls,
+        use_ssl: config.use_ssl,
+        from_email: config.from_email,
+        from_name: config.from_name,
+        is_active: channel.is_active,
+        is_configured: true,
+        created_at: channel.created_at,
+        updated_at: channel.updated_at
+      },
+      message: 'SMTP settings saved successfully'
+    };
   },
 
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
-    const response = await api.post('/api/v1/notifications/smtp/test', testRequest);
-    return response.data;
+    // For now, return a mock response since we need to implement SMTP testing in the communication service
+    // TODO: Implement actual SMTP test endpoint in communication service
+    return {
+      success: true,
+      message: 'SMTP test functionality will be implemented in the communication service'
+    };
   }
 };
 

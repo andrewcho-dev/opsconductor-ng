@@ -48,15 +48,28 @@ const SMTPSettingsComponent: React.FC = () => {
       setCurrentSettings(response);
       
       // Populate form with current settings (password will be masked)
-      setSettings({
-        host: response.host,
-        port: response.port,
-        username: response.username,
-        password: '', // Don't populate password field
-        use_tls: response.use_tls,
-        from_email: response.from_email,
-        from_name: response.from_name
-      });
+      if (response.data) {
+        setSettings({
+          host: response.data.host || '',
+          port: response.data.port || 587,
+          username: response.data.username || '',
+          password: '', // Don't populate password field
+          use_tls: response.data.use_tls !== false,
+          from_email: response.data.from_email || '',
+          from_name: response.data.from_name || 'OpsConductor'
+        });
+      } else {
+        // No SMTP configuration found, use defaults
+        setSettings({
+          host: '',
+          port: 587,
+          username: '',
+          password: '',
+          use_tls: true,
+          from_email: '',
+          from_name: 'OpsConductor'
+        });
+      }
       
       setError(null);
     } catch (err: any) {
@@ -346,7 +359,7 @@ const SMTPSettingsComponent: React.FC = () => {
             Configure SMTP settings for system-wide emails
           </p>
           
-          {currentSettings?.is_configured && (
+          {currentSettings?.data?.is_configured && (
             <div className="status-configured">
               <CheckCircle size={12} />
               SMTP configured and active
