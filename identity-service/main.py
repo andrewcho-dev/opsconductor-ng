@@ -949,11 +949,22 @@ class IdentityService(BaseService):
                     
                     roles = []
                     for row in rows:
+                        # Handle permissions - ensure it's always an array
+                        permissions = row['permissions'] or []
+                        if isinstance(permissions, str):
+                            import json
+                            try:
+                                permissions = json.loads(permissions)
+                            except (json.JSONDecodeError, TypeError):
+                                permissions = []
+                        elif not isinstance(permissions, list):
+                            permissions = []
+                            
                         roles.append({
                             'id': row['id'],
                             'name': row['name'],
                             'description': row['description'],
-                            'permissions': row['permissions'] or [],
+                            'permissions': permissions,
                             'is_active': row['is_active'],
                             'created_at': row['created_at'].isoformat(),
                             'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
@@ -980,11 +991,22 @@ class IdentityService(BaseService):
                     """, role_data['name'], role_data['description'], 
                          role_data.get('permissions', []), role_data.get('is_active', True))
                     
+                    # Handle permissions - ensure it's always an array
+                    permissions = row['permissions'] or []
+                    if isinstance(permissions, str):
+                        import json
+                        try:
+                            permissions = json.loads(permissions)
+                        except (json.JSONDecodeError, TypeError):
+                            permissions = []
+                    elif not isinstance(permissions, list):
+                        permissions = []
+                        
                     role = {
                         'id': row['id'],
                         'name': row['name'],
                         'description': row['description'],
-                        'permissions': row['permissions'] or [],
+                        'permissions': permissions,
                         'is_active': row['is_active'],
                         'created_at': row['created_at'].isoformat(),
                         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None
@@ -1015,11 +1037,22 @@ class IdentityService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="Role not found")
                     
+                    # Handle permissions - ensure it's always an array
+                    permissions = row['permissions'] or []
+                    if isinstance(permissions, str):
+                        import json
+                        try:
+                            permissions = json.loads(permissions)
+                        except (json.JSONDecodeError, TypeError):
+                            permissions = []
+                    elif not isinstance(permissions, list):
+                        permissions = []
+                        
                     role = {
                         'id': row['id'],
                         'name': row['name'],
                         'description': row['description'],
-                        'permissions': row['permissions'] or [],
+                        'permissions': permissions,
                         'is_active': row['is_active'],
                         'created_at': row['created_at'].isoformat(),
                         'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None

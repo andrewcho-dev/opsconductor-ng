@@ -64,8 +64,25 @@ const RoleManagement: React.FC = () => {
       }
 
       const data = await response.json();
+      
+      // Process roles to ensure permissions are always arrays
+      const processedRoles = (data.data || []).map((role: any) => {
+        let permissions: string[] = [];
+        if (Array.isArray(role.permissions)) {
+          permissions = role.permissions;
+        } else if (typeof role.permissions === 'string') {
+          try {
+            permissions = JSON.parse(role.permissions);
+          } catch (e) {
+            console.warn('Failed to parse permissions string for role:', role.name, role.permissions);
+            permissions = [];
+          }
+        }
+        return { ...role, permissions };
+      });
+      
       // Sort roles by permission count (most powerful first)
-      const sortedRoles = (data.data || []).sort((a: Role, b: Role) => {
+      const sortedRoles = processedRoles.sort((a: Role, b: Role) => {
         // Wildcard permissions are considered as having infinite permissions
         const aPermCount = a.permissions?.includes('*') ? 999999 : (a.permissions?.length || 0);
         const bPermCount = b.permissions?.includes('*') ? 999999 : (b.permissions?.length || 0);
@@ -105,7 +122,20 @@ const RoleManagement: React.FC = () => {
     setEditingRole(role);
     setSelectedRole(role);
     setAddingNew(false);
-    const permissions = Array.isArray(role.permissions) ? role.permissions : [];
+    
+    // Handle permissions - ensure it's always an array
+    let permissions: string[] = [];
+    if (Array.isArray(role.permissions)) {
+      permissions = role.permissions;
+    } else if (typeof role.permissions === 'string') {
+      try {
+        permissions = JSON.parse(role.permissions);
+      } catch (e) {
+        console.warn('Failed to parse permissions string:', role.permissions);
+        permissions = [];
+      }
+    }
+    
     setEditRole({
       name: role.name,
       description: role.description,
