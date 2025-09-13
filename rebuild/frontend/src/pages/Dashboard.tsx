@@ -123,7 +123,7 @@ const Dashboard: React.FC = () => {
             <Link to="/job-management/create" className="action-btn primary"><Plus size={14} /> Job</Link>
             <Link to="/targets-management/create" className="action-btn"><Plus size={14} /> Target</Link>
             <Link to="/credential-management/create" className="action-btn"><Plus size={14} /> Cred</Link>
-            <Link to="/discovery" className="action-btn"><Search size={14} /> Discover</Link>
+
           </div>
         </div>
       </div>

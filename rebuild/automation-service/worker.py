@@ -166,58 +166,12 @@ async def process_job_results(job_id, results):
         print(f"Processing results for job {job_id} of type '{job_type}'")
         
         # Route results based on job type
-        if job_type == 'discovery':
-            await process_discovery_results(conn, job_id, results, metadata, job_name)
-        else:
-            print(f"No specific result processing for job type '{job_type}'")
+        print(f"No specific result processing for job type '{job_type}'")
             
     finally:
         await conn.close()
 
-async def process_discovery_results(conn, job_id, results, metadata, job_name):
-    """Process discovery job results and save to assets database"""
-    print(f"Processing discovery results for job {job_id}")
-    
-    # Look for save_assets step results
-    discovered_targets = []
-    
-    for result in results:
-        if result.get('step_name') == 'save_assets' and result.get('status') == 'completed':
-            # Extract discovered targets from save_assets step
-            step_outputs = result.get('outputs', {})
-            targets = step_outputs.get('saved_targets', [])
-            
-            if targets:
-                discovered_targets.extend(targets)
-                print(f"Found {len(targets)} targets from save_assets step")
-    
-    if not discovered_targets:
-        print("No targets found in discovery results")
-        return
-    
-    # Save discovered targets to assets.targets table
-    try:
-        for target in discovered_targets:
-            # Insert target into assets.discovered_targets
-            await conn.execute("""
-                INSERT INTO assets.discovered_targets (
-                    ip_address, hostname, services, system_info, 
-                    os_type, os_version, discovered_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-            """, 
-                target.get('ip_address'),
-                target.get('hostname'),
-                json.dumps(target.get('services', [])),
-                json.dumps(target.get('metadata', {})),
-                target.get('os_info', {}).get('type'),
-                target.get('os_info', {}).get('version')
-            )
-        
-        print(f"Successfully saved {len(discovered_targets)} targets to assets database")
-        
-    except Exception as e:
-        print(f"Error saving discovery targets: {e}")
-        raise
+
 
 @app.task(bind=True)
 def execute_job(self, job_id=None, workflow_definition=None, input_data=None):

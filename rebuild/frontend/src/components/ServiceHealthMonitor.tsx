@@ -19,7 +19,7 @@ const ServiceHealthMonitor: React.FC = () => {
     'Core Services': ['auth', 'users', 'targets', 'jobs'],
     'Processing': ['executor', 'celery-worker', 'celery-beat'],
     'Infrastructure': ['nginx', 'frontend', 'redis', 'postgres'],
-    'Monitoring': ['notification', 'discovery', 'step-libraries', 'flower']
+    'Monitoring': ['notification', 'step-libraries', 'flower']
   };
 
   const fetchServiceHealth = async () => {

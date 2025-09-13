@@ -9,7 +9,7 @@ import Users from './pages/Users';
 import Targets from './pages/Targets';
 import TargetGroups from './pages/TargetGroups';
 
-import Discovery from './pages/Discovery';
+
 import Jobs from './pages/Jobs';
 
 
@@ -61,7 +61,7 @@ const App: React.FC = () => {
                     <Route path="/target-groups" element={<TargetGroups />} />
                     <Route path="/target-groups/:action" element={<TargetGroups />} />
 
-                    <Route path="/discovery" element={<Discovery />} />
+
                     <Route path="/job-management" element={<Jobs />} />
                     <Route path="/job-management/:action" element={<Jobs />} />
                     <Route path="/job-management/:action/:id" element={<Jobs />} />

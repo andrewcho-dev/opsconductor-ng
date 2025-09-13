@@ -71,8 +71,8 @@ if [ ! -f "asset-service/main.py" ]; then
 #!/usr/bin/env python3
 """
 OpsConductor Asset Service
-Handles targets, credentials, and discovery
-Consolidates: credentials-service + targets-service + discovery-service
+Handles targets and credentials
+Consolidates: credentials-service + targets-service
 """
 
 import sys
@@ -93,9 +93,7 @@ class AssetService(BaseService):
         async def list_credentials():
             return {"message": "Asset Service - Credentials endpoint"}
         
-        @self.app.get("/discovery")
-        async def list_discovery():
-            return {"message": "Asset Service - Discovery endpoint"}
+
 
 if __name__ == "__main__":
     service = AssetService()

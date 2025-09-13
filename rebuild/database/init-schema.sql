@@ -144,32 +144,7 @@ CREATE UNIQUE INDEX idx_target_services_one_default
 ON assets.target_services (target_id) 
 WHERE is_default = true;
 
--- Discovery scans
-CREATE TABLE assets.discovery_scans (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    scan_type VARCHAR(50) NOT NULL, -- 'network', 'port', 'service'
-    target_range VARCHAR(255) NOT NULL,
-    configuration JSONB DEFAULT '{}',
-    status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'running', 'completed', 'failed'
-    results JSONB DEFAULT '{}',
-    started_at TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
--- Discovery results
-CREATE TABLE assets.discovery_results (
-    id SERIAL PRIMARY KEY,
-    scan_id INTEGER REFERENCES assets.discovery_scans(id) ON DELETE CASCADE,
-    host VARCHAR(255) NOT NULL,
-    port INTEGER,
-    service VARCHAR(100),
-    status VARCHAR(50),
-    details JSONB DEFAULT '{}',
-    discovered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
 -- ============================================================================
 -- AUTOMATION SERVICE SCHEMA
@@ -330,7 +305,7 @@ CREATE INDEX idx_targets_host ON assets.targets(host);
 CREATE INDEX idx_targets_type ON assets.targets(target_type);
 CREATE INDEX idx_targets_active ON assets.targets(is_active);
 
-CREATE INDEX idx_discovery_scans_status ON assets.discovery_scans(status);
+
 
 -- Automation service indexes
 CREATE INDEX idx_jobs_enabled ON automation.jobs(is_enabled);
