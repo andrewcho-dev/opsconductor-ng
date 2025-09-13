@@ -1695,7 +1695,64 @@ class AutomationService(BaseService):
                     detail="Failed to get run steps"
                 )
 
-
+        @self.app.post("/automation/test-connection", response_model=dict)
+        async def test_connection(connection_data: dict):
+            """Test connection to a target service"""
+            try:
+                # Extract connection parameters
+                host = connection_data.get('host')
+                port = connection_data.get('port')
+                service_type = connection_data.get('service_type', '').lower()
+                credential_type = connection_data.get('credential_type')
+                username = connection_data.get('username')
+                service_id = connection_data.get('service_id')
+                target_id = connection_data.get('target_id')
+                
+                if not host or not port:
+                    raise HTTPException(status_code=400, detail="Host and port are required")
+                
+                success = False
+                error_message = ""
+                
+                # Perform service-specific connection test
+                if service_type == 'ssh':
+                    success, error_message = await self._test_ssh_connection(host, port, username)
+                elif service_type in ['winrm_http', 'winrm_https']:
+                    success, error_message = await self._test_winrm_connection(host, port, service_type, username)
+                else:
+                    # Basic port connectivity test for other services
+                    success, error_message = await self._test_port_connection(host, port)
+                
+                # Update the asset database with connection status if service_id is provided
+                if service_id and target_id:
+                    try:
+                        async with self.db.pool.acquire() as conn:
+                            connection_status = 'connected' if success else 'failed'
+                            await conn.execute("""
+                                UPDATE assets.target_services 
+                                SET connection_status = $1, last_tested_at = NOW()
+                                WHERE id = $2 AND target_id = $3
+                            """, connection_status, service_id, target_id)
+                    except Exception as db_error:
+                        self.logger.warning("Failed to update connection status in database", error=str(db_error))
+                        # Don't fail the whole request if database update fails
+                
+                return {
+                    "success": success,
+                    "error": error_message if not success else None,
+                    "host": host,
+                    "port": port,
+                    "service_type": service_type
+                }
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Connection test failed", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Connection test failed: {str(e)}"
+                )
 
     # ============================================================================
     # EXECUTION HELPER METHODS
@@ -1905,6 +1962,67 @@ class AutomationService(BaseService):
             return max(total_iterations, 1)
         except Exception:
             return 1
+
+    # ============================================================================
+    # CONNECTION TEST HELPER METHODS
+    # ============================================================================
+    
+    async def _test_port_connection(self, host: str, port: int) -> tuple[bool, str]:
+        """Test basic TCP port connectivity"""
+        import asyncio
+        import socket
+        
+        try:
+            # Create connection with timeout
+            future = asyncio.open_connection(host, port)
+            reader, writer = await asyncio.wait_for(future, timeout=10.0)
+            
+            # Close connection
+            writer.close()
+            await writer.wait_closed()
+            
+            return True, ""
+        except asyncio.TimeoutError:
+            return False, f"Connection timeout to {host}:{port}"
+        except ConnectionRefusedError:
+            return False, f"Connection refused to {host}:{port}"
+        except socket.gaierror as e:
+            return False, f"DNS resolution failed for {host}: {str(e)}"
+        except Exception as e:
+            return False, f"Connection failed to {host}:{port}: {str(e)}"
+    
+    async def _test_ssh_connection(self, host: str, port: int, username: str = None) -> tuple[bool, str]:
+        """Test SSH connection"""
+        try:
+            # First test basic port connectivity
+            port_success, port_error = await self._test_port_connection(host, port)
+            if not port_success:
+                return False, port_error
+            
+            # For now, just test port connectivity
+            # In a full implementation, you would use paramiko or asyncssh
+            # to test actual SSH protocol handshake
+            return True, f"SSH port {port} is accessible on {host}"
+            
+        except Exception as e:
+            return False, f"SSH test failed for {host}:{port}: {str(e)}"
+    
+    async def _test_winrm_connection(self, host: str, port: int, service_type: str, username: str = None) -> tuple[bool, str]:
+        """Test WinRM connection"""
+        try:
+            # First test basic port connectivity
+            port_success, port_error = await self._test_port_connection(host, port)
+            if not port_success:
+                return False, port_error
+            
+            # For now, just test port connectivity
+            # In a full implementation, you would use pywinrm
+            # to test actual WinRM protocol handshake
+            protocol = "HTTPS" if service_type == "winrm_https" else "HTTP"
+            return True, f"WinRM {protocol} port {port} is accessible on {host}"
+            
+        except Exception as e:
+            return False, f"WinRM test failed for {host}:{port}: {str(e)}"
 
 if __name__ == "__main__":
     service = AutomationService()

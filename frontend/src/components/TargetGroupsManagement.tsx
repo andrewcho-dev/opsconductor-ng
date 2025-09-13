@@ -45,8 +45,24 @@ interface Target {
   ip_address?: string;
   os_type?: string;
   description?: string;
+  tags?: string[];
   services: any[];
 }
+
+// Helper functions
+const formatOSType = (osType?: string): string => {
+  if (!osType) return '-';
+  return osType.charAt(0).toUpperCase() + osType.slice(1);
+};
+
+const formatTags = (tags?: string[]): string => {
+  if (!tags || tags.length === 0) return '-';
+  return tags.join(', ');
+};
+
+const getIPAddressOrFQDN = (target: Target): string => {
+  return target.ip_address || target.hostname || target.name || '-';
+};
 
 const TargetGroupsManagement: React.FC = () => {
   const [groups, setGroups] = useState<TargetGroup[]>([]);
@@ -950,7 +966,7 @@ const TargetGroupsManagement: React.FC = () => {
             <button 
               className="btn-icon btn-success"
               onClick={startAddingNew}
-              title={selectedGroup ? `Add subgroup to "${selectedGroup.name}"` : "Add new group"}
+              title={selectedGroup ? `Add subgroup to "${selectedGroup.name}"` : "Add new root group"}
               disabled={addingNew || !!editingGroup}
             >
               <Plus size={16} />
@@ -980,11 +996,28 @@ const TargetGroupsManagement: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Root level selector */}
+                    <tr 
+                      className={`tree-row ${!selectedGroup ? 'selected' : ''}`}
+                      onClick={() => setSelectedGroup(null)}
+                      style={{ fontWeight: 'bold', background: !selectedGroup ? 'var(--primary-blue-light)' : 'var(--neutral-25)' }}
+                    >
+                      <td style={{ paddingLeft: '8px' }}>
+                        <div className="tree-node">
+                          <span className="tree-spacer"></span>
+                          <Folder size={16} />
+                          <span className="group-name">Root</span>
+                        </div>
+                      </td>
+                      <td>{groups.reduce((total, group) => total + (group.direct_target_count || 0), 0)}</td>
+                      <td></td>
+                    </tr>
+                    
                     {/* Root-level new group form (when no parent is selected) */}
                     {addingNew && !selectedGroup && (
                       <tr className="tree-row editing new-group-form">
                         <td>
-                          <div className="tree-node" style={{ paddingLeft: '8px' }}>
+                          <div className="tree-node" style={{ paddingLeft: '28px' }}>
                             <span className="tree-spacer"></span>
                             <Folder size={16} />
                             <input
@@ -1104,9 +1137,9 @@ const TargetGroupsManagement: React.FC = () => {
                   <thead>
                     <tr>
                       <th style={{ width: '20px' }}></th>
-                      <th>Name</th>
-                      <th>Hostname</th>
-                      <th>IP Address</th>
+                      <th>IP Address/FQDN</th>
+                      <th>OS</th>
+                      <th>Tags</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1119,9 +1152,9 @@ const TargetGroupsManagement: React.FC = () => {
                         onDragStart={(e) => handleDragStart(e, 'target', target.id)}
                       >
                         <td></td>
-                        <td>{target.name}</td>
-                        <td>{target.hostname}</td>
-                        <td>{target.ip_address || '-'}</td>
+                        <td>{getIPAddressOrFQDN(target)}</td>
+                        <td>{formatOSType(target.os_type)}</td>
+                        <td>{formatTags(target.tags)}</td>
                         <td>
                           <button
                             className="btn-icon btn-danger"
@@ -1164,9 +1197,9 @@ const TargetGroupsManagement: React.FC = () => {
                   <thead>
                     <tr>
                       <th style={{ width: '20px' }}></th>
-                      <th>Name</th>
-                      <th>Hostname</th>
-                      <th>IP Address</th>
+                      <th>IP Address/FQDN</th>
+                      <th>OS</th>
+                      <th>Tags</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1178,9 +1211,9 @@ const TargetGroupsManagement: React.FC = () => {
                         onDragStart={(e) => handleDragStart(e, 'target', target.id)}
                       >
                         <td></td>
-                        <td>{target.name}</td>
-                        <td>{target.hostname}</td>
-                        <td>{target.ip_address || '-'}</td>
+                        <td>{getIPAddressOrFQDN(target)}</td>
+                        <td>{formatOSType(target.os_type)}</td>
+                        <td>{formatTags(target.tags)}</td>
                       </tr>
                     ))}
                   </tbody>

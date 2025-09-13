@@ -130,8 +130,8 @@ export const targetServiceApi = {
     await enhancedApi.delete(`/targets/${targetId}/services/${serviceId}`);
   },
 
-  testConnection: async (serviceId: number): Promise<any> => {
-    const response = await enhancedApi.post(`/targets/services/${serviceId}/test-connection`);
+  testConnection: async (targetId: number, serviceId: number): Promise<any> => {
+    const response = await enhancedApi.post(`/targets/${targetId}/services/${serviceId}/test`);
     return response.data;
   },
 

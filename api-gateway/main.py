@@ -44,7 +44,7 @@ SERVICE_ROUTES = {
     "/api/v1/schedules": "AUTOMATION_SERVICE_URL",
     "/api/v1/workflows": "AUTOMATION_SERVICE_URL",
     "/api/v1/executions": "AUTOMATION_SERVICE_URL",
-
+    "/api/v1/automation": "AUTOMATION_SERVICE_URL",  # Direct automation service endpoints
 
     "/api/v1/tasks": "AUTOMATION_SERVICE_URL",  # Direct Celery task status
     

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, Check, X, Edit3, MonitorCheck, Zap } from 'lucide-react';
-import { targetApi } from '../services/api';
+import { targetApi, automationApi } from '../services/api';
 import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
@@ -219,6 +219,11 @@ const Targets: React.FC = () => {
   const [addingNew, setAddingNew] = useState(false);
   const [editingTarget, setEditingTarget] = useState<EnhancedTarget | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Sorting state
+  const [sortField, setSortField] = useState<string>('ip_address');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
   const [newTarget, setNewTarget] = useState<NewTargetState>({
     ip_address: '',
     os_type: '',
@@ -265,6 +270,8 @@ const Targets: React.FC = () => {
       if (targetsList.length > 0) {
         setRetryCount(0);
       }
+      
+      return targetsList;
     } catch (error: any) {
       console.error('Failed to fetch targets:', error);
       
@@ -288,6 +295,7 @@ const Targets: React.FC = () => {
       }
       
       setTargets([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -585,17 +593,42 @@ const Targets: React.FC = () => {
     setTestingConnections(prev => new Set(prev).add(serviceId));
     
     try {
-      // Call the test connection API endpoint using the proper API service
-      const result = await targetServiceApi.testConnection(serviceId);
+      // Find the service details from the selected target
+      const service = selectedTarget?.services?.find(s => s.id === serviceId);
+      if (!service || !selectedTarget) {
+        throw new Error('Service or target not found');
+      }
+
+      // Prepare connection data for automation service
+      const connectionData = {
+        host: selectedTarget.ip_address,
+        port: service.port,
+        service_type: service.service_type,
+        credential_type: service.credential_type,
+        username: service.username,
+        service_id: serviceId,
+        target_id: selectedTarget.id
+      };
+
+      // Call the automation service test connection endpoint
+      const result = await automationApi.testConnection(connectionData);
       
       // Refresh the target data to get updated connection status
-      await fetchTargets();
+      const updatedTargets = await fetchTargets();
+      
+      // Update the selected target with fresh data
+      if (selectedTarget) {
+        const updatedTarget = updatedTargets.find(t => t.id === selectedTarget.id);
+        if (updatedTarget) {
+          setSelectedTarget(updatedTarget);
+        }
+      }
       
       // Show success/failure message
       if (result.success) {
-        alert(`Connection test successful: ${result.message || 'Service is reachable'}`);
+        alert(`Connection test successful: Service is reachable`);
       } else {
-        alert(`Connection test failed: ${result.message || 'Service is not reachable'}`);
+        alert(`Connection test failed: ${result.error || 'Service is not reachable'}`);
       }
     } catch (error) {
       console.error('Failed to test service connection:', error);
@@ -607,6 +640,44 @@ const Targets: React.FC = () => {
         return newSet;
       });
     }
+  };
+
+  // Sorting functions
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedTargets = [...targets].sort((a, b) => {
+    let aValue: any = a[sortField as keyof EnhancedTarget];
+    let bValue: any = b[sortField as keyof EnhancedTarget];
+    
+    // Handle special cases
+    if (sortField === 'ip_address') {
+      aValue = a.ip_address || a.hostname || '';
+      bValue = b.ip_address || b.hostname || '';
+    }
+    
+    // Convert to strings for comparison
+    aValue = String(aValue || '').toLowerCase();
+    bValue = String(bValue || '').toLowerCase();
+    
+    if (sortDirection === 'asc') {
+      return aValue.localeCompare(bValue);
+    } else {
+      return bValue.localeCompare(aValue);
+    }
+  });
+
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return '↕️'; // Both arrows when not sorted
+    }
+    return sortDirection === 'asc' ? '↑' : '↓';
   };
 
   const getTargetStatus = (target: EnhancedTarget) => {
@@ -729,6 +800,14 @@ const Targets: React.FC = () => {
           }
           .targets-table tr {
             cursor: pointer;
+          }
+          .sortable-header {
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s ease;
+          }
+          .sortable-header:hover {
+            background: var(--neutral-100) !important;
           }
           
           /* Form styles - UNIFIED PATTERN */
@@ -911,7 +990,13 @@ const Targets: React.FC = () => {
                 <table className="targets-table">
                   <thead>
                     <tr>
-                      <th>IP Address/FQDN</th>
+                      <th 
+                        className="sortable-header" 
+                        onClick={() => handleSort('ip_address')}
+                        title="Click to sort by IP Address/FQDN"
+                      >
+                        IP Address/FQDN {getSortIcon('ip_address')}
+                      </th>
                       <th>OS</th>
                       <th>Default Service</th>
                       <th>Credential Type</th>
@@ -921,7 +1006,7 @@ const Targets: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {targets.map((target) => (
+                    {sortedTargets.map((target) => (
                       <tr 
                         key={target.id} 
                         className={selectedTarget?.id === target.id ? 'selected' : ''}

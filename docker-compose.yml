@@ -116,6 +116,7 @@ services:
       DB_SCHEMA: assets
       REDIS_URL: redis://redis:6379/2
       IDENTITY_SERVICE_URL: http://identity-service:3001
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
       ENCRYPTION_KEY: your-encryption-key-here
     depends_on:
       postgres:

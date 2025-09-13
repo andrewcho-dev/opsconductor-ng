@@ -486,4 +486,24 @@ export const smtpApi = {
 
 
 
+// Automation Service API
+export const automationApi = {
+  testConnection: async (connectionData: {
+    host: string;
+    port: number;
+    service_type: string;
+    credential_type?: string;
+    username?: string;
+  }): Promise<{
+    success: boolean;
+    error?: string;
+    host: string;
+    port: number;
+    service_type: string;
+  }> => {
+    const response = await api.post('/api/v1/automation/test-connection', connectionData);
+    return response.data;
+  }
+};
+
 export default api;
