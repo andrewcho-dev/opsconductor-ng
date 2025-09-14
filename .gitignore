@@ -110,6 +110,7 @@ jspm_packages/
 
 # Docker
 .dockerignore
+.docker/
 
 # Database
 *.db
@@ -119,6 +120,8 @@ jspm_packages/
 # Temporary files
 tmp/
 temp/
+fix_stuck_jobs.py
+update_credentials.py
 
 # System files
 .dotnet/
