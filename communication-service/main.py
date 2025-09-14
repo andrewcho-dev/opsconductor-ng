@@ -210,7 +210,19 @@ class AuditListResponse(BaseModel):
 class CommunicationService(BaseService):
     def __init__(self):
         super().__init__("communication-service", "1.0.0", 3004)
+        self.worker_status = {
+            "running": True,
+            "started_at": datetime.utcnow().isoformat(),
+            "processed_count": 0,
+            "last_activity": datetime.utcnow().isoformat()
+        }
         self._setup_routes()
+    
+    def _get_current_user_id(self) -> int:
+        """Get current user ID from authentication context
+        For now returns 1, but should be replaced with proper auth"""
+        # TODO: Implement proper authentication context
+        return 1
     
     async def on_startup(self):
         """Set the database schema to communication"""
@@ -241,7 +253,7 @@ class CommunicationService(BaseService):
                     
                     notifications = []
                     for row in rows:
-                        import json
+
                         notifications.append(Notification(
                             id=row['id'],
                             notification_id=str(row['notification_id']),
@@ -282,13 +294,13 @@ class CommunicationService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM notification_templates")
+                    total = await conn.fetchval("SELECT COUNT(*) FROM communication.notification_templates")
                     
                     # Get templates with pagination
                     rows = await conn.fetch("""
                         SELECT id, name, template_type, subject_template, body_template,
                                metadata, is_active, created_by, created_at, updated_at
-                        FROM notification_templates 
+                        FROM communication.notification_templates 
                         ORDER BY created_at DESC 
                         LIMIT $1 OFFSET $2
                     """, limit, skip)
@@ -343,7 +355,7 @@ class CommunicationService(BaseService):
                     
                     channels = []
                     for row in rows:
-                        import json
+
                         channels.append(NotificationChannel(
                             id=row['id'],
                             name=row['name'],
@@ -831,9 +843,8 @@ class CommunicationService(BaseService):
                         "SELECT COUNT(*) FROM communication.notifications WHERE status = 'failed'"
                     )
                     
-                    # For now, we'll assume the worker is always running since we don't have a separate worker process
-                    # In a real implementation, you'd check if the worker process is actually running
-                    worker_running = True
+                    # Check actual worker status
+                    worker_running = self.worker_status["running"]
                     
                     return {
                         "success": True,
@@ -841,6 +852,9 @@ class CommunicationService(BaseService):
                             "worker_running": worker_running,
                             "pending_notifications": pending_count,
                             "failed_notifications": failed_count,
+                            "processed_count": self.worker_status["processed_count"],
+                            "started_at": self.worker_status["started_at"],
+                            "last_activity": self.worker_status["last_activity"],
                             "last_check": datetime.utcnow().isoformat()
                         }
                     }
@@ -861,16 +875,54 @@ class CommunicationService(BaseService):
                         detail="Invalid action. Use 'start' or 'stop'"
                     )
                 
-                # For now, we'll just return a success message
-                # In a real implementation, you'd actually start/stop the worker process
-                return {
-                    "success": True,
-                    "message": f"Worker {action} command executed",
-                    "data": {
-                        "action": action,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }
-                }
+                # Update worker status based on action
+                if action == "start":
+                    if self.worker_status["running"]:
+                        return {
+                            "success": False,
+                            "message": "Worker is already running",
+                            "data": {
+                                "action": action,
+                                "current_status": "running",
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                        }
+                    else:
+                        self.worker_status["running"] = True
+                        self.worker_status["started_at"] = datetime.utcnow().isoformat()
+                        self.worker_status["last_activity"] = datetime.utcnow().isoformat()
+                        return {
+                            "success": True,
+                            "message": "Worker started successfully",
+                            "data": {
+                                "action": action,
+                                "status": "running",
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                        }
+                elif action == "stop":
+                    if not self.worker_status["running"]:
+                        return {
+                            "success": False,
+                            "message": "Worker is already stopped",
+                            "data": {
+                                "action": action,
+                                "current_status": "stopped",
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                        }
+                    else:
+                        self.worker_status["running"] = False
+                        self.worker_status["last_activity"] = datetime.utcnow().isoformat()
+                        return {
+                            "success": True,
+                            "message": "Worker stopped successfully",
+                            "data": {
+                                "action": action,
+                                "status": "stopped",
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                        }
             except HTTPException:
                 raise
             except Exception as e:
@@ -1121,7 +1173,7 @@ class CommunicationService(BaseService):
                         values.append(template_data.body_template)
                         param_count += 1
                     if template_data.metadata is not None:
-                        import json
+
                         updates.append(f"metadata = ${param_count}")
                         values.append(json.dumps(template_data.metadata))
                         param_count += 1

@@ -148,8 +148,8 @@ class AssetServiceClient:
                         {'name': 'winrm-ssl', 'port': 5986, 'protocol': 'https'}
                     ],
                     'credentials': {
-                        'username': 'admin',
-                        'password': '***encrypted***'
+                        'type': 'winrm',
+                        'configured': True
                     }
                 },
                 {
@@ -162,8 +162,8 @@ class AssetServiceClient:
                         {'name': 'winrm-ssl', 'port': 5986, 'protocol': 'https'}
                     ],
                     'credentials': {
-                        'username': 'admin',
-                        'password': '***encrypted***'
+                        'type': 'winrm',
+                        'configured': True
                     }
                 }
             ],
@@ -177,8 +177,8 @@ class AssetServiceClient:
                         {'name': 'ssh', 'port': 22, 'protocol': 'tcp'}
                     ],
                     'credentials': {
-                        'username': 'root',
-                        'password': '***encrypted***'
+                        'type': 'ssh',
+                        'configured': True
                     }
                 },
                 {
@@ -190,8 +190,8 @@ class AssetServiceClient:
                         {'name': 'ssh', 'port': 22, 'protocol': 'tcp'}
                     ],
                     'credentials': {
-                        'username': 'root',
-                        'password': '***encrypted***'
+                        'type': 'ssh',
+                        'configured': True
                     }
                 }
             ]

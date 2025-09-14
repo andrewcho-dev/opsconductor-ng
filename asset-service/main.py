@@ -7,6 +7,8 @@ Handles targets with embedded credentials
 import sys
 import os
 import json
+import base64
+from cryptography.fernet import Fernet
 from typing import List, Optional
 from fastapi import Query, HTTPException, status
 from pydantic import BaseModel
@@ -100,7 +102,58 @@ class AssetService(BaseService):
             version="1.0.0",
             port=3002
         )
+        # Initialize encryption key (in production, this should be from environment/key management)
+        self.encryption_key = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key())
+        if isinstance(self.encryption_key, str):
+            self.encryption_key = self.encryption_key.encode()
+        self.cipher_suite = Fernet(self.encryption_key)
         self.setup_routes()
+    
+    def _encrypt_credential(self, credential: str) -> str:
+        """Encrypt a credential string"""
+        if not credential:
+            return None
+        return base64.b64encode(self.cipher_suite.encrypt(credential.encode())).decode()
+    
+    def _decrypt_credential(self, encrypted_credential: str) -> str:
+        """Decrypt a credential string"""
+        if not encrypted_credential:
+            return None
+        try:
+            return self.cipher_suite.decrypt(base64.b64decode(encrypted_credential.encode())).decode()
+        except Exception:
+            return None  # Return None if decryption fails
+    
+    def _get_current_user_id(self) -> int:
+        """Get current user ID from authentication context
+        For now returns 1, but should be replaced with proper auth"""
+        # TODO: Implement proper authentication context
+        return 1
+    
+    async def _resolve_ip_address(self, hostname: str) -> str:
+        """Resolve hostname to IP address"""
+        import socket
+        try:
+            # Try to resolve hostname to IP
+            ip_address = socket.gethostbyname(hostname)
+            return ip_address
+        except socket.gaierror:
+            # If resolution fails, return the hostname as-is
+            return hostname
+    
+    async def _detect_os_version(self, hostname: str, port: int = None) -> str:
+        """Attempt to detect OS version through various methods"""
+        # This is a simplified implementation
+        # In production, you might use nmap, SSH banner detection, etc.
+        try:
+            # For now, return "Unknown" but this could be enhanced with:
+            # - SSH banner detection
+            # - HTTP server headers
+            # - SNMP queries
+            # - nmap OS detection
+            return "Unknown"
+        except Exception:
+            return "Unknown"
 
     def setup_routes(self):
         """Setup FastAPI routes"""
@@ -198,7 +251,7 @@ class AssetService(BaseService):
                             id=target_row['id'],
                             name=target_row['name'],
                             hostname=target_row['host'],
-                            ip_address=target_row['host'],  # Using host as IP for now
+                            ip_address=await self._resolve_ip_address(target_row['host']),
                             os_type=target_row['target_type'],
                             os_version="Unknown",  # Not available in current schema
                             description=target_row['description'],
@@ -238,25 +291,12 @@ class AssetService(BaseService):
                         # Insert services with credentials
                         for service in target_data.services:
                             # Prepare encrypted credential fields
-                            encrypted_password = None
-                            encrypted_private_key = None
-                            encrypted_api_key = None
-                            encrypted_bearer_token = None
-                            encrypted_certificate = None
-                            encrypted_passphrase = None
-                            
-                            if service.password:
-                                encrypted_password = service.password  # TODO: Implement encryption
-                            if service.private_key:
-                                encrypted_private_key = service.private_key  # TODO: Implement encryption
-                            if service.api_key:
-                                encrypted_api_key = service.api_key  # TODO: Implement encryption
-                            if service.bearer_token:
-                                encrypted_bearer_token = service.bearer_token  # TODO: Implement encryption
-                            if service.certificate:
-                                encrypted_certificate = service.certificate  # TODO: Implement encryption
-                            if service.passphrase:
-                                encrypted_passphrase = service.passphrase  # TODO: Implement encryption
+                            encrypted_password = self._encrypt_credential(service.password)
+                            encrypted_private_key = self._encrypt_credential(service.private_key)
+                            encrypted_api_key = self._encrypt_credential(service.api_key)
+                            encrypted_bearer_token = self._encrypt_credential(service.bearer_token)
+                            encrypted_certificate = self._encrypt_credential(service.certificate)
+                            encrypted_passphrase = self._encrypt_credential(service.passphrase)
                             
                             await conn.execute("""
                                 INSERT INTO assets.target_services 
@@ -342,7 +382,7 @@ class AssetService(BaseService):
                         "id": target_row['id'],
                         "name": target_row['name'],
                         "hostname": target_row['host'],
-                        "ip_address": target_row['host'],  # Using host as IP for now
+                        "ip_address": await self._resolve_ip_address(target_row['host']),
                         "os_type": target_row['target_type'],
                         "os_version": "Unknown",  # Not available in current schema
                         "description": target_row['description'],
@@ -489,14 +529,31 @@ class AssetService(BaseService):
                     if not host:
                         raise HTTPException(status_code=400, detail="No host configured")
                     
-                    # Mock connection test (implement actual connection logic here)
-                    import random
+                    # Real connection test
                     import time
+                    import socket
+                    import asyncio
                     
                     start_time = time.time()
+                    success = False
+                    error_message = None
                     
-                    # Simulate connection attempt
-                    success = random.choice([True, True, True, False])  # 75% success rate
+                    try:
+                        # Test basic TCP connectivity
+                        port = service_row['port']
+                        future = asyncio.open_connection(host, port)
+                        reader, writer = await asyncio.wait_for(future, timeout=10.0)
+                        writer.close()
+                        await writer.wait_closed()
+                        success = True
+                    except asyncio.TimeoutError:
+                        error_message = f"Connection timeout to {host}:{port}"
+                    except ConnectionRefusedError:
+                        error_message = f"Connection refused to {host}:{port}"
+                    except socket.gaierror as e:
+                        error_message = f"DNS resolution failed for {host}: {str(e)}"
+                    except Exception as e:
+                        error_message = f"Connection failed to {host}:{port}: {str(e)}"
                     
                     end_time = time.time()
                     response_time = int((end_time - start_time) * 1000)
@@ -517,7 +574,7 @@ class AssetService(BaseService):
                     else:
                         test_result = {
                             "status": "failed",
-                            "message": f"Failed to connect to {service_row['service_type']} service",
+                            "message": error_message or f"Failed to connect to {service_row['service_type']} service",
                             "response_time_ms": response_time
                         }
                         connection_status = "failed"
@@ -1062,7 +1119,7 @@ class AssetService(BaseService):
                             id=target_row['id'],
                             name=target_row['name'],
                             hostname=target_row['host'],
-                            ip_address=target_row['host'],  # Using host as IP for now
+                            ip_address=await self._resolve_ip_address(target_row['host']),
                             os_type=target_row['target_type'],
                             os_version="Unknown",  # Not available in current schema
                             description=target_row['description'],

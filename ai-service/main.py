@@ -5,7 +5,9 @@ import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
-from shared.base_service import BaseService
+import sys
+sys.path.append('/app/shared')
+from base_service import BaseService
 from nlp_processor import SimpleNLPProcessor
 from workflow_generator import WorkflowGenerator
 from asset_client import AssetServiceClient

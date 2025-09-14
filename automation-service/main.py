@@ -141,17 +141,6 @@ class ScheduleUpdate(BaseModel):
     timezone: Optional[str] = None
     is_active: Optional[bool] = None
 
-class ScheduleCreate(BaseModel):
-    job_id: int
-    schedule_expression: str
-    timezone: str = "UTC"
-    is_active: bool = True
-
-class ScheduleUpdate(BaseModel):
-    schedule_expression: Optional[str] = None
-    timezone: Optional[str] = None
-    is_active: Optional[bool] = None
-
 class ScheduleListResponse(BaseModel):
     schedules: List[JobSchedule]
     total: int
@@ -162,6 +151,12 @@ class AutomationService(BaseService):
     def __init__(self):
         super().__init__("automation-service", "1.0.0", 3003)
         self._setup_routes()
+    
+    def _get_current_user_id(self) -> int:
+        """Get current user ID from authentication context
+        For now returns 1, but should be replaced with proper auth"""
+        # TODO: Implement proper authentication context
+        return 1
     
     def _parse_json_field(self, value, default=None):
         """Helper to parse JSON fields that might be strings or already parsed"""
@@ -202,7 +197,7 @@ class AutomationService(BaseService):
                         query_params = [limit, skip]
                     
                     # Get total count
-                    count_query = f"SELECT COUNT(*) FROM jobs {where_clause}"
+                    count_query = f"SELECT COUNT(*) FROM automation.jobs {where_clause}"
                     total = await conn.fetchval(count_query, *count_params)
                     
                     # Get jobs with pagination
@@ -210,7 +205,7 @@ class AutomationService(BaseService):
                         rows = await conn.fetch("""
                             SELECT id, name, description, workflow_definition, schedule_expression,
                                    is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
-                            FROM jobs 
+                            FROM automation.jobs 
                             WHERE job_type = $1
                             ORDER BY created_at DESC 
                             LIMIT $2 OFFSET $3
@@ -219,14 +214,13 @@ class AutomationService(BaseService):
                         rows = await conn.fetch("""
                             SELECT id, name, description, workflow_definition, schedule_expression,
                                    is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
-                            FROM jobs 
+                            FROM automation.jobs 
                             ORDER BY created_at DESC 
                             LIMIT $1 OFFSET $2
                         """, *query_params)
                     
                     jobs = []
                     for row in rows:
-                        import json
                         jobs.append(Job(
                             id=row['id'],
                             name=row['name'],
@@ -315,19 +309,20 @@ class AutomationService(BaseService):
                 self.logger.info(f"Workflow validation passed: {total_steps} steps, {workflow_depth} depth, {parallel_branches} parallel, {total_iterations} iterations")
                 
                 async with self.db.pool.acquire() as conn:
-                    import json
+
                     row = await conn.fetchrow("""
                         INSERT INTO automation.jobs (name, description, workflow_definition, 
                                                    schedule_expression, is_enabled, tags, metadata, job_type,
                                                    created_by, updated_by)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 1)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                         RETURNING id, name, description, workflow_definition, schedule_expression,
                                   is_enabled, tags, metadata, job_type, created_by, updated_by, created_at, updated_at
                     """, job_data.name, job_data.description, json.dumps(job_data.workflow_definition or {}),
                          job_data.schedule_expression, job_data.is_enabled, json.dumps(job_data.tags or []),
-                         json.dumps(job_data.metadata or {}), job_data.job_type)
+                         json.dumps(job_data.metadata or {}), job_data.job_type, 
+                         self._get_current_user_id(), self._get_current_user_id())
                     
-                    import json
+
                     job = Job(
                         id=row['id'],
                         name=row['name'],
@@ -366,7 +361,7 @@ class AutomationService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="Job not found")
                     
-                    import json
+
                     job = Job(
                         id=row['id'],
                         name=row['name'],
@@ -457,7 +452,7 @@ class AutomationService(BaseService):
                         values.append(job_data.description)
                         param_count += 1
                     if job_data.workflow_definition is not None:
-                        import json
+    
                         updates.append(f"workflow_definition = ${param_count}")
                         values.append(json.dumps(job_data.workflow_definition))
                         param_count += 1
@@ -506,7 +501,7 @@ class AutomationService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="Job not found")
                     
-                    import json
+
                     job = Job(
                         id=row['id'],
                         name=row['name'],
@@ -573,7 +568,7 @@ class AutomationService(BaseService):
                     # RUNTIME VALIDATION - Re-validate workflow before execution
                     # ============================================================================
                     
-                    import json
+
                     workflow_def = json.loads(job_row['workflow_definition']) if job_row['workflow_definition'] else {}
                     
                     # Re-validate workflow complexity at runtime (in case job was modified)
@@ -898,7 +893,7 @@ class AutomationService(BaseService):
                             
                             if existing_job and import_request.overwrite_existing:
                                 # Update existing job
-                                import json
+            
                                 await conn.execute("""
                                     UPDATE automation.jobs 
                                     SET description = $1, workflow_definition = $2, schedule_expression = $3,
@@ -906,10 +901,11 @@ class AutomationService(BaseService):
                                     WHERE id = $8
                                 """, job_data.get('description'), json.dumps(job_data.get('workflow_definition', {})),
                                      job_data.get('schedule_expression'), job_data.get('is_enabled', True),
-                                     json.dumps(job_data.get('tags', [])), json.dumps(job_data.get('metadata', {})), 1, existing_job['id'])
+                                     json.dumps(job_data.get('tags', [])), json.dumps(job_data.get('metadata', {})), 
+                                     self._get_current_user_id(), existing_job['id'])
                             else:
                                 # Create new job
-                                import json
+            
                                 await conn.execute("""
                                     INSERT INTO automation.jobs 
                                     (name, description, workflow_definition, schedule_expression, is_enabled, 
@@ -918,7 +914,8 @@ class AutomationService(BaseService):
                                 """, job_data['name'], job_data.get('description'), 
                                      json.dumps(job_data.get('workflow_definition', {})), job_data.get('schedule_expression'),
                                      job_data.get('is_enabled', True), json.dumps(job_data.get('tags', [])), 
-                                     json.dumps(job_data.get('metadata', {})), 1, 1)
+                                     json.dumps(job_data.get('metadata', {})), 
+                                     self._get_current_user_id(), self._get_current_user_id())
                             
                             imported_count += 1
                             
@@ -974,7 +971,7 @@ class AutomationService(BaseService):
                             interval_seconds=None,
                             is_active=row['is_active'],
                             next_run=row['next_run_at'].isoformat() if row['next_run_at'] else None,
-                            created_by=1,
+                            created_by=self._get_current_user_id(),
                             created_at=row['created_at'].isoformat(),
                             updated_at=row['updated_at'].isoformat() if row['updated_at'] else None
                         ))
@@ -1010,7 +1007,7 @@ class AutomationService(BaseService):
                     if not job_row:
                         raise HTTPException(status_code=404, detail="Job not found")
                     
-                    import json
+
                     workflow_def = json.loads(job_row['workflow_definition']) if job_row['workflow_definition'] else {}
                     
                     if workflow_def:
@@ -1054,7 +1051,7 @@ class AutomationService(BaseService):
                         self.logger.info(f"Schedule validation passed for job {schedule_data.job_id}: {total_steps} steps, {workflow_depth} depth")
                     
                     row = await conn.fetchrow("""
-                        INSERT INTO job_schedules (job_id, schedule_expression, timezone, is_active)
+                        INSERT INTO automation.job_schedules (job_id, schedule_expression, timezone, is_active)
                         VALUES ($1, $2, $3, $4)
                         RETURNING id, job_id, schedule_expression, timezone, is_active, 
                                   next_run_at, last_run_at, created_at, updated_at
@@ -1096,8 +1093,8 @@ class AutomationService(BaseService):
                         SELECT js.id, js.job_id, j.name as job_name, js.schedule_expression,
                                js.timezone, js.is_active, js.next_run_at, js.last_run_at,
                                js.created_at, js.updated_at
-                        FROM job_schedules js
-                        JOIN jobs j ON js.job_id = j.id
+                        FROM automation.job_schedules js
+                        JOIN automation.jobs j ON js.job_id = j.id
                         WHERE js.id = $1
                     """, schedule_id)
                     
@@ -1159,7 +1156,7 @@ class AutomationService(BaseService):
                     values.append(schedule_id)
                     
                     query = f"""
-                        UPDATE job_schedules 
+                        UPDATE automation.job_schedules 
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
                         RETURNING id, job_id, schedule_expression, timezone, is_active,
@@ -1172,7 +1169,7 @@ class AutomationService(BaseService):
                         raise HTTPException(status_code=404, detail="Schedule not found")
                     
                     # Get job name
-                    job_row = await conn.fetchrow("SELECT name FROM jobs WHERE id = $1", row['job_id'])
+                    job_row = await conn.fetchrow("SELECT name FROM automation.jobs WHERE id = $1", row['job_id'])
                     job_name = job_row['name'] if job_row else "Unknown"
                     
                     schedule = JobSchedule(
@@ -1204,7 +1201,7 @@ class AutomationService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     result = await conn.execute(
-                        "DELETE FROM job_schedules WHERE id = $1", schedule_id
+                        "DELETE FROM automation.job_schedules WHERE id = $1", schedule_id
                     )
                     
                     if result == "DELETE 0":
@@ -1229,15 +1226,15 @@ class AutomationService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM job_executions")
+                    total = await conn.fetchval("SELECT COUNT(*) FROM automation.job_executions")
                     
                     # Get executions with job names
                     rows = await conn.fetch("""
                         SELECT je.id, je.job_id, j.name as job_name, je.execution_id, je.status,
                                je.trigger_type, je.input_data, je.output_data, je.error_message,
                                je.started_at, je.completed_at, je.started_by, je.created_at
-                        FROM job_executions je
-                        JOIN jobs j ON je.job_id = j.id
+                        FROM automation.job_executions je
+                        JOIN automation.jobs j ON je.job_id = j.id
                         ORDER BY je.created_at DESC 
                         LIMIT $1 OFFSET $2
                     """, limit, skip)
@@ -1296,15 +1293,16 @@ class AutomationService(BaseService):
                             detail="Job not found"
                         )
                     
-                    import json
+
                     row = await conn.fetchrow("""
                         INSERT INTO automation.job_executions (job_id, execution_id, status, trigger_type, 
                                                    input_data, started_by)
-                        VALUES ($1, $2, 'pending', $3, $4, 1)
+                        VALUES ($1, $2, 'pending', $3, $4, $5)
                         RETURNING id, job_id, execution_id, status, trigger_type, input_data,
                                   output_data, error_message, started_at, completed_at, started_by, created_at
                     """, execution_data.job_id, execution_id, execution_data.trigger_type, 
-                         json.dumps(execution_data.input_data) if execution_data.input_data else '{}')
+                         json.dumps(execution_data.input_data) if execution_data.input_data else '{}',
+                         self._get_current_user_id())
                     
                     # Queue the job for execution using Celery
                     try:
@@ -1357,8 +1355,8 @@ class AutomationService(BaseService):
                         SELECT je.id, je.job_id, j.name as job_name, je.execution_id, je.status,
                                je.trigger_type, je.input_data, je.output_data, je.error_message,
                                je.started_at, je.completed_at, je.started_by, je.created_at
-                        FROM job_executions je
-                        JOIN jobs j ON je.job_id = j.id
+                        FROM automation.job_executions je
+                        JOIN automation.jobs j ON je.job_id = j.id
                         WHERE je.id = $1
                     """, execution_id)
                     
@@ -1481,7 +1479,7 @@ class AutomationService(BaseService):
                     values.append(execution_id)
                     
                     query = f"""
-                        UPDATE job_executions 
+                        UPDATE automation.job_executions 
                         SET {', '.join(updates)}
                         WHERE id = ${param_count}
                         RETURNING id, job_id, execution_id, status, trigger_type, input_data,
@@ -1494,7 +1492,7 @@ class AutomationService(BaseService):
                         raise HTTPException(status_code=404, detail="Execution not found")
                     
                     # Get job name
-                    job_row = await conn.fetchrow("SELECT name FROM jobs WHERE id = $1", row['job_id'])
+                    job_row = await conn.fetchrow("SELECT name FROM automation.jobs WHERE id = $1", row['job_id'])
                     job_name = job_row['name'] if job_row else "Unknown"
                     
                     execution = JobExecution(
@@ -1529,7 +1527,7 @@ class AutomationService(BaseService):
             try:
                 async with self.db.pool.acquire() as conn:
                     result = await conn.execute(
-                        "DELETE FROM job_executions WHERE id = $1", execution_id
+                        "DELETE FROM automation.job_executions WHERE id = $1", execution_id
                     )
                     
                     if result == "DELETE 0":
@@ -1572,7 +1570,7 @@ class AutomationService(BaseService):
                     
                     executions = []
                     for row in rows:
-                        import json
+    
                         executions.append(JobExecution(
                             id=row['id'],
                             job_id=row['job_id'],
@@ -1619,7 +1617,7 @@ class AutomationService(BaseService):
                     if not row:
                         raise HTTPException(status_code=404, detail="Run not found")
                     
-                    import json
+
                     execution = JobExecution(
                         id=row['id'],
                         job_id=row['job_id'],
