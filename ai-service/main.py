@@ -11,6 +11,7 @@ from base_service import BaseService
 from nlp_processor import SimpleNLPProcessor
 from workflow_generator import WorkflowGenerator
 from asset_client import AssetServiceClient
+from automation_client import AutomationServiceClient
 
 # Configure structured logging
 structlog.configure(
@@ -48,6 +49,7 @@ service = AIService()
 nlp_processor = SimpleNLPProcessor()
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"))
+automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
 
 class JobRequest(BaseModel):
     description: str
@@ -70,6 +72,21 @@ class TextAnalysisResponse(BaseModel):
     entities: Dict[str, List[str]]
     confidence: float
     suggestions: List[str]
+
+class ExecuteJobRequest(BaseModel):
+    description: str
+    execute_immediately: bool = True
+    user_id: Optional[int] = None
+
+class ExecuteJobResponse(BaseModel):
+    job_id: str
+    execution_id: Optional[str] = None
+    task_id: Optional[str] = None
+    workflow: Dict[str, Any]
+    message: str
+    confidence: float
+    execution_started: bool
+    automation_job_id: Optional[int] = None
 
 @app.get("/health")
 async def health_check():
@@ -99,7 +116,8 @@ async def service_info():
         ],
         "supported_os": [
             "windows", "linux"
-        ]
+        ],
+        "automation_integration": True
     }
 
 @app.post("/create-job", response_model=JobResponse)
@@ -204,6 +222,106 @@ async def analyze_text(request: TextAnalysisRequest):
         logger.error("Failed to analyze text", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to analyze text: {str(e)}")
 
+@app.post("/execute-job", response_model=ExecuteJobResponse)
+async def execute_job(request: ExecuteJobRequest):
+    """Create and execute a job immediately"""
+    try:
+        logger.info("Processing job execution request", 
+                   description=request.description,
+                   execute_immediately=request.execute_immediately)
+        
+        # Step 1: Parse the natural language request
+        parsed_request = nlp_processor.parse_request(request.description)
+        logger.info("Parsed execution request", 
+                   operation=parsed_request.operation,
+                   target_process=parsed_request.target_process,
+                   target_group=parsed_request.target_group,
+                   confidence=parsed_request.confidence)
+        
+        # Step 2: Resolve target groups to actual targets
+        target_groups = []
+        if parsed_request.target_group:
+            targets = await asset_client.resolve_target_group(parsed_request.target_group)
+            if not targets:
+                # Use mock data for demo
+                targets = await asset_client.create_mock_targets_for_demo(parsed_request.target_group)
+            
+            if targets:
+                target_groups = [parsed_request.target_group]
+                logger.info(f"Resolved target group '{parsed_request.target_group}' to {len(targets)} targets")
+            else:
+                logger.warning(f"No targets found for group '{parsed_request.target_group}'")
+        
+        # Step 3: Generate workflow
+        workflow = workflow_generator.generate_workflow(parsed_request, target_groups)
+        logger.info("Generated workflow for execution", 
+                   workflow_id=workflow['id'], 
+                   steps=len(workflow['steps']))
+        
+        # Step 4: Create job ID
+        job_id = str(uuid.uuid4())
+        
+        # Step 5: Submit to automation service if requested
+        execution_started = False
+        automation_job_id = None
+        execution_id = None
+        task_id = None
+        
+        if request.execute_immediately:
+            try:
+                # Check automation service health
+                automation_healthy = await automation_client.health_check()
+                if not automation_healthy:
+                    logger.warning("Automation service not healthy, skipping execution")
+                    message = f"Workflow created but automation service unavailable for execution"
+                else:
+                    # Submit workflow to automation service
+                    submission_result = await automation_client.submit_ai_workflow(
+                        workflow, 
+                        job_name=f"AI: {request.description[:50]}..."
+                    )
+                    
+                    if submission_result.get('success'):
+                        execution_started = True
+                        automation_job_id = submission_result.get('job_id')
+                        execution_id = submission_result.get('execution_id')
+                        task_id = submission_result.get('task_id')
+                        
+                        logger.info("Workflow submitted to automation service",
+                                   automation_job_id=automation_job_id,
+                                   execution_id=execution_id)
+                        
+                        message = f"Workflow created and execution started (Job ID: {automation_job_id})"
+                    else:
+                        logger.error("Failed to submit workflow to automation service",
+                                    error=submission_result.get('error'))
+                        message = f"Workflow created but execution failed: {submission_result.get('error')}"
+                        
+            except Exception as e:
+                logger.error("Failed to submit workflow for execution", error=str(e))
+                message = f"Workflow created but execution failed: {str(e)}"
+        else:
+            message = f"Workflow created successfully (execution not requested)"
+        
+        # Add confidence warning if needed
+        if parsed_request.confidence < 0.5:
+            message += f" (Low confidence: {parsed_request.confidence:.2f} - please verify)"
+        
+        return ExecuteJobResponse(
+            job_id=job_id,
+            execution_id=execution_id,
+            task_id=task_id,
+            workflow=workflow,
+            message=message,
+            confidence=parsed_request.confidence,
+            execution_started=execution_started,
+            automation_job_id=automation_job_id
+        )
+        
+    except Exception as e:
+        logger.error("Failed to execute job", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to execute job: {str(e)}")
+
 @app.get("/test-nlp")
 async def test_nlp():
     """Test endpoint for NLP functionality"""
@@ -281,6 +399,106 @@ async def test_assets():
         return {
             "error": str(e),
             "asset_service_healthy": False
+        }
+
+@app.get("/test-automation")
+async def test_automation():
+    """Test endpoint for automation service integration"""
+    try:
+        # Test health check
+        healthy = await automation_client.health_check()
+        
+        # Get client info
+        client_info = automation_client.get_client_info()
+        
+        # List AI jobs
+        ai_jobs = await automation_client.list_ai_jobs(limit=5)
+        
+        return {
+            "automation_service_healthy": healthy,
+            "client_info": client_info,
+            "ai_jobs_count": len(ai_jobs),
+            "recent_ai_jobs": [
+                {
+                    "id": job.get("id"),
+                    "name": job.get("name"),
+                    "created_at": job.get("created_at"),
+                    "job_type": job.get("job_type")
+                } for job in ai_jobs[:3]
+            ]
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "automation_service_healthy": False
+        }
+
+@app.get("/test-integration")
+async def test_integration():
+    """Test full AI to Automation integration"""
+    try:
+        test_request = "check status of nginx on web servers"
+        
+        logger.info("Testing full integration", request=test_request)
+        
+        # Step 1: Test AI processing
+        parsed = nlp_processor.parse_request(test_request)
+        workflow = workflow_generator.generate_workflow(parsed, ["web servers"])
+        
+        # Step 2: Test automation service health
+        automation_healthy = await automation_client.health_check()
+        
+        # Step 3: Test asset service
+        asset_healthy = await asset_client.health_check()
+        
+        result = {
+            "test_request": test_request,
+            "ai_processing": {
+                "parsed_operation": parsed.operation,
+                "parsed_target": parsed.target_process,
+                "parsed_group": parsed.target_group,
+                "confidence": parsed.confidence,
+                "workflow_steps": len(workflow.get('steps', []))
+            },
+            "service_health": {
+                "automation_service": automation_healthy,
+                "asset_service": asset_healthy
+            },
+            "integration_ready": automation_healthy and asset_healthy,
+            "workflow_preview": {
+                "id": workflow.get('id'),
+                "name": workflow.get('name'),
+                "description": workflow.get('description'),
+                "step_count": len(workflow.get('steps', []))
+            }
+        }
+        
+        # Step 4: If services are healthy, test actual submission (without execution)
+        if automation_healthy:
+            try:
+                submission_result = await automation_client.submit_ai_workflow(
+                    workflow, 
+                    job_name=f"Integration Test: {test_request}"
+                )
+                result["test_submission"] = {
+                    "success": submission_result.get('success'),
+                    "job_id": submission_result.get('job_id'),
+                    "message": submission_result.get('message', submission_result.get('error'))
+                }
+            except Exception as e:
+                result["test_submission"] = {
+                    "success": False,
+                    "error": str(e)
+                }
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Integration test failed", error=str(e))
+        return {
+            "error": str(e),
+            "integration_ready": False
         }
 
 if __name__ == "__main__":

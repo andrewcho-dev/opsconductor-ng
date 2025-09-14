@@ -288,13 +288,25 @@ export interface SMTPSettings {
   username: string;
   password: string;
   use_tls: boolean;
+  use_ssl?: boolean;
   from_email: string;
   from_name: string;
 }
 
-export interface SMTPSettingsResponse extends Omit<SMTPSettings, 'password'> {
+export interface SMTPSettingsData extends Omit<SMTPSettings, 'password'> {
+  id?: number;
   password: string; // Masked
+  use_ssl?: boolean;
+  is_active?: boolean;
   is_configured: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SMTPSettingsResponse {
+  success: boolean;
+  data: SMTPSettingsData | null;
+  message: string;
 }
 
 export interface SMTPTestRequest {

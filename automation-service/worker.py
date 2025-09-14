@@ -121,10 +121,10 @@ async def get_job_execution_id(job_id, task_id):
     conn = await asyncpg.connect(db_url)
     
     try:
-        # Find the most recent pending execution for this job
+        # Find the most recent queued execution for this job
         row = await conn.fetchrow("""
             SELECT id, execution_id FROM automation.job_executions 
-            WHERE job_id = $1 AND status = 'pending'
+            WHERE job_id = $1 AND status = 'queued'
             ORDER BY created_at DESC 
             LIMIT 1
         """, job_id)

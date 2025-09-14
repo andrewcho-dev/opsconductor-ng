@@ -601,7 +601,7 @@ const Targets: React.FC = () => {
 
       // Prepare connection data for automation service
       const connectionData = {
-        host: selectedTarget.ip_address,
+        host: selectedTarget.ip_address || selectedTarget.hostname || '',
         port: service.port,
         service_type: service.service_type,
         credential_type: service.credential_type,
@@ -609,6 +609,10 @@ const Targets: React.FC = () => {
         service_id: serviceId,
         target_id: selectedTarget.id
       };
+
+      if (!connectionData.host) {
+        throw new Error('No host or IP address available for target');
+      }
 
       // Call the automation service test connection endpoint
       const result = await automationApi.testConnection(connectionData);

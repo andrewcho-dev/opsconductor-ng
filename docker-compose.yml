@@ -167,7 +167,6 @@ services:
     volumes:
       - ./automation-service:/app
       - ./shared:/app/shared
-      - automation_libraries:/app/libraries
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
       interval: 30s
@@ -269,7 +268,6 @@ services:
       - opsconductor-net
     volumes:
       - ./automation-service:/app
-      - automation_libraries:/app/libraries
     restart: unless-stopped
 
   automation-scheduler:
@@ -326,5 +324,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  automation_libraries:
   scheduler_data:

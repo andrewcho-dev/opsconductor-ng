@@ -422,9 +422,9 @@ const SMTPSettingsComponent: React.FC = () => {
                 value={settings.password || ''}
                 onChange={(e) => handleInputChange('password', e.target.value)}
                 className="form-input"
-                placeholder={currentSettings?.password ? "••••••••" : "Enter password"}
+                placeholder={currentSettings?.data?.password ? "••••••••" : "Enter password"}
               />
-              {currentSettings?.password && (
+              {currentSettings?.data?.password && (
                 <div style={{ fontSize: '10px', color: 'var(--neutral-500)', marginTop: '4px' }}>
                   Leave blank to keep current password
                 </div>

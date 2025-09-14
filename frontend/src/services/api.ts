@@ -580,6 +580,8 @@ export const automationApi = {
     service_type: string;
     credential_type?: string;
     username?: string;
+    service_id?: number;
+    target_id?: number;
   }): Promise<{
     success: boolean;
     error?: string;
