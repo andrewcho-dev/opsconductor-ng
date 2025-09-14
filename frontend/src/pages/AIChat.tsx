@@ -12,14 +12,15 @@ interface ChatMessage {
   status?: 'pending' | 'success' | 'error';
 }
 
-interface WorkflowResult {
-  job_id: string;
-  execution_id?: string;
-  workflow: any;
-  message: string;
+interface ChatResponse {
+  response: string;
+  intent: string;
   confidence: number;
-  execution_started: boolean;
+  job_id?: string;
+  execution_id?: string;
   automation_job_id?: number;
+  workflow?: any;
+  execution_started: boolean;
 }
 
 const CHAT_HISTORY_KEY = 'opsconductor_ai_chat_history';
@@ -113,13 +114,12 @@ const AIChat: React.FC = () => {
         headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      // Call AI service to execute the job
-      const response = await fetch('/api/v1/ai/execute-job', {
+      // Call AI service chat endpoint
+      const response = await fetch('/api/v1/ai/chat', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          description: userMessage.content,
-          execute_immediately: true
+          message: userMessage.content
         })
       });
 
@@ -127,24 +127,24 @@ const AIChat: React.FC = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const result: WorkflowResult = await response.json();
+      const result: ChatResponse = await response.json();
 
       // Create AI response message
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        content: result.message,
+        content: result.response,
         timestamp: new Date(),
         jobId: result.job_id,
         executionId: result.execution_id || undefined,
         confidence: result.confidence,
-        status: result.execution_started ? 'success' : 'error'
+        status: result.intent === 'question' ? 'success' : (result.execution_started ? 'success' : 'error')
       };
 
       setMessages(prev => [...prev, aiMessage]);
 
-      // If execution started, add workflow details
-      if (result.workflow && result.execution_started) {
+      // If it was a job creation and execution started, add workflow details
+      if (result.intent === 'job_creation' && result.workflow && result.execution_started) {
         const workflowMessage: ChatMessage = {
           id: (Date.now() + 2).toString(),
           type: 'system',

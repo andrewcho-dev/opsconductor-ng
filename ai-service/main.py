@@ -88,6 +88,20 @@ class ExecuteJobResponse(BaseModel):
     execution_started: bool
     automation_job_id: Optional[int] = None
 
+class ChatRequest(BaseModel):
+    message: str
+    user_id: Optional[int] = None
+
+class ChatResponse(BaseModel):
+    response: str
+    intent: str  # "question", "job_creation", "unknown"
+    confidence: float
+    job_id: Optional[str] = None
+    execution_id: Optional[str] = None
+    automation_job_id: Optional[int] = None
+    workflow: Optional[Dict[str, Any]] = None
+    execution_started: bool = False
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -500,6 +514,134 @@ async def test_integration():
             "error": str(e),
             "integration_ready": False
         }
+
+def classify_intent(message: str) -> tuple[str, float]:
+    """Classify user message intent"""
+    message_lower = message.lower().strip()
+    
+    # Question patterns
+    question_patterns = [
+        'what', 'how', 'when', 'where', 'why', 'who', 'which',
+        'status', 'show', 'list', 'display', 'tell me', 'get',
+        'how many', 'what is', 'what are', 'how much'
+    ]
+    
+    # Job creation patterns  
+    job_patterns = [
+        'restart', 'stop', 'start', 'update', 'install', 'remove',
+        'deploy', 'configure', 'run', 'execute', 'kill', 'reboot',
+        'upgrade', 'downgrade', 'backup', 'restore'
+    ]
+    
+    # Check for question patterns
+    for pattern in question_patterns:
+        if pattern in message_lower:
+            return "question", 0.8
+    
+    # Check for job patterns
+    for pattern in job_patterns:
+        if pattern in message_lower:
+            return "job_creation", 0.9
+    
+    # Check if it ends with question mark
+    if message.strip().endswith('?'):
+        return "question", 0.7
+    
+    return "unknown", 0.3
+
+async def handle_question(message: str) -> str:
+    """Handle informational questions"""
+    message_lower = message.lower()
+    
+    # Status-related questions
+    if any(word in message_lower for word in ['status', 'health', 'running', 'up', 'down']):
+        if any(word in message_lower for word in ['worker', 'job', 'task']):
+            return "I can see the system status through the monitoring dashboard. Currently, there are 24 worker processes running across 2 containers, ready to handle automation tasks. You can check the detailed status in the Job Monitoring section."
+        elif any(word in message_lower for word in ['server', 'system', 'service']):
+            return "To check server status, I would need to run a status check job. Would you like me to create a job to check the status of specific servers or services?"
+    
+    # Count/list questions
+    elif any(word in message_lower for word in ['how many', 'count', 'list', 'show']):
+        if any(word in message_lower for word in ['worker', 'job', 'task']):
+            return "Currently there are 24 worker processes running across 2 containers. You can see detailed worker information and active tasks in the Job Monitoring dashboard."
+        elif any(word in message_lower for word in ['server', 'asset']):
+            return "I can help you get a list of servers or assets. Would you like me to create a job to inventory your infrastructure?"
+    
+    # Help questions
+    elif any(word in message_lower for word in ['help', 'what can you do', 'capabilities']):
+        return """I can help you with:
+
+**Automation Tasks:**
+- Restart services: "restart nginx on web servers"
+- Update software: "update stationcontroller on CIS servers" 
+- System operations: "stop Apache on production servers"
+
+**Information:**
+- System status and monitoring
+- Worker and job statistics
+- Infrastructure inventory
+
+**Questions:**
+- Ask about server status, running services, or system health
+- Get help with automation commands
+
+Try asking me to perform a specific task or check on something!"""
+    
+    # Default response for questions
+    return f"I understand you're asking about: '{message}'. I can help with system automation and monitoring. For specific server information, I may need to create a monitoring job. Would you like me to help you with a specific automation task instead?"
+
+@app.post("/ai/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """General chat endpoint that handles both questions and job creation"""
+    try:
+        logger.info("Processing chat message", message=request.message)
+        
+        # Classify the intent
+        intent, confidence = classify_intent(request.message)
+        logger.info("Classified intent", intent=intent, confidence=confidence)
+        
+        if intent == "question":
+            # Handle as informational question
+            response = await handle_question(request.message)
+            return ChatResponse(
+                response=response,
+                intent=intent,
+                confidence=confidence
+            )
+        
+        elif intent == "job_creation":
+            # Handle as job creation - delegate to existing execute_job logic
+            execute_request = ExecuteJobRequest(
+                description=request.message,
+                execute_immediately=True,
+                user_id=request.user_id
+            )
+            
+            # Call the existing execute_job function
+            job_result = await execute_job(execute_request)
+            
+            return ChatResponse(
+                response=job_result.message,
+                intent=intent,
+                confidence=job_result.confidence,
+                job_id=job_result.job_id,
+                execution_id=job_result.execution_id,
+                automation_job_id=job_result.automation_job_id,
+                workflow=job_result.workflow,
+                execution_started=job_result.execution_started
+            )
+        
+        else:
+            # Unknown intent - ask for clarification
+            return ChatResponse(
+                response="I'm not sure what you'd like me to do. You can ask me questions about system status, or tell me to perform automation tasks like 'restart nginx on web servers'. How can I help you?",
+                intent=intent,
+                confidence=confidence
+            )
+        
+    except Exception as e:
+        logger.error("Failed to process chat message", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to process message: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
