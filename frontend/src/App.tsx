@@ -12,7 +12,7 @@ import TargetGroups from './pages/TargetGroups';
 
 
 import Jobs from './pages/Jobs';
-
+import JobMonitoring from './pages/JobMonitoring';
 
 import JobRuns from './pages/JobRuns';
 
@@ -68,6 +68,7 @@ const App: React.FC = () => {
                     <Route path="/job-management/:action" element={<Jobs />} />
                     <Route path="/job-management/:action/:id" element={<Jobs />} />
 
+                    <Route path="/job-monitoring" element={<JobMonitoring />} />
 
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
                     <Route path="/history/job-runs" element={<JobRuns />} />

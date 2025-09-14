@@ -9,11 +9,12 @@ import sys
 import os
 import json
 from typing import List, Optional
-from fastapi import Query, HTTPException, status
+from fastapi import Query, HTTPException, status, WebSocket
 from pydantic import BaseModel
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
+from celery_monitor import CeleryMonitor
 
 # ============================================================================
 # MODELS
@@ -150,7 +151,10 @@ class ScheduleListResponse(BaseModel):
 class AutomationService(BaseService):
     def __init__(self):
         super().__init__("automation-service", "1.0.0", 3003)
+        # Initialize Celery monitor
+        self.monitor = CeleryMonitor()
         self._setup_routes()
+        self._setup_monitoring_routes()
     
     def _get_current_user_id(self) -> int:
         """Get current user ID from authentication context
@@ -171,10 +175,22 @@ class AutomationService(BaseService):
     
     async def on_startup(self):
         """Set the database schema to automation"""
+        print("AUTOMATION SERVICE STARTUP CALLED")  # Debug print
+        self.logger.info("AUTOMATION SERVICE STARTUP CALLED")
         os.environ["DB_SCHEMA"] = "automation"
         await super().on_startup()
+        # Start the Celery monitor
+        self.logger.info("About to start Celery monitoring...")
+        try:
+            await self.monitor.start_monitoring()
+            self.logger.info("Celery monitoring started successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to start monitoring: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
     
     def _setup_routes(self):
+        self.logger.info("Starting route setup...")
         @self.app.get("/jobs", response_model=JobListResponse)
         async def list_jobs(
             skip: int = Query(0, ge=0),
@@ -2062,6 +2078,241 @@ class AutomationService(BaseService):
             
         except Exception as e:
             return False, f"WinRM test failed for {host}:{port}: {str(e)}"
+
+    def _setup_monitoring_routes(self):
+        """Set up monitoring endpoints"""
+        self.logger.info("Setting up monitoring endpoints...")
+        
+        @self.app.get("/monitoring/stats")
+        async def get_monitoring_stats():
+            """Get comprehensive monitoring statistics"""
+            try:
+                stats = await self.monitor.get_monitoring_stats()
+                return {"success": True, "data": stats}
+            except Exception as e:
+                self.logger.error(f"Error getting monitoring stats: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/monitoring/tasks")
+        async def get_tasks(
+            limit: int = Query(100, ge=1, le=1000),
+            state: Optional[str] = Query(None),
+            active_only: bool = Query(False)
+        ):
+            """Get task information"""
+            try:
+                if active_only:
+                    tasks = await self.monitor.get_active_tasks()
+                else:
+                    tasks = await self.monitor.get_all_tasks(limit)
+                
+                # Filter by state if specified
+                if state:
+                    tasks = [task for task in tasks if task.state == state]
+                
+                # Convert to serializable format
+                task_data = []
+                for task in tasks:
+                    task_dict = {
+                        "task_id": task.task_id,
+                        "name": task.name,
+                        "state": task.state,
+                        "received": task.received.isoformat() if task.received else None,
+                        "started": task.started.isoformat() if task.started else None,
+                        "runtime": task.runtime,
+                        "queue": task.queue,
+                        "worker": task.worker
+                    }
+                    task_data.append(task_dict)
+                
+                return {"success": True, "data": task_data}
+            except Exception as e:
+                self.logger.error(f"Error getting tasks: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/monitoring/workers")
+        async def get_workers():
+            """Get worker information"""
+            try:
+                workers = await self.monitor.get_worker_info()
+                
+                # Convert to serializable format
+                worker_data = []
+                for worker in workers:
+                    worker_dict = {
+                        "hostname": worker.hostname,
+                        "status": worker.status,
+                        "active_tasks": worker.active_tasks,
+                        "processed_tasks": worker.processed_tasks,
+                        "load_avg": worker.load_avg,
+                        "last_heartbeat": worker.last_heartbeat.isoformat() if worker.last_heartbeat else None
+                    }
+                    worker_data.append(worker_dict)
+                
+                return {"success": True, "data": worker_data}
+            except Exception as e:
+                self.logger.error(f"Error getting workers: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/monitoring/queues")
+        async def get_queues():
+            """Get queue information"""
+            try:
+                queues = await self.monitor.get_queue_info()
+                
+                # Convert to serializable format
+                queue_data = []
+                for queue in queues:
+                    queue_dict = {
+                        "name": queue.name,
+                        "length": queue.length,
+                        "consumers": queue.consumers
+                    }
+                    queue_data.append(queue_dict)
+                
+                return {"success": True, "data": queue_data}
+            except Exception as e:
+                self.logger.error(f"Error getting queues: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.websocket("/monitoring/ws")
+        async def websocket_monitoring(websocket: WebSocket):
+            """WebSocket endpoint for real-time monitoring updates"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import asyncio
+            
+            await websocket.accept()
+            self.logger.info("WebSocket connection accepted")
+            
+            # Debug: Check if monitor is available
+            if not hasattr(self, 'monitor') or self.monitor is None:
+                self.logger.error("Monitor not available!")
+                await websocket.close()
+                return
+            
+            try:
+                # Send initial data with timing
+                import time
+                start_time = time.time()
+                self.logger.info("Starting to load WebSocket initial data...")
+                
+                stats = await self.monitor.get_monitoring_stats()
+                stats_time = time.time()
+                self.logger.info(f"Stats loaded in {stats_time-start_time:.3f}s")
+                
+                active_tasks = await self.monitor.get_active_tasks()
+                tasks_time = time.time()
+                self.logger.info(f"Tasks loaded in {tasks_time-stats_time:.3f}s")
+                
+                workers = await self.monitor.get_worker_info()
+                workers_time = time.time()
+                self.logger.info(f"Workers loaded in {workers_time-tasks_time:.3f}s")
+                
+                queues = await self.monitor.get_queue_info()
+                queues_time = time.time()
+                self.logger.info(f"Queues loaded in {queues_time-workers_time:.3f}s")
+                
+                self.logger.info(f"WebSocket data loading times - Stats: {stats_time-start_time:.3f}s, Tasks: {tasks_time-stats_time:.3f}s, Workers: {workers_time-tasks_time:.3f}s, Queues: {queues_time-workers_time:.3f}s")
+                
+                # Convert to serializable format (limit data for performance)
+                task_data = []
+                for task in active_tasks[:20]:  # Limit to 20 most recent tasks
+                    task_dict = {
+                        "task_id": task.task_id,
+                        "name": task.name,
+                        "state": task.state,
+                        "received": task.received.isoformat() if task.received else None,
+                        "started": task.started.isoformat() if task.started else None,
+                        "runtime": task.runtime,
+                        "queue": task.queue,
+                        "worker": task.worker,
+                        "retries": task.retries,
+                        "args": task.args[:3] if task.args else [],  # Limit args for performance
+                        "kwargs": dict(list(task.kwargs.items())[:3]) if task.kwargs else {}  # Limit kwargs
+                    }
+                    task_data.append(task_dict)
+                
+                worker_data = []
+                for worker in workers:
+                    worker_dict = {
+                        "hostname": worker.hostname,
+                        "status": worker.status,
+                        "active_tasks": worker.active_tasks,
+                        "processed_tasks": worker.processed_tasks,
+                        "load_avg": worker.load_avg,
+                        "last_heartbeat": worker.last_heartbeat.isoformat() if worker.last_heartbeat else None
+                    }
+                    worker_data.append(worker_dict)
+                
+                queue_data = []
+                for queue in queues:
+                    queue_dict = {
+                        "name": queue.name,
+                        "length": queue.length,
+                        "consumers": queue.consumers
+                    }
+                    queue_data.append(queue_dict)
+                
+                initial_data = {
+                    "type": "initial_data",
+                    "data": {
+                        "stats": stats,
+                        "tasks": task_data,
+                        "workers": worker_data,
+                        "queues": queue_data
+                    }
+                }
+                
+                await websocket.send_json(initial_data)
+                
+                # Keep connection alive and send periodic updates
+                import asyncio
+                while True:
+                    await asyncio.sleep(5)  # Update every 5 seconds
+                    
+                    try:
+                        # Get updated data
+                        stats = await self.monitor.get_monitoring_stats()
+                        active_tasks = await self.monitor.get_active_tasks()
+                        
+                        # Convert tasks to serializable format
+                        task_data = []
+                        for task in active_tasks:
+                            task_dict = {
+                                "task_id": task.task_id,
+                                "name": task.name,
+                                "state": task.state,
+                                "received": task.received.isoformat() if task.received else None,
+                                "started": task.started.isoformat() if task.started else None,
+                                "runtime": task.runtime,
+                                "queue": task.queue,
+                                "worker": task.worker
+                            }
+                            task_data.append(task_dict)
+                        
+                        await websocket.send_json({
+                            "type": "stats_update",
+                            "data": stats
+                        })
+                        
+                        await websocket.send_json({
+                            "type": "tasks_update",
+                            "data": task_data
+                        })
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error sending WebSocket update: {e}")
+                        break
+                        
+            except WebSocketDisconnect:
+                self.logger.info("WebSocket client disconnected")
+            except Exception as e:
+                self.logger.error(f"WebSocket error: {e}")
+            finally:
+                try:
+                    await websocket.close()
+                except:
+                    pass
 
 if __name__ == "__main__":
     service = AutomationService()

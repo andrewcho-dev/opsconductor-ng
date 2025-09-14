@@ -252,6 +252,11 @@ class APIGateway:
                 "checks": [check.model_dump() for check in checks]
             }
         
+        @self.app.websocket("/{path:path}")
+        async def proxy_websocket(websocket, path: str):
+            """Proxy WebSocket connections to appropriate services"""
+            return await self._proxy_websocket(websocket, path)
+        
         @self.app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
         async def proxy_request(request: Request, path: str):
             """Proxy requests to appropriate services"""
@@ -321,6 +326,10 @@ class APIGateway:
                 # Map /api/v1/jobs/{id}/run to POST /api/v1/jobs/{id}/run (automation service)
                 service_url = self.service_urls.get("/api/v1/jobs")
                 service_path = path  # Keep the path as is
+            elif path.startswith("api/v1/automation/monitoring/"):
+                # Map /api/v1/automation/monitoring/* to /monitoring/*
+                service_url = self.service_urls.get("/api/v1/automation")
+                service_path = path.replace("api/v1/automation/", "", 1)
             else:
                 # Standard route matching
                 for route_prefix, url in self.service_urls.items():
@@ -431,6 +440,74 @@ class APIGateway:
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Gateway error"
                 )
+
+    async def _proxy_websocket(self, websocket, path: str):
+        """Proxy WebSocket connections to backend services"""
+        from fastapi import WebSocket, WebSocketDisconnect
+        import websockets
+        import asyncio
+        
+        # Find matching service
+        service_url = None
+        service_path = path
+        
+        # Special route mappings for WebSocket
+        if path.startswith("api/v1/automation/monitoring/"):
+            # Map /api/v1/automation/monitoring/* to /monitoring/*
+            service_url = self.service_urls.get("/api/v1/automation")
+            service_path = path.replace("api/v1/automation/", "", 1)
+        else:
+            # Standard route matching
+            for route_prefix, url in self.service_urls.items():
+                if path.startswith(route_prefix.lstrip("/")):
+                    service_url = url
+                    break
+        
+        if not service_url:
+            await websocket.close(code=1000, reason="No service found")
+            return
+        
+        # Build target WebSocket URL
+        if service_path.startswith("api/v1/"):
+            service_path = service_path[7:]  # Remove "api/v1/" prefix
+        
+        # Convert HTTP URL to WebSocket URL
+        ws_url = service_url.replace("http://", "ws://").replace("https://", "wss://")
+        target_url = f"{ws_url}/{service_path}"
+        
+        await websocket.accept()
+        
+        try:
+            # Connect to backend WebSocket
+            async with websockets.connect(target_url) as backend_ws:
+                # Create tasks for bidirectional communication
+                async def forward_to_backend():
+                    try:
+                        while True:
+                            data = await websocket.receive_text()
+                            await backend_ws.send(data)
+                    except WebSocketDisconnect:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error forwarding to backend: {e}")
+                
+                async def forward_to_client():
+                    try:
+                        async for message in backend_ws:
+                            await websocket.send_text(message)
+                    except Exception as e:
+                        logger.error(f"Error forwarding to client: {e}")
+                
+                # Run both tasks concurrently
+                await asyncio.gather(
+                    forward_to_backend(),
+                    forward_to_client(),
+                    return_exceptions=True
+                )
+        
+        except Exception as e:
+            logger.error(f"WebSocket proxy error: {e}")
+            await websocket.close(code=1011, reason="Backend error")
 
 # ============================================================================
 # MAIN

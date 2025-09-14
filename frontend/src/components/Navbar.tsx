@@ -20,7 +20,8 @@ import {
   ClipboardList,
   History,
   Plus,
-  List
+  List,
+  Activity
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -157,6 +158,14 @@ const Navbar: React.FC = () => {
                   >
                     <span className="nav-icon"><List size={14} /></span>
                     Manage Jobs
+                  </Link>
+                  <Link 
+                    to="/job-monitoring" 
+                    className={`nav-submenu-item ${location.pathname === '/job-monitoring' ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Activity size={14} /></span>
+                    Job Monitoring
                   </Link>
 
                 </div>

@@ -240,10 +240,40 @@ services:
     restart: unless-stopped
 
   # Background Workers
-  automation-worker:
+  automation-worker-1:
     build: ./automation-service
-    container_name: opsconductor-worker
-    command: celery -A worker worker --loglevel=info --concurrency=4
+    container_name: opsconductor-worker-1
+    command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-1@%h
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      HTTP_PROXY: http://nginx:8080
+      HTTPS_PROXY: http://nginx:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service:/app
+    restart: unless-stopped
+
+  automation-worker-2:
+    build: ./automation-service
+    container_name: opsconductor-worker-2
+    command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-2@%h
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -283,6 +313,29 @@ services:
       - opsconductor-net
     volumes:
       - scheduler_data:/app/data
+    restart: unless-stopped
+
+  # Celery Monitoring with Flower
+  celery-monitor:
+    build: ./automation-service
+    container_name: opsconductor-celery-monitor
+    command: celery -A worker flower --port=5555 --broker=redis://redis:6379/3
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/3
+      FLOWER_BASIC_AUTH: admin:admin123
+    depends_on:
+      redis:
+        condition: service_healthy
+      automation-worker-1:
+        condition: service_started
+      automation-worker-2:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service:/app
     restart: unless-stopped
 
 

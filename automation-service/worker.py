@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
 Celery Worker for Automation Service
-Handles background job execution
+Handles background job execution with enhanced monitoring
 """
 
 import os
+import logging
 from celery import Celery
+from celery.signals import task_prerun, task_postrun, task_failure, task_retry, task_revoked
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create Celery app
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
 app = Celery('automation-worker', broker=redis_url, backend=redis_url)
 
-# Configure Celery with resource protection
+# Configure Celery with enhanced monitoring and resource protection
 app.conf.update(
     task_serializer='json',
     accept_content=['json'],
@@ -19,15 +25,99 @@ app.conf.update(
     timezone='UTC',
     enable_utc=True,
     task_track_started=True,
-    task_time_limit=20 * 60,  # 20 minutes max (reduced from 30)
+    task_send_sent_event=True,  # Enable task-sent events
+    task_time_limit=20 * 60,  # 20 minutes max
     task_soft_time_limit=18 * 60,  # 18 minutes soft limit
     worker_prefetch_multiplier=1,  # Process one task at a time
-    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks (reduced from 1000)
+    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks
     worker_max_memory_per_child=512000,  # 512MB memory limit per worker
     task_acks_late=True,  # Acknowledge tasks only after completion
     worker_disable_rate_limits=False,
     task_reject_on_worker_lost=True,
+    worker_send_task_events=True,  # Enable worker events
+    task_routes={
+        'automation-worker.execute_job': {'queue': 'default'},
+        'automation-worker.execute_job_high_priority': {'queue': 'high_priority'},
+        'automation-worker.execute_job_low_priority': {'queue': 'low_priority'},
+    },
+    task_default_queue='default',
+    task_default_exchange='default',
+    task_default_exchange_type='direct',
+    task_default_routing_key='default',
 )
+
+# Celery signal handlers for enhanced monitoring
+@task_prerun.connect
+def task_prerun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, **kwds):
+    """Handle task start - update database status"""
+    logger.info(f"Task {task_id} ({task.name}) starting with args: {args}")
+    
+    # Update database status to 'running'
+    if len(args) >= 2:  # job_id, execution_id expected
+        try:
+            import asyncio
+            asyncio.create_task(update_job_execution_status(args[0], args[1], 'running'))
+        except Exception as e:
+            logger.error(f"Failed to update task start status: {e}")
+
+@task_postrun.connect
+def task_postrun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, retval=None, state=None, **kwds):
+    """Handle task completion"""
+    logger.info(f"Task {task_id} ({task.name}) completed with state: {state}")
+    
+    # Update database status based on completion state
+    if len(args) >= 2:  # job_id, execution_id expected
+        try:
+            import asyncio
+            status = 'completed' if state == 'SUCCESS' else 'failed'
+            error_msg = str(retval) if state != 'SUCCESS' and retval else None
+            asyncio.create_task(update_job_execution_status(args[0], args[1], status, error_msg))
+        except Exception as e:
+            logger.error(f"Failed to update task completion status: {e}")
+
+@task_failure.connect
+def task_failure_handler(sender=None, task_id=None, exception=None, traceback=None, einfo=None, **kwds):
+    """Handle task failure"""
+    logger.error(f"Task {task_id} failed: {exception}")
+
+@task_retry.connect
+def task_retry_handler(sender=None, task_id=None, reason=None, einfo=None, **kwds):
+    """Handle task retry"""
+    logger.warning(f"Task {task_id} retrying: {reason}")
+
+@task_revoked.connect
+def task_revoked_handler(sender=None, task_id=None, terminated=None, signum=None, expired=None, **kwds):
+    """Handle task revocation/cancellation"""
+    logger.warning(f"Task {task_id} revoked - terminated: {terminated}, expired: {expired}")
+    
+    # Try to update database status to cancelled
+    try:
+        import asyncio
+        # We don't have args here, so we'll need to look up by task_id
+        asyncio.create_task(update_job_execution_status_by_task_id(task_id, 'cancelled', 'Task was cancelled'))
+    except Exception as e:
+        logger.error(f"Failed to update task cancellation status: {e}")
+
+async def update_job_execution_status_by_task_id(task_id, status, error_message=None):
+    """Update job execution status by Celery task ID"""
+    import asyncpg
+    
+    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
+    conn = await asyncpg.connect(db_url)
+    
+    try:
+        # Find execution by task ID (stored in execution_id field)
+        await conn.execute("""
+            UPDATE automation.job_executions 
+            SET status = $1, completed_at = NOW(), error_message = $2
+            WHERE execution_id::text = $3
+        """, status, error_message, task_id)
+        
+        logger.info(f"Updated job execution with task_id {task_id} status to {status}")
+    except Exception as e:
+        logger.error(f"Failed to update job execution status by task_id: {e}")
+    finally:
+        await conn.close()
 
 async def update_job_execution_status(job_id, execution_id, status, error_message=None):
     """Update job execution status in database"""
@@ -113,6 +203,33 @@ async def update_step_execution_status(step_exec_id, status, output_data=None, e
     finally:
         await conn.close()
 
+async def get_job_execution_id_by_task_id(task_id):
+    """Get job execution ID by Celery task ID"""
+    import asyncpg
+    
+    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
+    conn = await asyncpg.connect(db_url)
+    
+    try:
+        # Find execution by task ID (stored as execution_id)
+        row = await conn.fetchrow("""
+            SELECT id FROM automation.job_executions 
+            WHERE execution_id = $1::uuid
+        """, task_id)
+        
+        if row:
+            logger.info(f"Found job execution {row['id']} for task_id {task_id}")
+            return row['id']
+        else:
+            logger.warning(f"No job execution found for task_id {task_id}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Failed to get job execution by task_id: {e}")
+        return None
+    finally:
+        await conn.close()
+
 async def get_job_execution_id(job_id, task_id):
     """Get job execution ID from database"""
     import asyncpg
@@ -187,15 +304,18 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
         # Add libraries to path
         sys.path.append('/app/libraries')
         
-        # Get job execution info and update status to running
+        # Use Celery task ID as execution ID for better tracking
+        task_id = self.request.id
+        execution_id = task_id
         job_execution_id = None
-        execution_id = None
+        
         if job_id:
             try:
-                job_execution_id, execution_id = asyncio.run(get_job_execution_id(job_id, self.request.id))
-                if execution_id:
-                    asyncio.run(update_job_execution_status(job_id, execution_id, 'running'))
-                    print(f"Updated job execution {execution_id} to running status")
+                # Get the job execution ID from database
+                job_execution_id = asyncio.run(get_job_execution_id_by_task_id(task_id))
+                if job_execution_id:
+                    asyncio.run(update_job_execution_status(job_id, task_id, 'running'))
+                    print(f"Updated job execution {task_id} to running status")
             except Exception as e:
                 print(f"Warning: Failed to update job execution status: {e}")
         
