@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, MessageSquare } from 'lucide-react';
 import { enhancedApi } from '../services/enhancedApi';
 
 interface ChatMessage {
@@ -133,30 +133,30 @@ const AIChat: React.FC = () => {
   const getMessageIcon = (message: ChatMessage) => {
     switch (message.type) {
       case 'user':
-        return <User size={16} className="text-blue-600" />;
+        return <User size={16} style={{ color: 'var(--primary-blue)' }} />;
       case 'ai':
-        return <Bot size={16} className="text-green-600" />;
+        return <Bot size={16} style={{ color: 'var(--success-green)' }} />;
       case 'system':
         return message.status === 'success' ? 
-          <CheckCircle size={16} className="text-green-600" /> :
+          <CheckCircle size={16} style={{ color: 'var(--success-green)' }} /> :
           message.status === 'error' ?
-          <AlertCircle size={16} className="text-red-600" /> :
-          <Clock size={16} className="text-gray-600" />;
+          <AlertCircle size={16} style={{ color: 'var(--danger-red)' }} /> :
+          <Clock size={16} style={{ color: 'var(--neutral-500)' }} />;
       default:
         return null;
     }
   };
 
   const getMessageStyle = (message: ChatMessage) => {
-    const baseStyle = "flex gap-3 p-4 rounded-lg max-w-4xl";
+    const baseStyle = "chat-message";
     
     switch (message.type) {
       case 'user':
-        return `${baseStyle} bg-blue-50 border border-blue-200 ml-auto`;
+        return `${baseStyle} chat-message-user`;
       case 'ai':
-        return `${baseStyle} bg-green-50 border border-green-200`;
+        return `${baseStyle} chat-message-ai`;
       case 'system':
-        return `${baseStyle} bg-gray-50 border border-gray-200`;
+        return `${baseStyle} chat-message-system`;
       default:
         return baseStyle;
     }
@@ -167,143 +167,138 @@ const AIChat: React.FC = () => {
   };
 
   return (
-    <div className="ai-chat-container" style={{ height: 'calc(100vh - 80px)', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <div className="chat-header" style={{ 
-        padding: '20px', 
-        borderBottom: '1px solid #e5e7eb',
-        backgroundColor: '#f9fafb'
-      }}>
-        <h1 style={{ 
-          margin: 0, 
-          fontSize: '24px', 
-          fontWeight: 'bold',
-          color: '#1f2937',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px'
-        }}>
-          <Bot size={28} className="text-green-600" />
-          AI Assistant
-        </h1>
-        <p style={{ 
-          margin: '5px 0 0 0', 
-          color: '#6b7280',
-          fontSize: '14px'
-        }}>
-          Describe what you want to automate in natural language
-        </p>
-      </div>
-
-      {/* Messages */}
-      <div className="chat-messages" style={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        padding: '20px',
-        backgroundColor: '#ffffff'
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {messages.map((message) => (
-            <div key={message.id} className={getMessageStyle(message)}>
-              <div style={{ flexShrink: 0 }}>
-                {getMessageIcon(message)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  fontSize: '14px', 
-                  lineHeight: '1.5',
-                  color: '#374151'
-                }}>
-                  {message.content}
-                </div>
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#9ca3af',
-                  marginTop: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <span>{formatTimestamp(message.timestamp)}</span>
-                  {message.confidence && (
-                    <span>Confidence: {Math.round(message.confidence * 100)}%</span>
-                  )}
-                  {message.jobId && (
-                    <span>Job: {message.jobId.substring(0, 8)}...</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {isLoading && (
-            <div className="flex gap-3 p-4 rounded-lg max-w-4xl bg-gray-50 border border-gray-200">
-              <Loader size={16} className="text-gray-600 animate-spin" />
-              <div style={{ fontSize: '14px', color: '#6b7280' }}>
-                AI is processing your request...
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+    <div className="dense-dashboard">
+      {/* Dashboard-style header */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>AI Assistant</h1>
+        </div>
+        <div className="header-stats">
+          <span style={{ 
+            fontSize: '12px', 
+            color: 'var(--neutral-600)',
+            padding: '4px 8px'
+          }}>
+            Describe what you want to automate in natural language
+          </span>
         </div>
       </div>
 
-      {/* Input */}
-      <div className="chat-input" style={{ 
-        padding: '20px', 
-        borderTop: '1px solid #e5e7eb',
-        backgroundColor: '#f9fafb'
+      {/* Full-page chat layout */}
+      <div className="dashboard-section" style={{ 
+        height: 'calc(100vh - 110px)',
+        margin: 0,
+        borderRadius: '6px'
       }}>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '12px' }}>
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Type your automation request... (e.g., 'restart nginx on web servers')"
-            disabled={isLoading}
-            style={{
-              flex: 1,
-              padding: '12px 16px',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              fontSize: '14px',
-              outline: 'none',
-              backgroundColor: isLoading ? '#f3f4f6' : '#ffffff'
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = '#3b82f6';
-              e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = '#d1d5db';
-              e.target.style.boxShadow = 'none';
-            }}
-          />
-          <button
-            type="submit"
-            disabled={!inputValue.trim() || isLoading}
-            style={{
-              padding: '12px 20px',
-              backgroundColor: (!inputValue.trim() || isLoading) ? '#9ca3af' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: (!inputValue.trim() || isLoading) ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}
-          >
-            {isLoading ? (
-              <Loader size={16} className="animate-spin" />
-            ) : (
-              <Send size={16} />
-            )}
-            Send
-          </button>
-        </form>
+        <div className="section-header">AI Chat</div>
+        <div className="compact-content" style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          height: '100%',
+          padding: 0
+        }}>
+          {/* Messages Area */}
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto', 
+            padding: '8px',
+            backgroundColor: 'var(--neutral-25)'
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {messages.map((message) => (
+                <div key={message.id} className={getMessageStyle(message)}>
+                  <div style={{ flexShrink: 0 }}>
+                    {getMessageIcon(message)}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', lineHeight: '1.4' }}>
+                      {message.content}
+                    </div>
+                    <div style={{ 
+                      fontSize: '11px', 
+                      color: 'var(--neutral-500)',
+                      marginTop: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}>
+                      <span>{formatTimestamp(message.timestamp)}</span>
+                      {message.confidence && (
+                        <span className="status-badge status-badge-info">
+                          {Math.round(message.confidence * 100)}%
+                        </span>
+                      )}
+                      {message.jobId && (
+                        <span className="status-badge status-badge-neutral">
+                          {message.jobId.substring(0, 8)}...
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && (
+                <div className="chat-message chat-message-system">
+                  <div style={{ flexShrink: 0 }}>
+                    <Loader size={14} className="loading-spinner" />
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>
+                    AI is processing your request...
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Input Area - Fixed at bottom */}
+          <div style={{ 
+            padding: '8px', 
+            borderTop: '1px solid var(--neutral-200)',
+            backgroundColor: 'var(--neutral-50)'
+          }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px' }}>
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Type your automation request... (e.g., 'restart nginx on web servers')"
+                disabled={isLoading}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  border: '1px solid var(--neutral-300)',
+                  borderRadius: '4px',
+                  fontSize: '13px',
+                  outline: 'none',
+                  backgroundColor: isLoading ? 'var(--neutral-100)' : 'white'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--primary-blue)';
+                  e.target.style.boxShadow = '0 0 0 2px var(--primary-blue-light)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = 'var(--neutral-300)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+              <button
+                type="submit"
+                disabled={!inputValue.trim() || isLoading}
+                className="btn btn-primary"
+                style={{ fontSize: '13px', padding: '6px 12px' }}
+              >
+                {isLoading ? (
+                  <Loader size={14} className="loading-spinner" />
+                ) : (
+                  <Send size={14} />
+                )}
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

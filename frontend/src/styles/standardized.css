@@ -1489,6 +1489,35 @@ body {
   border: 1px solid var(--danger-red);
 }
 
+/* Chat Message Styles - Dashboard Style */
+.chat-message {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--neutral-200);
+  background: white;
+  font-size: 13px;
+}
+
+.chat-message-user {
+  background-color: var(--primary-blue-light);
+  border-color: var(--primary-blue);
+  width: 100%;
+}
+
+.chat-message-ai {
+  background-color: var(--success-green-light);
+  border-color: var(--success-green);
+  max-width: 85%;
+}
+
+.chat-message-system {
+  background-color: var(--neutral-100);
+  border-color: var(--neutral-300);
+  max-width: 95%;
+}
+
 /* Responsive adjustments for 3-column grids */
 @media (max-width: 768px) {
   .detail-grid-3col {
@@ -1499,5 +1528,14 @@ body {
   .step-details-grid-3col {
     grid-template-columns: 1fr;
     gap: var(--space-2);
+  }
+
+  .chat-message-user,
+  .chat-message-ai {
+    max-width: 95%;
+  }
+  
+  .chat-message-user {
+    margin-left: 0;
   }
 }
