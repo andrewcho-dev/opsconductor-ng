@@ -119,3 +119,13 @@ jspm_packages/
 # Temporary files
 tmp/
 temp/
+
+# System files
+.dotnet/
+.wget-hsts
+
+# VS Code Server
+.vscode-server/
+
+# Node.js cache
+node_modules/.cache/
