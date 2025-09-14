@@ -120,8 +120,7 @@ const Dashboard: React.FC = () => {
           
           {/* Inline Quick Actions */}
           <div className="quick-actions">
-            <Link to="/job-management/create" className="action-btn primary"><Plus size={14} /> Job</Link>
-            <Link to="/targets-management/create" className="action-btn"><Plus size={14} /> Target</Link>
+            <Link to="/targets-management/create" className="action-btn primary"><Plus size={14} /> Target</Link>
             <Link to="/credential-management/create" className="action-btn"><Plus size={14} /> Cred</Link>
 
           </div>

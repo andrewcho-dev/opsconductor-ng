@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Job } from '../types';
 import { jobApi } from '../services/api';
-import VisualJobBuilder from '../components/VisualJobBuilder';
 import { Plus, Play, Edit, Trash2, History, X, RefreshCw, Save, Download, Upload } from 'lucide-react';
 
 const Jobs: React.FC = () => {
@@ -11,28 +10,11 @@ const Jobs: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const isEditing = action === 'edit' && id;
-  const isCreating = action === 'create';
 
   useEffect(() => {
     fetchJobs();
   }, []);
-
-  useEffect(() => {
-    if (isEditing && id) {
-      const job = jobs.find(j => j.id === parseInt(id));
-      if (job) {
-        setSelectedJob(job);
-        setShowCreateForm(true);
-      }
-    } else if (isCreating) {
-      setSelectedJob(null);
-      setShowCreateForm(true);
-    }
-  }, [isEditing, isCreating, id, jobs]);
 
   const fetchJobs = async () => {
     try {
@@ -75,60 +57,7 @@ const Jobs: React.FC = () => {
     }
   };
 
-  const handleJobSaved = async (jobData: any) => {
-    try {
-      console.log('Saving job with data:', JSON.stringify(jobData, null, 2));
-      
-      if (isEditing && selectedJob) {
-        // Update existing job
-        await jobApi.update(selectedJob.id, jobData);
-        console.log('Job updated successfully');
-      } else {
-        // Create new job
-        await jobApi.create(jobData);
-        console.log('Job created successfully');
-      }
-      
-      // Refresh jobs list and navigate back
-      await fetchJobs();
-      setShowCreateForm(false);
-      navigate('/job-management');
-    } catch (error: any) {
-      console.error('Failed to save job:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error response (stringified):', JSON.stringify(error.response?.data, null, 2));
-      console.error('Error status:', error.response?.status);
-      console.error('Error headers:', error.response?.headers);
-      
-      // Try to extract the actual error message
-      let errorMessage = 'Unknown error';
-      if (error.response?.data) {
-        const errorData = error.response.data;
-        if (typeof errorData === 'string') {
-          errorMessage = errorData;
-        } else if (errorData.error) {
-          if (typeof errorData.error === 'string') {
-            errorMessage = errorData.error;
-          } else if (errorData.error.message) {
-            errorMessage = errorData.error.message;
-          } else {
-            errorMessage = JSON.stringify(errorData.error);
-          }
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        } else if (errorData.detail) {
-          errorMessage = errorData.detail;
-        } else {
-          errorMessage = JSON.stringify(errorData);
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setError(errorMessage);
-      alert('Failed to save job: ' + errorMessage);
-    }
-  };
+
 
   const handleJobSelect = (job: Job) => {
     setSelectedJob(job);
@@ -203,97 +132,11 @@ const Jobs: React.FC = () => {
     );
   }
 
-  // If showing the form, render it full-screen
-  if (showCreateForm) {
-    return (
-      <div className="dense-dashboard">
-        <style>
-          {`
-            .dense-dashboard {
-              padding: 8px 12px;
-              max-width: 100%;
-              font-size: 13px;
-            }
-            .dashboard-header {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 12px;
-              padding-bottom: 8px;
-              border-bottom: 1px solid var(--neutral-200);
-            }
-            .dashboard-header h1 {
-              font-size: 20px;
-              font-weight: 600;
-              margin: 0;
-              color: var(--neutral-800);
-            }
-            .header-subtitle {
-              font-size: 12px;
-              color: var(--neutral-600);
-              margin: 2px 0 0 0;
-            }
-          `}
-        </style>
-        
-        {/* Dashboard-style header */}
-        <div className="dashboard-header">
-          <div className="header-left">
-            <h1>{isEditing ? 'Edit Job' : 'Create Job'}</h1>
-            <p className="header-subtitle">Design and configure your job workflow using drag and drop</p>
-          </div>
-          <div className="header-actions">
-            <button
-              className="btn-icon btn-ghost"
-              onClick={() => {
-                // Trigger refresh steps in VisualJobBuilder
-                window.dispatchEvent(new CustomEvent('refreshSteps'));
-              }}
-              title="Refresh Steps"
-            >
-              <RefreshCw size={16} />
-            </button>
-            <button
-              className="btn-icon btn-success"
-              onClick={() => {
-                // Trigger save job in VisualJobBuilder
-                window.dispatchEvent(new CustomEvent('saveJob'));
-              }}
-              title="Save Job"
-            >
-              <Save size={16} />
-            </button>
-            <button 
-              className="btn-icon btn-ghost"
-              onClick={() => {
-                setShowCreateForm(false);
-                navigate('/job-management');
-              }}
-              title="Cancel"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        <VisualJobBuilder
-          editingJob={selectedJob}
-          onJobCreate={handleJobSaved}
-          onCancel={() => {
-            setShowCreateForm(false);
-            navigate('/job-management');
-          }}
-          onRefreshSteps={() => {
-            // Trigger refresh steps in VisualJobBuilder
-            window.dispatchEvent(new CustomEvent('refreshSteps'));
-          }}
-          onSaveJob={() => {
-            // Trigger save job in VisualJobBuilder
-            window.dispatchEvent(new CustomEvent('saveJob'));
-          }}
-        />
-      </div>
-    );
+  // Redirect create/edit actions to main page for now
+  // TODO: Implement new AI-based job creator
+  if (action === 'create' || action === 'edit') {
+    navigate('/job-management');
+    return null;
   }
 
   return (
@@ -585,10 +428,9 @@ const Jobs: React.FC = () => {
           <button 
             className="btn-icon btn-success"
             onClick={() => {
-              setShowCreateForm(true);
-              navigate('/job-management/create');
+              alert('AI-powered job creator coming soon! This will replace the visual builder with natural language job creation.');
             }}
-            title="Create new job"
+            title="Create new job (AI-powered creator coming soon)"
           >
             <Plus size={16} />
           </button>
@@ -631,10 +473,9 @@ const Jobs: React.FC = () => {
               <button 
                 className="btn-icon btn-success"
                 onClick={() => {
-                  setShowCreateForm(true);
-                  navigate('/job-management/create');
+                  alert('AI-powered job creator coming soon! This will replace the visual builder with natural language job creation.');
                 }}
-                title="Create new job"
+                title="Create new job (AI-powered creator coming soon)"
               >
                 <Plus size={14} />
               </button>
@@ -648,10 +489,9 @@ const Jobs: React.FC = () => {
                 <button 
                   className="btn-icon btn-success"
                   onClick={() => {
-                    setShowCreateForm(true);
-                    navigate('/job-management/create');
+                    alert('AI-powered job creator coming soon! This will replace the visual builder with natural language job creation.');
                   }}
-                  title="Create first job"
+                  title="Create first job (AI-powered creator coming soon)"
                 >
                   <Plus size={16} />
                 </button>
@@ -712,11 +552,9 @@ const Jobs: React.FC = () => {
                               className="btn-icon btn-ghost"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedJob(job);
-                                setShowCreateForm(true);
-                                navigate(`/job-management/edit/${job.id}`);
+                                alert('Job editing with AI-powered creator coming soon! This will replace the visual builder with natural language job editing.');
                               }}
-                              title="Edit job"
+                              title="Edit job (AI-powered editor coming soon)"
                             >
                               <Edit size={14} />
                             </button>
@@ -795,10 +633,9 @@ const Jobs: React.FC = () => {
                   <button 
                     className="btn-icon btn-ghost"
                     onClick={() => {
-                      setShowCreateForm(true);
-                      navigate(`/job-management/edit/${selectedJob.id}`);
+                      alert('Job editing with AI-powered creator coming soon! This will replace the visual builder with natural language job editing.');
                     }}
-                    title="Edit job"
+                    title="Edit job (AI-powered editor coming soon)"
                   >
                     <Edit size={16} />
                   </button>

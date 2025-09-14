@@ -150,14 +150,7 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><List size={14} /></span>
                     Manage Jobs
                   </Link>
-                  <Link 
-                    to="/job-management/create" 
-                    className={`nav-submenu-item ${location.pathname === '/job-management/create' ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Plus size={14} /></span>
-                    Create Job
-                  </Link>
+
                 </div>
               </div>
 
