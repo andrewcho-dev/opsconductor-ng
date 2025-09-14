@@ -1403,7 +1403,7 @@ class AutomationService(BaseService):
                     if not execution_exists:
                         raise HTTPException(status_code=404, detail="Execution not found")
                     
-                    # Get execution steps (for now, we'll create mock steps based on execution status)
+                    # Get execution info and actual step executions
                     execution_row = await conn.fetchrow("""
                         SELECT je.id, je.execution_id, je.status, je.started_at, je.completed_at,
                                je.error_message, j.name as job_name, j.workflow_definition
@@ -1412,14 +1412,55 @@ class AutomationService(BaseService):
                         WHERE je.id = $1
                     """, execution_id)
                     
-                    # Generate steps based on workflow definition and execution status
-                    steps = self._generate_execution_steps(
-                        execution_row['workflow_definition'],
-                        execution_row['status'],
-                        execution_row['started_at'],
-                        execution_row['completed_at'],
-                        execution_row['error_message']
-                    )
+                    # Get actual step executions from database
+                    step_rows = await conn.fetch("""
+                        SELECT id, step_id, step_name, step_type, status, 
+                               started_at, completed_at, output_data, error_message, execution_order
+                        FROM automation.step_executions
+                        WHERE job_execution_id = $1
+                        ORDER BY execution_order
+                    """, execution_id)
+                    
+                    # Convert step executions to API format
+                    steps = []
+                    for i, row in enumerate(step_rows):
+                        duration_ms = None
+                        if row['started_at'] and row['completed_at']:
+                            duration = row['completed_at'] - row['started_at']
+                            duration_ms = int(duration.total_seconds() * 1000)
+                        
+                        # Parse output_data if it's a JSON string
+                        output_data = None
+                        if row['output_data']:
+                            try:
+                                import json
+                                output_data = json.loads(row['output_data']) if isinstance(row['output_data'], str) else row['output_data']
+                            except:
+                                output_data = row['output_data']
+                        
+                        step = {
+                            "id": row['id'],
+                            "step_id": row['step_id'],
+                            "name": row['step_name'],
+                            "type": row['step_type'],
+                            "status": row['status'],
+                            "started_at": row['started_at'].isoformat() if row['started_at'] else None,
+                            "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
+                            "duration_ms": duration_ms,
+                            "error_message": row['error_message'],
+                            "output": output_data
+                        }
+                        steps.append(step)
+                    
+                    # If no step executions found, fall back to generating mock steps
+                    if not steps:
+                        steps = self._generate_execution_steps(
+                            execution_row['workflow_definition'],
+                            execution_row['status'],
+                            execution_row['started_at'],
+                            execution_row['completed_at'],
+                            execution_row['error_message']
+                        )
                     
                     return {
                         "success": True,

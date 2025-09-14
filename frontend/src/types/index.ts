@@ -194,17 +194,22 @@ export interface JobRun {
 
 export interface JobRunStep {
   id: number;
-  job_execution_id: number;
+  job_execution_id?: number;
   step_id: string;
-  step_name: string;
-  step_type: string;
+  name: string;  // API returns 'name' not 'step_name'
+  type: string;  // API returns 'type' not 'step_type'
   status: string;
-  input_data: Record<string, any>;
-  output_data: Record<string, any>;
+  output: Record<string, any>;  // API returns 'output' not 'output_data'
   error_message?: string;
   started_at?: string;
   completed_at?: string;
-  execution_order: number;
+  duration_ms?: number;
+  execution_order?: number;
+  // Legacy fields for backward compatibility
+  step_name?: string;
+  step_type?: string;
+  input_data?: Record<string, any>;
+  output_data?: Record<string, any>;
 }
 
 export interface WinRMTestResult {

@@ -116,17 +116,23 @@ class WorkflowGenerator:
             'id': str(uuid.uuid4()),
             'name': f'Check {target} Status',
             'type': 'powershell',
-            'script': f'''
-# Check if {target} is running
+            'library': 'windows_powershell',
+            'function': 'execute_powershell',
+            'inputs': {
+                'target_host': '{{steps.resolve_targets.outputs.active_hosts}}',
+                'username': '{{steps.resolve_targets.outputs.username}}',
+                'password': '{{steps.resolve_targets.outputs.password}}',
+                'script': f'''# Check if {target} is running
 $process = Get-Process -Name "{target.replace('.exe', '')}" -ErrorAction SilentlyContinue
 if ($process) {{
     Write-Output "✓ {target} is currently running (PID: $($process.Id))"
     $process | Select-Object Name, Id, CPU, WorkingSet | Format-Table
 }} else {{
     Write-Output "⚠ {target} is not running"
-}}
-            '''.strip(),
-            'timeout': 30,
+}}''',
+                'timeout': 30,
+                'use_ssl': True
+            },
             'continue_on_failure': True
         })
         
@@ -279,26 +285,51 @@ Write-Output "⚠ Start command needs configuration for {target}"
         }]
 
     def _generate_windows_check_steps(self, parsed_request: ParsedRequest) -> List[Dict[str, Any]]:
-        """Generate Windows check steps"""
+        """Generate Windows check steps with proper target resolution and parallel execution"""
         target = parsed_request.target_process or parsed_request.target_service or "service"
+        target_group = parsed_request.target_group or "Virtual Machines"
         
-        return [{
-            'id': str(uuid.uuid4()),
-            'name': f'Check {target} Status',
-            'type': 'powershell',
-            'script': f'''
-# Check {target} status
+        steps = []
+        
+        # Step 1: Resolve target group to get all targets and credentials
+        resolve_step_id = str(uuid.uuid4())
+        steps.append({
+            'id': resolve_step_id,
+            'name': 'Resolve Target Group',
+            'type': 'connection',
+            'library': 'connection_manager',
+            'function': 'resolve_target_group',
+            'inputs': {
+                'group_name': target_group
+            },
+            'continue_on_failure': False
+        })
+        
+        # Step 2: Execute PowerShell check on all targets in parallel
+        check_step_id = str(uuid.uuid4())
+        steps.append({
+            'id': check_step_id,
+            'name': f'Check {target} Status on All Targets',
+            'type': 'powershell_parallel',
+            'library': 'windows_powershell',
+            'function': 'execute_powershell_parallel',
+            'inputs': {
+                'targets': f'{{{{steps.{resolve_step_id}.outputs.targets}}}}',
+                'script': f'''# Check {target} status
 $process = Get-Process -Name "{target.replace('.exe', '')}" -ErrorAction SilentlyContinue
 if ($process) {{
-    Write-Output "✓ {target} is running"
+    Write-Output "✓ {target} is running on $env:COMPUTERNAME"
     $process | Select-Object Name, Id, CPU, WorkingSet | Format-Table
 }} else {{
-    Write-Output "⚠ {target} is not running"
-}}
-            '''.strip(),
-            'timeout': 30,
+    Write-Output "⚠ {target} is not running on $env:COMPUTERNAME"
+}}''',
+                'timeout': 30,
+                'max_concurrent': 5  # Limit concurrent executions
+            },
             'continue_on_failure': True
-        }]
+        })
+        
+        return steps
 
     # Linux-specific step generators (simplified for prototype)
     def _generate_linux_update_steps(self, parsed_request: ParsedRequest) -> List[Dict[str, Any]]:

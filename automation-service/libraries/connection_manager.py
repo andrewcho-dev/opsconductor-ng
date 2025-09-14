@@ -34,6 +34,7 @@ class ConnectionManager:
     
     def __init__(self):
         self.db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
+        self.asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
         self.connection_cache = {}  # Simple in-memory cache
         self.cache_ttl = 300  # 5 minutes
         
@@ -41,7 +42,8 @@ class ConnectionManager:
         self.dependencies_available = self._check_dependencies()
         
         logger.info("Connection Manager initialized", 
-                   dependencies=self.dependencies_available)
+                   dependencies=self.dependencies_available,
+                   asset_service_url=self.asset_service_url)
 
     def _check_dependencies(self) -> Dict[str, bool]:
         """Check if required dependencies are available"""
@@ -50,88 +52,111 @@ class ConnectionManager:
             "cryptography": Fernet is not None
         }
 
-    async def resolve_target_group(self, group_name: str) -> List[Dict[str, Any]]:
-        """Resolve target group to list of target servers with connection details"""
-        if not self.dependencies_available["asyncpg"]:
-            logger.error("Database connection not available - asyncpg library missing")
-            raise ConnectionManagerError("Database connection not available. Install with: pip install asyncpg")
-        
+    async def resolve_target_group(self, group_name: str) -> Dict[str, Any]:
+        """Resolve target group to list of target servers with connection details via Asset Service"""
         try:
-            conn = await asyncpg.connect(self.db_url)
-            try:
-                # Get target group ID
-                group_query = """
-                    SELECT id FROM target_groups 
-                    WHERE name = $1 AND is_active = true
-                """
-                group_row = await conn.fetchrow(group_query, group_name)
-                
-                if not group_row:
-                    logger.warning("Target group not found", group_name=group_name)
-                    return []
-                
-                group_id = group_row['id']
-                
-                # Get targets in the group with their credentials
-                targets_query = """
-                    SELECT 
-                        t.id,
-                        t.name,
-                        t.hostname,
-                        t.ip_address,
-                        t.port,
-                        t.target_type,
-                        t.metadata,
-                        c.id as credential_id,
-                        c.username,
-                        c.encrypted_password,
-                        c.credential_type,
-                        c.metadata as credential_metadata
-                    FROM targets t
-                    JOIN target_group_members tgm ON t.id = tgm.target_id
-                    LEFT JOIN credentials c ON t.credential_id = c.id
-                    WHERE tgm.target_group_id = $1 
-                    AND t.is_active = true
-                    ORDER BY t.name
-                """
-                
-                rows = await conn.fetch(targets_query, group_id)
-                
-                targets = []
-                for row in rows:
-                    target = {
-                        "id": row['id'],
-                        "name": row['name'],
-                        "hostname": row['hostname'],
-                        "ip_address": row['ip_address'],
-                        "port": row['port'],
-                        "target_type": row['target_type'],
-                        "metadata": row['metadata'] or {},
-                        "credentials": None
-                    }
+            import aiohttp
+            
+            # First, find the target group by name
+            async with aiohttp.ClientSession() as session:
+                # Get all target groups
+                async with session.get(f"{self.asset_service_url}/target-groups") as response:
+                    if response.status != 200:
+                        raise ConnectionManagerError(f"Failed to fetch target groups: HTTP {response.status}")
                     
-                    # Add credentials if available
-                    if row['credential_id']:
-                        target["credentials"] = {
-                            "id": row['credential_id'],
-                            "username": row['username'],
-                            "credential_type": row['credential_type'],
-                            "metadata": row['credential_metadata'] or {}
-                            # Note: encrypted_password is not included for security
+                    groups_data = await response.json()
+                    target_group = None
+                    
+                    # Find group by name (case-insensitive)
+                    for group in groups_data.get('groups', []):
+                        if group['name'].lower() == group_name.lower():
+                            target_group = group
+                            break
+                    
+                    if not target_group:
+                        logger.warning("Target group not found", group_name=group_name)
+                        return {
+                            "group_name": group_name,
+                            "group_id": None,
+                            "targets": [],
+                            "total_targets": 0
                         }
                     
-                    targets.append(target)
-                
-                logger.info("Resolved target group", 
-                           group_name=group_name, 
-                           target_count=len(targets))
-                return targets
-                
-            finally:
-                await conn.close()
-                
+                    group_id = target_group['id']
+                    
+                    # Get targets in the group
+                    async with session.get(f"{self.asset_service_url}/target-groups/{group_id}/targets") as targets_response:
+                        if targets_response.status != 200:
+                            raise ConnectionManagerError(f"Failed to fetch group targets: HTTP {targets_response.status}")
+                        
+                        targets_data = await targets_response.json()
+                        targets = []
+                        
+                        for target in targets_data.get('targets', []):
+                            # Find the default service for this target
+                            default_service = None
+                            for service in target.get('services', []):
+                                if service.get('is_default', False):
+                                    default_service = service
+                                    break
+                            
+                            if not default_service:
+                                logger.warning("No default service found for target", target_id=target['id'])
+                                continue
+                            
+                            # Get full target details with credentials
+                            async with session.get(f"{self.asset_service_url}/targets/{target['id']}") as target_response:
+                                if target_response.status != 200:
+                                    logger.warning("Failed to get target details", target_id=target['id'])
+                                    continue
+                                
+                                target_data = await target_response.json()
+                                target_services = target_data.get('data', {}).get('services', [])
+                                
+                                # Find the default service with credentials
+                                service_with_creds = None
+                                for service in target_services:
+                                    if service.get('is_default') and service.get('has_credentials'):
+                                        service_with_creds = service
+                                        break
+                                
+                                if not service_with_creds:
+                                    logger.warning("No default service with credentials found for target", target_id=target['id'])
+                                    continue
+                                
+                                # Build target info for automation
+                                target_info = {
+                                    "id": target['id'],
+                                    "name": target['name'],
+                                    "hostname": target['hostname'],
+                                    "ip_address": target['ip_address'],
+                                    "os_type": target['os_type'],
+                                    "service_type": service_with_creds['service_type'],
+                                    "port": service_with_creds['port'],
+                                    "is_secure": service_with_creds['is_secure'],
+                                    "username": service_with_creds.get('username'),
+                                    "password": service_with_creds.get('password'),  # Note: password may not be included for security
+                                    "domain": service_with_creds.get('domain'),
+                                    "connection_status": service_with_creds.get('connection_status', 'unknown')
+                                }
+                                
+                                targets.append(target_info)
+                        
+                        result = {
+                            "group_name": group_name,
+                            "group_id": group_id,
+                            "targets": targets,
+                            "total_targets": len(targets)
+                        }
+                        
+                        logger.info("Resolved target group via Asset Service", 
+                                   group_name=group_name, 
+                                   group_id=group_id,
+                                   target_count=len(targets))
+                        return result
+                        
         except Exception as e:
-            logger.error("Failed to resolve target group", 
+            logger.error("Failed to resolve target group via Asset Service", 
                         group_name=group_name, 
                         error=str(e))
             raise ConnectionManagerError(f"Failed to resolve target group '{group_name}': {str(e)}")

@@ -216,8 +216,22 @@ const JobRuns: React.FC = () => {
     try {
       setLoadingSteps(true);
       const response = await jobRunApi.getSteps(runId);
-      // Ensure response is always an array
-      setRunSteps(Array.isArray(response) ? response : []);
+      // Handle both direct array response and wrapped response
+      let steps: JobRunStep[] = [];
+      if (Array.isArray(response)) {
+        steps = response;
+      } else if (response && typeof response === 'object' && 'data' in response) {
+        const dataResponse = response as { data: { steps: JobRunStep[] } };
+        if (dataResponse.data && Array.isArray(dataResponse.data.steps)) {
+          steps = dataResponse.data.steps;
+        }
+      } else if (response && typeof response === 'object' && 'steps' in response) {
+        const stepsResponse = response as { steps: JobRunStep[] };
+        if (Array.isArray(stepsResponse.steps)) {
+          steps = stepsResponse.steps;
+        }
+      }
+      setRunSteps(steps);
     } catch (error: any) {
       console.error('Failed to fetch run steps:', error);
       setRunSteps([]);
@@ -253,7 +267,8 @@ const JobRuns: React.FC = () => {
     }
     
     // Find the step in the job definition by index
-    const jobStep = job.workflow_definition.steps[step.execution_order];
+    const executionOrder = step.execution_order || 0;
+    const jobStep = job.workflow_definition.steps[executionOrder];
     if (jobStep && jobStep.command) {
       return jobStep.command;
     }
@@ -365,9 +380,13 @@ const JobRuns: React.FC = () => {
   };
 
   const openOutputModal = (step: JobRunStep) => {
+    const stepType = step.type || step.step_type || 'Unknown';
+    const stepOrder = step.execution_order || 0;
+    const outputData = step.output || step.output_data || {};
+    
     setModalOutputData({
-      stepName: `Step ${step.execution_order + 1}: ${step.step_type}`,
-      stdout: JSON.stringify(step.output_data, null, 2),
+      stepName: `Step ${stepOrder + 1}: ${stepType}`,
+      stdout: JSON.stringify(outputData, null, 2),
       stderr: step.error_message || '',
       exitCode: undefined
     });
@@ -390,23 +409,26 @@ const JobRuns: React.FC = () => {
   };
 
   const exportOutput = (step: JobRunStep) => {
-    const stepName = `Step_${step.execution_order + 1}_${step.step_type}`;
+    const stepType = step.type || step.step_type || 'Unknown';
+    const stepOrder = step.execution_order || 0;
+    const stepName = `Step_${stepOrder + 1}_${stepType}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `${stepName}_${timestamp}.txt`;
     
     let content = `=== ${stepName} Output ===\n`;
-    content += `Job Run ID: ${step.job_execution_id}\n`;
-    content += `Step Index: ${step.execution_order + 1}\n`;
-    content += `Step Type: ${step.step_type}\n`;
+    content += `Job Run ID: ${step.job_execution_id || 'Unknown'}\n`;
+    content += `Step Index: ${stepOrder + 1}\n`;
+    content += `Step Type: ${stepType}\n`;
     content += `Status: ${step.status}\n`;
     content += `Started: ${step.started_at ?? 'N/A'}\n`;
     content += `Finished: ${step.completed_at ?? 'N/A'}\n`;
     content += `\n${'='.repeat(50)}\n\n`;
     
-    if (step.output_data && Object.keys(step.output_data).length > 0) {
+    const outputData = step.output || step.output_data || {};
+    if (outputData && Object.keys(outputData).length > 0) {
       content += `OUTPUT DATA:\n`;
       content += `${'-'.repeat(20)}\n`;
-      content += `${JSON.stringify(step.output_data, null, 2)}\n\n`;
+      content += `${JSON.stringify(outputData, null, 2)}\n\n`;
     }
     
     if (step.error_message) {
@@ -415,7 +437,7 @@ const JobRuns: React.FC = () => {
       content += `${step.error_message}\n\n`;
     }
     
-    if (!step.output_data || Object.keys(step.output_data).length === 0) {
+    if (!outputData || Object.keys(outputData).length === 0) {
       if (!step.error_message) {
         content += `No output available.\n`;
       }
@@ -1069,8 +1091,8 @@ const JobRuns: React.FC = () => {
                           <div className="detail-grid-3col">
                             {/* Row 1: Step, Status, Target */}
                             <div className="detail-item">
-                              <label>Step {step.execution_order + 1}</label>
-                              <div className="detail-value">{step.step_type}</div>
+                              <label>Step {(step.execution_order || 0) + 1}</label>
+                              <div className="detail-value">{step.type || step.step_type || 'Unknown'}</div>
                             </div>
                             
                             <div className="detail-item">
@@ -1087,7 +1109,7 @@ const JobRuns: React.FC = () => {
                             
                             <div className="detail-item">
                               <label>Step Name</label>
-                              <div className="detail-value">{step.step_name}</div>
+                              <div className="detail-value">{step.name || step.step_name || 'Unknown'}</div>
                             </div>
                             
                             {/* Row 2: Command (spans all columns) */}
@@ -1097,7 +1119,10 @@ const JobRuns: React.FC = () => {
                             </div>
                             
                             {/* Row 3: Output (spans all columns) */}
-                            {((step.output_data && Object.keys(step.output_data).length > 0) || step.error_message) && (
+                            {(() => {
+                              const outputData = step.output || step.output_data || {};
+                              return ((outputData && Object.keys(outputData).length > 0) || step.error_message);
+                            })() && (
                               <div className="detail-item detail-item-span-remaining">
                                 <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                   <span>Output</span>
@@ -1143,12 +1168,38 @@ const JobRuns: React.FC = () => {
                                   </div>
                                 </label>
                                 <div className="detail-value">
-                                  {step.output_data && Object.keys(step.output_data).length > 0 && (
-                                    <div>{JSON.stringify(step.output_data).substring(0, 200)}{JSON.stringify(step.output_data).length > 200 ? '...' : ''}</div>
-                                  )}
+                                  {(() => {
+                                    const outputData = step.output || step.output_data || {};
+                                    if (outputData && Object.keys(outputData).length > 0) {
+                                      const jsonStr = JSON.stringify(outputData, null, 2);
+                                      return (
+                                        <div style={{ 
+                                          backgroundColor: '#f8f9fa', 
+                                          padding: '12px', 
+                                          borderRadius: '6px',
+                                          fontFamily: 'Monaco, Consolas, "Courier New", monospace',
+                                          fontSize: '11px',
+                                          whiteSpace: 'pre-wrap',
+                                          border: '1px solid #e9ecef',
+                                          maxHeight: '200px',
+                                          overflowY: 'auto'
+                                        }}>
+                                          {jsonStr.length > 1000 ? jsonStr.substring(0, 1000) + '\n...(truncated)' : jsonStr}
+                                        </div>
+                                      );
+                                    }
+                                    return <div style={{ color: '#6c757d', fontStyle: 'italic' }}>No output data</div>;
+                                  })()}
                                   {step.error_message && (
-                                    <div style={{ color: 'var(--error)' }}>
-                                      Error: {step.error_message.substring(0, 200)}{step.error_message.length > 200 ? '...' : ''}
+                                    <div style={{ 
+                                      color: 'var(--error)', 
+                                      backgroundColor: '#fff5f5',
+                                      padding: '8px',
+                                      borderRadius: '4px',
+                                      border: '1px solid #fed7d7',
+                                      marginTop: '8px'
+                                    }}>
+                                      <strong>Error:</strong> {step.error_message.substring(0, 300)}{step.error_message.length > 300 ? '...' : ''}
                                     </div>
                                   )}
                                 </div>
@@ -1217,9 +1268,11 @@ const JobRuns: React.FC = () => {
                 <button
                   onClick={() => {
                     // Find the step data for export
-                    const step = Array.isArray(runSteps) ? runSteps.find(s => 
-                      `Step ${s.execution_order + 1}: ${s.step_type}` === modalOutputData.stepName
-                    ) : null;
+                    const step = Array.isArray(runSteps) ? runSteps.find(s => {
+                      const stepType = s.type || s.step_type || 'Unknown';
+                      const stepOrder = s.execution_order || 0;
+                      return `Step ${stepOrder + 1}: ${stepType}` === modalOutputData.stepName;
+                    }) : null;
                     if (step) exportOutput(step);
                   }}
                   style={{

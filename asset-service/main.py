@@ -103,10 +103,14 @@ class AssetService(BaseService):
             port=3002
         )
         # Initialize encryption key (in production, this should be from environment/key management)
-        self.encryption_key = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key())
-        if isinstance(self.encryption_key, str):
-            self.encryption_key = self.encryption_key.encode()
-        self.cipher_suite = Fernet(self.encryption_key)
+        encryption_key = os.environ.get('ENCRYPTION_KEY')
+        if encryption_key and encryption_key != 'your-encryption-key-here':
+            if isinstance(encryption_key, str):
+                encryption_key = encryption_key.encode()
+            self.cipher_suite = Fernet(encryption_key)
+        else:
+            # Generate a new key if none provided or placeholder
+            self.cipher_suite = Fernet(Fernet.generate_key())
         self.setup_routes()
     
     def _encrypt_credential(self, credential: str) -> str:
@@ -338,7 +342,8 @@ class AssetService(BaseService):
                     # Get services
                     service_rows = await conn.fetch("""
                         SELECT id, target_id, service_type, port, is_default, is_secure, is_enabled, notes,
-                               credential_type, username, public_key, domain, created_at, updated_at
+                               credential_type, username, password_encrypted, public_key, domain, created_at, 
+                               connection_status, last_tested_at
                         FROM assets.target_services 
                         WHERE target_id = $1 
                         ORDER BY is_default DESC, port ASC
@@ -356,18 +361,25 @@ class AssetService(BaseService):
                             "is_enabled": service_row['is_enabled'],
                             "notes": service_row['notes'],
                             "created_at": service_row['created_at'].isoformat(),
-                            "updated_at": service_row['updated_at'].isoformat() if service_row['updated_at'] else None,
                             "credential_type": service_row['credential_type'],
-                            "has_credentials": service_row['credential_type'] is not None
+                            "has_credentials": service_row['credential_type'] is not None,
+                            "connection_status": service_row['connection_status'],
+                            "last_tested_at": service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None
                         }
                         
-                        # Add non-sensitive credential fields
+                        # Add credential fields including decrypted password for automation
                         if service_row['credential_type']:
                             service_dict.update({
                                 "username": service_row['username'],
                                 "public_key": service_row['public_key'],
                                 "domain": service_row['domain']
                             })
+                            
+                            # Decrypt password for automation purposes
+                            if service_row['password_encrypted']:
+                                decrypted_password = self._decrypt_credential(service_row['password_encrypted'])
+                                if decrypted_password:
+                                    service_dict["password"] = decrypted_password
                         
                         services.append(service_dict)
                     
@@ -602,6 +614,75 @@ class AssetService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to test service connection"
+                )
+
+        @self.app.put("/targets/{target_id}/services/{service_id}/credentials")
+        async def update_service_credentials(target_id: int, service_id: int, credentials: dict):
+            """Update service credentials"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if service exists
+                    service_exists = await conn.fetchval("""
+                        SELECT id FROM assets.target_services 
+                        WHERE id = $1 AND target_id = $2
+                    """, service_id, target_id)
+                    
+                    if not service_exists:
+                        raise HTTPException(status_code=404, detail="Service not found")
+                    
+                    # Prepare credential updates
+                    updates = []
+                    values = []
+                    param_count = 1
+                    
+                    if 'credential_type' in credentials:
+                        updates.append(f"credential_type = ${param_count}")
+                        values.append(credentials['credential_type'])
+                        param_count += 1
+                    
+                    if 'username' in credentials:
+                        updates.append(f"username = ${param_count}")
+                        values.append(credentials['username'])
+                        param_count += 1
+                    
+                    if 'password' in credentials and credentials['password']:
+                        encrypted_password = self._encrypt_credential(credentials['password'])
+                        updates.append(f"password_encrypted = ${param_count}")
+                        values.append(encrypted_password)
+                        param_count += 1
+                    
+                    if 'domain' in credentials:
+                        updates.append(f"domain = ${param_count}")
+                        values.append(credentials['domain'])
+                        param_count += 1
+                    
+                    if not updates:
+                        return {"success": True, "message": "No credentials to update"}
+                    
+                    # Add service_id and target_id as the last parameters
+                    values.extend([service_id, target_id])
+                    
+                    # Build and execute update query
+                    query = f"""
+                        UPDATE assets.target_services 
+                        SET {', '.join(updates)}
+                        WHERE id = ${param_count} AND target_id = ${param_count + 1}
+                    """
+                    
+                    await conn.execute(query, *values)
+                    
+                    return {
+                        "success": True,
+                        "message": "Service credentials updated successfully"
+                    }
+                    
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update service credentials", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update service credentials"
                 )
 
         # ============================================================================

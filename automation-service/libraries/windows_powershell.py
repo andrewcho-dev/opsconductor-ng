@@ -350,3 +350,114 @@ def execute_powershell(target_host, username, password, script, timeout=None, us
 
 # Alias for execute_script
 execute_script = execute_powershell
+
+async def execute_powershell_parallel(targets, script, timeout=None, max_concurrent=5):
+    """Execute PowerShell script on multiple targets in parallel"""
+    import asyncio
+    import concurrent.futures
+    from typing import List, Dict, Any
+    
+    if not targets:
+        return {
+            "success": False,
+            "error": "No targets provided",
+            "results": []
+        }
+    
+    # Validate targets format
+    if not isinstance(targets, list):
+        return {
+            "success": False,
+            "error": "Targets must be a list",
+            "results": []
+        }
+    
+    async def execute_single_target(target):
+        """Execute PowerShell on a single target"""
+        try:
+            # Extract connection details from target
+            target_host = target.get('hostname') or target.get('ip_address')
+            username = target.get('username')
+            password = target.get('password')
+            port = target.get('port', 5986)
+            use_ssl = target.get('is_secure', True)
+            
+            if not all([target_host, username, password]):
+                return {
+                    "target_id": target.get('id'),
+                    "target_name": target.get('name', target_host),
+                    "success": False,
+                    "error": "Missing required connection details (hostname, username, or password)",
+                    "output": None
+                }
+            
+            # Execute PowerShell script
+            result = _get_library_instance().execute_powershell(
+                target_host=target_host,
+                username=username,
+                password=password,
+                script=script,
+                timeout=timeout,
+                use_ssl=use_ssl,
+                port=port
+            )
+            
+            return {
+                "target_id": target.get('id'),
+                "target_name": target.get('name', target_host),
+                "success": result.get('success', False),
+                "error": result.get('error'),
+                "output": result.get('output'),
+                "execution_time": result.get('execution_time')
+            }
+            
+        except Exception as e:
+            return {
+                "target_id": target.get('id'),
+                "target_name": target.get('name', 'unknown'),
+                "success": False,
+                "error": f"Execution failed: {str(e)}",
+                "output": None
+            }
+    
+    # Execute on all targets with concurrency limit
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def execute_with_semaphore(target):
+        async with semaphore:
+            return await execute_single_target(target)
+    
+    # Run all executions concurrently
+    tasks = [execute_with_semaphore(target) for target in targets]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Process results
+    successful_count = 0
+    failed_count = 0
+    processed_results = []
+    
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            processed_results.append({
+                "target_id": targets[i].get('id'),
+                "target_name": targets[i].get('name', 'unknown'),
+                "success": False,
+                "error": f"Task failed: {str(result)}",
+                "output": None
+            })
+            failed_count += 1
+        else:
+            processed_results.append(result)
+            if result.get('success', False):
+                successful_count += 1
+            else:
+                failed_count += 1
+    
+    return {
+        "success": successful_count > 0,
+        "total_targets": len(targets),
+        "successful_count": successful_count,
+        "failed_count": failed_count,
+        "results": processed_results,
+        "summary": f"Executed on {len(targets)} targets: {successful_count} successful, {failed_count} failed"
+    }

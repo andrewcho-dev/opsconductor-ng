@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, MessageSquare } from 'lucide-react';
-import { enhancedApi } from '../services/enhancedApi';
+import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2 } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -23,19 +22,50 @@ interface WorkflowResult {
   automation_job_id?: number;
 }
 
+const CHAT_HISTORY_KEY = 'opsconductor_ai_chat_history';
+
 const AIChat: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      type: 'system',
-      content: 'Welcome to OpsConductor AI! I can help you automate tasks using natural language. Try saying something like "update stationcontroller on CIS servers" or "restart nginx on web servers".',
-      timestamp: new Date()
+  // Load chat history from localStorage or use default welcome message
+  const loadChatHistory = (): ChatMessage[] => {
+    try {
+      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Convert timestamp strings back to Date objects
+        return parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+      }
+    } catch (error) {
+      console.warn('Failed to load chat history:', error);
     }
-  ]);
+    
+    // Return default welcome message if no history or error
+    return [
+      {
+        id: '1',
+        type: 'system',
+        content: 'Welcome to OpsConductor AI! I can help you automate tasks using natural language. Try saying something like "update stationcontroller on CIS servers" or "restart nginx on web servers".',
+        timestamp: new Date()
+      }
+    ];
+  };
+
+  const [messages, setMessages] = useState<ChatMessage[]>(loadChatHistory());
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Save chat history to localStorage whenever messages change
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
+    } catch (error) {
+      console.warn('Failed to save chat history:', error);
+    }
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,6 +74,18 @@ const AIChat: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const clearChatHistory = () => {
+    if (window.confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+      const welcomeMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'system',
+        content: 'Welcome to OpsConductor AI! I can help you automate tasks using natural language. Try saying something like "update stationcontroller on CIS servers" or "restart nginx on web servers".',
+        timestamp: new Date()
+      };
+      setMessages([welcomeMessage]);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +223,22 @@ const AIChat: React.FC = () => {
           }}>
             Describe what you want to automate in natural language
           </span>
+          <button
+            onClick={clearChatHistory}
+            className="btn btn-secondary"
+            style={{ 
+              fontSize: '12px', 
+              padding: '4px 8px',
+              marginLeft: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Clear chat history"
+          >
+            <Trash2 size={12} />
+            Clear History
+          </button>
         </div>
       </div>
 
