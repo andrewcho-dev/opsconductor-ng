@@ -120,7 +120,7 @@ async def service_info():
         "automation_integration": True
     }
 
-@app.post("/create-job", response_model=JobResponse)
+@app.post("/ai/create-job", response_model=JobResponse)
 async def create_job(request: JobRequest):
     """Create a new automation job from natural language description"""
     try:
@@ -179,7 +179,7 @@ async def create_job(request: JobRequest):
         logger.error("Failed to create job", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to create job: {str(e)}")
 
-@app.post("/analyze-text", response_model=TextAnalysisResponse)
+@app.post("/ai/analyze-text", response_model=TextAnalysisResponse)
 async def analyze_text(request: TextAnalysisRequest):
     """Analyze text for automation intent"""
     try:
@@ -222,7 +222,7 @@ async def analyze_text(request: TextAnalysisRequest):
         logger.error("Failed to analyze text", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to analyze text: {str(e)}")
 
-@app.post("/execute-job", response_model=ExecuteJobResponse)
+@app.post("/ai/execute-job", response_model=ExecuteJobResponse)
 async def execute_job(request: ExecuteJobRequest):
     """Create and execute a job immediately"""
     try:
@@ -322,7 +322,7 @@ async def execute_job(request: ExecuteJobRequest):
         logger.error("Failed to execute job", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to execute job: {str(e)}")
 
-@app.get("/test-nlp")
+@app.get("/ai/test-nlp")
 async def test_nlp():
     """Test endpoint for NLP functionality"""
     test_requests = [
@@ -352,7 +352,7 @@ async def test_nlp():
     
     return {"test_results": results}
 
-@app.get("/test-workflow")
+@app.get("/ai/test-workflow")
 async def test_workflow():
     """Test endpoint for workflow generation"""
     test_request = "update stationcontroller on CIS servers"
@@ -370,7 +370,7 @@ async def test_workflow():
         "workflow": workflow
     }
 
-@app.get("/test-assets")
+@app.get("/ai/test-assets")
 async def test_assets():
     """Test endpoint for asset service integration"""
     try:
@@ -401,7 +401,7 @@ async def test_assets():
             "asset_service_healthy": False
         }
 
-@app.get("/test-automation")
+@app.get("/ai/test-automation")
 async def test_automation():
     """Test endpoint for automation service integration"""
     try:
@@ -434,7 +434,7 @@ async def test_automation():
             "automation_service_healthy": False
         }
 
-@app.get("/test-integration")
+@app.get("/ai/test-integration")
 async def test_integration():
     """Test full AI to Automation integration"""
     try:

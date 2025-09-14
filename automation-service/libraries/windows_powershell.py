@@ -73,12 +73,79 @@ class WindowsPowerShellLibrary:
                 "details": {"dependency_error": True}
             }
         
-        return {
-            "success": False,
-            "error": "Connection testing not yet implemented",
-            "duration_seconds": 0,
-            "details": {"implementation_status": "pending"}
-        }
+        start_time = time.time()
+        
+        try:
+            # Determine port and protocol
+            if port is None:
+                port = 5986 if use_ssl else 5985
+            
+            protocol = "https" if use_ssl else "http"
+            endpoint = f"{protocol}://{target_host}:{port}/wsman"
+            
+            logger.info("Testing WinRM connection", 
+                       target_host=target_host, 
+                       port=port, 
+                       protocol=protocol,
+                       username=username)
+            
+            # Create WinRM session
+            session = winrm.Session(
+                endpoint,
+                auth=(username, password),
+                transport='ssl' if use_ssl else 'plaintext',
+                server_cert_validation='ignore' if use_ssl else 'validate'
+            )
+            
+            # Test with a simple command
+            result = session.run_cmd('echo "WinRM connection test"')
+            
+            duration = time.time() - start_time
+            
+            if result.status_code == 0:
+                logger.info("WinRM connection test successful", 
+                           target_host=target_host,
+                           duration_seconds=duration)
+                return {
+                    "success": True,
+                    "message": f"Successfully connected to {target_host}:{port} via WinRM",
+                    "duration_seconds": duration,
+                    "details": {
+                        "protocol": protocol,
+                        "port": port,
+                        "test_output": result.std_out.decode('utf-8').strip()
+                    }
+                }
+            else:
+                error_msg = result.std_err.decode('utf-8').strip() if result.std_err else "Unknown error"
+                logger.warning("WinRM connection test failed", 
+                              target_host=target_host,
+                              status_code=result.status_code,
+                              error=error_msg)
+                return {
+                    "success": False,
+                    "error": f"WinRM test command failed: {error_msg}",
+                    "duration_seconds": duration,
+                    "details": {
+                        "protocol": protocol,
+                        "port": port,
+                        "status_code": result.status_code
+                    }
+                }
+                
+        except Exception as e:
+            duration = time.time() - start_time
+            error_msg = str(e)
+            logger.error("WinRM connection test failed", 
+                        target_host=target_host,
+                        error=error_msg,
+                        duration_seconds=duration)
+            return {
+                "success": False,
+                "error": f"WinRM connection failed: {error_msg}",
+                "duration_seconds": duration,
+                "details": {"exception": error_msg}
+            }
 
     def execute_powershell(self, target_host: str, username: str, password: str,
                           script: str, timeout: int = None, use_ssl: bool = True,
@@ -96,14 +163,107 @@ class WindowsPowerShellLibrary:
                 "attempts": 0
             }
         
+        if timeout is None:
+            timeout = self.execution_timeout
+            
+        start_time = time.time()
+        attempts = 0
+        last_error = None
+        
+        # Retry logic
+        for attempt in range(self.max_retries):
+            attempts += 1
+            
+            try:
+                # Determine port and protocol
+                if port is None:
+                    port = 5986 if use_ssl else 5985
+                
+                protocol = "https" if use_ssl else "http"
+                endpoint = f"{protocol}://{target_host}:{port}/wsman"
+                
+                logger.info("Executing PowerShell script", 
+                           target_host=target_host, 
+                           port=port, 
+                           protocol=protocol,
+                           username=username,
+                           attempt=attempt + 1,
+                           script_length=len(script))
+                
+                # Create WinRM session
+                session = winrm.Session(
+                    endpoint,
+                    auth=(username, password),
+                    transport='ssl' if use_ssl else 'plaintext',
+                    server_cert_validation='ignore' if use_ssl else 'validate',
+                    operation_timeout_sec=timeout,
+                    read_timeout_sec=timeout + 10
+                )
+                
+                # Execute PowerShell script
+                result = session.run_ps(script)
+                
+                duration = time.time() - start_time
+                
+                # Decode output
+                stdout = result.std_out.decode('utf-8') if result.std_out else ""
+                stderr = result.std_err.decode('utf-8') if result.std_err else ""
+                
+                logger.info("PowerShell script execution completed", 
+                           target_host=target_host,
+                           exit_code=result.status_code,
+                           duration_seconds=duration,
+                           attempts=attempts,
+                           stdout_length=len(stdout),
+                           stderr_length=len(stderr))
+                
+                return {
+                    "success": result.status_code == 0,
+                    "error": stderr if result.status_code != 0 else None,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "exit_code": result.status_code,
+                    "duration_seconds": duration,
+                    "attempts": attempts,
+                    "details": {
+                        "protocol": protocol,
+                        "port": port,
+                        "timeout": timeout,
+                        "script_length": len(script)
+                    }
+                }
+                
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("PowerShell execution attempt failed", 
+                              target_host=target_host,
+                              attempt=attempt + 1,
+                              error=last_error)
+                
+                # If not the last attempt, wait before retrying
+                if attempt < self.max_retries - 1:
+                    logger.info("Retrying PowerShell execution", 
+                               target_host=target_host,
+                               retry_delay=self.retry_delay)
+                    time.sleep(self.retry_delay)
+        
+        # All attempts failed
+        duration = time.time() - start_time
+        logger.error("PowerShell execution failed after all attempts", 
+                    target_host=target_host,
+                    attempts=attempts,
+                    final_error=last_error,
+                    duration_seconds=duration)
+        
         return {
             "success": False,
-            "error": "PowerShell execution not yet implemented",
+            "error": f"PowerShell execution failed after {attempts} attempts: {last_error}",
             "stdout": "",
-            "stderr": "Implementation pending",
+            "stderr": last_error or "Unknown error",
             "exit_code": -1,
-            "duration_seconds": 0,
-            "attempts": 0
+            "duration_seconds": duration,
+            "attempts": attempts,
+            "details": {"final_error": last_error}
         }
 
     def get_library_info(self) -> Dict[str, Any]:

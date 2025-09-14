@@ -52,6 +52,9 @@ SERVICE_ROUTES = {
     "/api/v1/templates": "COMMUNICATION_SERVICE_URL",
     "/api/v1/channels": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
+    
+    # AI Service
+    "/api/v1/ai": "AI_SERVICE_URL",
 }
 
 # Routes that don't require authentication

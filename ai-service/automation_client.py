@@ -94,7 +94,12 @@ class AutomationServiceClient:
                     )
                 
                 job_result = response.json()
-                job_id = job_result['id']
+                # Handle nested response format from automation service
+                if 'data' in job_result:
+                    job_data_response = job_result['data']
+                    job_id = job_data_response['id']
+                else:
+                    job_id = job_result['id']
                 
                 logger.info("Job created successfully", 
                            job_id=job_id, 
