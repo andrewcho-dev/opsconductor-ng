@@ -86,9 +86,16 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat()
     }
 
+@app.get("/gpu-status")
+async def gpu_status():
+    """GPU status and utilization endpoint"""
+    return nlp_processor.get_gpu_status()
+
 @app.get("/info")
 async def service_info():
     """Service information endpoint"""
+    gpu_info = nlp_processor.get_gpu_status()
+    
     return {
         "service": "nlp-service",
         "version": "1.0.0",
@@ -98,7 +105,8 @@ async def service_info():
             "Intent recognition",
             "Operation classification",
             "Target identification"
-        ]
+        ],
+        "gpu_status": gpu_info
     }
 
 @app.post("/nlp/parse", response_model=ParseResponse)

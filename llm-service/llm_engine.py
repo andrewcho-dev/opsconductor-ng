@@ -1,9 +1,10 @@
 """
 LLM Engine for OpsConductor
-Handles communication with Ollama and text generation
+GPU-accelerated communication with Ollama and text generation
 """
 import asyncio
 import time
+import torch
 import structlog
 from typing import Dict, List, Optional, Any
 import ollama
@@ -19,6 +20,17 @@ class LLMEngine:
         self.default_model = default_model
         self.client = None
         self.available_models = []
+        
+        # Initialize GPU monitoring
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"LLM Engine using device: {self.device}")
+        
+        if torch.cuda.is_available():
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            logger.info(f"GPU memory available: {gpu_memory:.2f} GB")
+            logger.info(f"CUDA version: {torch.version.cuda}")
+        else:
+            logger.warning("No GPU available, using CPU for LLM operations")
         
     async def initialize(self) -> bool:
         """Initialize the LLM engine"""
@@ -307,3 +319,42 @@ class LLMEngine:
             
         except Exception:
             return 0.5
+    
+    def get_gpu_status(self) -> Dict[str, Any]:
+        """Get current GPU status and memory usage"""
+        try:
+            if not torch.cuda.is_available():
+                return {
+                    "gpu_available": False,
+                    "device": "cpu",
+                    "message": "No GPU available"
+                }
+            
+            device_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(current_device)
+            
+            # Get memory info
+            memory_allocated = torch.cuda.memory_allocated(current_device) / 1024**3  # GB
+            memory_reserved = torch.cuda.memory_reserved(current_device) / 1024**3   # GB
+            memory_total = torch.cuda.get_device_properties(current_device).total_memory / 1024**3  # GB
+            
+            return {
+                "gpu_available": True,
+                "device": f"cuda:{current_device}",
+                "device_name": device_name,
+                "device_count": device_count,
+                "memory_allocated_gb": round(memory_allocated, 2),
+                "memory_reserved_gb": round(memory_reserved, 2),
+                "memory_total_gb": round(memory_total, 2),
+                "memory_free_gb": round(memory_total - memory_reserved, 2),
+                "cuda_version": torch.version.cuda
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get GPU status: {e}")
+            return {
+                "gpu_available": False,
+                "device": "cpu",
+                "error": str(e)
+            }

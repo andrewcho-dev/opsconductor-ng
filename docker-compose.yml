@@ -250,6 +250,8 @@ services:
       - "3006:3000"
     environment:
       REDIS_URL: redis://redis:6379/6
+      CUDA_VISIBLE_DEVICES: all
+      NVIDIA_VISIBLE_DEVICES: all
     depends_on:
       redis:
         condition: service_healthy
@@ -259,6 +261,13 @@ services:
       - ./nlp-service/main.py:/app/main.py
       - ./nlp-service/nlp_processor.py:/app/nlp_processor.py
       - ./shared:/app/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -274,6 +283,8 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/7
       CHROMADB_URL: http://chromadb:8000
+      CUDA_VISIBLE_DEVICES: all
+      NVIDIA_VISIBLE_DEVICES: all
     depends_on:
       redis:
         condition: service_healthy
@@ -286,6 +297,13 @@ services:
       - ./vector-service/vector_store.py:/app/vector_store.py
       - ./shared:/app/shared
       - vector_data:/app/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -302,6 +320,8 @@ services:
       REDIS_URL: redis://redis:6379/8
       OLLAMA_HOST: http://ollama:11434
       DEFAULT_LLM_MODEL: llama2
+      CUDA_VISIBLE_DEVICES: all
+      NVIDIA_VISIBLE_DEVICES: all
     depends_on:
       redis:
         condition: service_healthy
@@ -313,6 +333,13 @@ services:
       - ./llm-service/main.py:/app/main.py
       - ./llm-service/llm_engine.py:/app/llm_engine.py
       - ./shared:/app/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s

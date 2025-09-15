@@ -127,9 +127,21 @@ async def health_check():
         "chroma_initialized": chroma_client is not None
     }
 
+@app.get("/gpu-status")
+async def gpu_status():
+    """GPU status and utilization endpoint"""
+    if not vector_store:
+        return {"error": "Vector store not initialized"}
+    
+    return vector_store.get_gpu_status()
+
 @app.get("/info")
 async def service_info():
     """Service information endpoint"""
+    gpu_info = {}
+    if vector_store:
+        gpu_info = vector_store.get_gpu_status()
+    
     return {
         "service": "vector-service",
         "version": "1.0.0",
@@ -147,7 +159,8 @@ async def service_info():
             "troubleshooting_solutions",
             "user_interactions",
             "system_state"
-        ]
+        ],
+        "gpu_status": gpu_info
     }
 
 @app.post("/vector/store", response_model=StoreResponse)

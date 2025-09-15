@@ -1,12 +1,24 @@
-FROM python:3.11-slim
+FROM nvidia/cuda:12.1-devel-ubuntu22.04
 
-WORKDIR /app
-
-# Install system dependencies
+# Install Python 3.11
 RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-distutils \
+    python3-pip \
     gcc \
     g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .

@@ -29,6 +29,7 @@ OpsConductor is an **intelligent infrastructure automation platform** that trans
 - Docker & Docker Compose
 - 8GB+ RAM (for AI services)
 - Git
+- **Optional:** NVIDIA GPU + drivers for AI acceleration ([GPU Setup Guide](GPU_SETUP.md))
 
 ### One-Command Deployment
 ```bash
@@ -37,10 +38,23 @@ git clone <repository-url>
 cd opsconductor-ng
 docker-compose up -d
 
+# For GPU acceleration (optional)
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
 # Access the platform
 # Web Interface: http://localhost:3100
 # API Gateway: http://localhost:3000
 # AI Chat: http://localhost:3005/ai/chat
+```
+
+### GPU Acceleration (Optional)
+For enhanced AI performance, see the [GPU Setup Guide](GPU_SETUP.md):
+```bash
+# Validate GPU setup
+./scripts/validate_gpu_setup.sh
+
+# Check AI services GPU status
+python3 scripts/check_gpu_status.py
 ```
 
 ### Default Credentials

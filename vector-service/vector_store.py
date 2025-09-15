@@ -1,18 +1,21 @@
 """
-OpsConductor AI Vector Store - Enhanced ChromaDB integration
+OpsConductor AI Vector Store - GPU-accelerated ChromaDB integration
 """
 import asyncio
 import json
 import logging
 import hashlib
+import torch
 from typing import Dict, List, Optional, Any, Tuple
 import chromadb
 from chromadb.config import Settings
 import numpy as np
 from datetime import datetime, timedelta
 import uuid
+from sentence_transformers import SentenceTransformer
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 class OpsConductorVectorStore:
     """Enhanced vector storage for AI knowledge and patterns"""
@@ -20,7 +23,27 @@ class OpsConductorVectorStore:
     def __init__(self, chroma_client):
         self.client = chroma_client
         self.collections = {}
-        self.embedding_model = "all-MiniLM-L6-v2"  # Default embedding model
+        
+        # Initialize GPU-accelerated embedding model
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Vector Store using device: {self.device}")
+        
+        try:
+            # Load sentence transformer with GPU support
+            self.embedding_model_name = "all-MiniLM-L6-v2"
+            self.embedding_model = SentenceTransformer(
+                self.embedding_model_name, 
+                device=self.device
+            )
+            
+            if torch.cuda.is_available():
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"GPU memory available: {gpu_memory:.2f} GB")
+                logger.info(f"Embedding model loaded on {self.device}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {e}")
+            self.embedding_model = None
         
     async def initialize_collections(self):
         """Initialize all required collections"""
@@ -363,3 +386,44 @@ class OpsConductorVectorStore:
             formatted_results.append(result)
         
         return formatted_results
+    
+    def get_gpu_status(self) -> Dict[str, Any]:
+        """Get current GPU status and memory usage"""
+        try:
+            if not torch.cuda.is_available():
+                return {
+                    "gpu_available": False,
+                    "device": "cpu",
+                    "message": "No GPU available"
+                }
+            
+            device_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(current_device)
+            
+            # Get memory info
+            memory_allocated = torch.cuda.memory_allocated(current_device) / 1024**3  # GB
+            memory_reserved = torch.cuda.memory_reserved(current_device) / 1024**3   # GB
+            memory_total = torch.cuda.get_device_properties(current_device).total_memory / 1024**3  # GB
+            
+            return {
+                "gpu_available": True,
+                "device": f"cuda:{current_device}",
+                "device_name": device_name,
+                "device_count": device_count,
+                "memory_allocated_gb": round(memory_allocated, 2),
+                "memory_reserved_gb": round(memory_reserved, 2),
+                "memory_total_gb": round(memory_total, 2),
+                "memory_free_gb": round(memory_total - memory_reserved, 2),
+                "cuda_version": torch.version.cuda,
+                "embedding_model": self.embedding_model_name if self.embedding_model else "None",
+                "embedding_device": str(self.device)
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get GPU status: {e}")
+            return {
+                "gpu_available": False,
+                "device": "cpu",
+                "error": str(e)
+            }

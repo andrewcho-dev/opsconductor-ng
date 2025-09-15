@@ -130,12 +130,24 @@ async def health_check():
         "llm_initialized": llm_engine is not None
     }
 
+@app.get("/gpu-status")
+async def gpu_status():
+    """GPU status and utilization endpoint"""
+    if not llm_engine:
+        return {"error": "LLM engine not initialized"}
+    
+    return llm_engine.get_gpu_status()
+
 @app.get("/info")
 async def service_info():
     """Service information endpoint"""
     available_models = []
     if llm_engine:
         available_models = await llm_engine.get_available_models()
+    
+    gpu_info = {}
+    if llm_engine:
+        gpu_info = llm_engine.get_gpu_status()
     
     return {
         "service": "llm-service",
@@ -151,7 +163,8 @@ async def service_info():
             "Question answering"
         ],
         "available_models": available_models,
-        "ollama_host": os.getenv("OLLAMA_HOST", "http://ollama:11434")
+        "ollama_host": os.getenv("OLLAMA_HOST", "http://ollama:11434"),
+        "gpu_status": gpu_info
     }
 
 @app.post("/llm/chat", response_model=ChatResponse)

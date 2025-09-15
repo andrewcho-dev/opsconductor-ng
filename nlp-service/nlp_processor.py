@@ -1,10 +1,15 @@
 """
-Simple NLP processor for OpsConductor AI Service
-Focuses on basic regex patterns for prototype phase
+Advanced NLP processor for OpsConductor AI Service
+GPU-accelerated natural language processing with spaCy and transformers
 """
 import re
+import torch
+import spacy
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+import structlog
+
+logger = structlog.get_logger()
 
 
 @dataclass
@@ -21,9 +26,30 @@ class ParsedRequest:
 
 
 class SimpleNLPProcessor:
-    """Simple regex-based NLP processor for prototype"""
+    """GPU-accelerated NLP processor with spaCy and regex fallback"""
     
     def __init__(self):
+        # Initialize GPU support
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"NLP Processor using device: {self.device}")
+        
+        # Try to load spaCy with GPU support
+        self.nlp = None
+        try:
+            if self.device == "cuda":
+                spacy.require_gpu()
+                logger.info("GPU acceleration enabled for spaCy")
+            
+            self.nlp = spacy.load("en_core_web_sm")
+            logger.info("spaCy model loaded successfully")
+            
+            if torch.cuda.is_available():
+                gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"GPU memory available: {gpu_memory:.2f} GB")
+                
+        except Exception as e:
+            logger.warning(f"Failed to load spaCy model, falling back to regex only: {e}")
+            self.nlp = None
         # Operation patterns
         self.operation_patterns = {
             'update': [
@@ -198,6 +224,46 @@ class SimpleNLPProcessor:
                     break
         
         return entities
+    
+    def get_gpu_status(self) -> Dict[str, Any]:
+        """Get current GPU status and memory usage"""
+        try:
+            if not torch.cuda.is_available():
+                return {
+                    "gpu_available": False,
+                    "device": "cpu",
+                    "message": "No GPU available"
+                }
+            
+            device_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            device_name = torch.cuda.get_device_name(current_device)
+            
+            # Get memory info
+            memory_allocated = torch.cuda.memory_allocated(current_device) / 1024**3  # GB
+            memory_reserved = torch.cuda.memory_reserved(current_device) / 1024**3   # GB
+            memory_total = torch.cuda.get_device_properties(current_device).total_memory / 1024**3  # GB
+            
+            return {
+                "gpu_available": True,
+                "device": f"cuda:{current_device}",
+                "device_name": device_name,
+                "device_count": device_count,
+                "memory_allocated_gb": round(memory_allocated, 2),
+                "memory_reserved_gb": round(memory_reserved, 2),
+                "memory_total_gb": round(memory_total, 2),
+                "memory_free_gb": round(memory_total - memory_reserved, 2),
+                "cuda_version": torch.version.cuda,
+                "spacy_gpu_enabled": self.nlp is not None and hasattr(self.nlp, 'has_pipe')
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get GPU status: {e}")
+            return {
+                "gpu_available": False,
+                "device": "cpu",
+                "error": str(e)
+            }
 
 
 # Example usage and testing
