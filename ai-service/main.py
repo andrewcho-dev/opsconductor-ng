@@ -13,6 +13,8 @@ from workflow_generator import WorkflowGenerator
 from asset_client import AssetServiceClient
 from automation_client import AutomationServiceClient
 from ai_engine import ai_engine
+from learning_api import learning_router
+from predictive_analytics import predictive_analytics
 
 # Configure structured logging
 structlog.configure(
@@ -41,9 +43,12 @@ class AIService(BaseService):
         
 app = FastAPI(
     title="OpsConductor AI Service",
-    description="AI-powered automation and natural language processing service",
+    description="AI-powered automation and natural language processing service with advanced learning capabilities",
     version="1.0.0"
 )
+
+# Include learning API routes
+app.include_router(learning_router)
 
 # Initialize service components
 service = AIService()
@@ -716,6 +721,90 @@ Try asking me to perform a specific task or check on something!"""
     return f"I understand you're asking about: '{message}'. I can help with system automation and monitoring. For specific server information, I may need to create a monitoring job. Would you like me to help you with a specific automation task instead?"
 
 
+
+# Predictive Analytics Endpoints
+@app.get("/ai/predictive/insights")
+async def get_predictive_insights():
+    """Get comprehensive predictive insights"""
+    try:
+        insights = await predictive_analytics.get_predictive_insights()
+        return {
+            "success": True,
+            "insights": insights,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get predictive insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/predictive/analyze-performance")
+async def analyze_performance(metrics: Dict[str, float]):
+    """Analyze system performance and generate insights"""
+    try:
+        insights = await predictive_analytics.analyze_system_performance(metrics)
+        return {
+            "success": True,
+            "performance_insights": [insight.to_dict() for insight in insights],
+            "analysis_time": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to analyze performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/predictive/detect-anomalies")
+async def detect_anomalies(request: Dict[str, Any]):
+    """Detect advanced anomalies in system behavior"""
+    try:
+        metrics = request.get("metrics", {})
+        execution_data = request.get("execution_data", {})
+        
+        anomalies = await predictive_analytics.detect_advanced_anomalies(metrics, execution_data)
+        return {
+            "success": True,
+            "anomalies": anomalies,
+            "count": len(anomalies),
+            "detection_time": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to detect anomalies: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/predictive/maintenance-schedule")
+async def get_maintenance_schedule():
+    """Get predictive maintenance recommendations"""
+    try:
+        # Get targets from asset service (simplified for demo)
+        targets = [
+            {"hostname": "server-01", "type": "server", "last_maintenance": "2024-01-01T00:00:00"},
+            {"hostname": "server-02", "type": "server", "last_maintenance": "2024-02-01T00:00:00"},
+            {"hostname": "switch-01", "type": "network_device", "last_maintenance": "2024-03-01T00:00:00"}
+        ]
+        
+        recommendations = await predictive_analytics.generate_maintenance_schedule(targets)
+        return {
+            "success": True,
+            "maintenance_recommendations": [rec.to_dict() for rec in recommendations],
+            "count": len(recommendations),
+            "generated_time": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get maintenance schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ai/predictive/security-monitor")
+async def monitor_security(log_entries: List[Dict[str, Any]]):
+    """Monitor log entries for security events"""
+    try:
+        alerts = await predictive_analytics.monitor_security_events(log_entries)
+        return {
+            "success": True,
+            "security_alerts": [alert.to_dict() for alert in alerts],
+            "count": len(alerts),
+            "analysis_time": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to monitor security: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

@@ -14,6 +14,7 @@ import asyncpg
 import redis.asyncio as redis
 from vector_store import OpsConductorVectorStore
 from protocol_manager import protocol_manager, ProtocolResult
+from learning_engine import learning_engine, PredictionResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class OpsConductorAI:
         self.db_pool = None
         self.redis_client = None
         self.protocol_manager = protocol_manager
+        self.learning_engine = learning_engine
         self.system_knowledge = {}
         
     async def initialize(self):
@@ -164,6 +166,22 @@ class OpsConductorAI:
                 "action": "generate_script"
             }
         
+        # Recommendations intents
+        if any(word in message_lower for word in ['recommend', 'suggest', 'advice', 'optimize', 'improve']):
+            return {
+                "intent": "recommendations",
+                "confidence": 0.8,
+                "action": "get_recommendations"
+            }
+        
+        # System health intents
+        if any(word in message_lower for word in ['health', 'status', 'anomaly', 'alert', 'performance']):
+            return {
+                "intent": "system_health",
+                "confidence": 0.8,
+                "action": "system_health"
+            }
+        
         # Greeting intents
         if any(word in message_lower for word in ['hello', 'hi', 'hey', 'help']):
             return {
@@ -180,7 +198,9 @@ class OpsConductorAI:
         }
     
     async def process_message(self, message: str, user_id: str = "system") -> Dict[str, Any]:
-        """Process user message with complete protocol integration"""
+        """Process user message with complete protocol integration and learning"""
+        start_time = datetime.utcnow()
+        
         try:
             # Detect intent
             intent_result = await self.detect_intent(message)
@@ -192,35 +212,81 @@ class OpsConductorAI:
             if self.vector_store:
                 await self.vector_store.store_interaction(user_id, message, intent_result)
             
+            # Get failure risk prediction for operations
+            prediction = None
+            if intent_result["action"] in ["network_monitoring", "execute_remote_command", "manage_cameras"]:
+                target_info = {"operation": intent_result["action"], "user_id": user_id}
+                prediction = await self.learning_engine.predict_failure_risk(
+                    intent_result["action"], target_info, user_id
+                )
+            
             # Route to appropriate handler
+            response = None
             if intent_result["action"] == "network_monitoring":
-                return await self.handle_network_monitoring(message, context)
+                response = await self.handle_network_monitoring(message, context, prediction)
             elif intent_result["action"] == "send_notification":
-                return await self.handle_email_notification(message, context)
+                response = await self.handle_email_notification(message, context, prediction)
             elif intent_result["action"] == "execute_remote_command":
-                return await self.handle_remote_execution(message, context)
+                response = await self.handle_remote_execution(message, context, prediction)
             elif intent_result["action"] == "manage_cameras":
-                return await self.handle_camera_management(message, context)
+                response = await self.handle_camera_management(message, context, prediction)
             elif intent_result["action"] == "query_targets":
-                return await self.handle_target_query(message, context)
+                response = await self.handle_target_query(message, context)
             elif intent_result["action"] == "query_jobs":
-                return await self.handle_job_query(message, context)
+                response = await self.handle_job_query(message, context)
             elif intent_result["action"] == "generate_script":
-                return await self.handle_script_generation(message, context)
+                response = await self.handle_script_generation(message, context)
             elif intent_result["action"] == "provide_greeting":
-                return await self.handle_greeting(message, context)
+                response = await self.handle_greeting(message, context)
+            elif intent_result["action"] == "get_recommendations":
+                response = await self.handle_user_recommendations(user_id, context)
+            elif intent_result["action"] == "system_health":
+                response = await self.handle_system_health_query(context)
             else:
-                return await self.handle_general_query(message, context)
+                response = await self.handle_general_query(message, context)
+            
+            # Record execution for learning
+            end_time = datetime.utcnow()
+            duration = (end_time - start_time).total_seconds()
+            success = response.get("success", True)
+            
+            await self.learning_engine.record_execution(
+                user_id=user_id,
+                operation_type=intent_result["action"],
+                target_info={"message": message, "intent": intent_result},
+                duration=duration,
+                success=success,
+                error_message=response.get("error") if not success else None
+            )
+            
+            # Add prediction info to response if available
+            if prediction:
+                response["prediction"] = prediction.to_dict()
+            
+            return response
                 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            
+            # Record failed execution
+            end_time = datetime.utcnow()
+            duration = (end_time - start_time).total_seconds()
+            await self.learning_engine.record_execution(
+                user_id=user_id,
+                operation_type="unknown",
+                target_info={"message": message},
+                duration=duration,
+                success=False,
+                error_message=str(e)
+            )
+            
             return {
                 "response": f"I encountered an error processing your request: {str(e)}",
                 "intent": "error",
                 "success": False
             }
     
-    async def handle_network_monitoring(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+    async def handle_network_monitoring(self, message: str, context: List[Dict], prediction: Optional[PredictionResult] = None) -> Dict[str, Any]:
         """Handle SNMP network monitoring requests"""
         try:
             # Find network targets
@@ -255,13 +321,26 @@ class OpsConductorAI:
             
             response += "\n💡 **Example:** \"Check system info on switch-01\" or \"Monitor all network interfaces\""
             
+            # Add prediction information if available
+            if prediction:
+                response += f"\n\n🔮 **AI Prediction:**\n"
+                response += f"• Risk Level: {prediction.predicted_outcome.title()}\n"
+                response += f"• Confidence: {prediction.confidence:.1%}\n"
+                
+                if prediction.risk_factors:
+                    response += f"• Risk Factors: {', '.join(prediction.risk_factors[:2])}\n"
+                
+                if prediction.recommendations:
+                    response += f"• Recommendation: {prediction.recommendations[0]}\n"
+            
             return {
                 "response": response,
                 "intent": "network_monitoring",
                 "success": True,
                 "data": {
                     "network_targets": len(network_targets),
-                    "protocols": ["snmp"]
+                    "protocols": ["snmp"],
+                    "prediction": prediction.to_dict() if prediction else None
                 }
             }
             
@@ -273,7 +352,7 @@ class OpsConductorAI:
                 "success": False
             }
     
-    async def handle_email_notification(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+    async def handle_email_notification(self, message: str, context: List[Dict], prediction: Optional[PredictionResult] = None) -> Dict[str, Any]:
         """Handle SMTP email notification requests"""
         try:
             response = "📧 **Email Notification System**\n\n"
@@ -306,7 +385,7 @@ class OpsConductorAI:
                 "success": False
             }
     
-    async def handle_remote_execution(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+    async def handle_remote_execution(self, message: str, context: List[Dict], prediction: Optional[PredictionResult] = None) -> Dict[str, Any]:
         """Handle SSH remote execution requests"""
         try:
             # Find SSH-capable targets
@@ -348,7 +427,7 @@ class OpsConductorAI:
                 "success": False
             }
     
-    async def handle_camera_management(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+    async def handle_camera_management(self, message: str, context: List[Dict], prediction: Optional[PredictionResult] = None) -> Dict[str, Any]:
         """Handle VAPIX camera management requests"""
         try:
             # Find camera targets
@@ -834,6 +913,168 @@ Provide a helpful, accurate response. If you don't have enough information, sugg
         except Exception as e:
             logger.error(f"Knowledge stats error: {e}")
             return {"error": str(e)}
+    
+    async def handle_user_recommendations(self, user_id: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle user recommendation requests"""
+        try:
+            # Get personalized recommendations from learning engine
+            recommendations = await self.learning_engine.get_user_recommendations(user_id)
+            
+            if not recommendations:
+                response = f"🎯 **Personalized Recommendations for User {user_id}**\n\n"
+                response += "I'm still learning your patterns! Here are some general suggestions:\n\n"
+                response += "📊 **Get Started:**\n"
+                response += "• Try different automation operations to help me learn your preferences\n"
+                response += "• Use consistent naming patterns for better organization\n"
+                response += "• Schedule regular maintenance tasks\n\n"
+                response += "🔧 **Best Practices:**\n"
+                response += "• Test operations on a small set of targets first\n"
+                response += "• Monitor system performance during peak hours\n"
+                response += "• Keep your automation scripts updated\n\n"
+                response += "💡 **Tip:** The more you use the system, the better my recommendations become!"
+            else:
+                response = f"🎯 **Personalized Recommendations for User {user_id}**\n\n"
+                
+                high_priority = [r for r in recommendations if r.get('priority') == 'high']
+                medium_priority = [r for r in recommendations if r.get('priority') == 'medium']
+                low_priority = [r for r in recommendations if r.get('priority') == 'low']
+                
+                if high_priority:
+                    response += "🔴 **High Priority:**\n"
+                    for rec in high_priority:
+                        response += f"• **{rec['title']}**\n"
+                        response += f"  {rec['description']}\n"
+                        for action in rec.get('suggested_actions', []):
+                            response += f"  - {action}\n"
+                        response += "\n"
+                
+                if medium_priority:
+                    response += "🟡 **Medium Priority:**\n"
+                    for rec in medium_priority:
+                        response += f"• **{rec['title']}**\n"
+                        response += f"  {rec['description']}\n"
+                        for action in rec.get('suggested_actions', []):
+                            response += f"  - {action}\n"
+                        response += "\n"
+                
+                if low_priority:
+                    response += "🟢 **Suggestions:**\n"
+                    for rec in low_priority:
+                        response += f"• **{rec['title']}**\n"
+                        response += f"  {rec['description']}\n"
+                        response += "\n"
+            
+            return {
+                "response": response,
+                "intent": "recommendations",
+                "success": True,
+                "data": {
+                    "recommendations": recommendations,
+                    "user_id": user_id
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Recommendations error: {e}")
+            return {
+                "response": f"I encountered an error getting your recommendations: {str(e)}",
+                "intent": "recommendations",
+                "success": False
+            }
+    
+    async def handle_system_health_query(self, context: List[Dict]) -> Dict[str, Any]:
+        """Handle system health and anomaly queries"""
+        try:
+            # Get system health insights from learning engine
+            health_insights = await self.learning_engine.get_system_health_insights()
+            
+            # Get learning engine stats
+            learning_stats = await self.learning_engine.get_learning_stats()
+            
+            response = f"🏥 **System Health Report**\n\n"
+            
+            # Overall health status
+            health_emoji = {
+                'good': '🟢',
+                'fair': '🟡', 
+                'degraded': '🟠',
+                'critical': '🔴',
+                'unknown': '⚪'
+            }
+            
+            risk_emoji = {
+                'low': '🟢',
+                'medium': '🟡',
+                'high': '🔴',
+                'unknown': '⚪'
+            }
+            
+            overall_health = health_insights.get('overall_health', 'unknown')
+            risk_level = health_insights.get('risk_level', 'unknown')
+            
+            response += f"**Overall Status:** {health_emoji.get(overall_health, '⚪')} {overall_health.title()}\n"
+            response += f"**Risk Level:** {risk_emoji.get(risk_level, '⚪')} {risk_level.title()}\n\n"
+            
+            # Active anomalies
+            active_anomalies = health_insights.get('active_anomalies', [])
+            if active_anomalies:
+                response += f"🚨 **Active Anomalies ({len(active_anomalies)}):**\n"
+                for anomaly in active_anomalies[:5]:  # Show top 5
+                    severity_emoji = {'low': '🟡', 'medium': '🟠', 'high': '🔴', 'critical': '🚨'}
+                    response += f"• {severity_emoji.get(anomaly['severity'], '⚪')} **{anomaly['type'].replace('_', ' ').title()}**\n"
+                    response += f"  {anomaly['description']}\n"
+                    response += f"  *Confidence: {anomaly['confidence']:.1%}*\n\n"
+                
+                if len(active_anomalies) > 5:
+                    response += f"  ... and {len(active_anomalies) - 5} more anomalies\n\n"
+            else:
+                response += f"✅ **No Active Anomalies**\n\n"
+            
+            # System metrics
+            metrics = health_insights.get('metrics_summary', {})
+            if metrics:
+                response += f"📊 **System Metrics (Last Hour):**\n"
+                if 'cpu_usage' in metrics:
+                    response += f"• CPU Usage: {metrics['cpu_usage']:.1f}%\n"
+                if 'memory_usage' in metrics:
+                    response += f"• Memory Usage: {metrics['memory_usage']:.1f}%\n"
+                if 'response_time' in metrics:
+                    response += f"• Avg Response Time: {metrics['response_time']:.2f}ms\n"
+                if 'error_rate' in metrics:
+                    response += f"• Error Rate: {metrics['error_rate']:.2%}\n"
+                response += "\n"
+            
+            # Learning system status
+            response += f"🧠 **AI Learning System:**\n"
+            response += f"• Execution Records: {learning_stats.get('execution_records', 0):,}\n"
+            response += f"• User Patterns: {learning_stats.get('user_patterns', 0)}\n"
+            response += f"• Predictions Made: {learning_stats.get('predictions_made', 0)}\n"
+            response += f"• Learning Status: {learning_stats.get('learning_status', 'unknown').title()}\n\n"
+            
+            # Recommendations
+            recommendations = health_insights.get('recommendations', [])
+            if recommendations:
+                response += f"💡 **Recommendations:**\n"
+                for rec in recommendations:
+                    response += f"• {rec}\n"
+            
+            return {
+                "response": response,
+                "intent": "system_health",
+                "success": True,
+                "data": {
+                    "health_insights": health_insights,
+                    "learning_stats": learning_stats
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"System health query error: {e}")
+            return {
+                "response": f"I encountered an error checking system health: {str(e)}",
+                "intent": "system_health", 
+                "success": False
+            }
 
 # Global AI instance
 ai_engine = OpsConductorAI()

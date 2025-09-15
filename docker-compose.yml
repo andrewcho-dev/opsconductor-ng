@@ -281,6 +281,10 @@ services:
       - ./ai-service/protocol_manager.py:/app/protocol_manager.py
       - ./ai-service/vector_store.py:/app/vector_store.py
       - ./ai-service/workflow_generator.py:/app/workflow_generator.py
+      - ./ai-service/learning_engine.py:/app/learning_engine.py
+      - ./ai-service/predictive_analytics.py:/app/predictive_analytics.py
+      - ./ai-service/learning_api.py:/app/learning_api.py
+      - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py
       - ./shared:/app/shared
       - ollama_models:/root/.ollama
     deploy:
