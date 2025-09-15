@@ -49,13 +49,17 @@ EOF
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 asyncpg==0.29.0
-aioredis==2.0.1
+redis==5.0.1
 structlog==23.2.0
-pydantic==2.5.0
-python-jose[cryptography]==3.3.0
+pydantic[email]==2.5.0
+PyJWT==2.8.0
 bcrypt==4.1.2
 httpx==0.25.2
 python-multipart==0.0.6
+cryptography==41.0.7
+aiohttp==3.9.1
+celery==5.3.4
+email-validator==2.3.0
 EOF
     fi
 done
@@ -313,6 +317,15 @@ fi
 
 echo "✅ Frontend setup complete"
 
+# Initialize database schema
+echo "🗄️  Initializing database schema..."
+if [ -f "./database/init-db.sh" ]; then
+    chmod +x ./database/init-db.sh
+    echo "✅ Database initialization script ready"
+else
+    echo "⚠️  Database initialization script not found"
+fi
+
 # Create deployment script
 cat > "deploy.sh" << 'EOF'
 #!/bin/bash
@@ -327,6 +340,14 @@ docker compose down --remove-orphans
 # Build and start services
 echo "🏗️  Building and starting services..."
 docker compose up --build -d
+
+# Initialize database
+echo "🗄️  Initializing database..."
+if [ -f "./database/init-db.sh" ]; then
+    ./database/init-db.sh
+else
+    echo "⚠️  Database initialization script not found, using docker-entrypoint-initdb.d"
+fi
 
 # Wait for services to be healthy
 echo "⏳ Waiting for services to be healthy..."

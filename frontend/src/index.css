@@ -1,6 +1,5 @@
 /* Import standardized design system */
 @import './styles/standardized.css';
-@import './styles/target-groups.css';
 
 /* Legacy styles for backward compatibility - will be removed gradually */
 .container {

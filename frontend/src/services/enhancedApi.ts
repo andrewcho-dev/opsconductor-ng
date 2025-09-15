@@ -51,6 +51,18 @@ enhancedApi.interceptors.response.use(
   }
 );
 
+// Metadata API
+export const metadataApi = {
+  get: async (): Promise<{
+    credential_types: Array<{value: string, label: string}>,
+    service_types: Array<{value: string, label: string, default_port: number}>,
+    os_types: Array<{value: string, label: string}>
+  }> => {
+    const response = await enhancedApi.get('/metadata');
+    return response.data.data;
+  }
+};
+
 // Service Definitions API
 export const serviceDefinitionApi = {
   list: async (category?: string, commonOnly?: boolean): Promise<ServiceDefinitionResponse> => {
@@ -77,6 +89,7 @@ export const enhancedTargetApi = {
     const params = new URLSearchParams();
     params.append('skip', skip.toString());
     params.append('limit', limit.toString());
+    params.append('_t', Date.now().toString()); // Cache busting parameter
     
     if (filters?.os_type) params.append('os_type', filters.os_type);
     if (filters?.service_type) params.append('service_type', filters.service_type);
@@ -146,6 +159,12 @@ export const targetServiceApi = {
 
 // Target Credentials API
 export const targetCredentialApi = {
+  // Get credentials for editing (decrypted)
+  getForEditing: async (targetId: number): Promise<{success: boolean, services: any[]}> => {
+    const response = await enhancedApi.get(`/targets/${targetId}/credentials`);
+    return response.data;
+  },
+
   add: async (targetId: number, credential: TargetCredentialCreate): Promise<TargetCredential> => {
     const response: AxiosResponse<TargetCredential> = await enhancedApi.post(
       `/targets/${targetId}/credentials`, 

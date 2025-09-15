@@ -1,266 +1,307 @@
-# OpsConductor NG (Next Generation)
-
-A modern, microservices-based IT operations automation platform built with Python FastAPI, React TypeScript, and PostgreSQL.
-
-## 🎉 **SYSTEM STATUS: PRODUCTION READY** ✅
-
-**Latest Update**: Major system cleanup completed - all critical issues resolved, security hardened, and codebase optimized for production deployment.
+# OpsConductor - New Optimized Architecture
 
 ## 🚀 Quick Start
 
-1. **Clone and start the platform**:
+### Prerequisites
+- Docker and Docker Compose
+- Git
+
+### Installation
+
+1. **Clone the repository:**
    ```bash
-   git clone https://github.com/andrewcho-dev/opsconductor-ng.git
+   git clone <repository-url>
    cd opsconductor-ng
+   ```
+
+2. **Build the system:**
+   ```bash
    chmod +x build.sh
    ./build.sh
    ```
 
-2. **Access the application**:
-   - Web Interface: `https://your-server-ip`
-   - Default credentials: `admin` / `admin123`
+3. **Deploy the system:**
+   ```bash
+   ./deploy.sh
+   ```
 
-## 🏗️ Architecture
+4. **Access the system:**
+   - Frontend: http://localhost:3100
+   - API Gateway: http://localhost:3000
+   - API Documentation: http://localhost:3000/docs
 
-### Core Services
-- **API Gateway** (`api-gateway/`) - Central routing and authentication (Port 3001)
-- **Identity Service** (`identity-service/`) - User authentication and RBAC (Port 3006)
-- **Asset Service** (`asset-service/`) - IT asset and credential management (Port 3002)
-- **Automation Service** (`automation-service/`) - Job execution and workflows (Port 3003)
-- **Communication Service** (`communication-service/`) - Notifications and messaging (Port 3004)
-- **AI Service** (`ai-service/`) - Natural language processing and workflow generation (Port 3005)
+### Default Credentials
+- **Username:** admin
+- **Password:** admin123
 
-### Frontend & Infrastructure
-- **React Application** (`frontend/`) - Modern TypeScript web interface
-- **Database** (`database/`) - PostgreSQL schemas with service separation
-- **Nginx** (`nginx/`) - Reverse proxy with SSL/TLS
-- **Shared** (`shared/`) - Common utilities and base service classes
+## 🏗️ Architecture Overview
 
-## 📁 Project Structure
-
-```
-opsconductor-ng/
-├── api-gateway/          # Central API routing service
-├── identity-service/     # Authentication & user management
-├── asset-service/        # IT asset & credential management
-├── automation-service/   # Job execution & workflows
-├── communication-service/# Notifications & messaging
-├── ai-service/          # AI-powered workflow generation
-├── frontend/            # React TypeScript application
-├── database/            # PostgreSQL schemas & migrations
-├── nginx/               # Reverse proxy configuration
-├── shared/              # Shared utilities and base classes
-├── ssl/                 # TLS certificates
-├── docs/                # Documentation and roadmaps
-├── docker-compose.yml   # Container orchestration
-├── build.sh            # Build and deployment script
-├── CLEANUP_SUMMARY.md   # Recent system cleanup documentation
-├── DEPLOYMENT_READINESS.md # Production deployment guide
-└── README.md           # This file
-```
-
-## 🔧 Technology Stack
-
-### Backend
-- **Language**: Python 3.11+
-- **Framework**: FastAPI with async/await
-- **Database**: PostgreSQL 16 with schema-per-service
-- **Cache/Queue**: Redis 7 for caching and messaging
-- **Task Queue**: Celery with Redis backend
-- **Container**: Docker + Docker Compose
-
-### Frontend
-- **Framework**: React 18.2.0 with TypeScript 4.9.5
-- **UI Library**: Bootstrap 5.3.8 + Lucide React icons
-- **HTTP Client**: Axios 1.6.2
-- **Routing**: React Router DOM 6.20.1
-- **Build System**: React Scripts 5.0.1
+### Services
+- **API Gateway** (Port 3000) - Central routing and authentication
+- **Identity Service** (Port 3001) - User management and authentication
+- **Asset Service** (Port 3002) - Target systems and credentials
+- **Automation Service** (Port 3003) - Jobs, workflows, and execution
+- **Communication Service** (Port 3004) - Notifications and audit logs
+- **Frontend** (Port 3100) - React-based user interface
 
 ### Infrastructure
-- **Reverse Proxy**: Nginx with SSL/TLS
-- **Monitoring**: Celery Flower dashboard (Port 5555)
-- **Logging**: Structured JSON logging with structlog
-- **Health Checks**: Built-in health endpoints for all services
+- **PostgreSQL** (Port 5432) - Primary database
+- **Redis** (Port 6379) - Caching and session storage
+- **Flower** (Port 5555) - Celery monitoring
 
-## 🛡️ Security & RBAC
+## 📊 Database Schema
+
+The system uses a comprehensive PostgreSQL schema with the following components:
+
+### Identity Schema
+- `users` - User accounts and profiles
+- `roles` - Role-based access control
+- `user_roles` - User-role assignments
+- `user_sessions` - Session management
+- `user_preferences` - User settings
+
+### Assets Schema
+- `enhanced_targets` - Target systems (new architecture)
+- `target_services` - Services and embedded credentials
+- `target_groups` - Hierarchical target organization
+- `target_group_memberships` - Target-group relationships
+- `service_definitions` - Service metadata for UI
+- `targets` - Legacy target systems (backward compatibility)
+- `target_credentials` - Legacy credentials (backward compatibility)
+
+### Automation Schema
+- `jobs` - Job definitions and workflows
+- `job_executions` - Execution tracking
+- `step_executions` - Detailed step tracking
+- `job_schedules` - Scheduling configuration
+
+### Communication Schema
+- `notification_templates` - Message templates
+- `notification_channels` - Delivery channels
+- `notifications` - Notification queue
+- `audit_logs` - System audit trail
+
+## 🔧 Development
+
+### Service Structure
+Each service follows a consistent structure:
+```
+service-name/
+├── main.py              # Service entry point
+├── requirements.txt     # Python dependencies
+├── Dockerfile          # Container configuration
+└── shared/             # Shared utilities
+    ├── base_service.py # Base service class
+    ├── database.py     # Database utilities
+    ├── auth.py         # Authentication utilities
+    └── models.py       # Shared data models
+```
+
+### Database Management
+
+#### Initialize Database
+```bash
+./database/init-db.sh
+```
+
+#### Reset Database
+```bash
+docker compose down -v
+docker compose up -d postgres
+./database/init-db.sh
+```
+
+#### Manual Schema Updates
+```bash
+docker exec -i opsconductor-postgres psql -U postgres -d opsconductor < database/complete-schema.sql
+```
+
+### Service Development
+
+#### Start Individual Service
+```bash
+docker compose up service-name
+```
+
+#### View Service Logs
+```bash
+docker compose logs -f service-name
+```
+
+#### Restart Service
+```bash
+docker compose restart service-name
+```
+
+### Frontend Development
+
+The frontend is a React application with:
+- Modern React 18 with hooks
+- Material-UI components
+- Axios for API communication
+- React Router for navigation
+- Context API for state management
+
+#### Development Mode
+```bash
+cd frontend
+npm install
+npm start
+```
+
+## 🔒 Security Features
 
 ### Authentication
-- JWT token-based authentication with refresh tokens
-- Secure password hashing and validation
-- Session management and token rotation
+- JWT-based authentication
+- Refresh token rotation
+- Session management
+- Password hashing with bcrypt
 
-### Role-Based Access Control (RBAC)
-- **Admin** - Full system access with wildcard permission (`*`)
-- **Operator** - Can execute jobs and view most resources
-- **Viewer** - Read-only access to basic resources
+### Authorization
+- Role-based access control (RBAC)
+- Granular permissions
+- Resource-level access control
 
-### Permission Categories
-- **User Management**: `users:read`, `users:create`, `users:update`, `users:delete`
-- **Role Management**: `roles:read`, `roles:create`, `roles:update`, `roles:delete`
-- **Job Management**: `jobs:read`, `jobs:create`, `jobs:update`, `jobs:delete`, `jobs:execute`
-- **Target Management**: `targets:read`, `targets:create`, `targets:update`, `targets:delete`
-- **System Administration**: `system:admin`, `settings:read`, `settings:update`
+### Data Protection
+- Encrypted credential storage
+- Secure API communication
+- Input validation and sanitization
 
-### Implementation
-- **Frontend**: Permission-based UI rendering with `hasPermission()` checks
-- **Backend**: API endpoint protection with `@require_permission()` decorators
-- **API Gateway**: User context propagation via HTTP headers
-- **Security**: Fernet encryption for sensitive credentials and data
+## 📈 Monitoring and Logging
 
-## 🗄️ Database Architecture
+### Health Checks
+- Service health endpoints: `/health`
+- Database connectivity checks
+- Redis connectivity checks
 
-### Schema-per-Service Design
-- `identity` schema - User authentication and role data
-- `assets` schema - Targets, credentials, and discovery data
-- `automation` schema - Jobs, workflows, and execution data
-- `communication` schema - Notifications, templates, and audit logs
+### Logging
+- Structured logging with structlog
+- Centralized log aggregation
+- Request/response logging
 
-### Benefits
-- Clear data ownership boundaries
-- Independent schema evolution
-- Better security isolation
-- Easier backup and recovery strategies
+### Monitoring
+- Celery task monitoring with Flower
+- Service metrics and status
+- Database performance monitoring
 
-## 🔄 Service Communication
+## 🚀 Deployment
 
-### Synchronous Communication
-- REST APIs for direct service calls (FastAPI)
-- API Gateway pattern for centralized routing
-- JWT tokens for service-to-service authentication
+### Production Deployment
+1. Update environment variables in `docker-compose.yml`
+2. Configure SSL certificates
+3. Set up reverse proxy (nginx recommended)
+4. Configure backup strategies
+5. Set up monitoring and alerting
 
-### Asynchronous Communication
-- Event-driven architecture with Redis
-- Background task processing with Celery
-- Inter-service messaging via Redis pub/sub
+### Environment Variables
+Key environment variables to configure:
+- `POSTGRES_PASSWORD` - Database password
+- `JWT_SECRET_KEY` - JWT signing key
+- `ENCRYPTION_KEY` - Credential encryption key
+- `REDIS_URL` - Redis connection string
 
-## 🚀 Development
+## 🔄 Migration from Legacy System
 
-### Prerequisites
-- Docker & Docker Compose
-- Node.js 18+ (for frontend development)
-- Python 3.11+ (for backend development)
+The new architecture maintains backward compatibility:
+- Legacy API endpoints are supported
+- Existing data can be migrated
+- Gradual migration path available
 
-### Running in Development Mode
+### Migration Steps
+1. Export data from legacy system
+2. Run migration scripts
+3. Verify data integrity
+4. Update client applications
+5. Decommission legacy services
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+#### Database Connection Issues
 ```bash
-# Start all services
-docker compose up -d
+# Check PostgreSQL status
+docker compose ps postgres
 
-# View logs
-docker compose logs -f
+# Check database logs
+docker compose logs postgres
 
-# Restart a specific service
-docker compose restart frontend
-
-# Start specific service for development
-docker compose up postgres redis identity-service
+# Reinitialize database
+./database/init-db.sh
 ```
 
-### Building for Production
+#### Service Startup Issues
 ```bash
-./build.sh
+# Check service logs
+docker compose logs service-name
+
+# Rebuild service
+docker compose up --build service-name
 ```
 
-### Testing API Endpoints
+#### Frontend Issues
 ```bash
-# Health check
-curl http://localhost:3001/health
+# Check frontend logs
+docker compose logs frontend
 
-# Login
-curl -X POST http://localhost:3006/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin123"}'
-
-# AI Service test
-curl -X POST http://localhost:3005/create-job \
-  -H "Content-Type: application/json" \
-  -d '{"description": "update nginx on web servers"}'
+# Rebuild frontend
+cd frontend && npm run build
 ```
 
-## 🎯 Key Features
+### Debug Mode
+Enable debug logging by setting environment variables:
+```bash
+export LOG_LEVEL=DEBUG
+docker compose up
+```
 
-- ✅ **Modern UI/UX**: Responsive React interface with TypeScript
-- ✅ **Microservices**: Scalable, domain-driven service architecture
-- ✅ **RBAC Security**: Fine-grained role-based access control
-- ✅ **Asset Management**: Comprehensive IT asset and credential tracking
-- ✅ **Job Automation**: Visual workflow builder and execution engine
-- ✅ **AI-Powered Workflows**: Natural language to automation workflow generation
-- ✅ **Real-time Updates**: WebSocket-based live updates
-- ✅ **API Documentation**: Auto-generated OpenAPI/Swagger docs
-- ✅ **Container Ready**: Full Docker containerization
-- ✅ **Production Ready**: Nginx, SSL, and security hardening
-- ✅ **Credential Security**: Fernet encryption for sensitive data
-- ✅ **Connection Testing**: Real TCP connectivity validation
+## 📚 API Documentation
 
-## 📊 Architecture Benefits
+### Interactive Documentation
+- Swagger UI: http://localhost:3000/docs
+- ReDoc: http://localhost:3000/redoc
 
-### Reduced Complexity
-- **Before**: 9 services with complex interdependencies
-- **After**: 6 core services + gateway with clear domain boundaries
-- AI-enhanced automation capabilities
-- Clear service ownership and responsibilities
+### Key Endpoints
 
-### Better Performance
-- Fewer network hops with API Gateway pattern
-- Optimized data access with schema-per-service
-- Async/await throughout all services
-- Connection pooling and caching strategies
+#### Authentication
+- `POST /auth/login` - User login
+- `POST /auth/refresh` - Refresh token
+- `POST /auth/logout` - User logout
 
-### Improved Maintainability
-- Domain-focused development (6 clear domains)
-- Clean, optimized codebase with comprehensive cleanup
-- Proper security implementation with encryption
-- Independent service scaling and deployment
-- Comprehensive documentation and deployment guides
+#### Targets
+- `GET /targets` - List targets
+- `POST /targets` - Create target
+- `PUT /targets/{id}` - Update target
+- `DELETE /targets/{id}` - Delete target
 
-## 🔍 Service URLs
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **Main Application** | https://localhost:443 | Web Interface |
-| **API Gateway** | http://localhost:3001 | Main API entry point |
-| **Asset Service** | http://localhost:3002 | Targets & Credentials |
-| **Automation Service** | http://localhost:3003 | Jobs & Workflows |
-| **Communication Service** | http://localhost:3004 | Notifications |
-| **AI Service** | http://localhost:3005 | AI Workflow Generation |
-| **Identity Service** | http://localhost:3006 | Auth & Users |
-| **Celery Flower** | http://localhost:5555 | Task Monitoring |
-
-## 🧹 Recent System Cleanup (Latest)
-
-### Major Improvements Applied
-- **✅ Security Hardened**: Implemented Fernet encryption for credentials
-- **✅ Database Consistency**: Fixed all schema prefixes and queries
-- **✅ Code Quality**: Removed redundant imports and cleaned up codebase
-- **✅ Real Implementations**: Replaced mock data with functional code
-- **✅ Connection Testing**: Added real TCP connectivity validation
-- **✅ Authentication Ready**: Proper user context management
-- **✅ Production Ready**: All services validated and deployment-ready
-
-### Documentation Added
-- `CLEANUP_SUMMARY.md` - Comprehensive cleanup documentation
-- `DEPLOYMENT_READINESS.md` - Production deployment guide
-- Updated service ports and architecture documentation
-
-**Result**: System is now 100% functional, secure, and production-ready!
+#### Jobs
+- `GET /jobs` - List jobs
+- `POST /jobs` - Create job
+- `POST /jobs/{id}/execute` - Execute job
+- `GET /executions` - List executions
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+### Code Style
+- Follow PEP 8 for Python code
+- Use ESLint for JavaScript/React code
+- Add docstrings to all functions
+- Include type hints where appropriate
 
 ## 📄 License
 
-This project is proprietary software. All rights reserved.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## 🆘 Support
 
 For support and questions:
-- Create an issue in this repository
-- Contact the development team
-
----
-
-**OpsConductor NG** - Next Generation IT Operations Automation Platform
+- Create an issue in the repository
+- Check the troubleshooting section
+- Review the API documentation
+- Check service logs for error details

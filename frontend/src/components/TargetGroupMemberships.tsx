@@ -9,7 +9,7 @@ import {
   X,
   Search
 } from 'lucide-react';
-import { targetGroupApi, assetTargetApi } from '../services/api';
+// import { targetGroupApi, assetTargetApi } from '../services/api';
 
 interface TargetGroup {
   id: number;
@@ -71,8 +71,9 @@ const TargetGroupMemberships: React.FC = () => {
 
   const loadGroups = async () => {
     try {
-      const data = await targetGroupApi.list(true);
-      setGroups(data.groups);
+      // const data = await targetGroupApi.list(true);
+      // setGroups(data.groups);
+      setGroups([]);
     } catch (err) {
       console.error('Failed to load groups:', err);
     } finally {
@@ -82,8 +83,9 @@ const TargetGroupMemberships: React.FC = () => {
 
   const loadAllTargets = async () => {
     try {
-      const data = await assetTargetApi.list();
-      setAllTargets(data.targets || []);
+      // const data = await assetTargetApi.list();
+      // setAllTargets(data.targets || []);
+      setAllTargets([]);
     } catch (err) {
       console.error('Failed to load targets:', err);
     }
@@ -92,8 +94,9 @@ const TargetGroupMemberships: React.FC = () => {
   const loadGroupTargets = async (groupId: number) => {
     try {
       setLoading(true);
-      const data = await targetGroupApi.getTargets(groupId);
-      setGroupTargets(data.targets || []);
+      // const data = await targetGroupApi.getTargets(groupId);
+      // setGroupTargets(data.targets || []);
+      setGroupTargets([]);
     } catch (err) {
       console.error('Failed to load group targets:', err);
       setGroupTargets([]);
@@ -119,7 +122,7 @@ const TargetGroupMemberships: React.FC = () => {
 
     try {
       setSaving(true);
-      await targetGroupApi.addTargets(selectedGroup.id, selectedTargets);
+      // await targetGroupApi.addTargets(selectedGroup.id, selectedTargets);
       await loadGroupTargets(selectedGroup.id);
       await loadGroups(); // Refresh counts
       cancelAddingTargets();
@@ -136,7 +139,7 @@ const TargetGroupMemberships: React.FC = () => {
     
     if (window.confirm('Remove this target from the group?')) {
       try {
-        await targetGroupApi.removeTarget(selectedGroup.id, targetId);
+        // await targetGroupApi.removeTarget(selectedGroup.id, targetId);
         await loadGroupTargets(selectedGroup.id);
         await loadGroups(); // Refresh counts
       } catch (error) {

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Trash2, Check, X, Edit3, MonitorCheck, Zap } from 'lucide-react';
 import { targetApi, automationApi } from '../services/api';
-import { enhancedTargetApi, targetServiceApi, targetCredentialApi } from '../services/enhancedApi';
+import { enhancedTargetApi, targetServiceApi, targetCredentialApi, metadataApi } from '../services/enhancedApi';
 import { Target, TargetCreate, Credential } from '../types';
 import { EnhancedTarget, TargetService, TargetCredential } from '../types/enhanced';
 
@@ -210,6 +210,11 @@ const Targets: React.FC = () => {
   const { action, id } = useParams<{ action?: string; id?: string }>();
   const [targets, setTargets] = useState<EnhancedTarget[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [metadata, setMetadata] = useState<{
+    credential_types: Array<{value: string, label: string}>,
+    service_types: Array<{value: string, label: string, default_port: number}>,
+    os_types: Array<{value: string, label: string}>
+  } | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -243,6 +248,7 @@ const Targets: React.FC = () => {
   useEffect(() => {
     fetchTargets();
     fetchCredentials();
+    fetchMetadata();
   }, []);
 
   // Add a retry mechanism for initial load
@@ -265,7 +271,16 @@ const Targets: React.FC = () => {
       const response = await enhancedTargetApi.list();
       console.log('Targets response:', response);
       const targetsList = response.targets || [];
-      setTargets(targetsList);
+      
+      // Debug: Log service data for each target
+      targetsList.forEach(target => {
+        console.log(`Target ${target.id} (${target.ip_address}) services:`, target.services);
+        target.services?.forEach(service => {
+          console.log(`  - Service: ${service.service_type}:${service.port}, default: ${service.is_default}, cred_type: ${service.credential_type}`);
+        });
+      });
+      
+      setTargets([...targetsList]); // Force new array reference
       
       if (targetsList.length > 0) {
         setRetryCount(0);
@@ -315,6 +330,55 @@ const Targets: React.FC = () => {
     }
   };
 
+  const fetchTargetCredentials = async (targetId: number) => {
+    try {
+      console.log('Fetching target credentials for target:', targetId);
+      const response = await targetCredentialApi.getForEditing(targetId);
+      console.log('Target credentials response:', response);
+      
+      if (response.success && response.services) {
+        // Update the editTarget state with the credential data
+        setEditTarget(prev => ({
+          ...prev,
+          services: response.services.map(service => ({
+            ...service,
+            // Ensure all credential fields are present
+            username: service.username || '',
+            password: service.password || '',
+            domain: service.domain || '',
+            private_key: service.private_key || '',
+            public_key: service.public_key || '',
+            api_key: service.api_key || '',
+            bearer_token: service.bearer_token || '',
+            certificate: service.certificate || '',
+            passphrase: service.passphrase || ''
+          }))
+        }));
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch target credentials:', error);
+      // Don't throw error, just log it - the form should still work without credentials
+    }
+  };
+
+  const fetchMetadata = async () => {
+    try {
+      console.log('Fetching metadata...');
+      const response = await metadataApi.get();
+      console.log('Metadata response:', response);
+      console.log('Available credential types:', response.credential_types);
+      setMetadata(response);
+    } catch (error: any) {
+      console.error('Failed to fetch metadata:', error);
+      // Fallback to empty metadata
+      setMetadata({
+        credential_types: [],
+        service_types: [],
+        os_types: []
+      });
+    }
+  };
+
   const startAddingNew = () => {
     setAddingNew(true);
     setEditingTarget(null);
@@ -340,7 +404,12 @@ const Targets: React.FC = () => {
     });
   };
 
-  const handleEdit = (target: EnhancedTarget) => {
+  const handleEdit = async (target: EnhancedTarget) => {
+    console.log('Editing target:', target);
+    console.log('Target services:', target.services);
+    target.services?.forEach((service, index) => {
+      console.log(`Service ${index} credential_type:`, service.credential_type);
+    });
     setEditingTarget(target);
     setEditTarget({
       ip_address: target.ip_address || '',
@@ -351,7 +420,9 @@ const Targets: React.FC = () => {
     });
     setAddingNew(false);
     setSelectedTarget(null);
-    fetchCredentials(); // Fetch credentials when editing
+    
+    // Fetch the actual credentials for this target
+    await fetchTargetCredentials(target.id);
   };
 
   const handleCancelEdit = () => {
@@ -388,10 +459,20 @@ const Targets: React.FC = () => {
           .map(service => ({
             service_type: service.service_type,
             port: parseInt(service.port.toString()) || 22,
-            credential_id: service.credential_id ? parseInt(service.credential_id.toString()) : undefined,
-            is_secure: false,
-            is_enabled: true,
-            notes: undefined
+            is_default: service.is_default || false,
+            is_secure: service.is_secure || false,
+            is_enabled: service.is_enabled !== false, // Default to true unless explicitly false
+            credential_type: service.credential_type,
+            username: service.username || '',
+            password: service.password || '',
+            domain: service.domain || '',
+            private_key: service.private_key || '',
+            public_key: service.public_key || '',
+            api_key: service.api_key || '',
+            bearer_token: service.bearer_token || '',
+            certificate: service.certificate || '',
+            passphrase: service.passphrase || '',
+            notes: service.notes || ''
           }))
       };
       
@@ -656,26 +737,29 @@ const Targets: React.FC = () => {
     }
   };
 
-  const sortedTargets = [...targets].sort((a, b) => {
-    let aValue: any = a[sortField as keyof EnhancedTarget];
-    let bValue: any = b[sortField as keyof EnhancedTarget];
-    
-    // Handle special cases
-    if (sortField === 'ip_address') {
-      aValue = a.ip_address || a.hostname || '';
-      bValue = b.ip_address || b.hostname || '';
-    }
-    
-    // Convert to strings for comparison
-    aValue = String(aValue || '').toLowerCase();
-    bValue = String(bValue || '').toLowerCase();
-    
-    if (sortDirection === 'asc') {
-      return aValue.localeCompare(bValue);
-    } else {
-      return bValue.localeCompare(aValue);
-    }
-  });
+  const sortedTargets = useMemo(() => {
+    console.log('Recalculating sortedTargets with', targets.length, 'targets');
+    return [...targets].sort((a, b) => {
+      let aValue: any = a[sortField as keyof EnhancedTarget];
+      let bValue: any = b[sortField as keyof EnhancedTarget];
+      
+      // Handle special cases
+      if (sortField === 'ip_address') {
+        aValue = a.ip_address || a.hostname || '';
+        bValue = b.ip_address || b.hostname || '';
+      }
+      
+      // Convert to strings for comparison
+      aValue = String(aValue || '').toLowerCase();
+      bValue = String(bValue || '').toLowerCase();
+      
+      if (sortDirection === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  }, [targets, sortField, sortDirection]);
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) {
@@ -1012,7 +1096,7 @@ const Targets: React.FC = () => {
                   <tbody>
                     {sortedTargets.map((target) => (
                       <tr 
-                        key={target.id} 
+                        key={`${target.id}-${target.updated_at}-${target.services?.length || 0}`} 
                         className={selectedTarget?.id === target.id ? 'selected' : ''}
                         onClick={() => handleTargetClick(target)}
                       >
@@ -1020,11 +1104,18 @@ const Targets: React.FC = () => {
                         <td>{target.os_type}</td>
                         <td>
                           {(() => {
-                            const defaultService = target.services?.find(s => s.is_default);
+                            console.log(`Target ${target.id} all services:`, target.services);
+                            const defaultService = target.services?.find(s => {
+                              console.log(`  Checking service: ${s.service_type}, is_default: ${s.is_default} (${typeof s.is_default})`);
+                              return s.is_default === true;
+                            });
+                            console.log(`Target ${target.id} found default service:`, defaultService);
                             if (defaultService) {
+                              const displayName = SERVICE_DISPLAY_NAMES[defaultService.service_type] || defaultService.service_type;
+                              console.log(`Target ${target.id} display name: ${displayName}`);
                               return (
                                 <div style={{ fontSize: '12px', fontWeight: '500' }}>
-                                  {SERVICE_DISPLAY_NAMES[defaultService.service_type] || defaultService.service_type}:{defaultService.port}
+                                  {displayName}:{defaultService.port}
                                 </div>
                               );
                             }
@@ -1034,6 +1125,7 @@ const Targets: React.FC = () => {
                         <td>
                           {(() => {
                             const defaultService = target.services?.find(s => s.is_default);
+                            console.log(`Target ${target.id} credential type:`, defaultService?.credential_type);
                             if (defaultService && defaultService.credential_type) {
                               return (
                                 <div style={{ fontSize: '12px', color: 'var(--primary-700)' }}>
@@ -1398,11 +1490,16 @@ const Targets: React.FC = () => {
                                       style={{ fontSize: '12px' }}
                                     >
                                       <option value="">No Credentials</option>
-                                      {SERVICE_CREDENTIAL_MAPPING[service.service_type]?.map(type => (
-                                        <option key={type} value={type}>
-                                          {type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                      {metadata?.credential_types?.map(credType => (
+                                        <option key={credType.value} value={credType.value}>
+                                          {credType.label}
                                         </option>
-                                      ))}
+                                      )) || [
+                                        <option key="username_password" value="username_password">Username/Password</option>,
+                                        <option key="ssh_key" value="ssh_key">SSH Key</option>,
+                                        <option key="api_key" value="api_key">API Key</option>,
+                                        <option key="bearer_token" value="bearer_token">Bearer Token</option>
+                                      ]}
                                     </select>
                                   </div>
 
@@ -1792,27 +1889,179 @@ const Targets: React.FC = () => {
                               />
                             </div>
 
-                            {/* Credential */}
+                            {/* Credential Type */}
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Credential Type</label>
                               <select
-                                value={service.credential_id || ''}
+                                value={service.credential_type || ''}
                                 onChange={(e) => {
                                   const newServices = [...editTarget.services];
-                                  newServices[index] = { ...service, credential_id: e.target.value };
+                                  newServices[index] = { ...service, credential_type: e.target.value };
                                   setEditTarget(prev => ({ ...prev, services: newServices }));
                                 }}
                                 className="form-select"
                                 style={{ fontSize: '12px', padding: '6px 8px' }}
                               >
-                                <option value="">No Credential</option>
-                                {credentials.map((cred: Credential) => (
-                                  <option key={cred.id} value={cred.id}>
-                                    {cred.name}
+                                <option value="">No Credentials</option>
+                                {metadata?.credential_types?.map(credType => (
+                                  <option key={credType.value} value={credType.value}>
+                                    {credType.label}
                                   </option>
-                                ))}
+                                )) || [
+                                  <option key="username_password" value="username_password">Username/Password</option>,
+                                  <option key="ssh_key" value="ssh_key">SSH Key</option>,
+                                  <option key="api_key" value="api_key">API Key</option>,
+                                  <option key="bearer_token" value="bearer_token">Bearer Token</option>
+                                ]}
                               </select>
                             </div>
+
+                            {/* Credential Input Fields */}
+                            {service.credential_type && (
+                              <div style={{ 
+                                gridColumn: '1 / -1',
+                                marginTop: '12px',
+                                padding: '12px',
+                                backgroundColor: 'var(--neutral-25)',
+                                borderRadius: '4px',
+                                border: '1px solid var(--neutral-200)'
+                              }}>
+                                {service.credential_type === 'username_password' && (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Username</label>
+                                      <input
+                                        type="text"
+                                        value={service.username || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, username: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px' }}
+                                        placeholder="Enter username"
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Password</label>
+                                      <input
+                                        type="password"
+                                        value={service.password || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, password: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px' }}
+                                        placeholder="Enter password"
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Domain (Optional)</label>
+                                      <input
+                                        type="text"
+                                        value={service.domain || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, domain: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px' }}
+                                        placeholder="Domain name"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {service.credential_type === 'ssh_key' && (
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Username</label>
+                                      <input
+                                        type="text"
+                                        value={service.username || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, username: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px' }}
+                                        placeholder="Enter username"
+                                      />
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Passphrase (Optional)</label>
+                                      <input
+                                        type="password"
+                                        value={service.passphrase || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, passphrase: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px' }}
+                                        placeholder="Key passphrase"
+                                      />
+                                    </div>
+                                    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Private Key</label>
+                                      <textarea
+                                        value={service.private_key || ''}
+                                        onChange={(e) => {
+                                          const newServices = [...editTarget.services];
+                                          newServices[index] = { ...service, private_key: e.target.value };
+                                          setEditTarget(prev => ({ ...prev, services: newServices }));
+                                        }}
+                                        className="form-input"
+                                        style={{ fontSize: '12px', padding: '6px 8px', minHeight: '80px', fontFamily: 'monospace' }}
+                                        placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {service.credential_type === 'api_key' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>API Key</label>
+                                    <input
+                                      type="password"
+                                      value={service.api_key || ''}
+                                      onChange={(e) => {
+                                        const newServices = [...editTarget.services];
+                                        newServices[index] = { ...service, api_key: e.target.value };
+                                        setEditTarget(prev => ({ ...prev, services: newServices }));
+                                      }}
+                                      className="form-input"
+                                      style={{ fontSize: '12px', padding: '6px 8px' }}
+                                      placeholder="Enter API key"
+                                    />
+                                  </div>
+                                )}
+
+                                {service.credential_type === 'bearer_token' && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <label style={{ fontSize: '11px', color: 'var(--neutral-600)', fontWeight: '500', margin: 0 }}>Bearer Token</label>
+                                    <input
+                                      type="password"
+                                      value={service.bearer_token || ''}
+                                      onChange={(e) => {
+                                        const newServices = [...editTarget.services];
+                                        newServices[index] = { ...service, bearer_token: e.target.value };
+                                        setEditTarget(prev => ({ ...prev, services: newServices }));
+                                      }}
+                                      className="form-input"
+                                      style={{ fontSize: '12px', padding: '6px 8px' }}
+                                      placeholder="Enter bearer token"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Test Connection Button */}
                             <div style={{ paddingTop: '14px' }}>

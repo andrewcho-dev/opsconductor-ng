@@ -131,14 +131,6 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Target size={14} /></span>
                     Target Management
                   </Link>
-                  <Link 
-                    to="/target-groups" 
-                    className={`nav-submenu-item ${location.pathname === '/target-groups' || location.pathname.startsWith('/target-groups/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><List size={14} /></span>
-                    Manage Groups
-                  </Link>
 
                 </div>
               </div>

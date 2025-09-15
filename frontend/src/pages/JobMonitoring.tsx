@@ -382,7 +382,7 @@ const JobMonitoring: React.FC = () => {
                 <div className="metric-content">
                   <div className="metric-value">{stats.workers.online}</div>
                   <div className="metric-label">Worker Processes</div>
-                  <div className="metric-sublabel">of {stats.workers.total} total ({stats.workers.online_nodes || 1} nodes)</div>
+                  <div className="metric-sublabel">of {stats.workers.total} total (1 nodes)</div>
                 </div>
               </div>
               

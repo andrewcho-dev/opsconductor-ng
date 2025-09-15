@@ -36,7 +36,7 @@ SERVICE_ROUTES = {
     
     # Asset Service
     "/api/v1/targets": "ASSET_SERVICE_URL",
-    "/api/v1/target-groups": "ASSET_SERVICE_URL",
+    "/api/v1/metadata": "ASSET_SERVICE_URL",
     
     # Automation Service
     "/api/v1/jobs": "AUTOMATION_SERVICE_URL",

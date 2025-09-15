@@ -8,7 +8,6 @@ import Users from './pages/Users';
 import AIChat from './pages/AIChat';
 
 import Targets from './pages/Targets';
-import TargetGroups from './pages/TargetGroups';
 
 
 import Jobs from './pages/Jobs';
@@ -59,9 +58,6 @@ const App: React.FC = () => {
                     <Route path="/targets-management" element={<Targets />} />
                     <Route path="/targets-management/:action" element={<Targets />} />
                     <Route path="/targets-management/:action/:id" element={<Targets />} />
-
-                    <Route path="/target-groups" element={<TargetGroups />} />
-                    <Route path="/target-groups/:action" element={<TargetGroups />} />
 
 
                     <Route path="/job-management" element={<Jobs />} />

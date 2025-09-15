@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpsConductor Asset Service
+OpsConductor Asset Service - Simplified (No Target Groups)
 Handles targets with embedded credentials
 """
 
@@ -50,14 +50,14 @@ class TargetServiceSummary(BaseModel):
     is_enabled: bool
     credential_type: Optional[str]
     has_credentials: bool
-    connection_status: Optional[str] = 'unknown'
+    connection_status: Optional[str] = None
     last_tested_at: Optional[str] = None
 
 class EnhancedTargetCreate(BaseModel):
     name: str
     hostname: str
     ip_address: Optional[str] = None
-    os_type: Optional[str] = None
+    os_type: str = "other"  # 'windows', 'linux', 'unix', 'macos', 'other'
     os_version: Optional[str] = None
     description: Optional[str] = None
     tags: List[str] = []
@@ -68,7 +68,7 @@ class EnhancedTargetSummary(BaseModel):
     name: str
     hostname: str
     ip_address: Optional[str]
-    os_type: Optional[str]
+    os_type: str
     os_version: Optional[str]
     description: Optional[str]
     tags: List[str]
@@ -76,457 +76,585 @@ class EnhancedTargetSummary(BaseModel):
     created_at: str
     updated_at: Optional[str]
 
-class EnhancedTargetListResponse(BaseModel):
-    targets: List[EnhancedTargetSummary]
-    total: int
-    skip: int
-    limit: int
-
-class EnhancedTargetUpdate(BaseModel):
-    name: Optional[str] = None
-    hostname: Optional[str] = None
-    ip_address: Optional[str] = None
-    os_type: Optional[str] = None
-    os_version: Optional[str] = None
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
-
-# ============================================================================
-# ASSET SERVICE
-# ============================================================================
-
 class AssetService(BaseService):
     def __init__(self):
-        super().__init__(
-            name="asset-service",
-            version="1.0.0",
-            port=3002
-        )
-        # Initialize encryption key (in production, this should be from environment/key management)
-        encryption_key = os.environ.get('ENCRYPTION_KEY')
-        if encryption_key and encryption_key != 'your-encryption-key-here':
-            if isinstance(encryption_key, str):
-                encryption_key = encryption_key.encode()
-            self.cipher_suite = Fernet(encryption_key)
-        else:
-            # Generate a new key if none provided or placeholder
-            self.cipher_suite = Fernet(Fernet.generate_key())
+        super().__init__("asset-service", port=3002)
+        self.encryption_key = self._get_encryption_key()
+        self.fernet = Fernet(self.encryption_key)
         self.setup_routes()
-    
-    def _encrypt_credential(self, credential: str) -> str:
-        """Encrypt a credential string"""
-        if not credential:
+
+    def _get_encryption_key(self):
+        """Get or generate encryption key for credentials"""
+        key_file = "/app/data/encryption.key"
+        if os.path.exists(key_file):
+            with open(key_file, 'rb') as f:
+                return f.read()
+        else:
+            key = Fernet.generate_key()
+            os.makedirs(os.path.dirname(key_file), exist_ok=True)
+            with open(key_file, 'wb') as f:
+                f.write(key)
+            return key
+
+    def _encrypt_field(self, value: str) -> str:
+        """Encrypt a field value"""
+        if not value:
             return None
-        return base64.b64encode(self.cipher_suite.encrypt(credential.encode())).decode()
-    
-    def _decrypt_credential(self, encrypted_credential: str) -> str:
-        """Decrypt a credential string"""
-        if not encrypted_credential:
+        return self.fernet.encrypt(value.encode()).decode()
+
+    def _decrypt_field(self, encrypted_value: str) -> str:
+        """Decrypt a field value"""
+        if not encrypted_value:
             return None
-        try:
-            return self.cipher_suite.decrypt(base64.b64decode(encrypted_credential.encode())).decode()
-        except Exception:
-            return None  # Return None if decryption fails
-    
-    def _get_current_user_id(self) -> int:
-        """Get current user ID from authentication context
-        For now returns 1, but should be replaced with proper auth"""
-        # TODO: Implement proper authentication context
-        return 1
-    
-    async def _resolve_ip_address(self, hostname: str) -> str:
+        return self.fernet.decrypt(encrypted_value.encode()).decode()
+
+    async def _resolve_ip_address(self, hostname: str) -> Optional[str]:
         """Resolve hostname to IP address"""
         import socket
         try:
-            # Try to resolve hostname to IP
-            ip_address = socket.gethostbyname(hostname)
-            return ip_address
-        except socket.gaierror:
-            # If resolution fails, return the hostname as-is
-            return hostname
-    
-    async def _detect_os_version(self, hostname: str, port: int = None) -> str:
-        """Attempt to detect OS version through various methods"""
-        # This is a simplified implementation
-        # In production, you might use nmap, SSH banner detection, etc.
-        try:
-            # For now, return "Unknown" but this could be enhanced with:
-            # - SSH banner detection
-            # - HTTP server headers
-            # - SNMP queries
-            # - nmap OS detection
-            return "Unknown"
-        except Exception:
-            return "Unknown"
+            return socket.gethostbyname(hostname)
+        except:
+            return None
 
     def setup_routes(self):
-        """Setup FastAPI routes"""
-        
         # ============================================================================
-        # TARGET ENDPOINTS
+        # METADATA ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/targets", response_model=EnhancedTargetListResponse)
-        async def list_targets(
+        @self.app.get("/metadata")
+        async def get_metadata():
+            """Get metadata for dropdowns and form options"""
+            return {
+                "success": True,
+                "data": {
+                    "credential_types": [
+                        {"value": "username_password", "label": "Username/Password"},
+                        {"value": "ssh_key", "label": "SSH Key"},
+                        {"value": "api_key", "label": "API Key"},
+                        {"value": "bearer_token", "label": "Bearer Token"}
+                    ],
+                    "service_types": [
+                        {"value": "ssh", "label": "SSH", "default_port": 22},
+                        {"value": "winrm_http", "label": "WinRM HTTP", "default_port": 5985},
+                        {"value": "winrm_https", "label": "WinRM HTTPS", "default_port": 5986},
+                        {"value": "rdp", "label": "RDP", "default_port": 3389},
+                        {"value": "vnc", "label": "VNC", "default_port": 5900},
+                        {"value": "http", "label": "HTTP", "default_port": 80},
+                        {"value": "https", "label": "HTTPS", "default_port": 443},
+                        {"value": "ftp", "label": "FTP", "default_port": 21},
+                        {"value": "sftp", "label": "SFTP", "default_port": 22},
+                        {"value": "telnet", "label": "Telnet", "default_port": 23},
+                        {"value": "smtp", "label": "SMTP", "default_port": 25},
+                        {"value": "dns", "label": "DNS", "default_port": 53},
+                        {"value": "snmp", "label": "SNMP", "default_port": 161},
+                        {"value": "ldap", "label": "LDAP", "default_port": 389},
+                        {"value": "ldaps", "label": "LDAPS", "default_port": 636}
+                    ],
+                    "os_types": [
+                        {"value": "windows", "label": "Windows"},
+                        {"value": "linux", "label": "Linux"},
+                        {"value": "unix", "label": "Unix"},
+                        {"value": "macos", "label": "macOS"},
+                        {"value": "other", "label": "Other"}
+                    ]
+                }
+            }
+        
+        # ============================================================================
+        # ENHANCED TARGETS ENDPOINTS
+        # ============================================================================
+        
+        @self.app.get("/targets")
+        async def list_enhanced_targets(
             skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000),
-            search: Optional[str] = Query(None, description="Search in name, hostname, or description"),
-            os_type: Optional[str] = Query(None, description="Filter by OS type"),
-            tags: Optional[str] = Query(None, description="Filter by tags (comma-separated)")
+            limit: int = Query(100, ge=1, le=1000)
         ):
-            """List all targets with optional filtering"""
+            """List all enhanced targets"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Build WHERE clause
-                    where_conditions = []
-                    params = []
-                    param_count = 1
+                    targets = await conn.fetch("""
+                        SELECT id, name, hostname, ip_address, os_type, os_version, 
+                               description, tags, created_at, updated_at
+                        FROM assets.enhanced_targets
+                        ORDER BY created_at DESC
+                        OFFSET $1 LIMIT $2
+                    """, skip, limit)
                     
-                    if search:
-                        where_conditions.append(f"(t.name ILIKE ${param_count} OR t.host ILIKE ${param_count} OR t.description ILIKE ${param_count})")
-                        params.append(f"%{search}%")
-                        param_count += 1
+                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.enhanced_targets")
                     
-                    if os_type:
-                        where_conditions.append(f"t.target_type = ${param_count}")
-                        params.append(os_type)
-                        param_count += 1
-                    
-                    if tags:
-                        tag_list = [tag.strip() for tag in tags.split(',')]
-                        where_conditions.append(f"t.tags::jsonb ?| ${param_count}")
-                        params.append(tag_list)
-                        param_count += 1
-                    
-                    where_clause = " AND ".join(where_conditions) if where_conditions else "TRUE"
-                    
-                    # Get targets
-                    targets_query = f"""
-                        SELECT t.id, t.name, t.host, t.target_type, t.description, t.tags, 
-                               t.created_at, t.updated_at
-                        FROM assets.targets t
-                        WHERE {where_clause}
-                        ORDER BY t.created_at DESC
-                        LIMIT ${param_count} OFFSET ${param_count + 1}
-                    """
-                    params.extend([limit, skip])
-                    targets = await conn.fetch(targets_query, *params)
-                    
-                    # Get total count
-                    count_query = f"SELECT COUNT(*) FROM assets.targets t WHERE {where_clause}"
-                    total = await conn.fetchval(count_query, *params[:-2])  # Exclude limit and offset
-                    
-                    # Build target list with services
                     target_list = []
-                    for target_row in targets:
+                    for target in targets:
                         # Get services for this target
-                        service_rows = await conn.fetch("""
-                            SELECT id, target_id, service_type, port, is_default, is_secure, 
-                                   is_enabled, notes, credential_type, created_at,
+                        services = await conn.fetch("""
+                            SELECT id, service_type, port, is_default, is_secure, is_enabled,
+                                   credential_type, username, password_encrypted, private_key_encrypted, 
+                                   public_key, api_key_encrypted, bearer_token_encrypted, 
+                                   certificate_encrypted, passphrase_encrypted, domain,
                                    connection_status, last_tested_at
-                            FROM assets.target_services 
-                            WHERE target_id = $1 
+                            FROM assets.target_services
+                            WHERE target_id = $1
                             ORDER BY is_default DESC, port ASC
-                        """, target_row['id'])
+                        """, target['id'])
                         
-                        services = []
-                        for service_row in service_rows:
-                            services.append(TargetServiceSummary(
-                                id=service_row['id'],
-                                service_type=service_row['service_type'],
-                                port=service_row['port'],
-                                is_default=service_row['is_default'],
-                                is_secure=service_row['is_secure'],
-                                is_enabled=service_row['is_enabled'],
-                                credential_type=service_row['credential_type'],
-                                has_credentials=service_row['credential_type'] is not None,
-                                connection_status=service_row['connection_status'],
-                                last_tested_at=service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None
+                        service_list = []
+                        for service in services:
+                            has_credentials = any([
+                                service['password_encrypted'],
+                                service['private_key_encrypted'],
+                                service['api_key_encrypted'],
+                                service['bearer_token_encrypted'],
+                                service['certificate_encrypted']
+                            ])
+                            
+                            service_list.append(TargetServiceSummary(
+                                id=service['id'],
+                                service_type=service['service_type'],
+                                port=service['port'],
+                                is_default=service['is_default'],
+                                is_secure=service['is_secure'],
+                                is_enabled=service['is_enabled'],
+                                credential_type=service['credential_type'],
+                                has_credentials=has_credentials,
+                                connection_status=service['connection_status'],
+                                last_tested_at=service['last_tested_at'].isoformat() if service['last_tested_at'] else None
                             ))
                         
                         # Parse tags
-                        tags = target_row['tags']
+                        tags = target['tags']
                         if isinstance(tags, str):
                             tags = json.loads(tags)
                         elif tags is None:
                             tags = []
                         
                         target_list.append(EnhancedTargetSummary(
-                            id=target_row['id'],
-                            name=target_row['name'],
-                            hostname=target_row['host'],
-                            ip_address=await self._resolve_ip_address(target_row['host']),
-                            os_type=target_row['target_type'],
-                            os_version="Unknown",  # Not available in current schema
-                            description=target_row['description'],
+                            id=target['id'],
+                            name=target['name'],
+                            hostname=target['hostname'],
+                            ip_address=target['ip_address'],
+                            os_type=target['os_type'],
+                            os_version=target['os_version'],
+                            description=target['description'],
                             tags=tags,
-                            services=services,
-                            created_at=target_row['created_at'].isoformat(),
-                            updated_at=target_row['updated_at'].isoformat() if target_row['updated_at'] else None
+                            services=service_list,
+                            created_at=target['created_at'].isoformat(),
+                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
                         ))
                     
-                    return EnhancedTargetListResponse(
-                        targets=target_list,
-                        total=total,
-                        skip=skip,
-                        limit=limit
-                    )
+                    return {
+                        "targets": target_list,
+                        "total": total,
+                        "skip": skip,
+                        "limit": limit
+                    }
             except Exception as e:
-                self.logger.error("Failed to list targets", error=str(e))
+                self.logger.error("Failed to list enhanced targets", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to list targets"
+                    detail="Failed to list enhanced targets"
                 )
 
-        @self.app.post("/targets", response_model=dict)
-        async def create_target(target_data: EnhancedTargetCreate):
-            """Create a new target with services and credentials"""
+        @self.app.post("/targets")
+        async def create_enhanced_target(target_data: EnhancedTargetCreate):
+            """Create a new enhanced target"""
             try:
                 async with self.db.pool.acquire() as conn:
                     async with conn.transaction():
-                        # Insert target
+                        # Create target
                         target_id = await conn.fetchval("""
-                            INSERT INTO assets.targets (name, host, target_type, connection_type, description, tags, created_by)
+                            INSERT INTO assets.enhanced_targets 
+                            (name, hostname, ip_address, os_type, os_version, description, tags)
                             VALUES ($1, $2, $3, $4, $5, $6, $7)
                             RETURNING id
-                        """, target_data.name, target_data.hostname, target_data.os_type or 'unknown',
-                             'network', target_data.description, json.dumps(target_data.tags), 1)
+                        """, 
+                        target_data.name,
+                        target_data.hostname,
+                        target_data.ip_address,
+                        target_data.os_type,
+                        target_data.os_version,
+                        target_data.description,
+                        json.dumps(target_data.tags)
+                        )
                         
-                        # Insert services with credentials
+                        # Create services
                         for service in target_data.services:
-                            # Prepare encrypted credential fields
-                            encrypted_password = self._encrypt_credential(service.password)
-                            encrypted_private_key = self._encrypt_credential(service.private_key)
-                            encrypted_api_key = self._encrypt_credential(service.api_key)
-                            encrypted_bearer_token = self._encrypt_credential(service.bearer_token)
-                            encrypted_certificate = self._encrypt_credential(service.certificate)
-                            encrypted_passphrase = self._encrypt_credential(service.passphrase)
-                            
-                            await conn.execute("""
-                                INSERT INTO assets.target_services 
-                                (target_id, service_type, port, is_default, is_secure, is_enabled, notes,
-                                 credential_type, username, password_encrypted, private_key_encrypted, public_key, api_key_encrypted, 
-                                 bearer_token_encrypted, certificate_encrypted, passphrase_encrypted, domain)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-                            """, target_id, service.service_type, service.port, service.is_default,
-                                 service.is_secure, service.is_enabled, service.notes,
-                                 service.credential_type, service.username, encrypted_password,
-                                 encrypted_private_key, service.public_key, encrypted_api_key,
-                                 encrypted_bearer_token, encrypted_certificate, encrypted_passphrase,
-                                 service.domain)
+                            await self._create_target_service(conn, target_id, service)
                         
-                        return {"success": True, "message": "Target created", "target_id": target_id}
-            except HTTPException:
-                raise
+                        return {"success": True, "target_id": target_id}
             except Exception as e:
-                self.logger.error("Failed to create target", error=str(e))
+                self.logger.error("Failed to create enhanced target", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create target"
+                    detail="Failed to create enhanced target"
                 )
 
-        @self.app.get("/targets/{target_id}", response_model=dict)
-        async def get_target(target_id: int):
-            """Get target by ID with all services and credentials"""
+        @self.app.get("/targets/{target_id}")
+        async def get_enhanced_target(target_id: int):
+            """Get enhanced target by ID"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get target
-                    target_row = await conn.fetchrow("""
-                        SELECT id, name, host, target_type, description, tags, created_at, updated_at
-                        FROM assets.targets WHERE id = $1
+                    target = await conn.fetchrow("""
+                        SELECT id, name, hostname, ip_address, os_type, os_version, 
+                               description, tags, created_at, updated_at
+                        FROM assets.enhanced_targets WHERE id = $1
                     """, target_id)
                     
-                    if not target_row:
+                    if not target:
                         raise HTTPException(status_code=404, detail="Target not found")
                     
                     # Get services
-                    service_rows = await conn.fetch("""
-                        SELECT id, target_id, service_type, port, is_default, is_secure, is_enabled, notes,
-                               credential_type, username, password_encrypted, public_key, domain, created_at, 
+                    services = await conn.fetch("""
+                        SELECT id, service_type, port, is_default, is_secure, is_enabled,
+                               credential_type, username, password_encrypted, private_key_encrypted, 
+                               public_key, api_key_encrypted, bearer_token_encrypted, 
+                               certificate_encrypted, passphrase_encrypted, domain, notes,
                                connection_status, last_tested_at
-                        FROM assets.target_services 
-                        WHERE target_id = $1 
+                        FROM assets.target_services
+                        WHERE target_id = $1
                         ORDER BY is_default DESC, port ASC
                     """, target_id)
                     
-                    services = []
-                    for service_row in service_rows:
-                        service_dict = {
-                            "id": service_row['id'],
-                            "target_id": service_row['target_id'],
-                            "service_type": service_row['service_type'],
-                            "port": service_row['port'],
-                            "is_default": service_row['is_default'],
-                            "is_secure": service_row['is_secure'],
-                            "is_enabled": service_row['is_enabled'],
-                            "notes": service_row['notes'],
-                            "created_at": service_row['created_at'].isoformat(),
-                            "credential_type": service_row['credential_type'],
-                            "has_credentials": service_row['credential_type'] is not None,
-                            "connection_status": service_row['connection_status'],
-                            "last_tested_at": service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None
-                        }
+                    service_list = []
+                    for service in services:
+                        has_credentials = any([
+                            service['password_encrypted'],
+                            service['private_key_encrypted'],
+                            service['api_key_encrypted'],
+                            service['bearer_token_encrypted'],
+                            service['certificate_encrypted']
+                        ])
                         
-                        # Add credential fields including decrypted password for automation
-                        if service_row['credential_type']:
-                            service_dict.update({
-                                "username": service_row['username'],
-                                "public_key": service_row['public_key'],
-                                "domain": service_row['domain']
-                            })
-                            
-                            # Decrypt password for automation purposes
-                            if service_row['password_encrypted']:
-                                decrypted_password = self._decrypt_credential(service_row['password_encrypted'])
-                                if decrypted_password:
-                                    service_dict["password"] = decrypted_password
-                        
-                        services.append(service_dict)
+                        service_list.append({
+                            "id": service['id'],
+                            "service_type": service['service_type'],
+                            "port": service['port'],
+                            "is_default": service['is_default'],
+                            "is_secure": service['is_secure'],
+                            "is_enabled": service['is_enabled'],
+                            "credential_type": service['credential_type'],
+                            "has_credentials": has_credentials,
+                            "notes": service['notes'],
+                            "connection_status": service['connection_status'],
+                            "last_tested_at": service['last_tested_at'].isoformat() if service['last_tested_at'] else None
+                        })
                     
                     # Parse tags
-                    tags = target_row['tags']
+                    tags = target['tags']
                     if isinstance(tags, str):
                         tags = json.loads(tags)
                     elif tags is None:
                         tags = []
                     
-                    target_dict = {
-                        "id": target_row['id'],
-                        "name": target_row['name'],
-                        "hostname": target_row['host'],
-                        "ip_address": await self._resolve_ip_address(target_row['host']),
-                        "os_type": target_row['target_type'],
-                        "os_version": "Unknown",  # Not available in current schema
-                        "description": target_row['description'],
-                        "tags": tags,
-                        "services": services,
-                        "created_at": target_row['created_at'].isoformat(),
-                        "updated_at": target_row['updated_at'].isoformat() if target_row['updated_at'] else None
+                    return {
+                        "success": True,
+                        "data": {
+                            "id": target['id'],
+                            "name": target['name'],
+                            "hostname": target['hostname'],
+                            "ip_address": target['ip_address'],
+                            "os_type": target['os_type'],
+                            "os_version": target['os_version'],
+                            "description": target['description'],
+                            "tags": tags,
+                            "services": service_list,
+                            "created_at": target['created_at'].isoformat(),
+                            "updated_at": target['updated_at'].isoformat() if target['updated_at'] else None
+                        }
                     }
-                    
-                    return {"success": True, "data": target_dict}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to get target", error=str(e))
+                self.logger.error("Failed to get enhanced target", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get target"
+                    detail="Failed to get enhanced target"
                 )
 
-        @self.app.put("/targets/{target_id}", response_model=dict)
-        async def update_target(target_id: int, target_data: EnhancedTargetUpdate):
-            """Update target information"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Check if target exists
-                    existing = await conn.fetchval("SELECT id FROM assets.targets WHERE id = $1", target_id)
-                    if not existing:
-                        raise HTTPException(status_code=404, detail="Target not found")
-                    
-                    # Build update query
-                    updates = []
-                    values = []
-                    param_count = 1
-                    
-                    if target_data.name is not None:
-                        updates.append(f"name = ${param_count}")
-                        values.append(target_data.name)
-                        param_count += 1
-                    
-                    if target_data.hostname is not None:
-                        updates.append(f"host = ${param_count}")
-                        values.append(target_data.hostname)
-                        param_count += 1
-                    
-                    if target_data.os_type is not None:
-                        updates.append(f"target_type = ${param_count}")
-                        values.append(target_data.os_type)
-                        param_count += 1
-                    
-                    if target_data.description is not None:
-                        updates.append(f"description = ${param_count}")
-                        values.append(target_data.description)
-                        param_count += 1
-                    
-                    if target_data.tags is not None:
-                        updates.append(f"tags = ${param_count}")
-                        values.append(json.dumps(target_data.tags))
-                        param_count += 1
-                    
-                    if not updates:
-                        return {"success": True, "message": "No changes to update"}
-                    
-                    # Add updated_at
-                    updates.append(f"updated_at = ${param_count}")
-                    values.append(datetime.utcnow())
-                    param_count += 1
-                    
-                    # Add target_id as the last parameter
-                    values.append(target_id)
-                    
-                    query = f"""
-                        UPDATE assets.targets 
-                        SET {', '.join(updates)}
-                        WHERE id = ${param_count}
-                        RETURNING id
-                    """
-                    
-                    result = await conn.fetchval(query, *values)
-                    
-                    if not result:
-                        raise HTTPException(status_code=404, detail="Target not found")
-                    
-                    return {"success": True, "message": "Target updated"}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to update target", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update target"
-                )
-
-        @self.app.delete("/targets/{target_id}", response_model=dict)
-        async def delete_target(target_id: int):
-            """Delete target and all associated services"""
+        @self.app.delete("/targets/{target_id}")
+        async def delete_enhanced_target(target_id: int):
+            """Delete enhanced target"""
             try:
                 async with self.db.pool.acquire() as conn:
                     async with conn.transaction():
                         # Check if target exists
-                        existing = await conn.fetchval("SELECT id FROM assets.targets WHERE id = $1", target_id)
-                        if not existing:
+                        target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
+                        if not target:
                             raise HTTPException(status_code=404, detail="Target not found")
                         
-                        # Delete associated services (will cascade due to foreign key)
+                        # Delete services (cascade will handle this, but explicit is better)
                         await conn.execute("DELETE FROM assets.target_services WHERE target_id = $1", target_id)
                         
                         # Delete target
-                        result = await conn.execute("DELETE FROM assets.targets WHERE id = $1", target_id)
-                        
-                        if result == "DELETE 0":
-                            raise HTTPException(status_code=404, detail="Target not found")
+                        await conn.execute("DELETE FROM assets.enhanced_targets WHERE id = $1", target_id)
                         
                         return {"success": True, "message": "Target deleted"}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to delete target", error=str(e))
+                self.logger.error("Failed to delete enhanced target", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to delete target"
+                    detail="Failed to delete enhanced target"
                 )
 
-        @self.app.post("/targets/{target_id}/services/{service_id}/test", response_model=dict)
+        @self.app.get("/targets/{target_id}/credentials")
+        async def get_target_credentials(target_id: int):
+            """Get target service credentials for editing (decrypted)"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Check if target exists
+                    target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
+                    if not target:
+                        raise HTTPException(status_code=404, detail="Target not found")
+                    
+                    # Get services with credentials
+                    services = await conn.fetch("""
+                        SELECT id, service_type, port, is_default, is_secure, is_enabled,
+                               credential_type, username, password_encrypted, private_key_encrypted, 
+                               public_key, api_key_encrypted, bearer_token_encrypted, 
+                               certificate_encrypted, passphrase_encrypted, domain, notes
+                        FROM assets.target_services
+                        WHERE target_id = $1
+                        ORDER BY is_default DESC, port ASC
+                    """, target_id)
+                    
+                    service_list = []
+                    for service in services:
+                        # Decrypt credentials if they exist
+                        decrypted_service = {
+                            "id": service['id'],
+                            "service_type": service['service_type'],
+                            "port": service['port'],
+                            "is_default": service['is_default'],
+                            "is_secure": service['is_secure'],
+                            "is_enabled": service['is_enabled'],
+                            "credential_type": service['credential_type'],
+                            "username": service['username'],
+                            "domain": service['domain'],
+                            "notes": service['notes']
+                        }
+                        
+                        # Decrypt encrypted fields
+                        try:
+                            if service['password_encrypted']:
+                                decrypted_service['password'] = self._decrypt_field(service['password_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt password for service {service['id']}: {str(e)}")
+                            decrypted_service['password'] = ''
+                        
+                        try:
+                            if service['private_key_encrypted']:
+                                decrypted_service['private_key'] = self._decrypt_field(service['private_key_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt private_key for service {service['id']}: {str(e)}")
+                            decrypted_service['private_key'] = ''
+                        
+                        try:
+                            if service['api_key_encrypted']:
+                                decrypted_service['api_key'] = self._decrypt_field(service['api_key_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt api_key for service {service['id']}: {str(e)}")
+                            decrypted_service['api_key'] = ''
+                        
+                        try:
+                            if service['bearer_token_encrypted']:
+                                decrypted_service['bearer_token'] = self._decrypt_field(service['bearer_token_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt bearer_token for service {service['id']}: {str(e)}")
+                            decrypted_service['bearer_token'] = ''
+                        
+                        try:
+                            if service['certificate_encrypted']:
+                                decrypted_service['certificate'] = self._decrypt_field(service['certificate_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt certificate for service {service['id']}: {str(e)}")
+                            decrypted_service['certificate'] = ''
+                        
+                        try:
+                            if service['passphrase_encrypted']:
+                                decrypted_service['passphrase'] = self._decrypt_field(service['passphrase_encrypted'])
+                        except Exception as e:
+                            self.logger.warning(f"Failed to decrypt passphrase for service {service['id']}: {str(e)}")
+                            decrypted_service['passphrase'] = ''
+                        
+                        # Add public key (not encrypted)
+                        if service['public_key']:
+                            decrypted_service['public_key'] = service['public_key']
+                        
+                        service_list.append(decrypted_service)
+                    
+                    return {
+                        "success": True,
+                        "services": service_list
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                import traceback
+                error_details = f"{str(e)} - {traceback.format_exc()}"
+                self.logger.error("Failed to get target credentials", error=error_details)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get target credentials: {str(e)}"
+                )
+
+        @self.app.put("/targets/{target_id}")
+        async def update_enhanced_target(target_id: int, target_data: EnhancedTargetCreate):
+            """Update enhanced target"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    async with conn.transaction():
+                        # Check if target exists
+                        existing_target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
+                        if not existing_target:
+                            raise HTTPException(status_code=404, detail="Target not found")
+                        
+                        # Resolve IP if not provided
+                        ip_address = target_data.ip_address
+                        if not ip_address and target_data.hostname:
+                            ip_address = await self._resolve_ip_address(target_data.hostname)
+                        
+                        # Update target
+                        await conn.execute("""
+                            UPDATE assets.enhanced_targets 
+                            SET name = $2, hostname = $3, ip_address = $4, os_type = $5, 
+                                os_version = $6, description = $7, tags = $8, updated_at = NOW()
+                            WHERE id = $1
+                        """, 
+                        target_id, target_data.name, target_data.hostname, ip_address, 
+                        target_data.os_type, target_data.os_version, target_data.description, 
+                        json.dumps(target_data.tags or [])
+                        )
+                        
+                        # Get existing services to preserve credentials
+                        existing_services = await conn.fetch("""
+                            SELECT id, service_type, port, is_default, is_secure, is_enabled,
+                                   credential_type, username, password_encrypted, private_key_encrypted, 
+                                   public_key, api_key_encrypted, bearer_token_encrypted, 
+                                   certificate_encrypted, passphrase_encrypted, domain, notes,
+                                   connection_status, last_tested_at
+                            FROM assets.target_services
+                            WHERE target_id = $1
+                        """, target_id)
+                        
+                        # Create a map of existing services by service_type and port
+                        existing_map = {}
+                        for existing in existing_services:
+                            key = (existing['service_type'], existing['port'])
+                            existing_map[key] = existing
+                        
+                        # Delete existing services
+                        await conn.execute("DELETE FROM assets.target_services WHERE target_id = $1", target_id)
+                        
+                        # Create new services, preserving credentials from existing ones
+                        for service in target_data.services:
+                            key = (service.service_type, service.port)
+                            existing = existing_map.get(key)
+                            
+                            # If service exists and no credentials provided in update, preserve existing credentials
+                            if existing and not any([service.credential_type, service.username, service.password, 
+                                                   service.private_key, service.api_key, service.bearer_token, 
+                                                   service.certificate, service.passphrase]):
+                                # Create service with preserved credentials
+                                preserved_service = TargetServiceCreate(
+                                    service_type=service.service_type,
+                                    port=service.port,
+                                    is_default=service.is_default,
+                                    is_secure=service.is_secure,
+                                    is_enabled=service.is_enabled,
+                                    notes=service.notes,
+                                    credential_type=existing['credential_type'],
+                                    username=existing['username'],
+                                    password=self._decrypt_field(existing['password_encrypted']) if existing['password_encrypted'] else None,
+                                    private_key=self._decrypt_field(existing['private_key_encrypted']) if existing['private_key_encrypted'] else None,
+                                    public_key=existing['public_key'],
+                                    api_key=self._decrypt_field(existing['api_key_encrypted']) if existing['api_key_encrypted'] else None,
+                                    bearer_token=self._decrypt_field(existing['bearer_token_encrypted']) if existing['bearer_token_encrypted'] else None,
+                                    certificate=self._decrypt_field(existing['certificate_encrypted']) if existing['certificate_encrypted'] else None,
+                                    passphrase=self._decrypt_field(existing['passphrase_encrypted']) if existing['passphrase_encrypted'] else None,
+                                    domain=existing['domain']
+                                )
+                                await self._create_target_service(conn, target_id, preserved_service, 
+                                                                 existing['connection_status'], existing['last_tested_at'])
+                            else:
+                                # Create service with new/updated credentials
+                                await self._create_target_service(conn, target_id, service)
+                        
+                        # Get updated target with services
+                        target = await conn.fetchrow("""
+                            SELECT id, name, hostname, ip_address, os_type, os_version, 
+                                   description, tags, created_at, updated_at
+                            FROM assets.enhanced_targets
+                            WHERE id = $1
+                        """, target_id)
+                        
+                        services = await conn.fetch("""
+                            SELECT id, service_type, port, is_default, is_secure, is_enabled, 
+                                   credential_type, username, password_encrypted, private_key_encrypted, 
+                                   public_key, api_key_encrypted, bearer_token_encrypted, 
+                                   certificate_encrypted, passphrase_encrypted, domain,
+                                   connection_status, last_tested_at
+                            FROM assets.target_services
+                            WHERE target_id = $1
+                            ORDER BY is_default DESC, service_type
+                        """, target_id)
+                        
+                        # Build services summary
+                        services_summary = []
+                        for service in services:
+                            has_credentials = any([
+                                service['password_encrypted'],
+                                service['private_key_encrypted'],
+                                service['api_key_encrypted'],
+                                service['bearer_token_encrypted'],
+                                service['certificate_encrypted']
+                            ])
+                            
+                            services_summary.append(TargetServiceSummary(
+                                id=service['id'],
+                                service_type=service['service_type'],
+                                port=service['port'],
+                                is_default=service['is_default'],
+                                is_secure=service['is_secure'],
+                                is_enabled=service['is_enabled'],
+                                credential_type=service['credential_type'],
+                                has_credentials=has_credentials,
+                                connection_status=service['connection_status'],
+                                last_tested_at=service['last_tested_at'].isoformat() if service['last_tested_at'] else None
+                            ))
+                        
+                        return EnhancedTargetSummary(
+                            id=target['id'],
+                            name=target['name'],
+                            hostname=target['hostname'],
+                            ip_address=target['ip_address'],
+                            os_type=target['os_type'],
+                            os_version=target['os_version'],
+                            description=target['description'],
+                            tags=json.loads(target['tags']) if target['tags'] else [],
+                            services=services_summary,
+                            created_at=target['created_at'].isoformat(),
+                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
+                        )
+                        
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to update enhanced target", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update enhanced target"
+                )
+
+        @self.app.post("/targets/{target_id}/services/{service_id}/test")
         async def test_service_connection(target_id: int, service_id: int):
             """Test connection to a specific service"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get service details with credentials
+                    # Get service details with target info
                     service_row = await conn.fetchrow("""
-                        SELECT ts.*, t.name as target_name, t.host
+                        SELECT ts.*, t.hostname, t.ip_address, t.name as target_name
                         FROM assets.target_services ts
-                        JOIN assets.targets t ON ts.target_id = t.id
+                        JOIN assets.enhanced_targets t ON ts.target_id = t.id
                         WHERE ts.id = $1 AND ts.target_id = $2
                     """, service_id, target_id)
                     
@@ -536,36 +664,44 @@ class AssetService(BaseService):
                     if not service_row['is_enabled']:
                         raise HTTPException(status_code=400, detail="Service is disabled")
                     
-                    # Determine connection host
-                    host = service_row['host']
+                    # Determine connection host (prefer IP, fallback to hostname)
+                    host = service_row['ip_address'] or service_row['hostname']
                     if not host:
                         raise HTTPException(status_code=400, detail="No host configured")
                     
-                    # Real connection test
+                    # Call automation service for connection test
+                    import aiohttp
                     import time
-                    import socket
-                    import asyncio
                     
                     start_time = time.time()
-                    success = False
-                    error_message = None
+                    
+                    connection_data = {
+                        "host": host,
+                        "port": service_row['port'],
+                        "service_type": service_row['service_type'],
+                        "credential_type": service_row['credential_type'],
+                        "username": service_row['username'],
+                        "service_id": service_id,
+                        "target_id": target_id
+                    }
                     
                     try:
-                        # Test basic TCP connectivity
-                        port = service_row['port']
-                        future = asyncio.open_connection(host, port)
-                        reader, writer = await asyncio.wait_for(future, timeout=10.0)
-                        writer.close()
-                        await writer.wait_closed()
-                        success = True
-                    except asyncio.TimeoutError:
-                        error_message = f"Connection timeout to {host}:{port}"
-                    except ConnectionRefusedError:
-                        error_message = f"Connection refused to {host}:{port}"
-                    except socket.gaierror as e:
-                        error_message = f"DNS resolution failed for {host}: {str(e)}"
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                "http://automation-service:3003/automation/test-connection",
+                                json=connection_data,
+                                timeout=aiohttp.ClientTimeout(total=30)
+                            ) as response:
+                                if response.status == 200:
+                                    result = await response.json()
+                                    success = result.get('success', False)
+                                    error_message = result.get('error', '')
+                                else:
+                                    success = False
+                                    error_message = f"Automation service returned status {response.status}"
                     except Exception as e:
-                        error_message = f"Connection failed to {host}:{port}: {str(e)}"
+                        success = False
+                        error_message = f"Failed to call automation service: {str(e)}"
                     
                     end_time = time.time()
                     response_time = int((end_time - start_time) * 1000)
@@ -590,6 +726,13 @@ class AssetService(BaseService):
                             "response_time_ms": response_time
                         }
                         connection_status = "failed"
+                    
+                    # Update connection status in database
+                    await conn.execute("""
+                        UPDATE assets.target_services 
+                        SET connection_status = $1, last_tested_at = NOW()
+                        WHERE id = $2 AND target_id = $3
+                    """, connection_status, service_id, target_id)
                     
                     return {
                         "success": True,
@@ -616,616 +759,31 @@ class AssetService(BaseService):
                     detail="Failed to test service connection"
                 )
 
-        @self.app.put("/targets/{target_id}/services/{service_id}/credentials")
-        async def update_service_credentials(target_id: int, service_id: int, credentials: dict):
-            """Update service credentials"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Check if service exists
-                    service_exists = await conn.fetchval("""
-                        SELECT id FROM assets.target_services 
-                        WHERE id = $1 AND target_id = $2
-                    """, service_id, target_id)
-                    
-                    if not service_exists:
-                        raise HTTPException(status_code=404, detail="Service not found")
-                    
-                    # Prepare credential updates
-                    updates = []
-                    values = []
-                    param_count = 1
-                    
-                    if 'credential_type' in credentials:
-                        updates.append(f"credential_type = ${param_count}")
-                        values.append(credentials['credential_type'])
-                        param_count += 1
-                    
-                    if 'username' in credentials:
-                        updates.append(f"username = ${param_count}")
-                        values.append(credentials['username'])
-                        param_count += 1
-                    
-                    if 'password' in credentials and credentials['password']:
-                        encrypted_password = self._encrypt_credential(credentials['password'])
-                        updates.append(f"password_encrypted = ${param_count}")
-                        values.append(encrypted_password)
-                        param_count += 1
-                    
-                    if 'domain' in credentials:
-                        updates.append(f"domain = ${param_count}")
-                        values.append(credentials['domain'])
-                        param_count += 1
-                    
-                    if not updates:
-                        return {"success": True, "message": "No credentials to update"}
-                    
-                    # Add service_id and target_id as the last parameters
-                    values.extend([service_id, target_id])
-                    
-                    # Build and execute update query
-                    query = f"""
-                        UPDATE assets.target_services 
-                        SET {', '.join(updates)}
-                        WHERE id = ${param_count} AND target_id = ${param_count + 1}
-                    """
-                    
-                    await conn.execute(query, *values)
-                    
-                    return {
-                        "success": True,
-                        "message": "Service credentials updated successfully"
-                    }
-                    
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to update service credentials", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update service credentials"
-                )
-
-        # ============================================================================
-        # TARGET GROUPS ENDPOINTS
-        # ============================================================================
+    async def _create_target_service(self, conn, target_id: int, service: TargetServiceCreate, 
+                                   connection_status: str = 'unknown', last_tested_at = None):
+        """Create a target service with encrypted credentials"""
+        # Encrypt sensitive fields
+        password_encrypted = self._encrypt_field(service.password) if service.password else None
+        private_key_encrypted = self._encrypt_field(service.private_key) if service.private_key else None
+        api_key_encrypted = self._encrypt_field(service.api_key) if service.api_key else None
+        bearer_token_encrypted = self._encrypt_field(service.bearer_token) if service.bearer_token else None
+        certificate_encrypted = self._encrypt_field(service.certificate) if service.certificate else None
+        passphrase_encrypted = self._encrypt_field(service.passphrase) if service.passphrase else None
         
-        @self.app.get("/target-groups")
-        async def list_target_groups(
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000),
-            include_counts: bool = Query(False, description="Include target counts for each group")
-        ):
-            """List all target groups with optional target counts"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get groups with basic info
-                    groups_query = """
-                        SELECT id, name, description, parent_group_id, path, level, 
-                               color, icon, created_at, updated_at
-                        FROM assets.target_groups
-                        ORDER BY path
-                        OFFSET $1 LIMIT $2
-                    """
-                    groups = await conn.fetch(groups_query, skip, limit)
-                    
-                    # Get total count
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.target_groups")
-                    
-                    group_list = []
-                    for group in groups:
-                        group_dict = {
-                            "id": group['id'],
-                            "name": group['name'],
-                            "description": group['description'],
-                            "parent_group_id": group['parent_group_id'],
-                            "path": group['path'],
-                            "level": group['level'],
-                            "color": group['color'],
-                            "icon": group['icon'],
-                            "created_at": group['created_at'].isoformat(),
-                            "updated_at": group['updated_at'].isoformat() if group['updated_at'] else None
-                        }
-                        
-                        if include_counts:
-                            # Get target count for this group (including descendants)
-                            target_count = await conn.fetchval("""
-                                SELECT COUNT(DISTINCT tgm.target_id)
-                                FROM assets.target_group_memberships tgm
-                                JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                                WHERE tg.path LIKE $1
-                            """, group['path'] + '%')
-                            group_dict['target_count'] = target_count
-                            
-                            # Get direct target count (only this group)
-                            direct_count = await conn.fetchval("""
-                                SELECT COUNT(*)
-                                FROM assets.target_group_memberships
-                                WHERE group_id = $1
-                            """, group['id'])
-                            group_dict['direct_target_count'] = direct_count
-                        
-                        group_list.append(group_dict)
-                    
-                    return {"groups": group_list, "total": total, "skip": skip, "limit": limit}
-            except Exception as e:
-                self.logger.error("Failed to fetch target groups", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to fetch target groups"
-                )
-
-        @self.app.post("/target-groups")
-        async def create_target_group(group_data: dict):
-            """Create a new target group"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Calculate path and level
-                    if group_data.get('parent_group_id'):
-                        parent = await conn.fetchrow(
-                            "SELECT path, level FROM assets.target_groups WHERE id = $1",
-                            group_data['parent_group_id']
-                        )
-                        if not parent:
-                            raise HTTPException(status_code=400, detail="Parent group not found")
-                        
-                        path = f"{parent['path']}.{group_data['name']}"
-                        level = parent['level'] + 1
-                    else:
-                        path = group_data['name']
-                        level = 0
-                    
-                    # Insert group
-                    group_id = await conn.fetchval("""
-                        INSERT INTO assets.target_groups (name, description, parent_group_id, path, level, color, icon)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        RETURNING id
-                    """, group_data['name'], group_data.get('description'), group_data.get('parent_group_id'),
-                         path, level, group_data.get('color'), group_data.get('icon'))
-                    
-                    return {"success": True, "message": "Target group created", "group_id": group_id}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to create target group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create target group"
-                )
-
-        @self.app.get("/target-groups/{group_id}")
-        async def get_target_group(group_id: int):
-            """Get target group by ID"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    group = await conn.fetchrow("""
-                        SELECT id, name, description, parent_group_id, path, level, 
-                               color, icon, created_at, updated_at
-                        FROM assets.target_groups WHERE id = $1
-                    """, group_id)
-                    
-                    if not group:
-                        raise HTTPException(status_code=404, detail="Target group not found")
-                    
-                    # Get target count
-                    target_count = await conn.fetchval("""
-                        SELECT COUNT(DISTINCT tgm.target_id)
-                        FROM assets.target_group_memberships tgm
-                        JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                        WHERE tg.path LIKE $1
-                    """, group['path'] + '%')
-                    
-                    # Get direct target count
-                    direct_count = await conn.fetchval("""
-                        SELECT COUNT(*)
-                        FROM assets.target_group_memberships
-                        WHERE group_id = $1
-                    """, group_id)
-                    
-                    group_dict = {
-                        "id": group['id'],
-                        "name": group['name'],
-                        "description": group['description'],
-                        "parent_group_id": group['parent_group_id'],
-                        "path": group['path'],
-                        "level": group['level'],
-                        "color": group['color'],
-                        "icon": group['icon'],
-                        "target_count": target_count,
-                        "direct_target_count": direct_count,
-                        "created_at": group['created_at'].isoformat(),
-                        "updated_at": group['updated_at'].isoformat() if group['updated_at'] else None
-                    }
-                    
-                    return {"success": True, "data": group_dict}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to get target group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get target group"
-                )
-
-        @self.app.get("/target-groups-tree")
-        async def get_target_groups_tree():
-            """Get target groups as a hierarchical tree structure"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get all groups with counts
-                    groups = await conn.fetch("""
-                        SELECT id, name, description, parent_group_id, path, level, 
-                               color, icon, created_at, updated_at
-                        FROM assets.target_groups
-                        ORDER BY path
-                    """)
-                    
-                    # Build tree structure
-                    group_dict = {}
-                    root_groups = []
-                    
-                    # First pass: create all group objects
-                    for group in groups:
-                        # Get target count for this group (including descendants)
-                        target_count = await conn.fetchval("""
-                            SELECT COUNT(DISTINCT tgm.target_id)
-                            FROM assets.target_group_memberships tgm
-                            JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                            WHERE tg.path LIKE $1
-                        """, group['path'] + '%')
-                        
-                        # Get direct target count (only this group)
-                        direct_count = await conn.fetchval("""
-                            SELECT COUNT(*)
-                            FROM assets.target_group_memberships
-                            WHERE group_id = $1
-                        """, group['id'])
-                        
-                        group_obj = {
-                            "id": group['id'],
-                            "name": group['name'],
-                            "description": group['description'],
-                            "parent_group_id": group['parent_group_id'],
-                            "path": group['path'],
-                            "level": group['level'],
-                            "color": group['color'],
-                            "icon": group['icon'],
-                            "target_count": target_count,
-                            "direct_target_count": direct_count,
-                            "created_at": group['created_at'].isoformat(),
-                            "updated_at": group['updated_at'].isoformat() if group['updated_at'] else None,
-                            "children": []
-                        }
-                        
-                        group_dict[group['id']] = group_obj
-                        
-                        if group['parent_group_id'] is None:
-                            root_groups.append(group_obj)
-                    
-                    # Second pass: build parent-child relationships
-                    for group in groups:
-                        if group['parent_group_id'] is not None:
-                            parent = group_dict.get(group['parent_group_id'])
-                            if parent:
-                                parent['children'].append(group_dict[group['id']])
-                    
-                    return {"tree": root_groups}
-            except Exception as e:
-                self.logger.error("Failed to get target groups tree", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get target groups tree"
-                )
-
-        @self.app.put("/target-groups/{group_id}")
-        async def update_target_group(group_id: int, group_data: dict):
-            """Update target group"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Check if group exists
-                    existing = await conn.fetchval("SELECT id FROM assets.target_groups WHERE id = $1", group_id)
-                    if not existing:
-                        raise HTTPException(status_code=404, detail="Target group not found")
-                    
-                    # Build update query
-                    updates = []
-                    values = []
-                    param_count = 1
-                    
-                    if 'name' in group_data:
-                        updates.append(f"name = ${param_count}")
-                        values.append(group_data['name'])
-                        param_count += 1
-                    
-                    if 'description' in group_data:
-                        updates.append(f"description = ${param_count}")
-                        values.append(group_data['description'])
-                        param_count += 1
-                    
-                    if 'color' in group_data:
-                        updates.append(f"color = ${param_count}")
-                        values.append(group_data['color'])
-                        param_count += 1
-                    
-                    if 'icon' in group_data:
-                        updates.append(f"icon = ${param_count}")
-                        values.append(group_data['icon'])
-                        param_count += 1
-                    
-                    if not updates:
-                        return {"success": True, "message": "No changes to update"}
-                    
-                    # Add updated_at
-                    updates.append(f"updated_at = ${param_count}")
-                    values.append(datetime.utcnow())
-                    param_count += 1
-                    
-                    # Add group_id as the last parameter
-                    values.append(group_id)
-                    
-                    query = f"""
-                        UPDATE assets.target_groups 
-                        SET {', '.join(updates)}
-                        WHERE id = ${param_count}
-                        RETURNING id
-                    """
-                    
-                    result = await conn.fetchval(query, *values)
-                    
-                    if not result:
-                        raise HTTPException(status_code=404, detail="Target group not found")
-                    
-                    return {"success": True, "message": "Target group updated"}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to update target group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update target group"
-                )
-
-        @self.app.delete("/target-groups/{group_id}")
-        async def delete_target_group(group_id: int):
-            """Delete target group"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    async with conn.transaction():
-                        # Check if group exists
-                        existing = await conn.fetchval("SELECT id FROM assets.target_groups WHERE id = $1", group_id)
-                        if not existing:
-                            raise HTTPException(status_code=404, detail="Target group not found")
-                        
-                        # Delete group memberships first
-                        await conn.execute("DELETE FROM assets.target_group_memberships WHERE group_id = $1", group_id)
-                        
-                        # Delete the group
-                        result = await conn.execute("DELETE FROM assets.target_groups WHERE id = $1", group_id)
-                        
-                        if result == "DELETE 0":
-                            raise HTTPException(status_code=404, detail="Target group not found")
-                        
-                        return {"success": True, "message": "Target group deleted"}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to delete target group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to delete target group"
-                )
-
-        @self.app.delete("/target-groups/{group_id}/targets/{target_id}")
-        async def remove_target_from_group(group_id: int, target_id: int):
-            """Remove target from group"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Check if membership exists
-                    existing = await conn.fetchval("""
-                        SELECT EXISTS(SELECT 1 FROM assets.target_group_memberships 
-                                     WHERE group_id = $1 AND target_id = $2)
-                    """, group_id, target_id)
-                    
-                    if not existing:
-                        raise HTTPException(status_code=404, detail="Target not found in group")
-                    
-                    # Remove membership
-                    await conn.execute("""
-                        DELETE FROM assets.target_group_memberships 
-                        WHERE group_id = $1 AND target_id = $2
-                    """, group_id, target_id)
-                    
-                    return {"success": True, "message": "Target removed from group"}
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to remove target from group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to remove target from group"
-                )
-
-        @self.app.post("/target-groups/{group_id}/targets")
-        async def add_targets_to_group(group_id: int, request_data: dict):
-            """Add targets to a group"""
-            try:
-                target_ids = request_data.get('target_ids', [])
-                if not target_ids:
-                    raise HTTPException(status_code=400, detail="No target IDs provided")
-                
-                async with self.db.pool.acquire() as conn:
-                    async with conn.transaction():
-                        # Verify group exists
-                        group_exists = await conn.fetchval(
-                            "SELECT EXISTS(SELECT 1 FROM assets.target_groups WHERE id = $1)",
-                            group_id
-                        )
-                        
-                        if not group_exists:
-                            raise HTTPException(status_code=404, detail="Target group not found")
-                        
-                        added_count = 0
-                        for target_id in target_ids:
-                            # Check if target exists
-                            target_exists = await conn.fetchval(
-                                "SELECT EXISTS(SELECT 1 FROM assets.targets WHERE id = $1)",
-                                target_id
-                            )
-                            
-                            if not target_exists:
-                                continue
-                            
-                            # Check if membership already exists
-                            membership_exists = await conn.fetchval("""
-                                SELECT EXISTS(SELECT 1 FROM assets.target_group_memberships 
-                                             WHERE target_id = $1 AND group_id = $2)
-                            """, target_id, group_id)
-                            
-                            if not membership_exists:
-                                await conn.execute("""
-                                    INSERT INTO assets.target_group_memberships (target_id, group_id)
-                                    VALUES ($1, $2)
-                                """, target_id, group_id)
-                                added_count += 1
-                        
-                        return {
-                            "success": True,
-                            "message": f"Added {added_count} targets to group",
-                            "added_count": added_count
-                        }
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to add targets to group", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to add targets to group"
-                )
-
-        @self.app.get("/target-groups/{group_id}/targets")
-        async def get_group_targets(
-            group_id: int,
-            skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000),
-            include_descendants: bool = Query(False, description="Include targets from descendant groups")
-        ):
-            """Get targets in a specific group"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Verify group exists
-                    group = await conn.fetchrow(
-                        "SELECT id, path FROM assets.target_groups WHERE id = $1",
-                        group_id
-                    )
-                    
-                    if not group:
-                        raise HTTPException(status_code=404, detail="Target group not found")
-                    
-                    if include_descendants:
-                        # Get targets from this group and all descendants
-                        targets_query = """
-                            SELECT DISTINCT t.id, t.name, t.host, t.target_type, t.connection_type,
-                                   t.description, t.tags, t.created_at, t.updated_at
-                            FROM assets.targets t
-                            JOIN assets.target_group_memberships tgm ON t.id = tgm.target_id
-                            JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                            WHERE tg.path LIKE $1
-                            ORDER BY t.created_at DESC
-                            LIMIT $2 OFFSET $3
-                        """
-                        count_query = """
-                            SELECT COUNT(DISTINCT t.id)
-                            FROM assets.targets t
-                            JOIN assets.target_group_memberships tgm ON t.id = tgm.target_id
-                            JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                            WHERE tg.path LIKE $1
-                        """
-                        path_pattern = group['path'] + '%'
-                        targets = await conn.fetch(targets_query, path_pattern, limit, skip)
-                        total = await conn.fetchval(count_query, path_pattern)
-                    else:
-                        # Get targets only from this specific group
-                        targets_query = """
-                            SELECT t.id, t.name, t.host, t.target_type, t.connection_type,
-                                   t.description, t.tags, t.created_at, t.updated_at
-                            FROM assets.targets t
-                            JOIN assets.target_group_memberships tgm ON t.id = tgm.target_id
-                            WHERE tgm.group_id = $1
-                            ORDER BY t.created_at DESC
-                            LIMIT $2 OFFSET $3
-                        """
-                        count_query = """
-                            SELECT COUNT(*)
-                            FROM assets.target_group_memberships
-                            WHERE group_id = $1
-                        """
-                        targets = await conn.fetch(targets_query, group_id, limit, skip)
-                        total = await conn.fetchval(count_query, group_id)
-                    
-                    # Build target list with services
-                    target_list = []
-                    for target_row in targets:
-                        # Get services for this target
-                        service_rows = await conn.fetch("""
-                            SELECT id, target_id, service_type, port, is_default, is_secure, 
-                                   is_enabled, notes, credential_type, created_at,
-                                   connection_status, last_tested_at
-                            FROM assets.target_services 
-                            WHERE target_id = $1 
-                            ORDER BY is_default DESC, port ASC
-                        """, target_row['id'])
-                        
-                        services = []
-                        for service_row in service_rows:
-                            services.append(TargetServiceSummary(
-                                id=service_row['id'],
-                                service_type=service_row['service_type'],
-                                port=service_row['port'],
-                                is_default=service_row['is_default'],
-                                is_secure=service_row['is_secure'],
-                                is_enabled=service_row['is_enabled'],
-                                credential_type=service_row['credential_type'],
-                                has_credentials=service_row['credential_type'] is not None,
-                                connection_status=service_row['connection_status'],
-                                last_tested_at=service_row['last_tested_at'].isoformat() if service_row['last_tested_at'] else None
-                            ))
-                        
-                        # Parse tags
-                        tags = target_row['tags']
-                        if isinstance(tags, str):
-                            tags = json.loads(tags)
-                        elif tags is None:
-                            tags = []
-                        
-                        target_list.append(EnhancedTargetSummary(
-                            id=target_row['id'],
-                            name=target_row['name'],
-                            hostname=target_row['host'],
-                            ip_address=await self._resolve_ip_address(target_row['host']),
-                            os_type=target_row['target_type'],
-                            os_version="Unknown",  # Not available in current schema
-                            description=target_row['description'],
-                            tags=tags,
-                            services=services,
-                            created_at=target_row['created_at'].isoformat(),
-                            updated_at=target_row['updated_at'].isoformat() if target_row['updated_at'] else None
-                        ))
-                    
-                    return {
-                        "targets": target_list,
-                        "total": total,
-                        "skip": skip,
-                        "limit": limit,
-                        "group_id": group_id,
-                        "include_descendants": include_descendants
-                    }
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to get group targets", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get group targets"
-                )
+        await conn.execute("""
+            INSERT INTO assets.target_services 
+            (target_id, service_type, port, is_default, is_secure, is_enabled, notes,
+             credential_type, username, password_encrypted, private_key_encrypted, 
+             public_key, api_key_encrypted, bearer_token_encrypted, certificate_encrypted, 
+             passphrase_encrypted, domain, connection_status, last_tested_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        """, 
+        target_id, service.service_type, service.port, service.is_default, 
+        service.is_secure, service.is_enabled, service.notes, service.credential_type,
+        service.username, password_encrypted, private_key_encrypted, service.public_key,
+        api_key_encrypted, bearer_token_encrypted, certificate_encrypted, 
+        passphrase_encrypted, service.domain, connection_status, last_tested_at
+        )
 
 if __name__ == "__main__":
     service = AssetService()
