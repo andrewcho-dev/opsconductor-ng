@@ -2,13 +2,18 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import SMTPSettingsComponent from '../components/SMTPSettings';
-
+import SlackSettings from '../components/SlackSettings';
+import TeamsSettings from '../components/TeamsSettings';
+import DiscordSettings from '../components/DiscordSettings';
+import WebhookSettings from '../components/WebhookSettings';
 
 import { 
   Settings, 
   Mail, 
- 
- 
+  MessageSquare,
+  Users,
+  MessageCircle,
+  Globe,
   ChevronRight,
   AlertCircle
 } from 'lucide-react';
@@ -20,27 +25,49 @@ const SystemSettings: React.FC = () => {
   
   // Extract section from URL path
   const pathParts = location.pathname.split('/');
-  const currentSection = pathParts[2] || 'overview';
+  const currentSection = pathParts[2] || 'smtp';
   
   const sections = [
     {
-      id: 'overview',
-      name: 'Overview',
-      icon: <Settings size={16} />,
-      description: 'System settings overview and navigation',
-      component: null
-    },
-
-    {
       id: 'smtp',
-      name: 'SMTP Configuration',
+      name: 'Email (SMTP)',
       icon: <Mail size={16} />,
-      description: 'Configure email server settings for system emails',
+      description: 'Configure email server settings for system notifications',
       component: SMTPSettingsComponent,
       adminOnly: true
     },
-
-
+    {
+      id: 'slack',
+      name: 'Slack',
+      icon: <MessageSquare size={16} />,
+      description: 'Send notifications to Slack channels via webhooks',
+      component: SlackSettings,
+      adminOnly: true
+    },
+    {
+      id: 'teams',
+      name: 'Microsoft Teams',
+      icon: <Users size={16} />,
+      description: 'Send notifications to Teams channels via webhooks',
+      component: TeamsSettings,
+      adminOnly: true
+    },
+    {
+      id: 'discord',
+      name: 'Discord',
+      icon: <MessageCircle size={16} />,
+      description: 'Send notifications to Discord channels via webhooks',
+      component: DiscordSettings,
+      adminOnly: true
+    },
+    {
+      id: 'webhook',
+      name: 'Generic Webhook',
+      icon: <Globe size={16} />,
+      description: 'Configure custom webhook endpoints for notifications',
+      component: WebhookSettings,
+      adminOnly: true
+    }
   ];
 
   const visibleSections = sections.filter(section => !section.adminOnly || user?.role === 'admin');
@@ -83,7 +110,7 @@ const SystemSettings: React.FC = () => {
           }
           .dashboard-grid {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 300px 1fr;
             gap: 12px;
             align-items: stretch;
             height: calc(100vh - 110px);
@@ -266,6 +293,69 @@ const SystemSettings: React.FC = () => {
             margin-left: 6px;
           }
           
+          /* Navigation styles */
+          .settings-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px solid transparent;
+          }
+          .nav-item:hover:not(.disabled) {
+            background: var(--neutral-100);
+            border-color: var(--neutral-200);
+          }
+          .nav-item.active {
+            background: var(--primary-blue-light);
+            border-color: var(--primary-blue);
+            color: var(--primary-blue-dark);
+          }
+          .nav-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .nav-icon {
+            flex-shrink: 0;
+            color: var(--neutral-600);
+          }
+          .nav-item.active .nav-icon {
+            color: var(--primary-blue);
+          }
+          .nav-content {
+            flex: 1;
+            min-width: 0;
+          }
+          .nav-title {
+            font-weight: 500;
+            font-size: 13px;
+            color: var(--neutral-800);
+            margin-bottom: 2px;
+          }
+          .nav-item.active .nav-title {
+            color: var(--primary-blue-dark);
+          }
+          .nav-description {
+            font-size: 11px;
+            color: var(--neutral-500);
+            line-height: 1.3;
+          }
+          .nav-item.active .nav-description {
+            color: var(--primary-blue-dark);
+            opacity: 0.8;
+          }
+          .nav-chevron {
+            flex-shrink: 0;
+            color: var(--primary-blue);
+          }
+
           /* Component wrapper */
           .component-wrapper {
             flex: 1;
@@ -323,29 +413,56 @@ const SystemSettings: React.FC = () => {
       {/* Dashboard-style header */}
       <div className="dashboard-header">
         <div className="header-left">
-          <h1>System Settings</h1>
-          <p className="header-subtitle">Configure system-wide settings and preferences</p>
+          <h1>Communication Settings</h1>
+          <p className="header-subtitle">Configure notification channels and communication methods</p>
         </div>
       </div>
 
-      {/* 2/3, 1/3 dashboard grid */}
+      {/* Left panel navigation, Right panel content */}
       <div className="dashboard-grid">
-        {/* Left 2/3: Settings Content */}
+        {/* Left Panel: Communication Methods Navigation */}
+        <div className="dashboard-section">
+          <div className="section-header">
+            Communication Methods
+          </div>
+          <div className="compact-content">
+            <div className="settings-nav">
+              {visibleSections.map((section) => (
+                <div
+                  key={section.id}
+                  className={`nav-item ${currentSection === section.id ? 'active' : ''} ${
+                    section.adminOnly && user?.role !== 'admin' ? 'disabled' : ''
+                  }`}
+                  onClick={() => {
+                    if (!section.adminOnly || user?.role === 'admin') {
+                      handleSectionChange(section.id);
+                    }
+                  }}
+                >
+                  <div className="nav-icon">{section.icon}</div>
+                  <div className="nav-content">
+                    <div className="nav-title">{section.name}</div>
+                    <div className="nav-description">{section.description}</div>
+                  </div>
+                  {currentSection === section.id && (
+                    <div className="nav-chevron">
+                      <ChevronRight size={14} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel: Settings Content */}
         <div className="dashboard-section">
           <div className="section-header">
             {currentSectionData.name}
+            {currentSectionData.adminOnly && <span className="admin-badge">Admin Only</span>}
           </div>
           <div className="compact-content">
             <div className="settings-content">
-              <div className="content-header">
-                <h2 className="content-title">
-                  {currentSectionData.icon}
-                  {currentSectionData.name}
-                  {currentSectionData.adminOnly && <span className="admin-badge">Admin Only</span>}
-                </h2>
-                <p className="content-description">{currentSectionData.description}</p>
-              </div>
-
               {/* Check admin access for admin-only sections */}
               {currentSectionData.adminOnly && user?.role !== 'admin' ? (
                 <div className="access-denied">
@@ -354,36 +471,6 @@ const SystemSettings: React.FC = () => {
                     <strong>Access Restricted</strong><br />
                     Only administrators can access this section.
                   </div>
-                </div>
-              ) : currentSection === 'overview' ? (
-                /* Overview Section */
-                <div className="overview-grid">
-
-
-                  <div className="overview-card">
-                    <h3>
-                      <Mail size={16} />
-                      SMTP Configuration
-                      <span className="admin-badge">Admin</span>
-                    </h3>
-                    <p>
-                      Configure the email server settings that will be used for all system emails. 
-                      Test the configuration to ensure emails are delivered properly.
-                    </p>
-                    <div className="card-actions">
-                      <button 
-                        className="btn-card"
-                        onClick={() => handleSectionChange('smtp')}
-                        disabled={user?.role !== 'admin'}
-                      >
-                        Configure SMTP
-                      </button>
-                    </div>
-                  </div>
-
-
-
-
                 </div>
               ) : CurrentComponent ? (
                 /* Render the selected component */
@@ -396,18 +483,6 @@ const SystemSettings: React.FC = () => {
                   <div>Section not found or not available.</div>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right 1/3: Navigation or Future Use */}
-        <div className="dashboard-section">
-          <div className="section-header">
-            Additional Information
-          </div>
-          <div className="compact-content">
-            <div style={{ padding: '12px', color: 'var(--neutral-500)', fontSize: '12px', textAlign: 'center' }}>
-              <p>This space is reserved for field details or future enhancements.</p>
             </div>
           </div>
         </div>

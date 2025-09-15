@@ -111,7 +111,11 @@ const SMTPSettingsComponent: React.FC = () => {
       setError(null);
       setTestResult(null);
       
-      const testRequest: SMTPTestRequest = { test_email: testEmail };
+      const testRequest: SMTPTestRequest = { 
+        to_email: testEmail,
+        subject: "Test Email from OpsConductor",
+        message: "This is a test email to verify SMTP configuration."
+      };
       const response = await smtpApi.testSMTPSettings(testRequest);
       
       if (response.success) {

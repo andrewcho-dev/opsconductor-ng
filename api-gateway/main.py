@@ -51,6 +51,7 @@ SERVICE_ROUTES = {
     # Communication Service
     "/api/v1/templates": "COMMUNICATION_SERVICE_URL",
     "/api/v1/channels": "COMMUNICATION_SERVICE_URL",
+    "/api/v1/notifications": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
     
     # AI Service

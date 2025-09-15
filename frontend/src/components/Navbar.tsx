@@ -11,15 +11,15 @@ import {
   Settings, 
   Calendar, 
   Play, 
-  Bot,
+
   LogOut,
   Menu,
   ChevronRight,
   Code,
   Mail,
-  ClipboardList,
+
   History,
-  Plus,
+
   List,
   Activity
 } from 'lucide-react';
@@ -97,14 +97,7 @@ const Navbar: React.FC = () => {
                 <span className="nav-icon"><BarChart3 size={16} /></span>
                 Dashboard
               </Link>
-              <Link 
-                to="/ai-chat" 
-                className={`nav-menu-item ${isActive('/ai-chat') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Bot size={16} /></span>
-                AI Assistant
-              </Link>
+
               <Link 
                 to="/user-management" 
                 className={`nav-menu-item ${isActive('/user-management') ? 'active' : ''}`} 
@@ -201,7 +194,7 @@ const Navbar: React.FC = () => {
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Mail size={14} /></span>
-                    SMTP Config
+                    System Settings
                     {!hasPermission(user, PERMISSIONS.SMTP_CONFIG) && <span className="admin-badge">Admin</span>}
                   </Link>
 

@@ -8,7 +8,10 @@ import {
 
   LoginRequest, AuthResponse,
 
-  SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse
+  SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse,
+  CommunicationChannel, CommunicationChannelCreate, CommunicationChannelUpdate,
+  CommunicationTestRequest, CommunicationTestResponse,
+  SlackSettings, TeamsSettings, DiscordSettings, WebhookSettings
 } from '../types';
 
 console.log('🔥 API SERVICE LOADED AT', new Date().toISOString());
@@ -539,18 +542,102 @@ export const smtpApi = {
   },
 
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
-    // For now, return a mock response since we need to implement SMTP testing in the communication service
-    // TODO: Implement actual SMTP test endpoint in communication service
-    return {
-      success: true,
-      message: 'SMTP test functionality will be implemented in the communication service'
-    };
+    try {
+      const response: AxiosResponse<SMTPTestResponse> = await api.post('/api/v1/notifications/smtp/test', testRequest);
+      return response.data;
+    } catch (error: any) {
+      console.error('SMTP test failed:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || 'Failed to test SMTP settings'
+      };
+    }
   }
 };
 
 
 
 
+
+// Communication Channels API
+export const communicationApi = {
+  // Get all channels
+  getChannels: async (): Promise<CommunicationChannel[]> => {
+    try {
+      const response: AxiosResponse<{ channels: CommunicationChannel[] }> = await api.get('/api/v1/channels');
+      return response.data.channels;
+    } catch (error: any) {
+      console.error('Failed to fetch communication channels:', error);
+      throw error;
+    }
+  },
+
+  // Get channel by type
+  getChannelByType: async (channelType: string): Promise<CommunicationChannel | null> => {
+    try {
+      const channels = await communicationApi.getChannels();
+      return channels.find(channel => channel.channel_type === channelType) || null;
+    } catch (error: any) {
+      console.error('Failed to fetch channel by type:', error);
+      return null;
+    }
+  },
+
+  // Create or update channel
+  saveChannel: async (channelData: CommunicationChannelCreate): Promise<CommunicationChannel> => {
+    try {
+      // Check if channel exists
+      const existingChannel = await communicationApi.getChannelByType(channelData.channel_type);
+      
+      if (existingChannel) {
+        // Update existing channel
+        const response: AxiosResponse<CommunicationChannel> = await api.put(
+          `/api/v1/channels/${existingChannel.id}`,
+          channelData
+        );
+        return response.data;
+      } else {
+        // Create new channel
+        const response: AxiosResponse<CommunicationChannel> = await api.post(
+          '/api/v1/channels',
+          channelData
+        );
+        return response.data;
+      }
+    } catch (error: any) {
+      console.error('Failed to save communication channel:', error);
+      throw error;
+    }
+  },
+
+  // Test communication channel
+  testChannel: async (channelType: string, testRequest: CommunicationTestRequest): Promise<CommunicationTestResponse> => {
+    try {
+      const response: AxiosResponse<CommunicationTestResponse> = await api.post(
+        `/api/v1/channels/test/${channelType}`,
+        testRequest
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Communication test failed:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || 'Failed to test communication channel',
+        details: error.message
+      };
+    }
+  },
+
+  // Delete channel
+  deleteChannel: async (channelId: number): Promise<void> => {
+    try {
+      await api.delete(`/api/v1/channels/${channelId}`);
+    } catch (error: any) {
+      console.error('Failed to delete communication channel:', error);
+      throw error;
+    }
+  }
+};
 
 // Automation Service API
 export const automationApi = {

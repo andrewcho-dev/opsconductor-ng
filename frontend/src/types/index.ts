@@ -315,12 +315,94 @@ export interface SMTPSettingsResponse {
 }
 
 export interface SMTPTestRequest {
-  test_email: string;
+  to_email: string;
+  subject?: string;
+  message?: string;
 }
 
 export interface SMTPTestResponse {
   success: boolean;
   message: string;
+}
+
+// Communication Channel Types
+export interface CommunicationChannel {
+  id: number;
+  name: string;
+  channel_type: 'email' | 'slack' | 'teams' | 'discord' | 'webhook';
+  configuration: Record<string, any>;
+  is_active: boolean;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommunicationChannelCreate {
+  name: string;
+  channel_type: 'email' | 'slack' | 'teams' | 'discord' | 'webhook';
+  configuration: Record<string, any>;
+  is_active?: boolean;
+}
+
+export interface CommunicationChannelUpdate {
+  name?: string;
+  channel_type?: 'email' | 'slack' | 'teams' | 'discord' | 'webhook';
+  configuration?: Record<string, any>;
+  is_active?: boolean;
+}
+
+// Slack Configuration
+export interface SlackSettings {
+  webhook_url: string;
+  channel?: string;
+  username?: string;
+  icon_emoji?: string;
+  icon_url?: string;
+}
+
+// Microsoft Teams Configuration
+export interface TeamsSettings {
+  webhook_url: string;
+  title?: string;
+  theme_color?: string;
+}
+
+// Discord Configuration
+export interface DiscordSettings {
+  webhook_url: string;
+  username?: string;
+  avatar_url?: string;
+}
+
+// Generic Webhook Configuration
+export interface WebhookSettings {
+  url: string;
+  method: 'POST' | 'PUT' | 'PATCH';
+  headers?: Record<string, string>;
+  auth_type?: 'none' | 'basic' | 'bearer' | 'api_key';
+  auth_config?: {
+    username?: string;
+    password?: string;
+    token?: string;
+    api_key?: string;
+    api_key_header?: string;
+  };
+  payload_template?: string;
+  content_type?: string;
+}
+
+// Test Request/Response for all communication methods
+export interface CommunicationTestRequest {
+  channel_type: 'email' | 'slack' | 'teams' | 'discord' | 'webhook';
+  test_message: string;
+  test_subject?: string;
+  recipient?: string; // For email
+}
+
+export interface CommunicationTestResponse {
+  success: boolean;
+  message: string;
+  details?: string;
 }
 
 

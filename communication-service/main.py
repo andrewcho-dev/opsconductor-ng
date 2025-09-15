@@ -767,11 +767,11 @@ class CommunicationService(BaseService):
             """Test SMTP configuration by sending a test email"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get active SMTP settings
+                    # Get active SMTP settings from notification_channels
                     row = await conn.fetchrow("""
-                        SELECT host, port, username, password, use_tls, use_ssl, from_email, from_name
-                        FROM communication.smtp_settings 
-                        WHERE is_active = true
+                        SELECT configuration
+                        FROM communication.notification_channels 
+                        WHERE channel_type = 'smtp' AND is_active = true
                         ORDER BY created_at DESC
                         LIMIT 1
                     """)
@@ -782,6 +782,12 @@ class CommunicationService(BaseService):
                             detail="No active SMTP configuration found"
                         )
                     
+                    # Parse configuration JSON
+                    config = row['configuration']
+                    if isinstance(config, str):
+                        import json
+                        config = json.loads(config)
+                    
                     # Test SMTP connection (simplified - in production you'd use actual SMTP library)
                     import smtplib
                     from email.mime.text import MIMEText
@@ -790,21 +796,21 @@ class CommunicationService(BaseService):
                     try:
                         # Create message
                         msg = MIMEMultipart()
-                        msg['From'] = f"{row['from_name']} <{row['from_email']}>" if row['from_name'] else row['from_email']
+                        msg['From'] = f"{config.get('from_name', '')} <{config.get('from_email', '')}>" if config.get('from_name') else config.get('from_email', '')
                         msg['To'] = test_request.to_email
                         msg['Subject'] = test_request.subject
                         msg.attach(MIMEText(test_request.message, 'plain'))
                         
                         # Connect to SMTP server
-                        if row['use_ssl']:
-                            server = smtplib.SMTP_SSL(row['host'], row['port'])
+                        if config.get('use_ssl', False):
+                            server = smtplib.SMTP_SSL(config.get('host', ''), config.get('port', 587))
                         else:
-                            server = smtplib.SMTP(row['host'], row['port'])
-                            if row['use_tls']:
+                            server = smtplib.SMTP(config.get('host', ''), config.get('port', 587))
+                            if config.get('use_tls', False):
                                 server.starttls()
                         
-                        if row['username'] and row['password']:
-                            server.login(row['username'], row['password'])
+                        if config.get('username') and config.get('password'):
+                            server.login(config.get('username'), config.get('password'))
                         
                         # Send email
                         server.send_message(msg)
@@ -822,6 +828,49 @@ class CommunicationService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to test SMTP settings"
+                )
+
+        @self.app.post("/channels/test/{channel_type}", response_model=dict)
+        async def test_communication_channel(channel_type: str, test_request: dict):
+            """Test communication channel configuration"""
+            try:
+                # Get channel configuration
+                async with self.db.pool.acquire() as conn:
+                    channel_config = await conn.fetchrow(
+                        "SELECT * FROM communication.channels WHERE channel_type = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1",
+                        channel_type
+                    )
+                    
+                    if not channel_config:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"No {channel_type} configuration found"
+                        )
+                    
+                    config = channel_config['configuration']
+                    test_message = test_request.get('test_message', 'This is a test message from OpsConductor!')
+                    
+                    if channel_type == 'slack':
+                        return await self._test_slack(config, test_message)
+                    elif channel_type == 'teams':
+                        return await self._test_teams(config, test_message)
+                    elif channel_type == 'discord':
+                        return await self._test_discord(config, test_message)
+                    elif channel_type == 'webhook':
+                        return await self._test_webhook(config, test_message)
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Unsupported channel type: {channel_type}"
+                        )
+                    
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error(f"Failed to test {channel_type} settings", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to test {channel_type} settings"
                 )
 
         # ============================================================================
@@ -1342,6 +1391,145 @@ class CommunicationService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update channel"
                 )
+
+    async def _test_slack(self, config: dict, message: str) -> dict:
+        """Test Slack webhook configuration"""
+        import aiohttp
+        
+        webhook_url = config.get('webhook_url')
+        if not webhook_url:
+            return {"success": False, "message": "Webhook URL is required"}
+        
+        payload = {
+            "text": message,
+            "username": config.get('username', 'OpsConductor'),
+            "icon_emoji": config.get('icon_emoji', ':robot_face:')
+        }
+        
+        if config.get('channel'):
+            payload['channel'] = config['channel']
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(webhook_url, json=payload) as response:
+                    if response.status == 200:
+                        return {"success": True, "message": "Slack test message sent successfully"}
+                    else:
+                        error_text = await response.text()
+                        return {"success": False, "message": f"Slack webhook failed: {error_text}"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send Slack message: {str(e)}"}
+
+    async def _test_teams(self, config: dict, message: str) -> dict:
+        """Test Microsoft Teams webhook configuration"""
+        import aiohttp
+        
+        webhook_url = config.get('webhook_url')
+        if not webhook_url:
+            return {"success": False, "message": "Webhook URL is required"}
+        
+        payload = {
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": config.get('theme_color', '0078D4'),
+            "title": config.get('title', 'OpsConductor Notification'),
+            "text": message
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(webhook_url, json=payload) as response:
+                    if response.status == 200:
+                        return {"success": True, "message": "Teams test message sent successfully"}
+                    else:
+                        error_text = await response.text()
+                        return {"success": False, "message": f"Teams webhook failed: {error_text}"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send Teams message: {str(e)}"}
+
+    async def _test_discord(self, config: dict, message: str) -> dict:
+        """Test Discord webhook configuration"""
+        import aiohttp
+        
+        webhook_url = config.get('webhook_url')
+        if not webhook_url:
+            return {"success": False, "message": "Webhook URL is required"}
+        
+        payload = {
+            "content": message,
+            "username": config.get('username', 'OpsConductor')
+        }
+        
+        if config.get('avatar_url'):
+            payload['avatar_url'] = config['avatar_url']
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(webhook_url, json=payload) as response:
+                    if response.status in [200, 204]:
+                        return {"success": True, "message": "Discord test message sent successfully"}
+                    else:
+                        error_text = await response.text()
+                        return {"success": False, "message": f"Discord webhook failed: {error_text}"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send Discord message: {str(e)}"}
+
+    async def _test_webhook(self, config: dict, message: str) -> dict:
+        """Test generic webhook configuration"""
+        import aiohttp
+        from datetime import datetime
+        
+        url = config.get('url')
+        if not url:
+            return {"success": False, "message": "Webhook URL is required"}
+        
+        method = config.get('method', 'POST').upper()
+        headers = config.get('headers', {}).copy()
+        auth_type = config.get('auth_type', 'none')
+        auth_config = config.get('auth_config', {})
+        content_type = config.get('content_type', 'application/json')
+        payload_template = config.get('payload_template', '{"message": "{{message}}", "timestamp": "{{timestamp}}"}')
+        
+        # Set content type header
+        headers['Content-Type'] = content_type
+        
+        # Handle authentication
+        if auth_type == 'basic' and auth_config.get('username') and auth_config.get('password'):
+            import base64
+            credentials = base64.b64encode(f"{auth_config['username']}:{auth_config['password']}".encode()).decode()
+            headers['Authorization'] = f'Basic {credentials}'
+        elif auth_type == 'bearer' and auth_config.get('token'):
+            headers['Authorization'] = f'Bearer {auth_config["token"]}'
+        elif auth_type == 'api_key' and auth_config.get('api_key') and auth_config.get('api_key_header'):
+            headers[auth_config['api_key_header']] = auth_config['api_key']
+        
+        # Prepare payload
+        try:
+            # Replace template variables
+            payload_str = payload_template.replace('{{message}}', message)
+            payload_str = payload_str.replace('{{timestamp}}', datetime.utcnow().isoformat())
+            payload_str = payload_str.replace('{{subject}}', 'Test Message')
+            
+            if content_type == 'application/json':
+                import json
+                payload = json.loads(payload_str)
+            else:
+                payload = payload_str
+        except Exception as e:
+            return {"success": False, "message": f"Invalid payload template: {str(e)}"}
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.request(method, url, json=payload if content_type == 'application/json' else None, 
+                                         data=payload if content_type != 'application/json' else None, 
+                                         headers=headers) as response:
+                    if 200 <= response.status < 300:
+                        return {"success": True, "message": f"Webhook test successful (HTTP {response.status})"}
+                    else:
+                        error_text = await response.text()
+                        return {"success": False, "message": f"Webhook failed (HTTP {response.status}): {error_text}"}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to send webhook request: {str(e)}"}
 
 
 if __name__ == "__main__":

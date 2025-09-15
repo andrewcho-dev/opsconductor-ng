@@ -5,7 +5,7 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import AIChat from './pages/AIChat';
+
 
 import Targets from './pages/Targets';
 
@@ -50,7 +50,6 @@ const App: React.FC = () => {
                   <Navbar />
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/ai-chat" element={<AIChat />} />
                     <Route path="/user-management" element={<Users />} />
                     <Route path="/user-management/:action" element={<Users />} />
                     <Route path="/user-management/:action/:id" element={<Users />} />
