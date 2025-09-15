@@ -211,15 +211,48 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # Vector Database for AI Knowledge
+  chromadb:
+    image: chromadb/chroma:0.5.0
+    container_name: opsconductor-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    networks:
+      - opsconductor-net
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_SERVER_AUTH_PROVIDER=
+      - CHROMA_SERVER_AUTH_CREDENTIALS_PROVIDER=
+      - CHROMA_AUTH_TOKEN_TRANSPORT_HEADER=
+      - ANONYMIZED_TELEMETRY=False
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
   ai-service:
     build: ./ai-service
     container_name: opsconductor-ai
     ports:
       - "3005:3005"
+      - "11434:11434"  # Ollama API port
     environment:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       REDIS_URL: redis://redis:6379/5
+      CHROMADB_URL: http://chromadb:8000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      OLLAMA_HOST: http://localhost:11434
+      CUDA_VISIBLE_DEVICES: 0
     depends_on:
       redis:
         condition: service_healthy
@@ -227,11 +260,21 @@ services:
         condition: service_healthy
       automation-service:
         condition: service_healthy
+      chromadb:
+        condition: service_started
     networks:
       - opsconductor-net
     volumes:
       - ./ai-service:/app
       - ./shared:/app/shared
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
@@ -378,3 +421,5 @@ volumes:
   postgres_data:
   redis_data:
   scheduler_data:
+  chromadb_data:
+  ollama_models:

@@ -12,6 +12,7 @@ from nlp_processor import SimpleNLPProcessor
 from workflow_generator import WorkflowGenerator
 from asset_client import AssetServiceClient
 from automation_client import AutomationServiceClient
+from ai_engine import ai_engine
 
 # Configure structured logging
 structlog.configure(
@@ -50,6 +51,16 @@ nlp_processor = SimpleNLPProcessor()
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"))
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize AI engine on startup"""
+    logger.info("Initializing AI engine...")
+    success = await ai_engine.initialize()
+    if success:
+        logger.info("AI engine initialized successfully")
+    else:
+        logger.error("Failed to initialize AI engine")
 
 class JobRequest(BaseModel):
     description: str
@@ -133,6 +144,86 @@ async def service_info():
         ],
         "automation_integration": True
     }
+
+@app.post("/ai/chat")
+async def chat_endpoint(request: ChatRequest):
+    """Enhanced chat interface with AI engine"""
+    try:
+        logger.info("Processing chat request", message=request.message)
+        response = await ai_engine.chat(request.message, request.user_id)
+        return response
+    except Exception as e:
+        logger.error("Chat request failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+@app.post("/ai/query-system")
+async def query_system_endpoint(request: dict):
+    """Query system state using natural language"""
+    try:
+        question = request.get("question", "")
+        logger.info("Processing system query", question=question)
+        response = await ai_engine.query_system(question)
+        return response
+    except Exception as e:
+        logger.error("System query failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+@app.post("/ai/generate-script")
+async def generate_script_endpoint(request: dict):
+    """Generate scripts using AI"""
+    try:
+        script_request = request.get("request", "")
+        language = request.get("language", "powershell")
+        logger.info("Processing script generation", request=script_request, language=language)
+        response = await ai_engine.generate_script(script_request, language)
+        return response
+    except Exception as e:
+        logger.error("Script generation failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+
+@app.get("/ai/knowledge-stats")
+async def get_knowledge_stats():
+    """Get AI knowledge base statistics"""
+    try:
+        if not ai_engine.vector_store:
+            return {"error": "Vector storage not available"}
+        
+        stats = await ai_engine.vector_store.get_collection_stats()
+        return {
+            "status": "success",
+            "collections": stats,
+            "total_documents": sum(s.get("document_count", 0) for s in stats.values()),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Failed to get knowledge stats", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+@app.post("/ai/store-knowledge")
+async def store_knowledge_endpoint(request: dict):
+    """Store new knowledge in the AI system"""
+    try:
+        content = request.get("content", "")
+        title = request.get("title", "")
+        category = request.get("category", "general")
+        metadata = request.get("metadata", {})
+        
+        if not content or not title:
+            raise HTTPException(status_code=400, detail="Content and title are required")
+        
+        if not ai_engine.vector_store:
+            raise HTTPException(status_code=503, detail="Vector storage not available")
+        
+        doc_id = await ai_engine.vector_store.store_knowledge(content, title, category, metadata)
+        
+        return {
+            "status": "success",
+            "document_id": doc_id,
+            "message": f"Knowledge '{title}' stored successfully"
+        }
+    except Exception as e:
+        logger.error("Failed to store knowledge", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to store knowledge: {str(e)}")
 
 @app.post("/ai/create-job", response_model=JobResponse)
 async def create_job(request: JobRequest):
