@@ -271,3 +271,27 @@ local/
 # Temporary files
 *.tmp
 *.temp
+
+# System files (should not be in repo)
+.git-credentials
+.gitconfig
+.sudo_as_admin_successful
+
+# Debug files
+debug-*.html
+debug-*.py
+
+# Migration scripts (one-time use)
+migrate-*.py
+fix_*.py
+
+# Old documentation (replaced by current docs)
+*_GUIDE.md
+*_SUMMARY.md
+*_READINESS.md
+*_PLAN.md
+*_REPORT.md
+
+# ChromaDB data
+chroma_data/
+*.chroma
