@@ -50,7 +50,7 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      AI_SERVICE_URL: http://ai-service:3005
+      AI_SERVICE_URL: http://ai-orchestrator:3000
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -242,24 +242,162 @@ services:
       retries: 5
     restart: unless-stopped
 
-  ai-service:
-    build: ./ai-service
-    container_name: opsconductor-ai
+  # AI Microservices
+  nlp-service:
+    build: ./nlp-service
+    container_name: opsconductor-nlp
     ports:
-      - "3005:3005"
-      - "11434:11434"  # Ollama API port
+      - "3006:3000"
     environment:
+      REDIS_URL: redis://redis:6379/6
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./nlp-service/main.py:/app/main.py
+      - ./nlp-service/nlp_processor.py:/app/nlp_processor.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  vector-service:
+    build: ./vector-service
+    container_name: opsconductor-vector
+    ports:
+      - "3007:3000"
+    environment:
+      REDIS_URL: redis://redis:6379/7
+      CHROMADB_URL: http://chromadb:8000
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./vector-service/main.py:/app/main.py
+      - ./vector-service/vector_store.py:/app/vector_store.py
+      - ./shared:/app/shared
+      - vector_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  llm-service:
+    build: ./llm-service
+    container_name: opsconductor-llm
+    ports:
+      - "3008:3000"
+    environment:
+      REDIS_URL: redis://redis:6379/8
+      OLLAMA_HOST: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama2
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./llm-service/main.py:/app/main.py
+      - ./llm-service/llm_engine.py:/app/llm_engine.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  ai-orchestrator:
+    build: ./ai-orchestrator
+    container_name: opsconductor-ai-orchestrator
+    ports:
+      - "3005:3000"
+    environment:
+      NLP_SERVICE_URL: http://nlp-service:3000
+      VECTOR_SERVICE_URL: http://vector-service:3000
+      LLM_SERVICE_URL: http://llm-service:3000
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       REDIS_URL: redis://redis:6379/5
+    depends_on:
+      redis:
+        condition: service_healthy
+      nlp-service:
+        condition: service_healthy
+      vector-service:
+        condition: service_healthy
+      llm-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./ai-orchestrator/main.py:/app/main.py
+      - ./ai-orchestrator/orchestrator.py:/app/orchestrator.py
+      - ./ai-orchestrator/protocol_manager.py:/app/protocol_manager.py
+      - ./ai-orchestrator/workflow_generator.py:/app/workflow_generator.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Ollama LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: opsconductor-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - opsconductor-net
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Legacy AI Service (kept for backward compatibility)
+  ai-service:
+    build: ./ai-service
+    container_name: opsconductor-ai-legacy
+    ports:
+      - "3009:3005"
+    environment:
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      REDIS_URL: redis://redis:6379/9
       CHROMADB_URL: http://chromadb:8000
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      OLLAMA_HOST: http://localhost:11434
-      CUDA_VISIBLE_DEVICES: 0
+      OLLAMA_HOST: http://ollama:11434
     depends_on:
       redis:
         condition: service_healthy
@@ -268,6 +406,8 @@ services:
       automation-service:
         condition: service_healthy
       chromadb:
+        condition: service_started
+      ollama:
         condition: service_started
     networks:
       - opsconductor-net
@@ -286,14 +426,6 @@ services:
       - ./ai-service/learning_api.py:/app/learning_api.py
       - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py
       - ./shared:/app/shared
-      - ollama_models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
@@ -462,3 +594,4 @@ volumes:
   scheduler_data:
   chromadb_data:
   ollama_models:
+  vector_data:

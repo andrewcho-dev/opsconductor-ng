@@ -1,462 +1,500 @@
 # 🤖 OpsConductor - Intelligent Infrastructure Automation Platform
 
-**The Next-Generation IT Operations Platform with Advanced AI Capabilities**
+**Next-Generation IT Operations with AI Microservices Architecture**
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/opsconductor/opsconductor-ng)
-[![AI Phase](https://img.shields.io/badge/AI%20Phase-3%20Complete-blue.svg)](docs/AI_MASTER_IMPLEMENTATION_GUIDE.md)
+[![AI Architecture](https://img.shields.io/badge/AI-Microservices-blue.svg)](AI_DOCUMENTATION.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## 🚀 **What is OpsConductor?**
+## 🚀 What is OpsConductor?
 
-OpsConductor is an **intelligent infrastructure automation platform** that combines traditional IT operations management with **advanced AI capabilities**. It transforms complex infrastructure tasks into simple natural language conversations while providing powerful automation, monitoring, and predictive analytics.
+OpsConductor is an **intelligent infrastructure automation platform** that transforms complex IT operations into simple natural language conversations. Built with a modern **AI microservices architecture**, it provides powerful automation, monitoring, and predictive analytics capabilities.
 
-### 🎯 **Key Differentiators**
-- 🧠 **AI-First Design** - Natural language interface for all operations
-- 🔮 **Predictive Intelligence** - ML-powered failure prediction and anomaly detection
-- 🤖 **Learning System** - Continuously improves from user interactions
-- 🌐 **Multi-Protocol Support** - SNMP, SSH, SMTP, VAPIX, and more
-- 📊 **Advanced Analytics** - Performance insights and maintenance scheduling
-- 🛡️ **Proactive Security** - Automated threat detection and monitoring
+### 🎯 Key Features
 
----
-
-## 🎉 **Latest: Phase 3 AI Capabilities Complete!**
-
-### 🧠 **Advanced AI Features**
-- **Natural Language Interface** - "Check system health on all Windows servers"
-- **Predictive Analytics** - ML-powered failure prediction and risk assessment
-- **Learning Engine** - Learns from every operation and user interaction
-- **Anomaly Detection** - Real-time identification of unusual system behavior
-- **Personalized Recommendations** - Tailored suggestions based on user patterns
-- **Security Monitoring** - Automated security event detection and alerting
-- **Maintenance Scheduling** - Predictive maintenance recommendations
-
-### 🤖 **What Users Experience**
-```
-👤 User: "What are my personalized recommendations?"
-
-🤖 AI: Based on your usage patterns, I recommend:
-    • Schedule maintenance for server-02 (overdue by 45 days)
-    • Optimize PowerShell scripts for 23% faster execution
-    • Enable monitoring on 3 unmonitored network switches
-    • Review security alerts from the past 24 hours
-    
-    🔮 Prediction: 85% chance of disk space issues on server-01 within 7 days
-    💡 Suggestion: Implement automated cleanup scripts
-```
+- 🧠 **AI-Powered Interface** - Natural language commands for all operations
+- 🔧 **Multi-Protocol Automation** - SNMP, SSH, SMTP, VAPIX, and more
+- 📊 **Real-Time Monitoring** - Comprehensive infrastructure visibility
+- 🤖 **Intelligent Workflows** - AI-generated automation scripts
+- 🔮 **Predictive Analytics** - Proactive issue detection and prevention
+- 🛡️ **Security-First** - Enterprise-grade security and compliance
 
 ---
 
-## 🚀 **Quick Start**
+## ⚡ Quick Start
 
-### 📋 **Prerequisites**
+### Prerequisites
 - Docker & Docker Compose
-- 4GB+ RAM (8GB recommended for AI features)
+- 8GB+ RAM (for AI services)
 - Git
 
-### ⚡ **One-Command Installation**
+### One-Command Deployment
 ```bash
 # Clone and deploy
 git clone <repository-url>
 cd opsconductor-ng
-./deploy.sh
+docker-compose up -d
 
-# Access the system
-# Frontend: http://localhost:3100
+# Access the platform
+# Web Interface: http://localhost:3100
+# API Gateway: http://localhost:3000
 # AI Chat: http://localhost:3005/ai/chat
-# API Docs: http://localhost:3000/docs
 ```
 
-### 🔑 **Default Access**
+### Default Credentials
 - **Username:** admin
 - **Password:** admin123
 
 ---
 
-## 🏗️ **System Architecture**
+## 🏗️ Architecture Overview
 
-### 🎯 **Core Services**
+### System Architecture
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   API Gateway   │    │   AI Service    │
-│   (React)       │◄──►│   (FastAPI)     │◄──►│   (Advanced)    │
+│   Web Frontend  │◄──►│   API Gateway   │◄──►│ AI Orchestrator │
+│   (React/TS)    │    │   (FastAPI)     │    │   (FastAPI)     │
 │   Port 3100     │    │   Port 3000     │    │   Port 3005     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
+                                │                       │
+                                ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │  Identity       │    │  Asset Service  │    │  Automation     │
 │  Service        │    │  (Targets)      │    │  Service        │
 │  Port 3001      │    │  Port 3002      │    │  Port 3003      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 ▼
-         ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-         │   PostgreSQL    │    │     Redis       │    │   ChromaDB      │
-         │   (Database)    │    │   (Cache)       │    │  (AI Memory)    │
-         │   Port 5432     │    │   Port 6379     │    │   Port 8000     │
-         └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### 🧠 **AI Architecture**
+### AI Microservices Architecture
 ```
-Natural Language Input
-         │
-         ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   NLP Engine    │    │  Intent         │    │  Context        │
-│   (spaCy)       │◄──►│  Detection      │◄──►│  Management     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Learning       │    │  Predictive     │    │  Protocol       │
-│  Engine         │    │  Analytics      │    │  Handlers       │
-│  (ML Models)    │    │  (Forecasting)  │    │  (Multi-Proto)  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 ▼
-                    ┌─────────────────┐
-                    │  Automation     │
-                    │  Execution      │
-                    │  (Celery)       │
-                    └─────────────────┘
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  AI Orchestrator│◄──►│   NLP Service   │    │  Vector Service │    │   LLM Service   │
+│   (Port 3005)   │    │   (Port 3006)   │    │   (Port 3007)   │    │   (Port 3008)   │
+│                 │    │                 │    │                 │    │                 │
+│ • Coordination  │    │ • Intent Class. │    │ • Knowledge     │    │ • Text Gen.     │
+│ • Routing       │    │ • Entity Extract│    │ • Vector Search │    │ • Chat Interface│
+│ • Integration   │    │ • NLP Processing│    │ • ChromaDB      │    │ • Ollama        │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ---
 
-## 🎯 **Core Capabilities**
+## 💬 Natural Language Interface
 
-### 💬 **Natural Language Interface**
 Transform complex operations into simple conversations:
 
+### System Management
 ```bash
-# System Monitoring
 "Check CPU usage on all Linux servers"
-"Show me disk space alerts from the last 24 hours"
-"Which Windows machines need updates?"
-
-# Automation Creation
-"Create a PowerShell script to restart IIS on web servers"
-"Schedule weekly disk cleanup on all Windows servers"
-"Monitor network switches via SNMP every 5 minutes"
-
-# Predictive Insights
-"What's the system health status?"
-"Any anomalies detected recently?"
-"Show me maintenance recommendations"
-"Predict failure risk for server-01"
+"Restart nginx service on web servers"
+"Update stationcontroller on CIS servers"
+"Show disk space alerts from last 24 hours"
 ```
 
-### 🤖 **Intelligent Automation**
-- **Expert Script Generation** - Production-ready PowerShell, Bash, Python
-- **Multi-Protocol Operations** - SNMP, SSH, SMTP, VAPIX integration
-- **Workflow Orchestration** - Complex multi-step automations
-- **Scheduled Tasks** - Automated recurring operations
-- **Error Handling** - Robust error detection and recovery
-
-### 📊 **Advanced Analytics**
-- **Performance Monitoring** - Real-time system metrics and trending
-- **Failure Prediction** - ML models predict operation risks
-- **Anomaly Detection** - Identify unusual system behavior
-- **User Behavior Analysis** - Personalized recommendations
-- **Security Monitoring** - Automated threat detection
-- **Maintenance Planning** - Predictive maintenance scheduling
-
-### 🔧 **Protocol Support**
-- **SNMP** - Network device monitoring and management
-- **SSH** - Remote command execution and file operations
-- **SMTP** - Email notifications and alerting
-- **VAPIX** - Axis camera management and configuration
-- **HTTP/REST** - Web service integration
-- **PowerShell** - Windows automation and management
-- **Bash** - Linux/Unix system operations
-
----
-
-## 🧠 **AI & Machine Learning Features**
-
-### 🔮 **Predictive Capabilities**
-- **Failure Risk Assessment** - Predict operation failure probability
-- **Performance Forecasting** - 7-day and 30-day metric predictions
-- **Capacity Planning** - Resource usage trend analysis
-- **Maintenance Scheduling** - Optimal maintenance timing
-- **Security Risk Analysis** - Threat likelihood assessment
-
-### 🎯 **Learning Engine**
-- **Pattern Recognition** - Learns from job execution patterns
-- **User Behavior Analysis** - Adapts to individual user preferences
-- **System Optimization** - Automated performance tuning suggestions
-- **Knowledge Growth** - Continuously expanding knowledge base
-- **Model Improvement** - Self-improving ML models
-
-### 🚨 **Anomaly Detection**
-- **Real-time Monitoring** - Continuous system behavior analysis
-- **Multi-layered Detection** - Statistical and ML-based approaches
-- **Context-aware Alerts** - Intelligent alert prioritization
-- **Root Cause Analysis** - Automated problem identification
-- **Proactive Notifications** - Early warning system
-
----
-
-## 🔌 **API Endpoints**
-
-### 🤖 **AI & Chat Interface**
-```
-POST /ai/chat                    - Natural language interface (main entry point)
-POST /ai/protocol/execute        - Direct protocol command execution
-GET  /ai/protocols/capabilities  - Get all protocol information
-GET  /ai/knowledge-stats         - Vector database statistics
-POST /ai/store-knowledge         - Add new knowledge to vector database
-```
-
-### 🧠 **Learning & Analytics**
-```
-POST /ai/learning/record-execution     - Record job execution for learning
-POST /ai/learning/predict-failure      - Get failure risk predictions
-GET  /ai/learning/recommendations/{id} - Get personalized recommendations
-GET  /ai/learning/system-health        - Get system health insights
-GET  /ai/learning/stats               - Get learning engine statistics
-GET  /ai/predictive/insights          - Get comprehensive insights
-POST /ai/predictive/analyze-performance - Analyze system performance
-POST /ai/predictive/detect-anomalies   - Detect advanced anomalies
-GET  /ai/predictive/maintenance-schedule - Get maintenance recommendations
-```
-
-### 🎯 **Core Operations**
-```
-GET  /targets                    - List infrastructure targets
-POST /targets                    - Create new target
-POST /jobs                       - Create automation job
-POST /jobs/{id}/execute         - Execute job
-GET  /executions                - List job executions
-POST /auth/login                - User authentication
-```
-
----
-
-## 📊 **Database Architecture**
-
-### 🗄️ **Multi-Schema Design**
-- **Identity Schema** - User management, roles, sessions
-- **Assets Schema** - Targets, credentials, service definitions
-- **Automation Schema** - Jobs, executions, schedules
-- **Communication Schema** - Notifications, audit logs
-- **AI Schema** - Learning data, predictions, patterns
-
-### 🧠 **AI Data Storage**
-- **ChromaDB Collections** - Vector-based knowledge storage
-- **SQLite Learning DB** - Execution patterns and user behavior
-- **Redis Cache** - Real-time metrics and session data
-- **PostgreSQL** - Structured operational data
-
----
-
-## 🚀 **Deployment Options**
-
-### 🐳 **Docker Compose (Recommended)**
+### Automation Creation
 ```bash
-# Full deployment with all services
-./deploy.sh
+"Create a PowerShell script to restart IIS"
+"Schedule weekly disk cleanup on Windows servers"
+"Monitor network switches via SNMP every 5 minutes"
+"Generate a backup script for database servers"
+```
+
+### Monitoring & Analytics
+```bash
+"What's the system health status?"
+"Show me performance trends for the last week"
+"Any anomalies detected recently?"
+"Predict maintenance needs for next month"
+```
+
+---
+
+## 🧠 AI Capabilities
+
+### Natural Language Processing
+- **Intent Classification** - Understands user intentions with 95%+ accuracy
+- **Entity Extraction** - Identifies targets, operations, and parameters
+- **Context Awareness** - Maintains conversation context and history
+- **Multi-Language Support** - Supports technical and natural language
+
+### Knowledge Management
+- **Vector Database** - Semantic search through documentation and procedures
+- **Learning System** - Continuously improves from user interactions
+- **Pattern Recognition** - Identifies common operations and optimizations
+- **Best Practices** - Suggests industry-standard approaches
+
+### Intelligent Automation
+- **Script Generation** - Creates production-ready PowerShell, Bash, Python scripts
+- **Workflow Orchestration** - Manages complex multi-step operations
+- **Error Handling** - Robust error detection and recovery mechanisms
+- **Protocol Integration** - Seamless multi-protocol operations
+
+---
+
+## 🔧 Core Services
+
+### Infrastructure Services
+- **PostgreSQL** (Port 5432) - Primary database
+- **Redis** (Port 6379) - Caching and session management
+- **ChromaDB** (Port 8000) - Vector database for AI knowledge
+- **Nginx** (Port 80/443) - Reverse proxy and load balancer
+
+### Application Services
+- **API Gateway** (Port 3000) - Central API routing and authentication
+- **Identity Service** (Port 3001) - User management and authentication
+- **Asset Service** (Port 3002) - Infrastructure target management
+- **Automation Service** (Port 3003) - Job execution and scheduling
+- **Communication Service** (Port 3004) - Notifications and messaging
+
+### AI Services
+- **AI Orchestrator** (Port 3005) - Main AI interface and coordination
+- **NLP Service** (Port 3006) - Natural language processing
+- **Vector Service** (Port 3007) - Knowledge storage and retrieval
+- **LLM Service** (Port 3008) - Large language model interface
+- **Ollama Server** (Port 11434) - Local LLM model serving
+
+---
+
+## 🚀 Deployment Options
+
+### Docker Compose (Recommended)
+```bash
+# Full deployment
+docker-compose up -d
+
+# AI services only
+docker-compose up -d ai-orchestrator nlp-service vector-service llm-service
 
 # Development mode with hot reload
 docker-compose -f docker-compose.dev.yml up
 ```
 
-### ☸️ **Kubernetes**
+### Individual Service Deployment
 ```bash
-# Apply Kubernetes manifests
-kubectl apply -f k8s/
+# Build specific services
+docker-compose build ai-orchestrator nlp-service
 
-# Scale AI service for high load
-kubectl scale deployment ai-service --replicas=3
+# Scale services
+docker-compose up -d --scale automation-worker=3
+
+# Update specific service
+docker-compose up -d --no-deps ai-orchestrator
 ```
 
-### 🖥️ **Bare Metal**
+### Health Monitoring
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Check all services
+docker-compose ps
 
-# Start individual services
-python ai-service/main.py
-python api-gateway/main.py
+# Test AI services
+python test_ai_microservices.py
+
+# Individual health checks
+curl http://localhost:3005/health  # AI Orchestrator
+curl http://localhost:3006/health  # NLP Service
+curl http://localhost:3007/health  # Vector Service
+curl http://localhost:3008/health  # LLM Service
 ```
 
 ---
 
-## 🔒 **Security Features**
+## 📊 API Reference
 
-### 🛡️ **Authentication & Authorization**
+### AI Endpoints
+```
+POST /api/v1/ai/chat              - Natural language chat interface
+POST /api/v1/ai/create-job        - Create automation jobs from text
+POST /api/v1/ai/analyze           - Analyze text and generate insights
+GET  /api/v1/ai/capabilities      - Get AI system capabilities
+```
+
+### Core Operations
+```
+GET  /api/v1/targets              - List infrastructure targets
+POST /api/v1/targets              - Create new target
+POST /api/v1/jobs                 - Create automation job
+POST /api/v1/jobs/{id}/execute    - Execute job
+GET  /api/v1/executions           - List job executions
+```
+
+### Authentication
+```
+POST /api/v1/auth/login           - User authentication
+POST /api/v1/auth/refresh         - Refresh JWT token
+GET  /api/v1/auth/profile         - Get user profile
+```
+
+### Interactive Documentation
+- **API Gateway**: http://localhost:3000/docs
+- **AI Orchestrator**: http://localhost:3005/docs
+- **NLP Service**: http://localhost:3006/docs
+- **Vector Service**: http://localhost:3007/docs
+- **LLM Service**: http://localhost:3008/docs
+
+---
+
+## 🧪 Testing
+
+### Automated Testing
+```bash
+# Comprehensive AI test suite
+python test_ai_microservices.py
+
+# Service-specific tests
+pytest tests/test_nlp_service.py
+pytest tests/test_vector_service.py
+pytest tests/test_llm_service.py
+
+# Integration tests
+pytest tests/integration/
+```
+
+### Manual Testing
+```bash
+# Test AI chat
+curl -X POST http://localhost:3005/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "restart nginx on web servers", "user_id": 1}'
+
+# Test NLP parsing
+curl -X POST http://localhost:3006/nlp/parse \
+  -H "Content-Type: application/json" \
+  -d '{"text": "update stationcontroller on CIS servers"}'
+
+# Test vector search
+curl -X POST http://localhost:3007/vector/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "nginx restart procedure", "limit": 3}'
+```
+
+---
+
+## 🔒 Security
+
+### Authentication & Authorization
 - **JWT-based Authentication** - Secure token-based access
 - **Role-based Access Control** - Granular permission system
 - **Multi-factor Authentication** - Enhanced security options
-- **Session Management** - Secure session handling
 - **API Key Management** - Service-to-service authentication
 
-### 🔐 **Data Protection**
-- **Credential Encryption** - Fernet encryption for sensitive data
+### Data Protection
+- **Encryption at Rest** - Fernet encryption for sensitive data
 - **TLS/SSL Support** - Encrypted communication
 - **Input Validation** - Comprehensive data sanitization
 - **Audit Logging** - Complete operation tracking
-- **Secure Defaults** - Security-first configuration
 
-### 🚨 **Security Monitoring**
+### Security Monitoring
 - **Automated Threat Detection** - AI-powered security analysis
 - **Failed Login Monitoring** - Brute force attack detection
 - **Privilege Escalation Alerts** - Unauthorized access attempts
-- **Suspicious Activity Detection** - Behavioral analysis
 - **Security Event Correlation** - Pattern-based threat identification
 
 ---
 
-## 📈 **Performance & Monitoring**
+## 📈 Performance & Monitoring
 
-### ⚡ **Performance Metrics**
-- **Response Time** - <2 seconds for most AI queries
-- **Throughput** - 1000+ operations per minute
-- **Scalability** - Horizontal scaling support
+### Performance Metrics
+- **Response Time** - < 3 seconds for AI queries
+- **Throughput** - 100+ concurrent operations
 - **Availability** - 99.9% uptime target
-- **Resource Usage** - Optimized memory and CPU usage
+- **AI Accuracy** - 95%+ intent detection accuracy
 
-### 📊 **Monitoring & Observability**
+### Monitoring & Observability
 - **Health Checks** - Comprehensive service monitoring
 - **Metrics Collection** - Prometheus-compatible metrics
-- **Log Aggregation** - Centralized logging with ELK stack
+- **Log Aggregation** - Centralized logging
 - **Distributed Tracing** - Request flow tracking
 - **Alerting** - Proactive issue notification
 
----
-
-## 🧪 **Testing & Quality**
-
-### ✅ **Comprehensive Testing**
-```bash
-# Run AI system tests
-python ai-service/test_phase3_learning.py
-
-# Run service tests
-pytest tests/
-
-# Integration tests
-python tests/integration_tests.py
-
-# Load testing
-locust -f tests/load_tests.py
-```
-
-### 🎯 **Quality Metrics**
-- **Test Coverage** - 85%+ code coverage
-- **AI Accuracy** - 95%+ intent detection accuracy
-- **Prediction Accuracy** - Continuously improving ML models
-- **Error Rate** - <1% system error rate
-- **User Satisfaction** - Measured through usage analytics
+### Resource Requirements
+- **Minimum**: 4GB RAM, 2 CPU cores, 20GB storage
+- **Recommended**: 8GB RAM, 4 CPU cores, 50GB storage
+- **Production**: 16GB RAM, 8 CPU cores, 100GB storage
+- **GPU**: Optional NVIDIA GPU for enhanced AI performance
 
 ---
 
-## 📚 **Documentation**
+## 🛠️ Development
 
-### 📖 **Available Documentation**
-- **[AI Implementation Guide](docs/AI_MASTER_IMPLEMENTATION_GUIDE.md)** - Complete AI development guide
-- **[Phase 3 Completion Summary](docs/PHASE3_COMPLETION_SUMMARY.md)** - Latest AI achievements
-- **[API Documentation](http://localhost:3000/docs)** - Interactive API docs
-- **[Database Schema](database/complete-schema.sql)** - Complete database structure
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
-
-### 🎓 **Getting Started Guides**
-- **Quick Start** - Get running in 5 minutes
-- **AI Chat Tutorial** - Learn natural language interface
-- **Automation Creation** - Build your first automation
-- **Advanced Features** - Explore predictive analytics
-- **API Integration** - Integrate with external systems
-
----
-
-## 🔮 **Roadmap**
-
-### 📋 **Phase 4: Advanced Automation & Orchestration (Planned)**
-- **Self-Healing Systems** - Automated problem resolution
-- **Intelligent Orchestration** - Multi-system coordination
-- **Predictive Scaling** - Automated resource management
-- **Autonomous Operations** - Fully self-managing infrastructure
-
-### 🚀 **Future Enhancements**
-- **Multi-Cloud Support** - AWS, Azure, GCP integration
-- **Advanced ML Models** - Deep learning capabilities
-- **Real-time Streaming** - Live data processing
-- **Mobile Applications** - iOS and Android apps
-- **Voice Interface** - Voice-controlled operations
-
----
-
-## 🤝 **Contributing**
-
-### 🛠️ **Development Setup**
+### Development Setup
 ```bash
 # Clone repository
 git clone <repository-url>
 cd opsconductor-ng
 
+# Development environment
+docker-compose -f docker-compose.dev.yml up
+
 # Install development dependencies
 pip install -r requirements-dev.txt
 
-# Start development environment
-docker-compose -f docker-compose.dev.yml up
+# Run tests
+pytest tests/
 ```
 
-### 📝 **Contribution Guidelines**
+### Code Structure
+```
+opsconductor-ng/
+├── ai-orchestrator/     # AI coordination service
+├── nlp-service/         # Natural language processing
+├── vector-service/      # Knowledge storage and retrieval
+├── llm-service/         # Large language model interface
+├── api-gateway/         # Central API routing
+├── identity-service/    # User management
+├── asset-service/       # Infrastructure targets
+├── automation-service/  # Job execution
+├── communication-service/ # Notifications
+├── frontend/            # React web interface
+├── shared/              # Common utilities
+├── database/            # Database schemas
+└── docs/                # Documentation
+```
+
+### Contributing
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes with tests
-4. Submit a pull request
-5. Follow code review process
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
 ---
 
-## 📞 **Support & Community**
+## 📚 Documentation
 
-### 🆘 **Getting Help**
-- **Documentation** - Comprehensive guides and tutorials
+### Available Documentation
+- **[AI System Documentation](AI_DOCUMENTATION.md)** - Comprehensive AI architecture guide
+- **[Repository Overview](REPO.md)** - Detailed repository structure and components
+- **[Scripting Standards](docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md)** - Development standards
+- **[Volume Mount System](VOLUME_MOUNT_SYSTEM.md)** - Docker volume configuration
+- **[Communication Settings](COMMUNICATION_SETTINGS_IMPLEMENTATION.md)** - Notification setup
+
+### API Documentation
+Interactive API documentation is available for all services at their respective `/docs` endpoints.
+
+---
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+#### Service Startup Issues
+```bash
+# Check service logs
+docker-compose logs <service-name>
+
+# Restart specific service
+docker-compose restart <service-name>
+
+# Rebuild and restart
+docker-compose up -d --build <service-name>
+```
+
+#### AI Service Issues
+```bash
+# Test AI service health
+curl http://localhost:3005/health
+
+# Check AI service communication
+python test_ai_microservices.py
+
+# Verify model availability
+curl http://localhost:11434/api/tags
+```
+
+#### Database Issues
+```bash
+# Check database connection
+docker-compose exec postgres psql -U postgres -d opsconductor -c "SELECT 1;"
+
+# Reset database
+docker-compose down -v
+docker-compose up -d postgres
+```
+
+### Performance Issues
+1. **High Memory Usage**: Increase Docker memory limits
+2. **Slow AI Responses**: Check Ollama model size and GPU availability
+3. **Database Slow**: Optimize queries and add indexes
+4. **Network Issues**: Verify service connectivity and DNS resolution
+
+---
+
+## 🎯 Use Cases
+
+### IT Operations Teams
+- **Infrastructure Monitoring** - Real-time system health and performance
+- **Automated Remediation** - Self-healing infrastructure capabilities
+- **Incident Response** - Rapid problem identification and resolution
+- **Capacity Planning** - Predictive resource management
+
+### DevOps Engineers
+- **CI/CD Integration** - Automated deployment and testing workflows
+- **Configuration Management** - Consistent infrastructure configuration
+- **Security Compliance** - Automated security scanning and remediation
+- **Performance Optimization** - Continuous performance monitoring and tuning
+
+### System Administrators
+- **Daily Operations** - Streamlined routine maintenance tasks
+- **Emergency Response** - Quick access to critical system information
+- **Documentation** - Automated procedure documentation and knowledge sharing
+- **Training** - Interactive learning through natural language interface
+
+---
+
+## 🔮 Roadmap
+
+### Short Term (1-3 months)
+- [ ] Enhanced multi-model LLM support
+- [ ] Advanced caching and performance optimization
+- [ ] Mobile-responsive web interface
+- [ ] Extended protocol support (WMI, REST APIs)
+
+### Medium Term (3-6 months)
+- [ ] Kubernetes deployment manifests
+- [ ] Advanced analytics dashboard
+- [ ] Custom plugin architecture
+- [ ] Multi-tenant support
+
+### Long Term (6+ months)
+- [ ] Edge computing support
+- [ ] Advanced AI model training
+- [ ] Marketplace for automation scripts
+- [ ] Enterprise SSO integration
+
+---
+
+## 📞 Support
+
+### Community Support
 - **GitHub Issues** - Bug reports and feature requests
-- **Community Forum** - User discussions and support
-- **Professional Support** - Enterprise support options
+- **Documentation** - Comprehensive guides and API reference
+- **Examples** - Sample configurations and use cases
 
-### 🌟 **Community**
-- **Contributors** - 50+ active contributors
-- **Users** - 1000+ organizations using OpsConductor
-- **Integrations** - 100+ third-party integrations
-- **Extensions** - Growing ecosystem of plugins
+### Enterprise Support
+- **Professional Services** - Implementation and customization
+- **Training** - Team training and certification
+- **SLA Support** - 24/7 support with guaranteed response times
 
 ---
 
-## 📄 **License**
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🏆 **Achievements**
+## 🙏 Acknowledgments
 
-### 🎉 **Major Milestones**
-- ✅ **Phase 1 Complete** - AI Foundation with vector knowledge
-- ✅ **Phase 2 Complete** - Advanced automation and multi-protocol support
-- ✅ **Phase 3 Complete** - Machine learning and predictive analytics
-- 🚀 **Production Ready** - Enterprise-grade reliability and security
-
-### 📊 **Impact Metrics**
-- **Time Saved** - 80% reduction in manual operations
-- **Error Reduction** - 90% fewer human errors
-- **Predictive Accuracy** - 85% accurate failure predictions
-- **User Satisfaction** - 95% positive feedback
-- **Cost Savings** - 60% reduction in operational costs
+- **OpenAI** - For advancing the field of AI and natural language processing
+- **Ollama** - For providing local LLM serving capabilities
+- **ChromaDB** - For vector database technology
+- **FastAPI** - For modern Python web framework
+- **React** - For powerful frontend development
 
 ---
 
-**🚀 Transform your infrastructure operations with intelligent automation. Start your journey with OpsConductor today!**
+**OpsConductor - Transforming IT Operations with Intelligent Automation**
 
----
-
-*OpsConductor: Where Infrastructure Meets Intelligence* 🤖✨
+*Built with ❤️ for the IT operations community*
