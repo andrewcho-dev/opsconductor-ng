@@ -127,72 +127,67 @@ async def service_info():
     """Service information endpoint"""
     return {
         "service": "ai-service",
-        "version": "1.0.0",
-        "description": "AI-powered automation service",
+        "version": "2.0.0",
+        "description": "Complete AI-powered automation service with protocol integration",
         "capabilities": [
             "Natural language processing",
-            "Workflow generation",
-            "Intent recognition",
-            "Task automation",
-            "Asset service integration"
+            "Vector-powered knowledge base",
+            "Multi-protocol support (SNMP, SMTP, SSH, VAPIX)",
+            "Script generation (PowerShell, Bash, Python)",
+            "Intent recognition and context awareness",
+            "Real-time system queries",
+            "Continuous learning from interactions"
+        ],
+        "supported_protocols": [
+            "SNMP - Network device monitoring",
+            "SMTP - Email notifications and alerts",
+            "SSH - Remote command execution",
+            "VAPIX - Axis camera integration"
         ],
         "supported_operations": [
-            "update", "restart", "stop", "start", "check", "install"
+            "Network monitoring", "Email alerts", "Remote execution", 
+            "Camera management", "Script generation", "System queries"
         ],
-        "supported_os": [
-            "windows", "linux"
+        "ai_features": [
+            "Ollama LLM integration", "ChromaDB vector storage", 
+            "Semantic search", "Learning system"
         ],
         "automation_integration": True
     }
 
 @app.post("/ai/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Enhanced chat interface with AI engine"""
+    """Enhanced chat interface with complete AI engine"""
     try:
         logger.info("Processing chat request", message=request.message)
-        response = await ai_engine.chat(request.message, request.user_id)
-        return response
+        user_id = str(request.user_id) if request.user_id else "system"
+        response = await ai_engine.process_message(request.message, user_id)
+        
+        # Convert to expected ChatResponse format
+        return ChatResponse(
+            response=response.get("response", ""),
+            intent=response.get("intent", "unknown"),
+            confidence=0.8,  # Default confidence
+            job_id=response.get("data", {}).get("job_id"),
+            execution_id=response.get("data", {}).get("execution_id"),
+            automation_job_id=response.get("data", {}).get("automation_job_id"),
+            workflow=response.get("data", {}).get("workflow"),
+            execution_started=response.get("success", False)
+        )
     except Exception as e:
         logger.error("Chat request failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
-@app.post("/ai/query-system")
-async def query_system_endpoint(request: dict):
-    """Query system state using natural language"""
-    try:
-        question = request.get("question", "")
-        logger.info("Processing system query", question=question)
-        response = await ai_engine.query_system(question)
-        return response
-    except Exception as e:
-        logger.error("System query failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
-
-@app.post("/ai/generate-script")
-async def generate_script_endpoint(request: dict):
-    """Generate scripts using AI"""
-    try:
-        script_request = request.get("request", "")
-        language = request.get("language", "powershell")
-        logger.info("Processing script generation", request=script_request, language=language)
-        response = await ai_engine.generate_script(script_request, language)
-        return response
-    except Exception as e:
-        logger.error("Script generation failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+# System queries and script generation are now handled through the main chat interface
 
 @app.get("/ai/knowledge-stats")
 async def get_knowledge_stats():
     """Get AI knowledge base statistics"""
     try:
-        if not ai_engine.vector_store:
-            return {"error": "Vector storage not available"}
-        
-        stats = await ai_engine.vector_store.get_collection_stats()
+        stats = await ai_engine.get_knowledge_stats()
         return {
             "status": "success",
-            "collections": stats,
-            "total_documents": sum(s.get("document_count", 0) for s in stats.values()),
+            "stats": stats,
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
@@ -204,23 +199,21 @@ async def store_knowledge_endpoint(request: dict):
     """Store new knowledge in the AI system"""
     try:
         content = request.get("content", "")
-        title = request.get("title", "")
         category = request.get("category", "general")
-        metadata = request.get("metadata", {})
         
-        if not content or not title:
-            raise HTTPException(status_code=400, detail="Content and title are required")
+        if not content:
+            raise HTTPException(status_code=400, detail="Content is required")
         
-        if not ai_engine.vector_store:
-            raise HTTPException(status_code=503, detail="Vector storage not available")
+        success = await ai_engine.store_knowledge(content, category)
         
-        doc_id = await ai_engine.vector_store.store_knowledge(content, title, category, metadata)
-        
-        return {
-            "status": "success",
-            "document_id": doc_id,
-            "message": f"Knowledge '{title}' stored successfully"
-        }
+        if success:
+            return {
+                "status": "success",
+                "message": f"Knowledge stored successfully in category '{category}'"
+            }
+        else:
+            raise HTTPException(status_code=503, detail="Failed to store knowledge")
+            
     except Exception as e:
         logger.error("Failed to store knowledge", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to store knowledge: {str(e)}")
@@ -243,88 +236,24 @@ async def execute_protocol_operation(request: dict):
                    target=target.get("hostname", "unknown"),
                    command=command)
         
-        result = await ai_engine.execute_protocol_operation(
+        result = await ai_engine.execute_protocol_command(
             protocol, target, command, credentials, **kwargs
         )
         
-        return result
+        return result.to_dict()
         
     except Exception as e:
         logger.error("Protocol operation failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Protocol operation failed: {str(e)}")
 
-@app.post("/ai/notification/send")
-async def send_notification(request: dict):
-    """Send notification via available protocols"""
-    try:
-        message = request.get("message", "")
-        alert_type = request.get("alert_type", "info")
-        recipients = request.get("recipients", [])
-        use_smtp = request.get("use_smtp", True)
-        
-        if not message:
-            raise HTTPException(status_code=400, detail="Message is required")
-        
-        logger.info("Sending notification", alert_type=alert_type, recipients=recipients)
-        
-        result = await ai_engine.send_notification(message, alert_type, recipients, use_smtp)
-        
-        return result
-        
-    except Exception as e:
-        logger.error("Notification failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Notification failed: {str(e)}")
-
-@app.post("/ai/monitor/network")
-async def monitor_network_device(request: dict):
-    """Monitor network device via SNMP"""
-    try:
-        target = request.get("target", {})
-        monitoring_type = request.get("monitoring_type", "basic")
-        
-        if not target:
-            raise HTTPException(status_code=400, detail="Target is required")
-        
-        logger.info("Monitoring network device", 
-                   target=target.get("hostname", "unknown"),
-                   monitoring_type=monitoring_type)
-        
-        result = await ai_engine.monitor_network_device(target, monitoring_type)
-        
-        return result
-        
-    except Exception as e:
-        logger.error("Network monitoring failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Network monitoring failed: {str(e)}")
-
-@app.post("/ai/camera/setup")
-async def setup_camera_monitoring(request: dict):
-    """Setup Axis camera motion detection"""
-    try:
-        target = request.get("target", {})
-        motion_sensitivity = request.get("motion_sensitivity", 50)
-        
-        if not target:
-            raise HTTPException(status_code=400, detail="Target is required")
-        
-        logger.info("Setting up camera monitoring", 
-                   target=target.get("hostname", "unknown"),
-                   sensitivity=motion_sensitivity)
-        
-        result = await ai_engine.setup_camera_monitoring(target, motion_sensitivity)
-        
-        return result
-        
-    except Exception as e:
-        logger.error("Camera setup failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Camera setup failed: {str(e)}")
+# Protocol-specific operations are now handled through the main chat interface and /ai/protocol/execute endpoint
 
 @app.get("/ai/protocols/capabilities")
 async def get_protocol_capabilities():
     """Get all supported protocol capabilities"""
     try:
-        capabilities = await ai_engine.get_protocol_capabilities()
-        return capabilities
+        status = await ai_engine.get_protocol_status()
+        return status
         
     except Exception as e:
         logger.error("Failed to get protocol capabilities", error=str(e))
