@@ -1,0 +1,89 @@
+name: Validate Volume Mounts
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'docker-compose.yml'
+      - '*/**.py'
+      - 'frontend/src/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'docker-compose.yml'
+      - '*/**.py'
+      - 'frontend/src/**'
+
+jobs:
+  validate-volume-mounts:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Make validation script executable
+      run: chmod +x scripts/check-volume-mounts.sh
+      
+    - name: Validate volume mounts
+      run: ./scripts/check-volume-mounts.sh
+      
+    - name: Check for dangerous full directory mounts
+      run: |
+        if grep -E "^\s*-\s*\./[^/]+:/app\s*$" docker-compose.yml; then
+          echo "❌ CRITICAL ERROR: Full directory volume mounts detected!"
+          echo "These will break container environments and cause Python version mismatches."
+          echo ""
+          echo "Found dangerous mounts:"
+          grep -E "^\s*-\s*\./[^/]+:/app\s*$" docker-compose.yml
+          echo ""
+          echo "🔧 FIX: Use selective file mounts instead."
+          echo "📖 See .zenrules/selective-volume-mounts.md for examples."
+          exit 1
+        else
+          echo "✅ No dangerous full directory mounts found"
+        fi
+        
+    - name: Comment on PR if validation fails
+      if: failure() && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `## ❌ Volume Mount Validation Failed
+
+            Your changes contain dangerous full directory volume mounts that will break container environments.
+
+            ### The Problem
+            Full directory mounts like \`./service:/app\` override the entire container directory, including:
+            - Python virtual environments
+            - Installed packages  
+            - Built dependencies
+            - This causes Python version mismatches and missing dependencies
+
+            ### The Solution
+            Use selective file mounts instead:
+            \`\`\`yaml
+            # ❌ BAD - Don't do this
+            volumes:
+              - ./ai-service:/app
+
+            # ✅ GOOD - Do this instead  
+            volumes:
+              - ./ai-service/main.py:/app/main.py
+              - ./ai-service/other_file.py:/app/other_file.py
+              - ./shared:/app/shared
+            \`\`\`
+
+            ### Quick Fix
+            1. Run: \`./scripts/update-volume-mounts.sh <service-name>\`
+            2. Copy the generated mounts to docker-compose.yml
+            3. Update \`.zenrules/selective-volume-mounts.md\`
+            4. Test: \`./scripts/check-volume-mounts.sh\`
+
+            📖 See \`.zenrules/selective-volume-mounts.md\` for complete documentation.
+            `
+          })

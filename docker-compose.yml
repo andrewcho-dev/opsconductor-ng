@@ -62,7 +62,8 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./api-gateway:/app
+      - ./api-gateway/main.py:/app/main.py
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -93,7 +94,7 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./identity-service:/app
+      - ./identity-service/main.py:/app/main.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -128,7 +129,9 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./asset-service:/app
+      - ./asset-service/main.py:/app/main.py
+      - ./asset-service/main_with_groups.py:/app/main_with_groups.py
+      - ./asset-service/data:/app/data
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
@@ -165,7 +168,11 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./automation-service:/app
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
@@ -202,7 +209,7 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./communication-service:/app
+      - ./communication-service/main.py:/app/main.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
@@ -265,7 +272,15 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./ai-service:/app
+      - ./ai-service/main.py:/app/main.py
+      - ./ai-service/ai_engine.py:/app/ai_engine.py
+      - ./ai-service/ai_engine_broken.py:/app/ai_engine_broken.py
+      - ./ai-service/asset_client.py:/app/asset_client.py
+      - ./ai-service/automation_client.py:/app/automation_client.py
+      - ./ai-service/nlp_processor.py:/app/nlp_processor.py
+      - ./ai-service/protocol_manager.py:/app/protocol_manager.py
+      - ./ai-service/vector_store.py:/app/vector_store.py
+      - ./ai-service/workflow_generator.py:/app/workflow_generator.py
       - ./shared:/app/shared
       - ollama_models:/root/.ollama
     deploy:
@@ -310,7 +325,12 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./automation-service:/app
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
     restart: unless-stopped
 
   automation-worker-2:
@@ -340,7 +360,12 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./automation-service:/app
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
     restart: unless-stopped
 
   automation-scheduler:
@@ -378,7 +403,12 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./automation-service:/app
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
     restart: unless-stopped
 
 
@@ -394,7 +424,12 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./frontend:/app
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/.env:/app/.env
     restart: unless-stopped
 
   # Nginx Reverse Proxy
