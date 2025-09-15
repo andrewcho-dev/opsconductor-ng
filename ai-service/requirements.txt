@@ -27,6 +27,8 @@ ollama==0.1.7
 
 # Protocol libraries
 pysnmp==4.4.12
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
 paramiko==3.4.0
 aiosmtplib==3.0.1
 

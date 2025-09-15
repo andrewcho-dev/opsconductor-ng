@@ -225,6 +225,111 @@ async def store_knowledge_endpoint(request: dict):
         logger.error("Failed to store knowledge", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to store knowledge: {str(e)}")
 
+@app.post("/ai/protocol/execute")
+async def execute_protocol_operation(request: dict):
+    """Execute operation using specified protocol"""
+    try:
+        protocol = request.get("protocol", "")
+        target = request.get("target", {})
+        command = request.get("command", "")
+        credentials = request.get("credentials", {})
+        kwargs = request.get("parameters", {})
+        
+        if not protocol or not target or not command:
+            raise HTTPException(status_code=400, detail="Protocol, target, and command are required")
+        
+        logger.info("Executing protocol operation", 
+                   protocol=protocol, 
+                   target=target.get("hostname", "unknown"),
+                   command=command)
+        
+        result = await ai_engine.execute_protocol_operation(
+            protocol, target, command, credentials, **kwargs
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Protocol operation failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Protocol operation failed: {str(e)}")
+
+@app.post("/ai/notification/send")
+async def send_notification(request: dict):
+    """Send notification via available protocols"""
+    try:
+        message = request.get("message", "")
+        alert_type = request.get("alert_type", "info")
+        recipients = request.get("recipients", [])
+        use_smtp = request.get("use_smtp", True)
+        
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is required")
+        
+        logger.info("Sending notification", alert_type=alert_type, recipients=recipients)
+        
+        result = await ai_engine.send_notification(message, alert_type, recipients, use_smtp)
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Notification failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Notification failed: {str(e)}")
+
+@app.post("/ai/monitor/network")
+async def monitor_network_device(request: dict):
+    """Monitor network device via SNMP"""
+    try:
+        target = request.get("target", {})
+        monitoring_type = request.get("monitoring_type", "basic")
+        
+        if not target:
+            raise HTTPException(status_code=400, detail="Target is required")
+        
+        logger.info("Monitoring network device", 
+                   target=target.get("hostname", "unknown"),
+                   monitoring_type=monitoring_type)
+        
+        result = await ai_engine.monitor_network_device(target, monitoring_type)
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Network monitoring failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Network monitoring failed: {str(e)}")
+
+@app.post("/ai/camera/setup")
+async def setup_camera_monitoring(request: dict):
+    """Setup Axis camera motion detection"""
+    try:
+        target = request.get("target", {})
+        motion_sensitivity = request.get("motion_sensitivity", 50)
+        
+        if not target:
+            raise HTTPException(status_code=400, detail="Target is required")
+        
+        logger.info("Setting up camera monitoring", 
+                   target=target.get("hostname", "unknown"),
+                   sensitivity=motion_sensitivity)
+        
+        result = await ai_engine.setup_camera_monitoring(target, motion_sensitivity)
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Camera setup failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Camera setup failed: {str(e)}")
+
+@app.get("/ai/protocols/capabilities")
+async def get_protocol_capabilities():
+    """Get all supported protocol capabilities"""
+    try:
+        capabilities = await ai_engine.get_protocol_capabilities()
+        return capabilities
+        
+    except Exception as e:
+        logger.error("Failed to get protocol capabilities", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get capabilities: {str(e)}")
+
 @app.post("/ai/create-job", response_model=JobResponse)
 async def create_job(request: JobRequest):
     """Create a new automation job from natural language description"""
@@ -681,58 +786,7 @@ Try asking me to perform a specific task or check on something!"""
     # Default response for questions
     return f"I understand you're asking about: '{message}'. I can help with system automation and monitoring. For specific server information, I may need to create a monitoring job. Would you like me to help you with a specific automation task instead?"
 
-@app.post("/ai/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """General chat endpoint that handles both questions and job creation"""
-    try:
-        logger.info("Processing chat message", message=request.message)
-        
-        # Classify the intent
-        intent, confidence = classify_intent(request.message)
-        logger.info("Classified intent", intent=intent, confidence=confidence)
-        
-        if intent == "question":
-            # Handle as informational question
-            response = await handle_question(request.message)
-            return ChatResponse(
-                response=response,
-                intent=intent,
-                confidence=confidence
-            )
-        
-        elif intent == "job_creation":
-            # Handle as job creation - delegate to existing execute_job logic
-            execute_request = ExecuteJobRequest(
-                description=request.message,
-                execute_immediately=True,
-                user_id=request.user_id
-            )
-            
-            # Call the existing execute_job function
-            job_result = await execute_job(execute_request)
-            
-            return ChatResponse(
-                response=job_result.message,
-                intent=intent,
-                confidence=job_result.confidence,
-                job_id=job_result.job_id,
-                execution_id=job_result.execution_id,
-                automation_job_id=job_result.automation_job_id,
-                workflow=job_result.workflow,
-                execution_started=job_result.execution_started
-            )
-        
-        else:
-            # Unknown intent - ask for clarification
-            return ChatResponse(
-                response="I'm not sure what you'd like me to do. You can ask me questions about system status, or tell me to perform automation tasks like 'restart nginx on web servers'. How can I help you?",
-                intent=intent,
-                confidence=confidence
-            )
-        
-    except Exception as e:
-        logger.error("Failed to process chat message", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to process message: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn

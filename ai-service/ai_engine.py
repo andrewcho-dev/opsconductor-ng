@@ -1,13 +1,13 @@
 """
-OpsConductor AI Engine - Core AI functionality
+OpsConductor AI Engine - Enhanced with Vector Storage and Learning
 """
 import asyncio
-import json
 import logging
+import json
+import re
+from datetime import datetime
 from typing import Dict, List, Optional, Any
-import httpx
-import chromadb
-from chromadb.config import Settings
+import spacy
 import ollama
 import asyncpg
 import redis.asyncio as redis
@@ -19,8 +19,8 @@ class OpsConductorAI:
     """Main AI Engine for OpsConductor"""
     
     def __init__(self):
-        self.ollama_client = None
-        self.chroma_client = None
+        self.nlp = None
+        self.ollama_client = ollama.AsyncClient()
         self.vector_store = None
         self.db_pool = None
         self.redis_client = None
@@ -29,321 +29,268 @@ class OpsConductorAI:
     async def initialize(self):
         """Initialize all AI components"""
         try:
-            # Initialize Ollama client
-            self.ollama_client = ollama.AsyncClient(host='http://localhost:11434')
-            logger.info("Ollama client initialized")
+            # Initialize spaCy
+            self.nlp = spacy.load("en_core_web_sm")
+            logger.info("SpaCy model loaded successfully")
             
-            # Initialize ChromaDB with enhanced vector storage
-            try:
-                self.chroma_client = chromadb.HttpClient(
-                    host='chromadb',
-                    port=8000
-                )
-                
-                # Initialize enhanced vector store
-                self.vector_store = OpsConductorVectorStore(self.chroma_client)
-                vector_init_success = await self.vector_store.initialize_collections()
-                
-                if vector_init_success:
-                    logger.info("Enhanced vector storage initialized successfully")
-                    # Load initial knowledge base
-                    await self.populate_initial_knowledge()
-                else:
-                    logger.warning("Vector storage initialization failed")
-                    self.vector_store = None
-                
-            except Exception as e:
-                logger.error(f"ChromaDB initialization failed: {e}")
-                import traceback
-                logger.error(f"Full traceback: {traceback.format_exc()}")
-                logger.warning("Continuing without vector storage")
-                self.chroma_client = None
-                self.vector_store = None
+            # Initialize vector store
+            import chromadb
+            chroma_client = chromadb.Client()
+            self.vector_store = OpsConductorVectorStore(chroma_client)
+            await self.vector_store.initialize_collections()
+            logger.info("Vector store initialized")
             
             # Initialize database connection
             self.db_pool = await asyncpg.create_pool(
-                host='postgres',
+                host="postgres",
                 port=5432,
-                database='opsconductor',
-                user='postgres',
-                password='postgres123',
-                min_size=1,
+                user="postgres",
+                password="postgres123",
+                database="opsconductor",
+                min_size=2,
                 max_size=10
             )
-            logger.info("Database pool initialized")
+            logger.info("Database pool created")
             
-            # Initialize Redis
-            self.redis_client = redis.from_url('redis://redis:6379/5')
+            # Initialize Redis connection
+            self.redis_client = redis.Redis(
+                host="redis",
+                port=6379,
+                decode_responses=True
+            )
             logger.info("Redis client initialized")
             
             # Load system knowledge
             await self.load_system_knowledge()
             
+            logger.info("AI Engine initialized successfully")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize AI engine: {e}")
+            logger.error(f"Failed to initialize AI Engine: {e}")
             return False
     
     async def load_system_knowledge(self):
-        """Load current system state into knowledge base"""
+        """Load system knowledge from database"""
         try:
             async with self.db_pool.acquire() as conn:
-                # Load targets
-                targets = await conn.fetch("SELECT * FROM assets.targets")
+                # Load target information
+                targets = await conn.fetch("SELECT * FROM assets.targets LIMIT 100")
                 self.system_knowledge['targets'] = [dict(t) for t in targets]
                 
-                # Load groups
-                groups = await conn.fetch("SELECT * FROM assets.target_groups")
-                self.system_knowledge['groups'] = [dict(g) for g in groups]
+                # Load enhanced targets
+                enhanced_targets = await conn.fetch("SELECT * FROM assets.enhanced_targets LIMIT 100")
+                self.system_knowledge['enhanced_targets'] = [dict(t) for t in enhanced_targets]
                 
-                # Load recent jobs
-                jobs = await conn.fetch("""
-                    SELECT * FROM automation.jobs 
-                    ORDER BY created_at DESC 
-                    LIMIT 100
-                """)
+                # Load automation jobs
+                jobs = await conn.fetch("SELECT * FROM automation.jobs ORDER BY created_at DESC LIMIT 50")
                 self.system_knowledge['recent_jobs'] = [dict(j) for j in jobs]
                 
-            logger.info(f"Loaded system knowledge: {len(self.system_knowledge['targets'])} targets, "
-                       f"{len(self.system_knowledge['groups'])} groups, "
-                       f"{len(self.system_knowledge['recent_jobs'])} recent jobs")
-                       
+                logger.info(f"Loaded system knowledge: {len(targets)} targets, {len(enhanced_targets)} enhanced targets, {len(jobs)} recent jobs")
+                
         except Exception as e:
             logger.error(f"Failed to load system knowledge: {e}")
     
-    async def populate_initial_knowledge(self):
-        """Populate vector store with initial system knowledge"""
-        try:
-            if not self.vector_store:
-                return
-            
-            # Store basic system documentation
-            await self.vector_store.store_knowledge(
-                content="""OpsConductor is an automation platform that manages IT infrastructure through:
-                - Target management (servers, workstations, network devices)
-                - Automation workflows (PowerShell, Bash scripts)
-                - Asset discovery and inventory
-                - Job scheduling and execution
-                - RBAC (Role-Based Access Control)
-                
-                Common operations include:
-                - Service management (start, stop, restart)
-                - Software updates and patches
-                - System monitoring and health checks
-                - Configuration management
-                - Backup and recovery operations""",
-                title="OpsConductor Platform Overview",
-                category="system_documentation"
-            )
-            
-            # Store troubleshooting knowledge
-            await self.vector_store.store_solution(
-                problem="Service won't start after update",
-                solution="Check service dependencies, verify configuration files, restart dependent services in correct order",
-                success_count=5,
-                metadata={"category": "service_management", "os": "windows"}
-            )
-            
-            await self.vector_store.store_solution(
-                problem="High CPU usage on server",
-                solution="Identify top processes with Task Manager or top command, check for runaway processes, analyze recent changes",
-                success_count=8,
-                metadata={"category": "performance", "os": "both"}
-            )
-            
-            await self.vector_store.store_solution(
-                problem="Disk space running low",
-                solution="Clean temporary files, check log rotation, identify large files, consider disk expansion",
-                success_count=12,
-                metadata={"category": "storage", "os": "both"}
-            )
-            
-            logger.info("Initial knowledge base populated")
-            
-        except Exception as e:
-            logger.error(f"Failed to populate initial knowledge: {e}")
-    
-    async def query_system(self, question: str) -> Dict[str, Any]:
-        """Answer questions about the system state with enhanced AI"""
-        try:
-            question_lower = question.lower()
-            
-            # First, try to find relevant knowledge from vector store
-            context = await self.get_relevant_context(question)
-            
-            # Handle specific system queries
-            if "targets" in question_lower and "tagged" in question_lower:
-                # Extract tag from question
-                words = question_lower.split()
-                tag_idx = -1
-                for i, word in enumerate(words):
-                    if word in ["with", "tagged"]:
-                        tag_idx = i + 1
-                        break
-                
-                if tag_idx < len(words):
-                    tag = words[tag_idx].strip("?")
-                    return await self.find_targets_by_tag(tag)
-            
-            elif "how many" in question_lower and "targets" in question_lower:
-                return {
-                    "answer": f"You have {len(self.system_knowledge['targets'])} targets total",
-                    "count": len(self.system_knowledge['targets']),
-                    "details": self.system_knowledge['targets']
-                }
-            
-            elif "groups" in question_lower:
-                return {
-                    "answer": f"You have {len(self.system_knowledge['groups'])} target groups",
-                    "groups": [g['name'] for g in self.system_knowledge['groups']],
-                    "details": self.system_knowledge['groups']
-                }
-            
-            # Check if this looks like a troubleshooting question
-            elif any(word in question_lower for word in ["problem", "issue", "error", "fail", "broken", "not working"]):
-                return await self.handle_troubleshooting_query(question, context)
-            
-            # General knowledge query
-            elif context:
-                return {
-                    "answer": f"Based on the system knowledge: {context[0]['content'][:200]}...",
-                    "context": context,
-                    "suggestions": [
-                        "Which targets are tagged with win10?",
-                        "How many targets do I have?",
-                        "What groups exist?",
-                        "Help with service restart issues"
-                    ]
-                }
-            
-            else:
-                return {
-                    "answer": "I can help you with questions about targets, groups, system status, and troubleshooting. Try asking 'Which targets are tagged with X?' or 'How many targets do I have?'",
-                    "suggestions": [
-                        "Which targets are tagged with win10?",
-                        "How many targets do I have?",
-                        "What groups exist?",
-                        "Help with service restart issues",
-                        "Show me recent jobs"
-                    ]
-                }
-                
-        except Exception as e:
-            logger.error(f"Failed to query system: {e}")
-            return {"error": f"Query failed: {e}"}
-    
-    async def find_targets_by_tag(self, tag: str) -> Dict[str, Any]:
-        """Find targets with a specific tag"""
-        try:
-            async with self.db_pool.acquire() as conn:
-                # Query targets with the specified tag
-                targets = await conn.fetch("""
-                    SELECT t.*, tg.name as group_name
-                    FROM assets.targets t
-                    LEFT JOIN assets.target_group_members tgm ON t.id = tgm.target_id
-                    LEFT JOIN assets.target_groups tg ON tgm.group_id = tg.id
-                    WHERE t.tags::text ILIKE $1 OR t.hostname ILIKE $1 OR t.os_type ILIKE $1
-                """, f"%{tag}%")
-                
-                if not targets:
-                    return {
-                        "answer": f"No targets found with tag '{tag}'",
-                        "count": 0,
-                        "targets": []
-                    }
-                
-                target_list = []
-                for target in targets:
-                    target_dict = dict(target)
-                    target_list.append({
-                        "hostname": target_dict.get('hostname'),
-                        "ip_address": target_dict.get('ip_address'),
-                        "os_type": target_dict.get('os_type'),
-                        "status": target_dict.get('status'),
-                        "group": target_dict.get('group_name'),
-                        "tags": target_dict.get('tags')
-                    })
-                
-                return {
-                    "answer": f"Found {len(target_list)} targets with tag '{tag}'",
-                    "count": len(target_list),
-                    "targets": target_list
-                }
-                
-        except Exception as e:
-            logger.error(f"Failed to find targets by tag: {e}")
-            return {"error": f"Search failed: {e}"}
-    
-    async def get_relevant_context(self, query: str) -> List[Dict]:
+    async def get_relevant_context(self, query: str, limit: int = 3) -> List[Dict]:
         """Get relevant context from vector store"""
         try:
-            if not self.vector_store:
-                return []
-            
-            # Search across all collections for relevant information
-            knowledge_results = await self.vector_store.search_knowledge(query, limit=3)
-            solution_results = await self.vector_store.search_solutions(query, limit=2)
-            
-            # Combine and sort by relevance
-            all_results = knowledge_results + solution_results
-            all_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
-            
-            return all_results[:5]  # Return top 5 most relevant
-            
+            if self.vector_store:
+                return await self.vector_store.search_knowledge(query, limit=limit)
+            return []
         except Exception as e:
             logger.error(f"Failed to get relevant context: {e}")
             return []
     
-    async def handle_troubleshooting_query(self, question: str, context: List[Dict]) -> Dict[str, Any]:
-        """Handle troubleshooting questions with AI assistance"""
+    async def analyze_intent(self, message: str) -> str:
+        """Analyze user intent from message"""
+        message_lower = message.lower()
+        
+        # System queries
+        if any(word in message_lower for word in ["how many", "count", "list", "show me", "which"]):
+            return "system_query"
+        
+        # Troubleshooting
+        if any(word in message_lower for word in ["problem", "issue", "error", "fail", "broken", "not working", "help with"]):
+            return "troubleshooting"
+        
+        # Script generation
+        if any(word in message_lower for word in ["create", "generate", "script", "automation"]):
+            return "script_generation"
+        
+        # Greetings
+        if any(word in message_lower for word in ["hello", "hi", "hey", "what can you", "what do you"]):
+            return "greeting"
+        
+        return "general"
+    
+    async def query_system(self, query: str) -> Dict[str, Any]:
+        """Handle system queries about targets, jobs, etc."""
         try:
-            if not self.vector_store:
-                return {"answer": "Vector storage not available for troubleshooting assistance"}
+            query_lower = query.lower()
             
-            # Search for similar problems and solutions
-            solutions = await self.vector_store.search_solutions(question, limit=3)
+            # Target queries
+            if "targets" in query_lower or "servers" in query_lower:
+                async with self.db_pool.acquire() as conn:
+                    if "tagged with" in query_lower:
+                        # Extract tag from query
+                        tag_match = re.search(r'tagged with (\w+)', query_lower)
+                        if tag_match:
+                            tag = tag_match.group(1)
+                            targets = await conn.fetch("""
+                                SELECT hostname, ip_address, os_type 
+                                FROM assets.enhanced_targets 
+                                WHERE tags @> $1::jsonb
+                            """, json.dumps([tag]))
+                            
+                            if targets:
+                                target_list = "\n".join([
+                                    f"• {t['hostname']} ({t['ip_address']}) - {t['os_type']}"
+                                    for t in targets
+                                ])
+                                return {
+                                    "answer": f"Found {len(targets)} targets tagged with '{tag}':\n\n{target_list}",
+                                    "count": len(targets),
+                                    "tag": tag
+                                }
+                            else:
+                                return {
+                                    "answer": f"No targets found with tag '{tag}'",
+                                    "count": 0,
+                                    "tag": tag
+                                }
+                    
+                    elif "how many" in query_lower:
+                        count = await conn.fetchval("SELECT COUNT(*) FROM assets.enhanced_targets")
+                        return {
+                            "answer": f"You have {count} targets in your system",
+                            "count": count
+                        }
+                    
+                    else:
+                        # General target listing
+                        targets = await conn.fetch("""
+                            SELECT hostname, ip_address, os_type, status 
+                            FROM assets.enhanced_targets 
+                            ORDER BY hostname 
+                            LIMIT 10
+                        """)
+                        
+                        target_list = "\n".join([
+                            f"• {t['hostname']} ({t['ip_address']}) - {t['os_type']} - {t['status']}"
+                            for t in targets
+                        ])
+                        
+                        total_count = await conn.fetchval("SELECT COUNT(*) FROM assets.enhanced_targets")
+                        
+                        return {
+                            "answer": f"Here are your targets (showing first 10 of {total_count}):\n\n{target_list}",
+                            "count": total_count,
+                            "showing": len(targets)
+                        }
             
-            if solutions:
-                best_solution = solutions[0]
-                answer = f"I found a similar issue: {best_solution['metadata'].get('problem', 'Unknown problem')}\n\n"
-                answer += f"Suggested solution: {best_solution['metadata'].get('solution', 'No solution available')}"
-                
-                # Add additional solutions if available
-                if len(solutions) > 1:
-                    answer += "\n\nOther related solutions:"
-                    for sol in solutions[1:]:
-                        answer += f"\n- {sol['metadata'].get('solution', 'No solution')[:100]}..."
-                
-                return {
-                    "answer": answer,
-                    "solutions": solutions,
-                    "confidence": best_solution.get('similarity', 0)
-                }
-            else:
-                return {
-                    "answer": "I don't have specific solutions for this problem in my knowledge base yet. Consider checking system logs, recent changes, or consulting documentation.",
-                    "suggestions": [
-                        "Check system event logs",
-                        "Review recent configuration changes",
-                        "Verify service dependencies",
-                        "Check resource utilization"
-                    ]
-                }
-                
+            # Job queries
+            elif "jobs" in query_lower:
+                async with self.db_pool.acquire() as conn:
+                    if "how many" in query_lower:
+                        count = await conn.fetchval("SELECT COUNT(*) FROM automation.jobs")
+                        return {
+                            "answer": f"You have {count} automation jobs in your system",
+                            "count": count
+                        }
+                    else:
+                        jobs = await conn.fetch("""
+                            SELECT name, status, created_at 
+                            FROM automation.jobs 
+                            ORDER BY created_at DESC 
+                            LIMIT 10
+                        """)
+                        
+                        job_list = "\n".join([
+                            f"• {j['name']} - {j['status']} (created {j['created_at'].strftime('%Y-%m-%d %H:%M')})"
+                            for j in jobs
+                        ])
+                        
+                        return {
+                            "answer": f"Recent automation jobs:\n\n{job_list}",
+                            "count": len(jobs)
+                        }
+            
+            return {"answer": "I can help you query targets, jobs, and system information. What would you like to know?"}
+            
         except Exception as e:
-            logger.error(f"Failed to handle troubleshooting query: {e}")
-            return {"error": f"Troubleshooting assistance failed: {e}"}
+            logger.error(f"System query failed: {e}")
+            return {"error": f"System query failed: {e}"}
+    
+    async def handle_troubleshooting_query(self, query: str, context: List[Dict] = None) -> Dict[str, Any]:
+        """Handle troubleshooting questions with context"""
+        try:
+            # Use context if available
+            context_text = ""
+            if context:
+                context_text = "\n".join([item.get('content', '') for item in context[:2]])
+            
+            prompt = f"""
+            You are an expert IT operations assistant. Help troubleshoot this issue:
+            
+            User Question: {query}
+            
+            Relevant Context:
+            {context_text}
+            
+            Provide a helpful, specific response with:
+            1. Likely causes
+            2. Step-by-step troubleshooting steps
+            3. Prevention tips
+            
+            Keep it practical and actionable.
+            """
+            
+            response = await self.ollama_client.generate(
+                model='llama3.2:3b',
+                prompt=prompt
+            )
+            
+            return {
+                "answer": response['response'],
+                "context_used": len(context) if context else 0,
+                "suggestions": [
+                    "Check system logs",
+                    "Verify service status",
+                    "Test connectivity",
+                    "Review recent changes"
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Troubleshooting query failed: {e}")
+            return {"error": f"Troubleshooting failed: {e}"}
     
     async def generate_script(self, request: str, language: str = "powershell") -> Dict[str, Any]:
-        """Generate scripts using Ollama"""
+        """Generate automation scripts using Ollama"""
         try:
-            if not self.ollama_client:
-                return {"error": "Ollama not available"}
+            if language.lower() == "powershell":
+                model = 'codellama:7b'
+                prompt = f"""
+            Generate a production-ready PowerShell script for this request:
             
-            # Create a prompt for script generation
-            prompt = f"""
-            Generate a {language} script for the following request: {request}
+            {request}
+            
+            Requirements:
+            - Include error handling with try/catch blocks
+            - Add proper logging and output
+            - Include parameter validation
+            - Add comments explaining the logic
+            - Make it modular and reusable
+            - Include help documentation
+            
+            Request: {request}
+            """
+            else:  # bash
+                model = 'codellama:7b'
+                prompt = f"""
+            Generate a production-ready Bash script for this request:
+            
+            {request}
             
             Requirements:
             - Include error handling
@@ -466,6 +413,18 @@ class OpsConductorAI:
                 response["intent"] = intent
                 if context:
                     response["context_used"] = len(context)
+                
+                # Normalize response format - ensure we always have a 'response' field
+                if "answer" in response and "response" not in response:
+                    response["response"] = response["answer"]
+                elif "response" not in response and "answer" not in response:
+                    response["response"] = "I processed your request but couldn't generate a proper response."
+                
+                # Add default fields expected by frontend
+                if "confidence" not in response:
+                    response["confidence"] = 0.8  # Default confidence
+                if "execution_started" not in response:
+                    response["execution_started"] = False
             
             return response or {"error": "No response generated"}
                 
