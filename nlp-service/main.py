@@ -161,8 +161,19 @@ async def classify_intent(request: ClassifyRequest):
         intent = "unknown"
         confidence = 0.5
         category = "general"
+        text_lower = request.text.lower()
         
-        if parsed_request.operation != "unknown":
+        # Check for OpsConductor system queries first (higher priority)
+        opsconductor_terms = ["target", "server", "job", "run", "user", "system", "status", "overview"]
+        system_query_patterns = ["how many", "count", "list", "show", "total"]
+        
+        if (any(term in text_lower for term in opsconductor_terms) and 
+            any(pattern in text_lower for pattern in system_query_patterns)):
+            intent = "query"
+            category = "system_information"
+            confidence = 0.9
+        
+        elif parsed_request.operation != "unknown":
             if parsed_request.operation in ["check", "status"]:
                 intent = "query"
                 category = "information"
@@ -171,12 +182,17 @@ async def classify_intent(request: ClassifyRequest):
                 category = "action"
             confidence = parsed_request.confidence
         
-        # Check for question patterns
-        question_patterns = ["what", "how", "when", "where", "why", "which", "?"]
-        if any(pattern in request.text.lower() for pattern in question_patterns):
-            intent = "question"
-            category = "information"
-            confidence = 0.8
+        # Check for general question patterns (lower priority than system queries)
+        elif any(pattern in text_lower for pattern in ["what", "how", "when", "where", "why", "which", "?"]):
+            # But still check if it's a system query
+            if any(term in text_lower for term in opsconductor_terms):
+                intent = "query"
+                category = "system_information"
+                confidence = 0.8
+            else:
+                intent = "question"
+                category = "information"
+                confidence = 0.8
         
         return ClassifyResponse(
             intent=intent,

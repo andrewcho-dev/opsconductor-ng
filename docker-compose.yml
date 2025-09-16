@@ -322,7 +322,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/8
       OLLAMA_HOST: http://ollama:11434
-      DEFAULT_LLM_MODEL: llama2
+      DEFAULT_LLM_MODEL: llama2:latest
       CUDA_VISIBLE_DEVICES: all
       NVIDIA_VISIBLE_DEVICES: all
     depends_on:
@@ -382,6 +382,7 @@ services:
       - ./ai-orchestrator/orchestrator.py:/app/orchestrator.py
       - ./ai-orchestrator/protocol_manager.py:/app/protocol_manager.py
       - ./ai-orchestrator/workflow_generator.py:/app/workflow_generator.py
+      - ./ai-orchestrator/knowledge_manager.py:/app/knowledge_manager.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]

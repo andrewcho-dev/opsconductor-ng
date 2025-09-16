@@ -46,6 +46,19 @@ app = FastAPI(
 # Initialize service
 service = AIOrchestrator()
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize knowledge base on startup"""
+    try:
+        logger.info("Initializing OpsConductor knowledge base...")
+        success = await knowledge_manager.initialize_knowledge_base()
+        if success:
+            logger.info("Knowledge base initialized successfully")
+        else:
+            logger.error("Failed to initialize knowledge base")
+    except Exception as e:
+        logger.error("Knowledge base initialization failed", error=str(e))
+
 # Service URLs
 NLP_SERVICE_URL = os.getenv("NLP_SERVICE_URL", "http://nlp-service:3000")
 VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL", "http://vector-service:3000")
@@ -57,11 +70,13 @@ AUTOMATION_SERVICE_URL = os.getenv("AUTOMATION_SERVICE_URL", "http://automation-
 from orchestrator import AIServiceOrchestrator
 from workflow_generator import WorkflowGenerator
 from protocol_manager import ProtocolManager
+from knowledge_manager import KnowledgeManager
 
 # Initialize components
 orchestrator = AIServiceOrchestrator(NLP_SERVICE_URL, VECTOR_SERVICE_URL, LLM_SERVICE_URL)
 workflow_generator = WorkflowGenerator()
 protocol_manager = ProtocolManager()
+knowledge_manager = KnowledgeManager("http://api-gateway:3000", VECTOR_SERVICE_URL)
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -220,9 +235,12 @@ async def handle_automation_request(request: ChatRequest, confidence: float) -> 
         )
 
 async def handle_question_request(request: ChatRequest, confidence: float) -> ChatResponse:
-    """Handle general questions using LLM service"""
+    """Handle general questions using LLM service with OpsConductor knowledge"""
     try:
-        # First check vector database for relevant knowledge
+        # Get OpsConductor-specific context
+        system_context = await knowledge_manager.get_system_context(request.message)
+        
+        # Also search vector database for additional relevant knowledge
         relevant_context = ""
         try:
             async with httpx.AsyncClient() as client:
@@ -236,14 +254,19 @@ async def handle_question_request(request: ChatRequest, confidence: float) -> Ch
         except Exception as e:
             logger.warning("Failed to search vector database", error=str(e))
         
+        # Combine contexts
+        full_context = system_context
+        if relevant_context:
+            full_context += f"\n\nAdditional Context:\n{relevant_context}"
+        
         # Generate response using LLM service
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             llm_response = await client.post(
                 f"{LLM_SERVICE_URL}/llm/chat",
                 json={
                     "message": request.message,
-                    "context": relevant_context,
-                    "system_prompt": "You are OpsConductor AI, an IT operations assistant. Be helpful and concise."
+                    "context": full_context,
+                    "system_prompt": "You are OpsConductor AI, an IT operations automation assistant. Use the provided context about the current OpsConductor system to give accurate, helpful answers. Be specific and reference actual system data when available."
                 }
             )
             llm_data = llm_response.json()
@@ -267,7 +290,7 @@ async def handle_question_request(request: ChatRequest, confidence: float) -> Ch
         )
 
 async def handle_query_request(request: ChatRequest, confidence: float) -> ChatResponse:
-    """Handle system queries using protocol operations"""
+    """Handle system queries using knowledge manager and protocol operations"""
     try:
         # Parse the request to understand what system query is needed
         async with httpx.AsyncClient() as client:
@@ -277,7 +300,19 @@ async def handle_query_request(request: ChatRequest, confidence: float) -> ChatR
             )
             parsed_data = parse_response.json()
         
-        # Execute protocol operation based on parsed request
+        # First try to handle with knowledge manager (for system info queries)
+        query_lower = request.message.lower()
+        if any(term in query_lower for term in ["target", "server", "job", "run", "user", "status", "overview", "how many", "count", "list"]):
+            result = await knowledge_manager.handle_system_query(request.message, parsed_data)
+            if result.get("success"):
+                return ChatResponse(
+                    response=result.get("message", "Query completed"),
+                    intent="query",
+                    confidence=confidence,
+                    execution_started=True
+                )
+        
+        # Fall back to protocol operations for other queries
         result = await protocol_manager.execute_query(parsed_data)
         
         return ChatResponse(
