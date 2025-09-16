@@ -170,15 +170,36 @@ async def chat_endpoint(request: ChatRequest):
         
         logger.info("Intent classified", intent=intent, confidence=confidence)
         
-        # Step 2: Handle based on intent
-        if intent == "automation":
+        # Step 2: Use intelligent analysis to determine if this is a system information query
+        # Parse the request to get NLP data for analysis
+        async with httpx.AsyncClient() as client:
+            parse_response = await client.post(
+                f"{NLP_SERVICE_URL}/nlp/parse",
+                json={"text": request.message}
+            )
+            parsed_data = parse_response.json()
+        
+        # Use our intelligent analysis to determine routing
+        is_system_query = await _is_system_information_query(request.message, parsed_data)
+        
+        logger.info("Intelligent routing analysis", 
+                   original_intent=intent, 
+                   is_system_query=is_system_query,
+                   message=request.message)
+        
+        # Route based on intelligent analysis first, then fall back to NLP intent
+        if is_system_query:
+            # Use knowledge manager for system information queries
+            logger.info("Routing to knowledge manager based on intelligent analysis")
+            return await handle_query_request(request, confidence)
+        elif intent == "automation":
             # Create and potentially execute job
             return await handle_automation_request(request, confidence)
         elif intent == "question":
             # Use LLM service for questions
             return await handle_question_request(request, confidence)
         elif intent == "query":
-            # Use protocol operations for system queries
+            # Use protocol operations for system queries (backup route)
             return await handle_query_request(request, confidence)
         else:
             # Default LLM response
@@ -289,8 +310,131 @@ async def handle_question_request(request: ChatRequest, confidence: float) -> Ch
             execution_started=False
         )
 
+async def _is_system_information_query(query: str, parsed_data: Dict[str, Any]) -> bool:
+    """Intelligently determine if a query is asking for system information vs automation"""
+    try:
+        query_lower = query.lower()
+        entities = parsed_data.get("entities", [])
+        intent = parsed_data.get("intent", "")
+        
+        # Information-seeking patterns (not action-oriented)
+        info_patterns = [
+            # Question words
+            "what", "which", "where", "when", "who", "how many", "how much", "how about",
+            # Information verbs
+            "show", "list", "display", "tell", "describe", "explain", "give me", "provide",
+            "find", "get", "see", "view", "check", "look at", "examine",
+            # Status/state queries
+            "status", "state", "health", "overview", "summary", "report", "info", "information",
+            "details", "breakdown", "analysis", "statistics", "stats", "metrics",
+            # Counting/quantifying
+            "count", "number", "total", "amount", "quantity", "sum",
+            # Existence queries
+            "do we have", "are there", "is there", "exists", "available", "present",
+            "do you have", "can you find", "is it possible",
+            # Comparison queries
+            "compare", "difference", "versus", "vs", "between", "against",
+            # Polite/conversational
+            "could you", "would you", "please", "can you", "help me", "i need", "i want"
+        ]
+        
+        # System entities that indicate information queries
+        system_entities = [
+            "target", "targets", "server", "servers", "machine", "machines", 
+            "host", "hosts", "system", "systems", "computer", "computers",
+            "tag", "tags", "label", "labels", "category", "categories", "group", "groups",
+            "job", "jobs", "task", "tasks", "automation", "workflow", "workflows",
+            "run", "runs", "execution", "executions", "result", "results", "log", "logs",
+            "user", "users", "account", "accounts", "role", "roles", "permission", "permissions",
+            "service", "services", "process", "processes", "application", "applications"
+        ]
+        
+        # Action patterns that indicate automation requests
+        action_patterns = [
+            "run", "execute", "start", "stop", "restart", "kill",
+            "deploy", "install", "update", "upgrade", "configure",
+            "create", "delete", "remove", "add", "modify",
+            "backup", "restore", "sync", "copy", "move",
+            "schedule", "automate", "trigger"
+        ]
+        
+        # Check for information-seeking patterns
+        has_info_pattern = any(pattern in query_lower for pattern in info_patterns)
+        
+        # Check for system entities
+        has_system_entity = any(entity in query_lower for entity in system_entities)
+        
+        # Check for action patterns
+        has_action_pattern = any(pattern in query_lower for pattern in action_patterns)
+        
+        # Check NLP entities for system-related terms
+        entity_types = [e.get("label", "").lower() for e in entities]
+        entity_texts = [e.get("text", "").lower() for e in entities]
+        has_system_nlp_entity = any(etype in ["org", "product", "gpe", "facility"] for etype in entity_types)
+        
+        # Enhanced semantic understanding - check for infrastructure-related terms
+        infrastructure_terms = [
+            "infrastructure", "environment", "setup", "deployment", "network",
+            "datacenter", "cloud", "platform", "architecture", "topology"
+        ]
+        has_infrastructure_term = any(term in query_lower for term in infrastructure_terms)
+        
+        # Check for technology/OS terms that indicate system queries
+        tech_terms = [
+            "windows", "linux", "ubuntu", "centos", "debian", "redhat",
+            "vm", "virtual", "container", "docker", "kubernetes",
+            "aws", "azure", "gcp", "cloud", "on-premise", "hybrid"
+        ]
+        has_tech_term = any(term in query_lower for term in tech_terms)
+        
+        # Check for operational terms
+        ops_terms = [
+            "monitoring", "alerting", "logging", "metrics", "performance",
+            "uptime", "downtime", "availability", "reliability", "maintenance"
+        ]
+        has_ops_term = any(term in query_lower for term in ops_terms)
+        
+        # Enhanced decision logic with semantic understanding
+        if has_info_pattern and (has_system_entity or has_system_nlp_entity or has_infrastructure_term):
+            return True
+        
+        if has_system_entity and not has_action_pattern:
+            return True
+        
+        if has_infrastructure_term or has_tech_term or has_ops_term:
+            return True
+            
+        # Special cases for common queries with more variations
+        common_info_phrases = [
+            "how many", "what are", "show me", "list all", "tell me about",
+            "what is", "where is", "status of", "health of", "overview of",
+            "give me info", "i need to know", "can you tell me", "help me understand",
+            "what about", "how about", "details on", "information about"
+        ]
+        if any(phrase in query_lower for phrase in common_info_phrases):
+            return True
+        
+        # Check for possessive patterns that indicate system ownership
+        possessive_patterns = [
+            "our", "my", "the", "this", "these", "those"
+        ]
+        if any(poss in query_lower for poss in possessive_patterns) and has_system_entity:
+            return True
+        
+        # If it's clearly an action request, it's not a system info query
+        if has_action_pattern and not has_info_pattern and not has_system_entity:
+            return False
+        
+        # Default to system info query for ambiguous cases
+        return True
+        
+    except Exception as e:
+        logger.error("Error in query analysis", error=str(e))
+        # Default to system info query on error
+        return True
+
 async def handle_query_request(request: ChatRequest, confidence: float) -> ChatResponse:
-    """Handle system queries using knowledge manager and protocol operations"""
+    """Handle system queries using intelligent analysis and knowledge manager"""
     try:
         # Parse the request to understand what system query is needed
         async with httpx.AsyncClient() as client:
@@ -300,10 +444,19 @@ async def handle_query_request(request: ChatRequest, confidence: float) -> ChatR
             )
             parsed_data = parse_response.json()
         
-        # First try to handle with knowledge manager (for system info queries)
-        query_lower = request.message.lower()
-        if any(term in query_lower for term in ["target", "server", "job", "run", "user", "status", "overview", "how many", "count", "list"]):
+        logger.info("Processing query with intelligent analysis", 
+                   query=request.message, 
+                   entities=parsed_data.get("entities", []),
+                   intent=parsed_data.get("intent"))
+        
+        # Use intelligent query analysis to determine if this is a system information query
+        is_system_query = await _is_system_information_query(request.message, parsed_data)
+        
+        if is_system_query:
+            logger.info("Query identified as system information query, using knowledge manager")
             result = await knowledge_manager.handle_system_query(request.message, parsed_data)
+            logger.info("Knowledge manager result", success=result.get("success"), message_preview=result.get("message", "")[:100])
+            
             if result.get("success"):
                 return ChatResponse(
                     response=result.get("message", "Query completed"),
@@ -312,7 +465,8 @@ async def handle_query_request(request: ChatRequest, confidence: float) -> ChatR
                     execution_started=True
                 )
         
-        # Fall back to protocol operations for other queries
+        # Fall back to protocol operations for automation/execution queries
+        logger.info("Query identified as automation/execution query, using protocol manager")
         result = await protocol_manager.execute_query(parsed_data)
         
         return ChatResponse(

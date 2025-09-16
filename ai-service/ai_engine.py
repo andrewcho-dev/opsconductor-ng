@@ -73,6 +73,7 @@ from query_handlers import (
     AutomationQueryHandler,
     CommunicationQueryHandler
 )
+from query_handlers.dynamic_schema_queries import DynamicSchemaQueryHandler
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class OpsConductorAI:
         self.infrastructure_handler = InfrastructureQueryHandler(service_clients)
         self.automation_handler = AutomationQueryHandler(service_clients)
         self.communication_handler = CommunicationQueryHandler(service_clients)
+        self.schema_handler = DynamicSchemaQueryHandler(service_clients)
         
         logger.info("Query handlers initialized")
         
@@ -117,7 +119,8 @@ class OpsConductorAI:
         handlers = [
             self.infrastructure_handler,
             self.automation_handler,
-            self.communication_handler
+            self.communication_handler,
+            self.schema_handler
         ]
         
         for handler in handlers:
@@ -334,6 +337,38 @@ class OpsConductorAI:
                     "confidence": 0.8
                 },
                 
+                # Schema and database queries
+                "query_schema_info": {
+                    "patterns": [r"schema", r"database", r"tables?", r"structure", r"what.tables"],
+                    "keywords": ["schema", "database", "table", "structure", "show", "list", "what"],
+                    "confidence": 0.8
+                },
+                "query_table_structure": {
+                    "patterns": [r"describe", r"table.structure", r"columns?", r"fields?", r"what's.in"],
+                    "keywords": ["describe", "structure", "column", "field", "table", "show", "explain"],
+                    "confidence": 0.8
+                },
+                "query_database_search": {
+                    "patterns": [r"search", r"find", r"look.for", r"related.to"],
+                    "keywords": ["search", "find", "look", "related", "database", "table", "column"],
+                    "confidence": 0.7
+                },
+                "query_column_info": {
+                    "patterns": [r"column", r"field", r"which.table", r"where.is"],
+                    "keywords": ["column", "field", "which", "where", "table", "has", "contains"],
+                    "confidence": 0.8
+                },
+                "query_relationships": {
+                    "patterns": [r"relationships?", r"foreign.key", r"references?", r"related.tables"],
+                    "keywords": ["relationship", "foreign", "key", "reference", "related", "join", "connection"],
+                    "confidence": 0.8
+                },
+                "query_database_summary": {
+                    "patterns": [r"database.summary", r"overview", r"what.tables", r"schema.overview"],
+                    "keywords": ["summary", "overview", "database", "schema", "all", "tables", "structure"],
+                    "confidence": 0.8
+                },
+                
                 # General intents
                 "provide_greeting": {
                     "patterns": [r"hello", r"hi", r"hey", r"greetings?"],
@@ -452,6 +487,7 @@ class OpsConductorAI:
         response += "• ⚙️ Job and workflow management\n"
         response += "• 📧 Notification and communication tracking\n"
         response += "• 📊 System monitoring and analytics\n"
+        response += "• 🗄️ Database schema and structure exploration\n"
         response += "• 🔧 Script generation and automation\n\n"
         response += "**Try asking:**\n"
         response += "• *\"Show me Windows targets\"*\n"
@@ -460,7 +496,10 @@ class OpsConductorAI:
         response += "• *\"What jobs failed today?\"*\n"
         response += "• *\"Show task queue status\"*\n"
         response += "• *\"Show notification history\"*\n"
-        response += "• *\"Analyze connection status\"*\n"
+        response += "• *\"What tables are in the database?\"*\n"
+        response += "• *\"Describe the targets table\"*\n"
+        response += "• *\"Find column named email\"*\n"
+        response += "• *\"Database schema overview\"*\n"
         response += "• *\"Tag usage statistics\"*"
         
         return {

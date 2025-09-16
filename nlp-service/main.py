@@ -164,8 +164,8 @@ async def classify_intent(request: ClassifyRequest):
         text_lower = request.text.lower()
         
         # Check for OpsConductor system queries first (higher priority)
-        opsconductor_terms = ["target", "server", "job", "run", "user", "system", "status", "overview"]
-        system_query_patterns = ["how many", "count", "list", "show", "total"]
+        opsconductor_terms = ["target", "server", "job", "run", "user", "system", "status", "overview", "tag", "tagged", "label"]
+        system_query_patterns = ["how many", "count", "list", "show", "total", "all", "available"]
         
         if (any(term in text_lower for term in opsconductor_terms) and 
             any(pattern in text_lower for pattern in system_query_patterns)):
