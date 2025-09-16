@@ -282,9 +282,9 @@ const Dashboard: React.FC = () => {
   return (
     <div className="dense-dashboard" style={{ 
       height: '100vh', 
-      overflow: 'hidden', 
       display: 'flex', 
-      flexDirection: 'column' 
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
       {/* Ultra-compact header with inline stats */}
       <div className="dashboard-header" style={{ flexShrink: 0 }}>
@@ -304,6 +304,7 @@ const Dashboard: React.FC = () => {
       <div className="dashboard-section" style={{ 
         marginBottom: '12px',
         width: '100%',
+        height: '120px',
         flexShrink: 0
       }}>
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -346,13 +347,12 @@ const Dashboard: React.FC = () => {
 
       {/* AI Chat Interface - Takes remaining space */}
       <div className="dashboard-section" style={{ 
-        minHeight: '400px',
-        maxHeight: '600px',
-        height: '50vh',
+        flex: 1,
         margin: 0,
         borderRadius: '6px',
         display: 'flex',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        minHeight: 0
       }}>
         <div className="section-header" style={{ 
           display: 'flex', 
