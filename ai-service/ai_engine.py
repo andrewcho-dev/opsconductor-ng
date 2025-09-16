@@ -1075,6 +1075,243 @@ Provide a helpful, accurate response. If you don't have enough information, sugg
                 "intent": "system_health", 
                 "success": False
             }
+    
+    async def handle_target_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about targets, including filtering by tags, OS, etc."""
+        try:
+            message_lower = message.lower()
+            targets = self.system_knowledge.get('targets', [])
+            enhanced_targets = self.system_knowledge.get('enhanced_targets', [])
+            
+            # Combine all targets for analysis
+            all_targets = targets + enhanced_targets
+            
+            if not all_targets:
+                return {
+                    "response": "🔍 No targets found in your infrastructure. Please add some targets first.",
+                    "intent": "query_targets",
+                    "success": False
+                }
+            
+            # Parse the query to understand what the user is looking for
+            filtered_targets = []
+            filter_description = ""
+            
+            # Check for Windows 10 queries
+            if any(term in message_lower for term in ['windows 10', 'win10', 'windows10']):
+                # Look for targets with win10 tag or Windows 10 in OS field
+                for target in all_targets:
+                    tags = str(target.get('tags', '')).lower()
+                    os_info = str(target.get('os', '')).lower()
+                    os_name = str(target.get('os_name', '')).lower()
+                    
+                    if ('win10' in tags or 'windows 10' in tags or 
+                        'windows 10' in os_info or 'win10' in os_info or
+                        'windows 10' in os_name or 'win10' in os_name):
+                        filtered_targets.append(target)
+                
+                filter_description = "Windows 10 (win10 tag or OS)"
+            
+            # Check for other Windows versions
+            elif any(term in message_lower for term in ['windows', 'win']):
+                for target in all_targets:
+                    tags = str(target.get('tags', '')).lower()
+                    os_info = str(target.get('os', '')).lower()
+                    os_name = str(target.get('os_name', '')).lower()
+                    
+                    if ('windows' in tags or 'win' in tags or 
+                        'windows' in os_info or 'win' in os_info or
+                        'windows' in os_name or 'win' in os_name):
+                        filtered_targets.append(target)
+                
+                filter_description = "Windows systems"
+            
+            # Check for Linux queries
+            elif any(term in message_lower for term in ['linux', 'ubuntu', 'centos', 'rhel']):
+                for target in all_targets:
+                    tags = str(target.get('tags', '')).lower()
+                    os_info = str(target.get('os', '')).lower()
+                    os_name = str(target.get('os_name', '')).lower()
+                    
+                    if any(linux_term in tags or linux_term in os_info or linux_term in os_name 
+                           for linux_term in ['linux', 'ubuntu', 'centos', 'rhel']):
+                        filtered_targets.append(target)
+                
+                filter_description = "Linux systems"
+            
+            # Check for specific tags
+            elif 'tag' in message_lower:
+                # Extract tag name from message
+                import re
+                tag_match = re.search(r'tag[:\s]+([a-zA-Z0-9_-]+)', message_lower)
+                if tag_match:
+                    tag_name = tag_match.group(1)
+                    for target in all_targets:
+                        tags = str(target.get('tags', '')).lower()
+                        if tag_name in tags:
+                            filtered_targets.append(target)
+                    filter_description = f"tag '{tag_name}'"
+            
+            # Check for server/workstation queries
+            elif any(term in message_lower for term in ['server', 'servers']):
+                for target in all_targets:
+                    tags = str(target.get('tags', '')).lower()
+                    hostname = str(target.get('hostname', '')).lower()
+                    
+                    if 'server' in tags or 'server' in hostname:
+                        filtered_targets.append(target)
+                
+                filter_description = "servers"
+            
+            # Default: show all targets
+            else:
+                filtered_targets = all_targets
+                filter_description = "all targets"
+            
+            # Build response
+            if not filtered_targets:
+                response = f"🔍 **No targets found matching '{filter_description}'**\n\n"
+                response += f"**Total targets in system:** {len(all_targets)}\n\n"
+                response += "**Try searching for:**\n"
+                response += "• 'Windows 10 targets' or 'win10 targets'\n"
+                response += "• 'Linux targets' or 'Ubuntu targets'\n"
+                response += "• 'servers' or 'workstations'\n"
+                response += "• 'targets with tag [tagname]'\n"
+                response += "• 'all targets' to see everything"
+            else:
+                response = f"🎯 **Found {len(filtered_targets)} targets matching '{filter_description}'**\n\n"
+                
+                # Show target details
+                for i, target in enumerate(filtered_targets[:10]):  # Show first 10
+                    hostname = target.get('hostname', 'Unknown')
+                    ip = target.get('ip_address', 'No IP')
+                    os_info = target.get('os', target.get('os_name', 'Unknown OS'))
+                    tags = target.get('tags', 'No tags')
+                    
+                    response += f"**{i+1}. {hostname}**\n"
+                    response += f"   • IP: {ip}\n"
+                    response += f"   • OS: {os_info}\n"
+                    response += f"   • Tags: {tags}\n\n"
+                
+                if len(filtered_targets) > 10:
+                    response += f"... and {len(filtered_targets) - 10} more targets\n\n"
+                
+                response += f"**Summary:**\n"
+                response += f"• Total matching: {len(filtered_targets)}\n"
+                response += f"• Total in system: {len(all_targets)}\n"
+                
+                # Show OS breakdown for filtered targets
+                os_counts = {}
+                for target in filtered_targets:
+                    os_info = target.get('os', target.get('os_name', 'Unknown'))
+                    os_counts[os_info] = os_counts.get(os_info, 0) + 1
+                
+                if os_counts:
+                    response += f"\n**OS Breakdown:**\n"
+                    for os_name, count in sorted(os_counts.items()):
+                        response += f"• {os_name}: {count}\n"
+            
+            return {
+                "response": response,
+                "intent": "query_targets",
+                "success": True,
+                "data": {
+                    "filtered_targets": len(filtered_targets),
+                    "total_targets": len(all_targets),
+                    "filter_description": filter_description,
+                    "targets": filtered_targets[:10]  # Return first 10 for API consumers
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Target query error: {e}")
+            return {
+                "response": f"❌ Error querying targets: {str(e)}",
+                "intent": "query_targets",
+                "success": False
+            }
+    
+    async def handle_job_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about automation jobs"""
+        try:
+            jobs = self.system_knowledge.get('recent_jobs', [])
+            
+            if not jobs:
+                return {
+                    "response": "📋 No automation jobs found in the system.",
+                    "intent": "query_jobs",
+                    "success": True,
+                    "data": {"jobs_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Filter jobs based on query
+            if 'recent' in message_lower or 'latest' in message_lower:
+                filtered_jobs = jobs[:5]  # Most recent 5
+                filter_desc = "recent"
+            elif 'failed' in message_lower or 'error' in message_lower:
+                filtered_jobs = [j for j in jobs if j.get('status') in ['failed', 'error']]
+                filter_desc = "failed"
+            elif 'running' in message_lower or 'active' in message_lower:
+                filtered_jobs = [j for j in jobs if j.get('status') in ['running', 'active', 'in_progress']]
+                filter_desc = "running"
+            elif 'completed' in message_lower or 'success' in message_lower:
+                filtered_jobs = [j for j in jobs if j.get('status') in ['completed', 'success', 'finished']]
+                filter_desc = "completed"
+            else:
+                filtered_jobs = jobs[:10]  # Show first 10
+                filter_desc = "all"
+            
+            response = f"📋 **Automation Jobs ({filter_desc})**\n\n"
+            
+            if not filtered_jobs:
+                response += f"No {filter_desc} jobs found.\n"
+                response += f"Total jobs in system: {len(jobs)}"
+            else:
+                for i, job in enumerate(filtered_jobs[:5]):  # Show max 5
+                    job_id = job.get('id', 'Unknown')
+                    description = job.get('description', 'No description')
+                    status = job.get('status', 'Unknown')
+                    created_at = job.get('created_at', 'Unknown')
+                    
+                    status_emoji = {
+                        'completed': '✅', 'success': '✅', 'finished': '✅',
+                        'failed': '❌', 'error': '❌',
+                        'running': '🔄', 'active': '🔄', 'in_progress': '🔄',
+                        'pending': '⏳', 'queued': '⏳'
+                    }
+                    
+                    emoji = status_emoji.get(status.lower(), '📋')
+                    
+                    response += f"**{i+1}. Job #{job_id}** {emoji}\n"
+                    response += f"   • Description: {description[:100]}{'...' if len(description) > 100 else ''}\n"
+                    response += f"   • Status: {status}\n"
+                    response += f"   • Created: {created_at}\n\n"
+                
+                if len(filtered_jobs) > 5:
+                    response += f"... and {len(filtered_jobs) - 5} more {filter_desc} jobs\n\n"
+                
+                response += f"**Summary:** {len(filtered_jobs)} {filter_desc} jobs, {len(jobs)} total"
+            
+            return {
+                "response": response,
+                "intent": "query_jobs",
+                "success": True,
+                "data": {
+                    "filtered_jobs": len(filtered_jobs),
+                    "total_jobs": len(jobs),
+                    "filter_description": filter_desc
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Job query error: {e}")
+            return {
+                "response": f"❌ Error querying jobs: {str(e)}",
+                "intent": "query_jobs",
+                "success": False
+            }
 
 # Global AI instance
 ai_engine = OpsConductorAI()
