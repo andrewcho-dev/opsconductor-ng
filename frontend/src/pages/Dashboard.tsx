@@ -337,7 +337,12 @@ const Dashboard: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="compact-content">
+        <div className="compact-content" style={{ 
+          padding: '12px 8px', 
+          display: 'flex', 
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
           <ServiceHealthMonitor 
             refreshTrigger={refreshTrigger} 
             onLastUpdateChange={setServiceHealthLastUpdate}
