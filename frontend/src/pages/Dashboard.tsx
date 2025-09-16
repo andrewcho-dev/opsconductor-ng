@@ -281,7 +281,7 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="dense-dashboard" style={{ 
-      height: 'calc(100vh - 35px)', 
+      height: 'calc(100vh - 45px)', 
       display: 'flex', 
       flexDirection: 'column',
       overflow: 'hidden'
