@@ -333,6 +333,129 @@ class AutomationServiceClient:
             logger.error("Failed to list AI jobs", error=str(e))
             return []
 
+    async def get_execution_history(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get execution history"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/executions",
+                    params={'limit': limit, 'order': 'desc'}
+                )
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get execution history", 
+                                  status_code=response.status_code)
+                    return []
+                
+                result = response.json()
+                return result.get('executions', [])
+                
+        except Exception as e:
+            logger.error("Failed to get execution history", error=str(e))
+            return []
+    
+    async def get_scheduled_jobs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get scheduled jobs"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/jobs",
+                    params={'scheduled': 'true', 'limit': limit}
+                )
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get scheduled jobs", 
+                                  status_code=response.status_code)
+                    return []
+                
+                result = response.json()
+                return result.get('jobs', [])
+                
+        except Exception as e:
+            logger.error("Failed to get scheduled jobs", error=str(e))
+            return []
+    
+    async def get_workflows_with_steps(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get workflows with step details"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/workflows",
+                    params={'include_steps': 'true', 'limit': limit}
+                )
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get workflows with steps", 
+                                  status_code=response.status_code)
+                    return []
+                
+                result = response.json()
+                return result.get('workflows', [])
+                
+        except Exception as e:
+            logger.error("Failed to get workflows with steps", error=str(e))
+            return []
+    
+    async def get_workflow_execution_stats(self, workflow_id: str) -> Dict[str, Any]:
+        """Get execution statistics for a specific workflow"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/workflows/{workflow_id}/stats"
+                )
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get workflow execution stats", 
+                                  workflow_id=workflow_id,
+                                  status_code=response.status_code)
+                    return {}
+                
+                return response.json()
+                
+        except Exception as e:
+            logger.error("Failed to get workflow execution stats", 
+                        workflow_id=workflow_id, error=str(e))
+            return {}
+    
+    async def get_task_queue_status(self) -> Dict[str, Any]:
+        """Get current task queue status"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(f"{self.base_url}/queue/status")
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get task queue status", 
+                                  status_code=response.status_code)
+                    return {}
+                
+                return response.json()
+                
+        except Exception as e:
+            logger.error("Failed to get task queue status", error=str(e))
+            return {}
+    
+    async def get_execution_steps(self, execution_id: str) -> List[Dict[str, Any]]:
+        """Get detailed steps for a specific execution"""
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/executions/{execution_id}/steps"
+                )
+                
+                if response.status_code != 200:
+                    logger.warning("Failed to get execution steps", 
+                                  execution_id=execution_id,
+                                  status_code=response.status_code)
+                    return []
+                
+                result = response.json()
+                return result.get('steps', [])
+                
+        except Exception as e:
+            logger.error("Failed to get execution steps", 
+                        execution_id=execution_id, error=str(e))
+            return []
+
     def get_client_info(self) -> Dict[str, Any]:
         """Get client information"""
         return {
@@ -345,7 +468,11 @@ class AutomationServiceClient:
                 'Job execution management',
                 'Execution status monitoring',
                 'Step-by-step execution tracking',
-                'AI job listing'
+                'AI job listing',
+                'Execution history tracking',
+                'Job scheduling queries',
+                'Workflow step analysis',
+                'Task queue monitoring'
             ],
             'timeouts': {
                 'request_timeout': self.timeout,

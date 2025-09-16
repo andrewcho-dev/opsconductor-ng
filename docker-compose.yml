@@ -446,8 +446,10 @@ services:
       - ./ai-service/main.py:/app/main.py
       - ./ai-service/ai_engine.py:/app/ai_engine.py
       - ./ai-service/ai_engine_broken.py:/app/ai_engine_broken.py
+      - ./ai-service/ai_engine_legacy.py:/app/ai_engine_legacy.py
       - ./ai-service/asset_client.py:/app/asset_client.py
       - ./ai-service/automation_client.py:/app/automation_client.py
+      - ./ai-service/communication_client.py:/app/communication_client.py
       - ./ai-service/nlp_processor.py:/app/nlp_processor.py
       - ./ai-service/protocol_manager.py:/app/protocol_manager.py
       - ./ai-service/vector_store.py:/app/vector_store.py
@@ -456,6 +458,12 @@ services:
       - ./ai-service/predictive_analytics.py:/app/predictive_analytics.py
       - ./ai-service/learning_api.py:/app/learning_api.py
       - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py
+      - ./ai-service/migrate_to_modular.py:/app/migrate_to_modular.py
+      - ./ai-service/query_handlers/__init__.py:/app/query_handlers/__init__.py
+      - ./ai-service/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
+      - ./ai-service/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
+      - ./ai-service/query_handlers/automation_queries.py:/app/query_handlers/automation_queries.py
+      - ./ai-service/query_handlers/communication_queries.py:/app/query_handlers/communication_queries.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
