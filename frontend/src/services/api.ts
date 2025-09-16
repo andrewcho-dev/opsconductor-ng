@@ -322,8 +322,7 @@ export const healthApi = {
           
           // Map backend service names to frontend expected names
           const serviceNameMapping: Record<string, string> = {
-            'ai': 'ai-service',
-            // Add other mappings as needed
+            // No mappings needed - use backend names directly
           };
           
           const mappedServiceName = serviceNameMapping[serviceName.toLowerCase()] || serviceName.toLowerCase();
@@ -339,15 +338,16 @@ export const healthApi = {
       // Add default status for services not explicitly reported
       // Only include services that are actually running and should be monitored
       const expectedServices = [
-        'api-gateway', 'identity', 'asset', 'automation', 'communication', 
-        'postgres', 'redis'
+        'identity', 'asset', 'automation', 'communication', 
+        'ai-orchestrator', 'nlp', 'vector', 'llm',
+        'postgres', 'redis', 'chromadb', 'ollama'
       ];
       
       // Services that exist but may not be health-checked by the API Gateway
       // These are running and accessible, so we'll mark them as healthy
       const infrastructureServices = [
         'worker-1', 'worker-2', 'scheduler', 'celery-monitor',
-        'chromadb', 'frontend', 'nginx'
+        'frontend'
       ];
       
       expectedServices.forEach(service => {

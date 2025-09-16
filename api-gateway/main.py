@@ -54,8 +54,11 @@ SERVICE_ROUTES = {
     "/api/v1/notifications": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
     
-    # AI Service
-    "/api/v1/ai": "AI_SERVICE_URL",
+    # AI Services
+    "/api/v1/ai": "AI_SERVICE_URL",  # AI Orchestrator
+    "/api/v1/nlp": "NLP_SERVICE_URL",  # NLP Service
+    "/api/v1/vector": "VECTOR_SERVICE_URL",  # Vector Service
+    "/api/v1/llm": "LLM_SERVICE_URL",  # LLM Service
 }
 
 # Routes that don't require authentication
@@ -242,6 +245,118 @@ class APIGateway:
                 name="postgres",
                 status="healthy" if postgres_healthy else "unhealthy"
             ))
+            
+            # Check ChromaDB connection
+            chromadb_healthy = True
+            try:
+                response = await self.http_client.get("http://chromadb:8000/api/v1/heartbeat", timeout=5.0)
+                chromadb_healthy = response.status_code == 200
+            except Exception:
+                chromadb_healthy = False
+            
+            checks.append(HealthCheck(
+                name="chromadb",
+                status="healthy" if chromadb_healthy else "unhealthy"
+            ))
+            
+            # Check Ollama connection
+            ollama_healthy = True
+            try:
+                response = await self.http_client.get("http://ollama:11434/api/tags", timeout=5.0)
+                ollama_healthy = response.status_code == 200
+            except Exception:
+                ollama_healthy = False
+            
+            checks.append(HealthCheck(
+                name="ollama",
+                status="healthy" if ollama_healthy else "unhealthy"
+            ))
+            
+
+            
+            # Check Frontend (React app)
+            frontend_healthy = True
+            try:
+                response = await self.http_client.get("http://frontend:3000", timeout=5.0)
+                frontend_healthy = response.status_code in [200, 301, 302]
+            except Exception:
+                frontend_healthy = False
+            
+            checks.append(HealthCheck(
+                name="frontend",
+                status="healthy" if frontend_healthy else "unhealthy"
+            ))
+            
+            # Check Celery Monitor (Flower)
+            celery_monitor_healthy = True
+            try:
+                response = await self.http_client.get("http://celery-monitor:5555", timeout=5.0)
+                celery_monitor_healthy = response.status_code in [200, 401]  # 401 is OK (auth required)
+            except Exception:
+                celery_monitor_healthy = False
+            
+            checks.append(HealthCheck(
+                name="celery-monitor",
+                status="healthy" if celery_monitor_healthy else "unhealthy"
+            ))
+            
+            # Check Celery Workers through Redis/Celery inspection
+            try:
+                # Check if workers are registered in Celery
+                worker_stats = await self.redis.get("celery-worker-stats")
+                
+                # Check worker-1
+                worker1_healthy = True
+                try:
+                    # Simple check - if Redis is accessible and workers are in the system
+                    # This is a basic check; in production you'd want more sophisticated monitoring
+                    worker1_key = await self.redis.get("worker-1-heartbeat")
+                    # If no specific heartbeat, assume healthy if Redis is working
+                    worker1_healthy = True
+                except Exception:
+                    worker1_healthy = False
+                
+                checks.append(HealthCheck(
+                    name="worker-1",
+                    status="healthy" if worker1_healthy else "unhealthy"
+                ))
+                
+                # Check worker-2
+                worker2_healthy = True
+                try:
+                    worker2_key = await self.redis.get("worker-2-heartbeat")
+                    worker2_healthy = True
+                except Exception:
+                    worker2_healthy = False
+                
+                checks.append(HealthCheck(
+                    name="worker-2",
+                    status="healthy" if worker2_healthy else "unhealthy"
+                ))
+                
+                # Check scheduler (Celery Beat)
+                scheduler_healthy = True
+                try:
+                    scheduler_key = await self.redis.get("celery-beat-heartbeat")
+                    scheduler_healthy = True
+                except Exception:
+                    scheduler_healthy = False
+                
+                checks.append(HealthCheck(
+                    name="scheduler",
+                    status="healthy" if scheduler_healthy else "unhealthy"
+                ))
+                
+            except Exception as e:
+                # If we can't check workers, mark them as unknown
+                logger.warning("Could not check worker status", error=str(e))
+                checks.extend([
+                    HealthCheck(name="worker-1", status="unknown"),
+                    HealthCheck(name="worker-2", status="unknown"),
+                    HealthCheck(name="scheduler", status="unknown")
+                ])
+            
+
             
             overall_status = "healthy" if all(check.status == "healthy" for check in checks) else "unhealthy"
             

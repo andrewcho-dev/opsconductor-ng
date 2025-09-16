@@ -12,7 +12,17 @@ import {
   Settings, 
   Activity, 
   Monitor, 
-  Server 
+  Server,
+  Brain,
+  Bot,
+  Search,
+  Cpu,
+  Network,
+  Clock,
+  Eye,
+  Layers,
+  Gauge,
+  MemoryStick
 } from 'lucide-react';
 
 interface ServiceStatus {
@@ -20,6 +30,7 @@ interface ServiceStatus {
   service: string;
   responseTime?: number;
   error?: string;
+  details?: Record<string, any>;
 }
 
 interface ServiceHealthMonitorProps {
@@ -31,12 +42,18 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
   const [services, setServices] = useState<Record<string, ServiceStatus>>({});
   const [loading, setLoading] = useState(true);
 
-  // All services in a flat array
+  // All services in a flat array - organized by category for better visual grouping
   const allServices = [
-    'api-gateway', 'identity', 'asset', 'automation', 'communication',
-    'postgres', 'redis', 'chromadb',
+    // Core Services
+    'identity', 'asset', 'automation', 'communication',
+    // AI Services  
+    'ai-orchestrator', 'nlp', 'vector', 'llm',
+    // Infrastructure
+    'postgres', 'redis', 'chromadb', 'ollama',
+    // Workers & Monitoring
     'worker-1', 'worker-2', 'scheduler', 'celery-monitor',
-    'frontend', 'nginx'
+    // Frontend
+    'frontend'
   ];
 
   // Get appropriate icon for each service category
@@ -44,6 +61,7 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
     const iconProps = { size: 12 };
     
     switch (serviceName) {
+      // Core Services
       case 'api-gateway':
         return <Globe {...iconProps} />;
       case 'identity':
@@ -54,23 +72,40 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
         return <Zap {...iconProps} />;
       case 'communication':
         return <MessageSquare {...iconProps} />;
+      
+      // AI Services
+      case 'nlp':
+        return <Brain {...iconProps} />;
+      case 'vector':
+        return <Search {...iconProps} />;
+      case 'llm':
+        return <Bot {...iconProps} />;
+      case 'ai-orchestrator':
+        return <Network {...iconProps} />;
+      
+      // Infrastructure
       case 'postgres':
         return <Database {...iconProps} />;
       case 'redis':
         return <HardDrive {...iconProps} />;
       case 'chromadb':
-        return <Database {...iconProps} />;
+        return <Layers {...iconProps} />;
+      case 'ollama':
+        return <Bot {...iconProps} />;
+      
+      // Workers & Monitoring
       case 'worker-1':
       case 'worker-2':
         return <Users {...iconProps} />;
       case 'scheduler':
-        return <Settings {...iconProps} />;
+        return <Clock {...iconProps} />;
       case 'celery-monitor':
-        return <Activity {...iconProps} />;
+        return <Eye {...iconProps} />;
+      
+      // Frontend
       case 'frontend':
         return <Monitor {...iconProps} />;
-      case 'nginx':
-        return <Server {...iconProps} />;
+      
       default:
         return <Server {...iconProps} />;
     }
@@ -110,12 +145,12 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
 
   return (
     <div>
-      {/* All services in equal-sized boxes, max 8 per row */}
+      {/* All services in equal-sized boxes, max 10 per row */}
       <div style={{ 
         display: 'grid', 
-        gridTemplateColumns: `repeat(${Math.min(8, allServices.length)}, 1fr)`,
+        gridTemplateColumns: `repeat(${Math.min(10, allServices.length)}, 1fr)`,
         maxWidth: '100%',
-        gap: '8px'
+        gap: '6px'
       }}>
         {allServices.map((serviceName) => {
           const status = services[serviceName];
@@ -131,16 +166,34 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
             } else if (status.status === 'unhealthy' || status.status === 'error') {
               backgroundColor = '#fee2e2';
               textColor = '#dc2626';
+            } else if (status.status === 'unknown') {
+              backgroundColor = '#fef3c7';
+              textColor = '#d97706';
             } else {
-              // Unknown or any other status - keep gray
+              // Any other status - keep gray
               backgroundColor = '#f3f4f6';
               textColor = '#6b7280';
             }
           }
           
+          // Create tooltip content
+          const getTooltipContent = () => {
+            if (!status) return `${serviceName}: No data`;
+            
+            let tooltip = `${serviceName}: ${status.status}`;
+            if (status.responseTime) tooltip += `\nResponse: ${Math.round(status.responseTime)}ms`;
+            if (status.details?.usage) tooltip += `\nUsage: ${status.details.usage}`;
+            if (status.details?.utilization) tooltip += `\nGPU: ${status.details.utilization}`;
+            if (status.details?.memory) tooltip += `\nGPU Memory: ${status.details.memory}`;
+            if (status.error) tooltip += `\nError: ${status.error}`;
+            
+            return tooltip;
+          };
+          
           return (
             <div 
               key={serviceName}
+              title={getTooltipContent()}
               style={{
                 display: 'flex',
                 flexDirection: 'row',
@@ -151,7 +204,8 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
                 borderRadius: '4px',
                 border: '1px solid #e2e8f0',
                 minHeight: '32px',
-                gap: '6px'
+                gap: '6px',
+                cursor: 'help'
               }}
             >
               <div style={{ 
@@ -173,6 +227,7 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
               }}>
                 {serviceName}
               </span>
+              {/* Show response time or resource usage */}
               {status?.responseTime && (
                 <span style={{ 
                   fontSize: '9px', 
@@ -180,6 +235,26 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
                   flexShrink: 0
                 }}>
                   {Math.round(status.responseTime)}ms
+                </span>
+              )}
+              {status?.details?.usage && (
+                <span style={{ 
+                  fontSize: '9px', 
+                  color: textColor,
+                  flexShrink: 0,
+                  fontWeight: '600'
+                }}>
+                  {status.details.usage}
+                </span>
+              )}
+              {status?.details?.utilization && (
+                <span style={{ 
+                  fontSize: '9px', 
+                  color: textColor,
+                  flexShrink: 0,
+                  fontWeight: '600'
+                }}>
+                  {status.details.utilization}
                 </span>
               )}
             </div>

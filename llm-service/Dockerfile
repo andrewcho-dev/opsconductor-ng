@@ -1,30 +1,37 @@
-FROM nvidia/cuda:12.1-devel-ubuntu22.04
+FROM python:3.12.11-slim
 
-# Install Python 3.11
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y \
-    python3.11 \
-    python3.11-dev \
-    python3.11-distutils \
-    python3-pip \
     gcc \
     g++ \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Python 3.11 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+# CUDA will be available through the host GPU drivers and nvidia-docker runtime
+# No need to install CUDA toolkit in the container
 
 WORKDIR /app
 
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with CUDA support in stages to avoid OOM
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# Install core dependencies first
+RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn==0.24.0 pydantic>=2.8.0 httpx==0.25.2
+
+# Install remaining dependencies one by one to avoid OOM
+RUN pip install --no-cache-dir python-multipart==0.0.6
+RUN pip install --no-cache-dir structlog==23.2.0 requests==2.31.0
+RUN pip install --no-cache-dir ollama==0.1.7
+RUN pip install --no-cache-dir --only-binary=all "numpy>=1.19.0,<2.0"
+RUN pip install --no-cache-dir asyncpg==0.29.0 redis==5.0.1 python-dotenv==1.0.0
+RUN pip install --no-cache-dir --only-binary=all pandas>=2.1.0
+RUN pip install --no-cache-dir --only-binary=all scikit-learn>=1.3.0
+RUN pip install --no-cache-dir --only-binary=all scipy>=1.11.0
+RUN pip install --no-cache-dir transformers>=4.30.0
+RUN pip install --no-cache-dir accelerate>=0.20.0
 
 # Copy shared directory
 COPY shared/ ./shared/

@@ -51,6 +51,9 @@ services:
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       AI_SERVICE_URL: http://ai-orchestrator:3000
+      NLP_SERVICE_URL: http://nlp-service:3000
+      VECTOR_SERVICE_URL: http://vector-service:3000
+      LLM_SERVICE_URL: http://llm-service:3000
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
