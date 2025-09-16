@@ -280,9 +280,14 @@ const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="dense-dashboard">
+    <div className="dense-dashboard" style={{ 
+      height: '100vh', 
+      overflow: 'hidden', 
+      display: 'flex', 
+      flexDirection: 'column' 
+    }}>
       {/* Ultra-compact header with inline stats */}
-      <div className="dashboard-header">
+      <div className="dashboard-header" style={{ flexShrink: 0 }}>
         <div className="header-left">
           <h1>Dashboard</h1>
         </div>
@@ -298,7 +303,8 @@ const Dashboard: React.FC = () => {
       {/* Full-width Service Health Card */}
       <div className="dashboard-section" style={{ 
         marginBottom: '12px',
-        width: '100%'
+        width: '100%',
+        flexShrink: 0
       }}>
         <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>Service Health</span>
@@ -340,11 +346,20 @@ const Dashboard: React.FC = () => {
 
       {/* AI Chat Interface - Takes remaining space */}
       <div className="dashboard-section" style={{ 
-        height: 'calc(100vh - 245px)',
+        minHeight: '400px',
+        maxHeight: '600px',
+        height: '50vh',
         margin: 0,
-        borderRadius: '6px'
+        borderRadius: '6px',
+        display: 'flex',
+        flexDirection: 'column'
       }}>
-        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="section-header" style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          flexShrink: 0
+        }}>
           <span>AI Assistant</span>
           <button
             onClick={clearChatHistory}
@@ -369,7 +384,8 @@ const Dashboard: React.FC = () => {
         <div className="compact-content" style={{ 
           display: 'flex', 
           flexDirection: 'column',
-          height: '100%',
+          flex: 1,
+          minHeight: 0,
           padding: 0
         }}>
           {/* Messages Area */}
@@ -377,7 +393,8 @@ const Dashboard: React.FC = () => {
             flex: 1, 
             overflowY: 'auto', 
             padding: '8px',
-            backgroundColor: 'var(--neutral-25)'
+            backgroundColor: 'var(--neutral-25)',
+            minHeight: 0
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {messages.map((message) => (
@@ -430,7 +447,8 @@ const Dashboard: React.FC = () => {
           <div style={{ 
             padding: '8px', 
             borderTop: '1px solid var(--neutral-200)',
-            backgroundColor: 'var(--neutral-50)'
+            backgroundColor: 'var(--neutral-50)',
+            flexShrink: 0
           }}>
             <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px' }}>
               <input
