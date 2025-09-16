@@ -42,19 +42,8 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
   const [services, setServices] = useState<Record<string, ServiceStatus>>({});
   const [loading, setLoading] = useState(true);
 
-  // All services in a flat array - organized by category for better visual grouping
-  const allServices = [
-    // Core Services
-    'identity', 'asset', 'automation', 'communication',
-    // AI Services  
-    'ai-orchestrator', 'nlp', 'vector', 'llm',
-    // Infrastructure
-    'postgres', 'redis', 'chromadb', 'ollama',
-    // Workers & Monitoring
-    'worker-1', 'worker-2', 'scheduler', 'celery-monitor',
-    // Frontend
-    'frontend'
-  ];
+  // Get services dynamically from the API response
+  const allServices = Object.keys(services).sort();
 
   // Get appropriate icon for each service category
   const getServiceIcon = (serviceName: string) => {
@@ -64,24 +53,26 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
       // Core Services
       case 'api-gateway':
         return <Globe {...iconProps} />;
-      case 'identity':
+      case 'identity-service':
         return <Shield {...iconProps} />;
-      case 'asset':
+      case 'asset-service':
         return <Package {...iconProps} />;
-      case 'automation':
+      case 'automation-service':
         return <Zap {...iconProps} />;
-      case 'communication':
+      case 'communication-service':
         return <MessageSquare {...iconProps} />;
       
       // AI Services
-      case 'nlp':
-        return <Brain {...iconProps} />;
-      case 'vector':
-        return <Search {...iconProps} />;
-      case 'llm':
+      case 'ai-command-service':
         return <Bot {...iconProps} />;
-      case 'ai-orchestrator':
+      case 'ai-overview-service':
         return <Network {...iconProps} />;
+      case 'nlp-service':
+        return <Brain {...iconProps} />;
+      case 'vector-service':
+        return <Search {...iconProps} />;
+      case 'llm-service':
+        return <Cpu {...iconProps} />;
       
       // Infrastructure
       case 'postgres':
@@ -102,9 +93,11 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
       case 'celery-monitor':
         return <Eye {...iconProps} />;
       
-      // Frontend
+      // Frontend & Proxy
       case 'frontend':
         return <Monitor {...iconProps} />;
+      case 'nginx':
+        return <Globe {...iconProps} />;
       
       default:
         return <Server {...iconProps} />;

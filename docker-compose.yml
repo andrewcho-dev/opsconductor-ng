@@ -50,7 +50,8 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      AI_SERVICE_URL: http://ai-orchestrator:3000
+      AI_SERVICE_URL: http://ai-command-service:3005
+      AI_OVERVIEW_SERVICE_URL: http://ai-overview-service:3000
       NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
       LLM_SERVICE_URL: http://llm-service:3000
@@ -350,11 +351,11 @@ services:
       retries: 3
     restart: unless-stopped
 
-  ai-orchestrator:
+  ai-overview-service:
     build: ./ai-orchestrator
-    container_name: opsconductor-ai-orchestrator
+    container_name: opsconductor-ai-overview
     ports:
-      - "3005:3000"
+      - "3010:3000"
     environment:
       NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
@@ -412,12 +413,12 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
-  # Legacy AI Service (kept for backward compatibility)
-  ai-service:
+  # AI Command Service - Core Intent Classification and Command Execution
+  ai-command-service:
     build: ./ai-service
-    container_name: opsconductor-ai-legacy
+    container_name: opsconductor-ai-command
     ports:
-      - "3009:3005"
+      - "3005:3005"
     environment:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
@@ -443,31 +444,41 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./ai-service/main.py:/app/main.py
-      - ./ai-service/ai_engine.py:/app/ai_engine.py
-      - ./ai-service/ai_engine_broken.py:/app/ai_engine_broken.py
-      - ./ai-service/ai_engine_legacy.py:/app/ai_engine_legacy.py
-      - ./ai-service/asset_client.py:/app/asset_client.py
-      - ./ai-service/automation_client.py:/app/automation_client.py
-      - ./ai-service/communication_client.py:/app/communication_client.py
-      - ./ai-service/nlp_processor.py:/app/nlp_processor.py
-      - ./ai-service/protocol_manager.py:/app/protocol_manager.py
-      - ./ai-service/vector_store.py:/app/vector_store.py
-      - ./ai-service/workflow_generator.py:/app/workflow_generator.py
-      - ./ai-service/learning_engine.py:/app/learning_engine.py
-      - ./ai-service/predictive_analytics.py:/app/predictive_analytics.py
-      - ./ai-service/learning_api.py:/app/learning_api.py
-      - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py
-      - ./ai-service/migrate_to_modular.py:/app/migrate_to_modular.py
-      - ./ai-service/test_tag_functionality.py:/app/test_tag_functionality.py
-      - ./ai-service/schema_introspector.py:/app/schema_introspector.py
-      - ./ai-service/query_handlers/dynamic_schema_queries.py:/app/query_handlers/dynamic_schema_queries.py
+      # Core AI Service Files - TRACKED FOR EXCEPTIONS & DEBUGGING
+      - ./ai-service/main.py:/app/main.py                                    # Main FastAPI app entry point
+      - ./ai-service/ai_engine.py:/app/ai_engine.py                          # Modular AI orchestrator (601 lines)
+      
+      # Service Clients - TRACKED FOR EXTERNAL API FAILURES  
+      - ./ai-service/asset_client.py:/app/asset_client.py                     # Asset service integration
+      - ./ai-service/automation_client.py:/app/automation_client.py           # Automation service integration
+      - ./ai-service/communication_client.py:/app/communication_client.py     # Communication service integration
+      
+      # Core AI Components - TRACKED FOR ML/NLP FAILURES
+      - ./ai-service/nlp_processor.py:/app/nlp_processor.py                   # Natural language processing
+      - ./ai-service/vector_store.py:/app/vector_store.py                     # Vector embeddings storage
+      - ./ai-service/learning_engine.py:/app/learning_engine.py               # Machine learning engine
+      - ./ai-service/predictive_analytics.py:/app/predictive_analytics.py     # Predictive analytics
+      - ./ai-service/learning_api.py:/app/learning_api.py                     # Learning API endpoints
+      
+      # Infrastructure Components - TRACKED FOR CONNECTIVITY ISSUES
+      - ./ai-service/protocol_manager.py:/app/protocol_manager.py             # Protocol management
+      - ./ai-service/workflow_generator.py:/app/workflow_generator.py         # Workflow generation
+      - ./ai-service/schema_introspector.py:/app/schema_introspector.py       # Database schema analysis
+      
+      # Modular Query Handlers - TRACKED FOR INTENT CLASSIFICATION FAILURES
       - ./ai-service/query_handlers/__init__.py:/app/query_handlers/__init__.py
       - ./ai-service/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
-      - ./ai-service/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
       - ./ai-service/query_handlers/automation_queries.py:/app/query_handlers/automation_queries.py
+      - ./ai-service/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
       - ./ai-service/query_handlers/communication_queries.py:/app/query_handlers/communication_queries.py
-      - ./shared:/app/shared
+      - ./ai-service/query_handlers/dynamic_schema_queries.py:/app/query_handlers/dynamic_schema_queries.py
+      
+      # Test Files - TRACKED FOR DEVELOPMENT DEBUGGING
+      - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py     # Learning system tests
+      - ./ai-service/test_tag_functionality.py:/app/test_tag_functionality.py # Tag functionality tests
+      
+      # Shared Libraries - TRACKED FOR CROSS-SERVICE ISSUES
+      - ./shared:/app/shared                                                  # Shared utilities and middleware
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s

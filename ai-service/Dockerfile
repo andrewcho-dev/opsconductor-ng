@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.12.11-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -6,25 +6,42 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install system dependencies including CUDA toolkit
+# Install system dependencies (EXACT WORKING VERSIONS)
 RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    git \
-    build-essential \
     gcc \
     g++ \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama
 RUN curl -fsSL https://ollama.ai/install.sh | sh
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies (EXACT WORKING ORDER)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy model
-RUN python -m spacy download en_core_web_sm
+# 1. Core web framework
+RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn==0.24.0 pydantic>=2.8.0 httpx==0.25.2
+
+# 2. Basic utilities
+RUN pip install --no-cache-dir python-multipart==0.0.6
+RUN pip install --no-cache-dir structlog==23.2.0 requests==2.31.0
+RUN pip install --no-cache-dir ollama==0.1.7
+
+# 3. NumPy with binary wheels (CRITICAL: --only-binary=all)
+RUN pip install --no-cache-dir --only-binary=all "numpy>=1.19.0,<2.0"
+
+# 4. Database/cache
+RUN pip install --no-cache-dir asyncpg==0.29.0 redis==5.0.1 python-dotenv==1.0.0
+
+# 5. ML packages with binary wheels (CRITICAL: --only-binary=all AND newer versions)
+RUN pip install --no-cache-dir --only-binary=all pandas>=2.1.0
+RUN pip install --no-cache-dir --only-binary=all scikit-learn>=1.3.0
+RUN pip install --no-cache-dir --only-binary=all scipy>=1.11.0
+
+# 6. Other dependencies
+RUN pip install --no-cache-dir regex==2023.10.3
+RUN pip install --no-cache-dir chromadb==0.5.0
+RUN pip install --no-cache-dir sentence-transformers==2.2.2
 
 # Copy shared utilities
 COPY shared/ ./shared/

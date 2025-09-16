@@ -16,12 +16,19 @@ class AutomationQueryHandler(BaseQueryHandler):
         """Return supported automation intents"""
         return [
             "query_jobs",
-            "query_workflows",
+            "query_workflows", 
             "query_error_analysis",
             "query_job_execution_details",
-            "query_job_scheduling", 
+            "query_job_scheduling",
             "query_workflow_step_analysis",
-            "query_task_queue"
+            "query_task_queue",
+            "execute_command",
+            "execute_powershell",
+            "execute_bash",
+            "remote_execution",
+            "create_job",
+            "execute_job",
+            "stop_job"
         ]
     
     async def handle_query(self, intent: str, message: str, context: List[Dict]) -> Dict[str, Any]:
@@ -41,6 +48,14 @@ class AutomationQueryHandler(BaseQueryHandler):
                 return await self.handle_workflow_step_analysis_query(message, context)
             elif intent == "query_task_queue":
                 return await self.handle_task_queue_query(message, context)
+            elif intent in ["execute_command", "execute_powershell", "execute_bash", "remote_execution"]:
+                return await self.handle_command_execution(message, context, intent)
+            elif intent == "create_job":
+                return await self.handle_job_creation(message, context)
+            elif intent == "execute_job":
+                return await self.handle_job_execution(message, context)
+            elif intent == "stop_job":
+                return await self.handle_job_stop(message, context)
             else:
                 return self.create_error_response(intent, Exception(f"Unsupported intent: {intent}"))
                 
@@ -612,6 +627,228 @@ class AutomationQueryHandler(BaseQueryHandler):
             
         except Exception as e:
             return self.create_error_response("query_task_queue", e)
+    
+    async def handle_command_execution(self, message: str, context: List[Dict], intent: str) -> Dict[str, Any]:
+        """Handle command execution requests"""
+        try:
+            logger.info(f"Processing command execution: {intent}")
+            
+            # Extract target information from message
+            target_info = self._extract_target_info(message)
+            command_info = self._extract_command_info(message, intent)
+            
+            if not target_info:
+                return self.create_error_response(
+                    intent,
+                    Exception("Target Required: Please specify a target IP address or hostname.\n\nExample: \"Get directory of C: drive for 192.168.50.210\"")
+                )
+            
+            if not command_info:
+                return self.create_error_response(
+                    intent,
+                    Exception("Command Required: Please specify what command to execute.\n\nExamples:\n• \"Get directory of C: drive\"\n• \"List files in /home\"\n• \"Check disk space\"")
+                )
+            
+            # Try to execute the command
+            try:
+                # Create a job for execution
+                job_data = {
+                    "name": f"AI Command: {command_info['description']}",
+                    "description": f"Automated command execution from AI: {message}",
+                    "workflow_definition": {
+                        "steps": [
+                            {
+                                "id": "execute_command",
+                                "name": "Execute Command",
+                                "type": "command_execution",
+                                "target": target_info,
+                                "command": command_info,
+                                "timeout": 300
+                            }
+                        ]
+                    },
+                    "job_type": "ai_automation",
+                    "tags": ["ai-generated", "command-execution"]
+                }
+                
+                # Create and execute job via automation service
+                if self.automation_client:
+                    job_result = await self.automation_client.create_and_execute_job(job_data)
+                    
+                    if job_result.get("success"):
+                        response = f"✅ **Command Execution Started**\n\n"
+                        response += f"**Target**: {target_info.get('ip_address', target_info.get('hostname'))}\n"
+                        response += f"**Command**: {command_info['description']}\n"
+                        response += f"**Job ID**: {job_result.get('job_id')}\n"
+                        response += f"**Execution ID**: {job_result.get('execution_id')}\n\n"
+                        response += "🔄 The command is being executed. You can check the status in the Jobs section."
+                        
+                        return self.create_success_response(
+                            intent,
+                            response,
+                            {
+                                "target": target_info,
+                                "command": command_info,
+                                "job_id": job_result.get("job_id"),
+                                "execution_id": job_result.get("execution_id")
+                            }
+                        )
+                    else:
+                        return self.create_error_response(
+                            intent,
+                            Exception(f"Execution Failed: {job_result.get('error', 'Unknown error occurred')}")
+                        )
+                else:
+                    return self.create_error_response(
+                        intent,
+                        Exception("Service Unavailable: Automation service is not available for command execution.")
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Command execution failed: {e}")
+                return self.create_error_response(intent, e)
+                
+        except Exception as e:
+            logger.error(f"Command execution handler error: {e}")
+            return self.create_error_response(intent, e)
+    
+    def _extract_target_info(self, message: str) -> Dict[str, Any]:
+        """Extract target information from message"""
+        import re
+        
+        # Look for IP addresses
+        ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+        ip_matches = re.findall(ip_pattern, message)
+        
+        if ip_matches:
+            return {
+                "ip_address": ip_matches[0],
+                "hostname": ip_matches[0],  # Use IP as hostname for now
+                "connection_type": "auto"  # Will be determined by target OS
+            }
+        
+        # Look for hostnames
+        hostname_patterns = [
+            r'\bon\s+([a-zA-Z0-9\-\.]+)',
+            r'\bfor\s+([a-zA-Z0-9\-\.]+)',
+            r'\btarget\s+([a-zA-Z0-9\-\.]+)',
+            r'\bserver\s+([a-zA-Z0-9\-\.]+)'
+        ]
+        
+        for pattern in hostname_patterns:
+            matches = re.findall(pattern, message, re.IGNORECASE)
+            if matches:
+                hostname = matches[0]
+                # Skip common words that aren't hostnames
+                if hostname.lower() not in ['the', 'a', 'an', 'this', 'that']:
+                    return {
+                        "hostname": hostname,
+                        "connection_type": "auto"
+                    }
+        
+        return None
+    
+    def _extract_command_info(self, message: str, intent_action: str) -> Dict[str, Any]:
+        """Extract command information from message"""
+        message_lower = message.lower()
+        
+        # Directory/file listing commands
+        if "directory" in message_lower or "dir" in message_lower or "folder" in message_lower:
+            if "c:" in message_lower or "c drive" in message_lower:
+                return {
+                    "type": "powershell",
+                    "command": "Get-ChildItem -Path C:\\ | Select-Object Name, Mode, Length, LastWriteTime",
+                    "description": "List C: drive directory contents"
+                }
+            elif "d:" in message_lower or "d drive" in message_lower:
+                return {
+                    "type": "powershell", 
+                    "command": "Get-ChildItem -Path D:\\ | Select-Object Name, Mode, Length, LastWriteTime",
+                    "description": "List D: drive directory contents"
+                }
+            else:
+                return {
+                    "type": "auto",
+                    "command": "ls -la" if "linux" in message_lower or "unix" in message_lower else "dir",
+                    "description": "List directory contents"
+                }
+        
+        # File listing
+        if "list files" in message_lower or "show files" in message_lower:
+            return {
+                "type": "auto",
+                "command": "ls -la" if "linux" in message_lower else "dir /a",
+                "description": "List all files"
+            }
+        
+        # System information
+        if "system info" in message_lower or "system information" in message_lower:
+            return {
+                "type": "auto",
+                "command": "systeminfo" if "windows" in message_lower else "uname -a && df -h",
+                "description": "Get system information"
+            }
+        
+        # Disk space
+        if "disk space" in message_lower or "disk usage" in message_lower:
+            return {
+                "type": "auto",
+                "command": "Get-WmiObject -Class Win32_LogicalDisk | Select-Object DeviceID, Size, FreeSpace" if "windows" in message_lower else "df -h",
+                "description": "Check disk space"
+            }
+        
+        # Process list
+        if "process" in message_lower and ("list" in message_lower or "show" in message_lower):
+            return {
+                "type": "auto",
+                "command": "Get-Process" if "windows" in message_lower else "ps aux",
+                "description": "List running processes"
+            }
+        
+        # Service status
+        if "service" in message_lower and ("status" in message_lower or "list" in message_lower):
+            return {
+                "type": "auto",
+                "command": "Get-Service" if "windows" in message_lower else "systemctl list-units --type=service",
+                "description": "List services"
+            }
+        
+        # Generic command execution
+        if "run" in message_lower or "execute" in message_lower:
+            # Try to extract the actual command
+            import re
+            command_patterns = [
+                r'run\s+"([^"]+)"',
+                r'execute\s+"([^"]+)"',
+                r'run\s+([^\s]+)',
+                r'execute\s+([^\s]+)'
+            ]
+            
+            for pattern in command_patterns:
+                matches = re.findall(pattern, message, re.IGNORECASE)
+                if matches:
+                    return {
+                        "type": "auto",
+                        "command": matches[0],
+                        "description": f"Execute command: {matches[0]}"
+                    }
+        
+        return None
+    
+    async def handle_job_creation(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle job creation requests"""
+        # Implementation for job creation
+        return self.create_error_response("create_job", Exception("Job creation not yet implemented"))
+    
+    async def handle_job_execution(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle job execution requests"""
+        # Implementation for job execution
+        return self.create_error_response("execute_job", Exception("Job execution not yet implemented"))
+    
+    async def handle_job_stop(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle job stop requests"""
+        # Implementation for job stopping
+        return self.create_error_response("stop_job", Exception("Job stopping not yet implemented"))
     
     # Additional methods for job execution details, scheduling, and workflow step analysis
     # would be implemented here following the same pattern...

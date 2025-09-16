@@ -12,7 +12,7 @@ from nlp_processor import SimpleNLPProcessor
 from workflow_generator import WorkflowGenerator
 from asset_client import AssetServiceClient
 from automation_client import AutomationServiceClient
-from ai_engine_refactored import ai_engine_refactored as ai_engine
+from ai_engine import ai_engine
 from learning_api import learning_router
 from predictive_analytics import predictive_analytics
 

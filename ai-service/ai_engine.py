@@ -1,6 +1,6 @@
 """
-OpsConductor AI Engine - Refactored Modular Version
-Clean, maintainable AI system with modular query handlers
+OpsConductor AI Engine - Modular Architecture
+Clean, maintainable AI system with separated query handlers
 """
 import asyncio
 import logging
@@ -54,98 +54,67 @@ except ImportError:
     protocol_manager = None
     ProtocolResult = None
 
-try:
-    from learning_engine import learning_engine, PredictionResult
-    LEARNING_ENGINE_AVAILABLE = True
-except ImportError:
-    LEARNING_ENGINE_AVAILABLE = False
-    learning_engine = None
-    PredictionResult = None
-
-# Import service clients
-from asset_client import AssetServiceClient
-from automation_client import AutomationServiceClient
-from communication_client import CommunicationServiceClient
-
 # Import modular query handlers
 from query_handlers import (
     InfrastructureQueryHandler,
     AutomationQueryHandler,
     CommunicationQueryHandler
 )
-from query_handlers.dynamic_schema_queries import DynamicSchemaQueryHandler
+
+# Import service clients
+try:
+    from asset_client import AssetServiceClient
+    from automation_client import AutomationServiceClient
+    from communication_client import CommunicationServiceClient
+    SERVICE_CLIENTS_AVAILABLE = True
+except ImportError:
+    SERVICE_CLIENTS_AVAILABLE = False
+    AssetServiceClient = None
+    AutomationServiceClient = None
+    CommunicationServiceClient = None
 
 logger = logging.getLogger(__name__)
 
 class OpsConductorAI:
-    """Refactored AI Engine with Modular Query Handlers"""
+    """Modular AI Engine for OpsConductor"""
     
     def __init__(self):
+        # Core AI components
         self.nlp = None
         self.ollama_client = None
         self.vector_store = None
         self.db_pool = None
         self.redis_client = None
-        self.protocol_manager = protocol_manager if PROTOCOL_MANAGER_AVAILABLE else None
-        self.learning_engine = learning_engine if LEARNING_ENGINE_AVAILABLE else None
-        self.system_knowledge = {}
         
-        # Initialize service clients
-        self.asset_client = AssetServiceClient()
-        self.automation_client = AutomationServiceClient()
-        self.communication_client = CommunicationServiceClient()
+        # Service clients
+        self.asset_client = None
+        self.automation_client = None
+        self.communication_client = None
         
-        # Initialize modular query handlers
+        # Query handlers
         self.query_handlers = {}
-        self._init_query_handlers()
         
-    def _init_query_handlers(self):
-        """Initialize modular query handlers"""
-        service_clients = {
-            'asset_client': self.asset_client,
-            'automation_client': self.automation_client,
-            'communication_client': self.communication_client
-        }
+        # System state
+        self.initialized = False
         
-        self.infrastructure_handler = InfrastructureQueryHandler(service_clients)
-        self.automation_handler = AutomationQueryHandler(service_clients)
-        self.communication_handler = CommunicationQueryHandler(service_clients)
-        self.schema_handler = DynamicSchemaQueryHandler(service_clients)
-        
-        logger.info("Query handlers initialized")
-        
-    async def _register_handlers(self):
-        """Register all query handlers with their supported intents"""
-        handlers = [
-            self.infrastructure_handler,
-            self.automation_handler,
-            self.communication_handler,
-            self.schema_handler
-        ]
-        
-        for handler in handlers:
-            supported_intents = await handler.get_supported_intents()
-            for intent in supported_intents:
-                self.query_handlers[intent] = handler
-                
-        logger.info(f"Registered {len(self.query_handlers)} query handlers")
-    
     async def initialize(self):
-        """Initialize all AI components"""
+        """Initialize all AI components and handlers"""
         try:
-            # Initialize spaCy (optional)
+            logger.info("Initializing OpsConductor AI Engine...")
+            
+            # Initialize NLP
             if SPACY_AVAILABLE:
                 try:
                     self.nlp = spacy.load("en_core_web_sm")
-                    logger.info("SpaCy model loaded successfully")
-                except OSError:
-                    logger.warning("SpaCy model not found, using basic NLP")
+                    logger.info("SpaCy model loaded")
+                except Exception as e:
+                    logger.warning(f"SpaCy initialization failed: {e}")
                     self.nlp = None
             else:
-                logger.warning("SpaCy not available, using basic NLP")
+                logger.warning("SpaCy not available")
                 self.nlp = None
             
-            # Initialize Ollama client (optional)
+            # Initialize Ollama
             if OLLAMA_AVAILABLE:
                 try:
                     self.ollama_client = ollama.AsyncClient()
@@ -157,7 +126,7 @@ class OpsConductorAI:
                 logger.warning("Ollama not available")
                 self.ollama_client = None
             
-            # Initialize vector store (optional)
+            # Initialize vector store
             if VECTOR_STORE_AVAILABLE:
                 try:
                     import chromadb
@@ -172,7 +141,7 @@ class OpsConductorAI:
                 logger.warning("Vector store not available")
                 self.vector_store = None
             
-            # Initialize database connection (optional)
+            # Initialize database connection
             if ASYNCPG_AVAILABLE:
                 try:
                     self.db_pool = await asyncpg.create_pool(
@@ -192,7 +161,7 @@ class OpsConductorAI:
                 logger.warning("AsyncPG not available")
                 self.db_pool = None
             
-            # Initialize Redis connection (optional)
+            # Initialize Redis connection
             if REDIS_AVAILABLE:
                 try:
                     self.redis_client = redis.Redis(
@@ -200,7 +169,8 @@ class OpsConductorAI:
                         port=6379,
                         decode_responses=True
                     )
-                    logger.info("Redis client initialized")
+                    await self.redis_client.ping()
+                    logger.info("Redis connection established")
                 except Exception as e:
                     logger.warning(f"Redis connection failed: {e}")
                     self.redis_client = None
@@ -208,78 +178,190 @@ class OpsConductorAI:
                 logger.warning("Redis not available")
                 self.redis_client = None
             
-            # Register query handlers
-            await self._register_handlers()
+            # Initialize service clients
+            if SERVICE_CLIENTS_AVAILABLE:
+                try:
+                    self.asset_client = AssetServiceClient()
+                    self.automation_client = AutomationServiceClient()
+                    self.communication_client = CommunicationServiceClient()
+                    logger.info("Service clients initialized")
+                except Exception as e:
+                    logger.warning(f"Service client initialization failed: {e}")
+            else:
+                logger.warning("Service clients not available")
             
-            # Load system knowledge
-            await self.load_system_knowledge()
+            # Initialize query handlers
+            await self._initialize_query_handlers()
             
-            logger.info("OpsConductor AI Engine initialized successfully")
+            self.initialized = True
+            logger.info("AI Engine initialization completed successfully")
             
         except Exception as e:
-            logger.error(f"Failed to initialize AI engine: {e}")
+            logger.error(f"AI Engine initialization failed: {e}")
             raise
     
-    async def load_system_knowledge(self):
-        """Load system knowledge from various sources"""
+    async def _initialize_query_handlers(self):
+        """Initialize modular query handlers"""
         try:
-            # Load from database
-            if self.db_pool:
-                try:
-                    async with self.db_pool.acquire() as conn:
-                        # Load system configuration
-                        config_rows = await conn.fetch("SELECT key, value FROM system_config")
-                        self.system_knowledge['config'] = {row['key']: row['value'] for row in config_rows}
-                        
-                        # Load common patterns
-                        pattern_rows = await conn.fetch("SELECT pattern, description FROM common_patterns")
-                        self.system_knowledge['patterns'] = {row['pattern']: row['description'] for row in pattern_rows}
-                except Exception as e:
-                    logger.warning(f"Failed to load from database: {e}")
+            # Create shared context for all handlers
+            shared_context = {
+                'db_pool': self.db_pool,
+                'redis_client': self.redis_client,
+                'vector_store': self.vector_store,
+                'asset_client': self.asset_client,
+                'automation_client': self.automation_client,
+                'communication_client': self.communication_client,
+                'protocol_manager': protocol_manager if PROTOCOL_MANAGER_AVAILABLE else None
+            }
             
-            # Load from vector store
-            if self.vector_store:
-                try:
-                    # Store common OpsConductor concepts
-                    concepts = [
-                        "OpsConductor is an automation platform for IT operations",
-                        "Targets are managed endpoints like servers and workstations",
-                        "Jobs are automation tasks that run on targets",
-                        "Workflows are sequences of jobs with dependencies",
-                        "Notifications are sent via email, Slack, or other channels"
-                    ]
-                    
-                    for concept in concepts:
-                        await self.vector_store.add_document(
-                            collection="system_knowledge",
-                            document=concept,
-                            metadata={"type": "concept", "source": "system"}
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to load vector concepts: {e}")
+            # Initialize handlers
+            self.query_handlers = {
+                'infrastructure': InfrastructureQueryHandler(shared_context),
+                'automation': AutomationQueryHandler(shared_context),
+                'communication': CommunicationQueryHandler(shared_context)
+            }
             
-            logger.info("System knowledge loaded successfully")
+            # Initialize each handler
+            for name, handler in self.query_handlers.items():
+                try:
+                    await handler.initialize()
+                    logger.info(f"Query handler '{name}' initialized")
+                except Exception as e:
+                    logger.warning(f"Query handler '{name}' initialization failed: {e}")
+            
+            logger.info("All query handlers initialized")
             
         except Exception as e:
-            logger.warning(f"Failed to load system knowledge: {e}")
+            logger.error(f"Query handler initialization failed: {e}")
+            raise
+    
+    async def process_message(self, message: str, context: List[Dict] = None) -> Dict[str, Any]:
+        """Process incoming message and route to appropriate handler"""
+        try:
+            if not self.initialized:
+                await self.initialize()
+            
+            if context is None:
+                context = []
+            
+            logger.info(f"Processing message: {message[:100]}...")
+            
+            # Classify intent
+            intent_result = await self.classify_intent(message)
+            intent_action = intent_result.get("action", "general_query")
+            confidence = intent_result.get("confidence", 0.0)
+            
+            logger.info(f"Intent classified: {intent_action} (confidence: {confidence:.2f})")
+            
+            # DEBUG: Log all intent scores for troubleshooting
+            all_scores = intent_result.get("all_scores", {})
+            logger.debug(f"All intent scores: {all_scores}")
+            
+            # EXCEPTION TRACKING: Log low confidence classifications for review
+            if confidence < 0.5:
+                logger.warning(f"LOW CONFIDENCE intent classification: {intent_action} ({confidence:.2f}) for message: '{message[:100]}...'")
+                logger.warning(f"Top 3 scores: {sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:3]}")
+            
+            # Route to appropriate handler
+            response = await self._route_to_handler(message, context, intent_action)
+            
+            # Add metadata
+            response["intent_classification"] = intent_result
+            response["timestamp"] = datetime.now().isoformat()
+            
+            # Store interaction for learning
+            await self.store_interaction(message, response, context)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Message processing failed: {e}")
+            return {
+                "response": f"❌ **Processing Error**: {str(e)}",
+                "intent": "error",
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _route_to_handler(self, message: str, context: List[Dict], intent_action: str) -> Dict[str, Any]:
+        """Route message to appropriate query handler"""
+        try:
+            # Infrastructure-related intents
+            infrastructure_intents = [
+                "query_targets", "create_target", "update_target", "delete_target",
+                "query_target_groups", "query_targets_by_tag", "query_target_tags",
+                "manage_target_tags", "query_connection_status", "test_connection",
+                "manage_credentials", "query_schema_info", "query_table_structure",
+                "query_database_search", "query_column_info", "query_relationships",
+                "query_database_summary"
+            ]
+            
+            # Automation-related intents
+            automation_intents = [
+                "query_jobs", "create_job", "execute_job", "stop_job",
+                "query_workflows", "create_workflow", "query_task_queue",
+                "query_schedules", "query_error_analysis", "execute_command",
+                "execute_powershell", "execute_bash", "remote_execution",
+                "manage_services", "query_system_info", "file_operations",
+                "snmp_operations", "camera_operations", "generate_script",
+                "generate_powershell_script", "generate_bash_script"
+            ]
+            
+            # Communication-related intents
+            communication_intents = [
+                "query_notification_history", "send_notification", "query_notification_audit",
+                "manage_templates", "manage_channels", "email_operations"
+            ]
+            
+            # Route to appropriate handler
+            if intent_action in infrastructure_intents:
+                handler = self.query_handlers.get('infrastructure')
+                if handler:
+                    return await handler.handle_query(intent_action, message, context)
+            
+            elif intent_action in automation_intents:
+                handler = self.query_handlers.get('automation')
+                if handler:
+                    return await handler.handle_query(intent_action, message, context)
+            
+            elif intent_action in communication_intents:
+                handler = self.query_handlers.get('communication')
+                if handler:
+                    return await handler.handle_query(intent_action, message, context)
+            
+            # Handle general queries and other intents
+            return await self._handle_general_query(message, context, intent_action)
+            
+        except Exception as e:
+            logger.error(f"Handler routing failed: {e}")
+            return {
+                "response": f"❌ **Routing Error**: {str(e)}",
+                "intent": intent_action,
+                "success": False
+            }
     
     async def classify_intent(self, message: str) -> Dict[str, Any]:
-        """Classify user intent using NLP and patterns"""
+        """Classify user intent with comprehensive patterns"""
         try:
             message_lower = message.lower()
             doc = self.nlp(message) if self.nlp else None
             
-            # Define intent patterns with confidence scores
+            # Define comprehensive intent patterns covering ALL system capabilities
             intent_patterns = {
-                # Infrastructure queries
+                # Infrastructure Management
                 "query_targets": {
-                    "patterns": [r"targets?", r"servers?", r"machines?", r"endpoints?", r"hosts?"],
-                    "keywords": ["target", "server", "machine", "endpoint", "host", "windows", "linux", "macos"],
+                    "patterns": [r"targets?", r"servers?", r"machines?", r"endpoints?", r"hosts?", r"show.*targets", r"list.*targets"],
+                    "keywords": ["target", "server", "machine", "endpoint", "host", "windows", "linux", "macos", "show", "list"],
                     "confidence": 0.8
                 },
-                "query_target_groups": {
-                    "patterns": [r"groups?", r"target.groups?", r"collections?"],
-                    "keywords": ["group", "collection", "organize", "category"],
+                "create_target": {
+                    "patterns": [r"create.*target", r"add.*target", r"new.*target", r"register.*target"],
+                    "keywords": ["create", "add", "new", "register", "target", "server", "machine"],
+                    "confidence": 0.9
+                },
+                "query_target_tags": {
+                    "patterns": [r"tags?", r"labels?", r"categories?", r"tag.list", r"all.tags"],
+                    "keywords": ["tag", "tags", "label", "labels", "category", "organize", "list", "show"],
                     "confidence": 0.8
                 },
                 "query_connection_status": {
@@ -287,98 +369,53 @@ class OpsConductorAI:
                     "keywords": ["connection", "connectivity", "reachable", "ping", "online", "offline", "status"],
                     "confidence": 0.8
                 },
-                "query_target_tags": {
-                    "patterns": [r"tags?", r"labels?", r"categories?", r"tag.list", r"all.tags"],
-                    "keywords": ["tag", "tags", "label", "labels", "category", "organize", "list", "show"],
-                    "confidence": 0.8
-                },
-                "query_targets_by_tag": {
-                    "patterns": [r"tagged", r"with.tag", r"tag:", r"labeled", r"find.*tag", r"filter.*tag"],
-                    "keywords": ["tagged", "tag", "label", "filter", "find", "with", "production", "development", "staging"],
-                    "confidence": 0.8
-                },
-                "query_tag_statistics": {
-                    "patterns": [r"tag.stats", r"tag.usage", r"tag.analytics", r"tag.distribution"],
-                    "keywords": ["statistics", "stats", "usage", "analytics", "distribution", "coverage", "popular"],
-                    "confidence": 0.8
-                },
                 
-                # Automation queries
+                # Automation & Execution
                 "query_jobs": {
-                    "patterns": [r"jobs?", r"tasks?", r"executions?", r"runs?"],
-                    "keywords": ["job", "task", "execution", "run", "automation", "failed", "completed", "running"],
+                    "patterns": [r"jobs?", r"tasks?", r"executions?", r"runs?", r"show.*jobs", r"list.*jobs"],
+                    "keywords": ["job", "task", "execution", "run", "automation", "failed", "completed", "running", "show", "list"],
                     "confidence": 0.8
                 },
-                "query_workflows": {
-                    "patterns": [r"workflows?", r"processes?", r"pipelines?"],
-                    "keywords": ["workflow", "process", "pipeline", "sequence", "steps"],
-                    "confidence": 0.8
+                "execute_command": {
+                    "patterns": [r"get.*directory", r"list.*files?", r"run.*command", r"execute.*on", r"check.*on", r"get.*from", r"dir.*on", r"ls.*on", r"show.*files", r"directory.*of", r"c:.*drive", r"d:.*drive"],
+                    "keywords": ["get", "run", "execute", "command", "directory", "files", "list", "check", "show", "drive", "folder", "path", "on", "for", "from"],
+                    "confidence": 0.9
                 },
-                "query_task_queue": {
-                    "patterns": [r"queue", r"pending", r"workers?", r"backlog"],
-                    "keywords": ["queue", "pending", "worker", "backlog", "waiting", "active"],
-                    "confidence": 0.8
+                "execute_powershell": {
+                    "patterns": [r"powershell", r"ps1", r"get-childitem", r"get-process", r"get-service", r"invoke-command", r"winrm"],
+                    "keywords": ["powershell", "ps1", "get-childitem", "get-process", "get-service", "invoke-command", "windows", "winrm"],
+                    "confidence": 0.9
                 },
-                "query_error_analysis": {
-                    "patterns": [r"errors?", r"failures?", r"problems?", r"issues?"],
-                    "keywords": ["error", "failure", "problem", "issue", "analysis", "critical"],
-                    "confidence": 0.8
-                },
-                
-                # Communication queries
-                "query_notification_history": {
-                    "patterns": [r"notifications?", r"alerts?", r"messages?", r"emails?"],
-                    "keywords": ["notification", "alert", "message", "email", "sent", "history"],
-                    "confidence": 0.8
-                },
-                "query_notification_audit": {
-                    "patterns": [r"audit", r"delivery", r"tracking", r"logs?"],
-                    "keywords": ["audit", "delivery", "tracking", "log", "trace", "failed", "success"],
-                    "confidence": 0.8
+                "remote_execution": {
+                    "patterns": [r"on.*\d+\.\d+\.\d+\.\d+", r"for.*\d+\.\d+\.\d+\.\d+", r"target.*\d+\.\d+\.\d+\.\d+", r"server.*\d+\.\d+\.\d+\.\d+"],
+                    "keywords": ["on", "for", "target", "server", "remote", "machine", "host", "192.168", "10.0", "172.16"],
+                    "confidence": 0.9
                 },
                 
-                # Schema and database queries
+                # Communication
+                "send_notification": {
+                    "patterns": [r"send.*notification", r"send.*alert", r"notify"],
+                    "keywords": ["send", "notification", "alert", "notify", "message"],
+                    "confidence": 0.9
+                },
+                
+                # Database & Schema
                 "query_schema_info": {
                     "patterns": [r"schema", r"database", r"tables?", r"structure", r"what.tables"],
                     "keywords": ["schema", "database", "table", "structure", "show", "list", "what"],
                     "confidence": 0.8
                 },
-                "query_table_structure": {
-                    "patterns": [r"describe", r"table.structure", r"columns?", r"fields?", r"what's.in"],
-                    "keywords": ["describe", "structure", "column", "field", "table", "show", "explain"],
-                    "confidence": 0.8
-                },
-                "query_database_search": {
-                    "patterns": [r"search", r"find", r"look.for", r"related.to"],
-                    "keywords": ["search", "find", "look", "related", "database", "table", "column"],
-                    "confidence": 0.7
-                },
-                "query_column_info": {
-                    "patterns": [r"column", r"field", r"which.table", r"where.is"],
-                    "keywords": ["column", "field", "which", "where", "table", "has", "contains"],
-                    "confidence": 0.8
-                },
-                "query_relationships": {
-                    "patterns": [r"relationships?", r"foreign.key", r"references?", r"related.tables"],
-                    "keywords": ["relationship", "foreign", "key", "reference", "related", "join", "connection"],
-                    "confidence": 0.8
-                },
-                "query_database_summary": {
-                    "patterns": [r"database.summary", r"overview", r"what.tables", r"schema.overview"],
-                    "keywords": ["summary", "overview", "database", "schema", "all", "tables", "structure"],
-                    "confidence": 0.8
-                },
                 
-                # General intents
+                # General
                 "provide_greeting": {
                     "patterns": [r"hello", r"hi", r"hey", r"greetings?"],
                     "keywords": ["hello", "hi", "hey", "greeting", "help"],
                     "confidence": 0.9
                 },
-                "generate_script": {
-                    "patterns": [r"script", r"generate", r"create", r"write"],
-                    "keywords": ["script", "generate", "create", "write", "automation", "powershell", "bash"],
-                    "confidence": 0.7
+                "request_help": {
+                    "patterns": [r"help", r"assistance", r"how.*to", r"what.*can"],
+                    "keywords": ["help", "assistance", "how", "what", "can", "do"],
+                    "confidence": 0.8
                 }
             }
             
@@ -429,153 +466,40 @@ class OpsConductorAI:
                 "error": str(e)
             }
     
-    async def process_message(self, message: str, context: List[Dict] = None) -> Dict[str, Any]:
-        """Process user message and return response"""
+    async def _handle_general_query(self, message: str, context: List[Dict], intent_action: str) -> Dict[str, Any]:
+        """Handle general queries and help requests"""
         try:
-            if context is None:
-                context = []
+            if intent_action in ["provide_greeting", "request_help"]:
+                response = "👋 **Welcome to OpsConductor AI!**\n\n"
+                response += "I can help you with:\n\n"
+                response += "🏗️ **Infrastructure Management**\n"
+                response += "• *\"Show me all targets\"*\n"
+                response += "• *\"What targets are tagged as production?\"*\n"
+                response += "• *\"Test connection to 192.168.1.100\"*\n\n"
+                response += "⚙️ **Automation & Commands**\n"
+                response += "• *\"Get directory of C: drive for 192.168.50.210\"*\n"
+                response += "• *\"List running jobs\"*\n"
+                response += "• *\"Run PowerShell command on server\"*\n\n"
+                response += "📧 **Communication**\n"
+                response += "• *\"Send notification to admin team\"*\n"
+                response += "• *\"Show notification history\"*\n\n"
+                response += "🗄️ **Database Queries**\n"
+                response += "• *\"What tables are in the database?\"*\n"
+                response += "• *\"Show me the schema structure\"*\n\n"
+                response += "Just ask me anything in natural language! 🚀"
+                
+                return {
+                    "response": response,
+                    "intent": intent_action,
+                    "success": True
+                }
             
-            # Classify intent
-            intent_result = await self.classify_intent(message)
-            intent_action = intent_result.get("action")
-            
-            logger.info(f"Processing message with intent: {intent_action} (confidence: {intent_result.get('confidence', 0):.2f})")
-            
-            # Route to appropriate handler
-            if intent_action in self.query_handlers:
-                handler = self.query_handlers[intent_action]
-                response = await handler.handle_query(intent_action, message, context)
-            elif intent_action == "provide_greeting":
-                response = await self.handle_greeting(message, context)
-            elif intent_action == "generate_script":
-                response = await self.handle_script_generation(message, context)
-            else:
-                response = await self.handle_general_query(message, context)
-            
-            # Add intent information to response
-            response["intent_classification"] = intent_result
-            
-            # Store interaction for learning
-            await self.store_interaction(message, response, context)
-            
-            return response
-            
-        except Exception as e:
-            logger.error(f"Message processing error: {e}")
-            return {
-                "response": f"❌ I encountered an error processing your request: {str(e)}",
-                "intent": "error",
-                "success": False,
-                "error": str(e)
-            }
-    
-    async def handle_greeting(self, message: str, context: List[Dict]) -> Dict[str, Any]:
-        """Handle greeting messages"""
-        greetings = [
-            "👋 Hello! I'm your OpsConductor AI assistant.",
-            "🤖 Hi there! I'm here to help with your automation needs.",
-            "✨ Greetings! Ready to assist with OpsConductor operations."
-        ]
-        
-        import random
-        greeting = random.choice(greetings)
-        
-        response = f"{greeting}\n\n"
-        response += "**I can help you with:**\n"
-        response += "• 🎯 Target and infrastructure queries\n"
-        response += "• 🏷️ Target tags and organization\n"
-        response += "• ⚙️ Job and workflow management\n"
-        response += "• 📧 Notification and communication tracking\n"
-        response += "• 📊 System monitoring and analytics\n"
-        response += "• 🗄️ Database schema and structure exploration\n"
-        response += "• 🔧 Script generation and automation\n\n"
-        response += "**Try asking:**\n"
-        response += "• *\"Show me Windows targets\"*\n"
-        response += "• *\"List all target tags\"*\n"
-        response += "• *\"Show production targets\"*\n"
-        response += "• *\"What jobs failed today?\"*\n"
-        response += "• *\"Show task queue status\"*\n"
-        response += "• *\"Show notification history\"*\n"
-        response += "• *\"What tables are in the database?\"*\n"
-        response += "• *\"Describe the targets table\"*\n"
-        response += "• *\"Find column named email\"*\n"
-        response += "• *\"Database schema overview\"*\n"
-        response += "• *\"Tag usage statistics\"*"
-        
-        return {
-            "response": response,
-            "intent": "provide_greeting",
-            "success": True
-        }
-    
-    async def handle_script_generation(self, message: str, context: List[Dict]) -> Dict[str, Any]:
-        """Handle script generation requests"""
-        response = "🔧 **Script Generation**\n\n"
-        response += "Script generation functionality is available! I can help you create:\n\n"
-        response += "• **PowerShell scripts** for Windows automation\n"
-        response += "• **Bash scripts** for Linux/Unix systems\n"
-        response += "• **Python scripts** for cross-platform tasks\n"
-        response += "• **Batch files** for Windows batch operations\n\n"
-        response += "**Example requests:**\n"
-        response += "• *\"Generate a PowerShell script to check disk space\"*\n"
-        response += "• *\"Create a bash script to restart services\"*\n"
-        response += "• *\"Write a Python script to monitor processes\"*\n\n"
-        response += "Please specify what type of script you'd like me to generate!"
-        
-        return {
-            "response": response,
-            "intent": "generate_script",
-            "success": True
-        }
-    
-    async def handle_general_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
-        """Handle general queries using vector search and LLM"""
-        try:
-            # Search vector store for relevant information
-            if self.vector_store:
-                try:
-                    search_results = await self.vector_store.search(
-                        collection="system_knowledge",
-                        query=message,
-                        limit=5
-                    )
-                    
-                    if search_results and self.ollama_client:
-                        context_info = "\n".join([doc["document"] for doc in search_results])
-                        
-                        # Use LLM to generate response
-                        prompt = f"""
-                        Based on the following OpsConductor system information:
-                        {context_info}
-                        
-                        User question: {message}
-                        
-                        Provide a helpful response about OpsConductor operations.
-                        """
-                        
-                        llm_response = await self.ollama_client.generate(
-                            model="llama3.2",
-                            prompt=prompt
-                        )
-                        
-                        return {
-                            "response": llm_response["response"],
-                            "intent": "general_query",
-                            "success": True,
-                            "sources": [doc["metadata"] for doc in search_results]
-                        }
-                except Exception as e:
-                    logger.warning(f"Vector search failed: {e}")
-            
-            # Fallback response
-            response = "🤔 I'm not sure how to help with that specific request.\n\n"
-            response += "**I can help you with:**\n"
-            response += "• **Infrastructure**: Targets, groups, connections\n"
-            response += "• **Automation**: Jobs, workflows, task queues\n"
-            response += "• **Communication**: Notifications, audit trails\n"
-            response += "• **Analysis**: Errors, performance, statistics\n\n"
-            response += "**Try asking:**\n"
+            # For other general queries, provide a helpful response
+            response = "🤔 **I'm not sure how to help with that specific request.**\n\n"
+            response += "Here are some things you can try:\n\n"
             response += "• *\"Show me all targets\"*\n"
+            response += "• *\"Get directory of C: drive for 192.168.50.210\"*\n"
+            response += "• *\"List running jobs\"*\n"
             response += "• *\"What jobs are running?\"*\n"
             response += "• *\"Show failed notifications\"*\n"
             response += "• *\"Analyze recent errors\"*"
@@ -670,30 +594,18 @@ async def initialize_ai():
 
 if __name__ == "__main__":
     async def demo():
-        print("OpsConductor AI Engine - Refactored Version")
+        print("OpsConductor AI Engine - Modular Version")
         print("=" * 50)
         
         # Initialize AI
         ai = await initialize_ai()
         
-        # Show system stats
-        stats = await ai.get_system_stats()
-        print(f"📊 System Stats: {json.dumps(stats, indent=2)}")
+        # Test message
+        test_message = "can you get the directory of the c drive for 192.168.50.210?"
+        print(f"\nTest Message: {test_message}")
         
-        # Test queries
-        test_queries = [
-            "Hello!",
-            "Show me Windows targets",
-            "What jobs failed today?",
-            "Show task queue status",
-            "Show notification history",
-            "Analyze connection status"
-        ]
-        
-        for query in test_queries:
-            print(f"\n🔍 Query: {query}")
-            response = await ai.process_message(query)
-            print(f"✅ Response: {response['response'][:100]}...")
-            print(f"📊 Intent: {response.get('intent', 'unknown')} (confidence: {response.get('intent_classification', {}).get('confidence', 0):.2f})")
+        # Process message
+        result = await ai.process_message(test_message)
+        print(f"\nResult: {result}")
     
     asyncio.run(demo())

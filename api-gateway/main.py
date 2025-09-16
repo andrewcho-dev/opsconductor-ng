@@ -56,6 +56,7 @@ SERVICE_ROUTES = {
     
     # AI Services
     "/api/v1/ai": "AI_SERVICE_URL",  # AI Orchestrator
+    "/api/v1/ai-overview": "AI_OVERVIEW_SERVICE_URL",  # AI Overview Service
     "/api/v1/nlp": "NLP_SERVICE_URL",  # NLP Service
     "/api/v1/vector": "VECTOR_SERVICE_URL",  # Vector Service
     "/api/v1/llm": "LLM_SERVICE_URL",  # LLM Service
@@ -178,8 +179,8 @@ class APIGateway:
                 response = await self.http_client.get(f"{url}/health", timeout=5.0)
                 response_time = (time.time() - start_time) * 1000
                 
-                # Determine service name from URL
-                service_name = url.split('://')[-1].split(':')[0].replace('-service', '').replace('_', '-')
+                # Determine service name from URL - keep full service names for clarity
+                service_name = url.split('://')[-1].split(':')[0].replace('_', '-')
                 
                 if response.status_code == 200:
                     checks.append(HealthCheck(
@@ -194,8 +195,8 @@ class APIGateway:
                         details={"status_code": response.status_code}
                     ))
             except Exception as e:
-                # Determine service name from URL
-                service_name = url.split('://')[-1].split(':')[0].replace('-service', '').replace('_', '-')
+                # Determine service name from URL - keep full service names for clarity
+                service_name = url.split('://')[-1].split(':')[0].replace('_', '-')
                 checks.append(HealthCheck(
                     name=service_name,
                     status="unhealthy",

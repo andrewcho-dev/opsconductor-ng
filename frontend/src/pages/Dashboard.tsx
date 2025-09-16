@@ -67,7 +67,6 @@ const Dashboard: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>(loadChatHistory());
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [serviceHealthLastUpdate, setServiceHealthLastUpdate] = useState<Date | null>(null);
@@ -81,13 +80,12 @@ const Dashboard: React.FC = () => {
     }
   }, [messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Focus input field when component mounts
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
 
   const clearChatHistory = () => {
     if (window.confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
@@ -98,6 +96,10 @@ const Dashboard: React.FC = () => {
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
+      // Focus input field after clearing chat
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -178,6 +180,10 @@ const Dashboard: React.FC = () => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      // Focus the input field after the response is complete
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -399,7 +405,19 @@ const Dashboard: React.FC = () => {
             minHeight: 0
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {messages.map((message) => (
+              {/* Show loading indicator at the top when processing */}
+              {isLoading && (
+                <div className="chat-message chat-message-system">
+                  <div style={{ flexShrink: 0 }}>
+                    <Loader size={14} className="loading-spinner" />
+                  </div>
+                  <div style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>
+                    AI is processing your request...
+                  </div>
+                </div>
+              )}
+              {/* Display messages in reverse order (newest first) */}
+              {[...messages].reverse().map((message) => (
                 <div key={message.id} className={getMessageStyle(message)}>
                   <div style={{ flexShrink: 0 }}>
                     {getMessageIcon(message)}
@@ -431,65 +449,89 @@ const Dashboard: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {isLoading && (
-                <div className="chat-message chat-message-system">
-                  <div style={{ flexShrink: 0 }}>
-                    <Loader size={14} className="loading-spinner" />
-                  </div>
-                  <div style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>
-                    AI is processing your request...
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
             </div>
           </div>
 
-          {/* Input Area - Fixed at bottom */}
+          {/* Input Area - Enhanced and Prominent */}
           <div style={{ 
-            padding: '8px', 
-            borderTop: '1px solid var(--neutral-200)',
-            backgroundColor: 'var(--neutral-50)',
+            padding: '16px', 
+            borderTop: '2px solid var(--primary-blue)',
+            backgroundColor: 'white',
+            boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
             flexShrink: 0
           }}>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '6px' }}>
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask me anything... (e.g., 'What are my personalized recommendations?' or 'Show system health')"
-                disabled={isLoading}
-                style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  border: '1px solid var(--neutral-300)',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  outline: 'none',
-                  backgroundColor: isLoading ? 'var(--neutral-100)' : 'white'
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = 'var(--primary-blue)';
-                  e.target.style.boxShadow = '0 0 0 2px var(--primary-blue-light)';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = 'var(--neutral-300)';
-                  e.target.style.boxShadow = 'none';
-                }}
-              />
+            <div style={{ 
+              marginBottom: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: 'var(--primary-blue)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <Bot size={16} />
+              Ask AI Assistant
+            </div>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Ask me anything... (e.g., 'What are my personalized recommendations?' or 'Show system health')"
+                  disabled={isLoading}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    border: '2px solid var(--neutral-300)',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    backgroundColor: isLoading ? 'var(--neutral-100)' : 'white',
+                    transition: 'all 0.2s ease',
+                    fontFamily: 'inherit'
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'var(--primary-blue)';
+                    e.target.style.boxShadow = '0 0 0 3px var(--primary-blue-light)';
+                    e.target.style.transform = 'translateY(-1px)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'var(--neutral-300)';
+                    e.target.style.boxShadow = 'none';
+                    e.target.style.transform = 'translateY(0)';
+                  }}
+                />
+              </div>
               <button
                 type="submit"
                 disabled={!inputValue.trim() || isLoading}
                 className="btn btn-primary"
-                style={{ fontSize: '13px', padding: '6px 12px' }}
+                style={{ 
+                  fontSize: '14px', 
+                  padding: '12px 20px',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  minWidth: '100px',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease'
+                }}
               >
                 {isLoading ? (
-                  <Loader size={14} className="loading-spinner" />
+                  <>
+                    <Loader size={16} className="loading-spinner" />
+                    Thinking...
+                  </>
                 ) : (
-                  <Send size={14} />
+                  <>
+                    <Send size={16} />
+                    Send
+                  </>
                 )}
-                Send
               </button>
             </form>
           </div>

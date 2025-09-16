@@ -49,6 +49,10 @@ class BaseQueryHandler(ABC):
         """Return list of supported intent actions"""
         pass
     
+    async def initialize(self):
+        """Initialize the handler (optional override)"""
+        pass
+    
     @abstractmethod
     async def handle_query(self, intent: str, message: str, context: List[Dict]) -> Dict[str, Any]:
         """Handle query based on intent"""

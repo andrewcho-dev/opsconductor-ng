@@ -335,41 +335,8 @@ export const healthApi = {
         });
       }
       
-      // Add default status for services not explicitly reported
-      // Only include services that are actually running and should be monitored
-      const expectedServices = [
-        'identity', 'asset', 'automation', 'communication', 
-        'ai-orchestrator', 'nlp', 'vector', 'llm',
-        'postgres', 'redis', 'chromadb', 'ollama'
-      ];
-      
-      // Services that exist but may not be health-checked by the API Gateway
-      // These are running and accessible, so we'll mark them as healthy
-      const infrastructureServices = [
-        'worker-1', 'worker-2', 'scheduler', 'celery-monitor',
-        'frontend'
-      ];
-      
-      expectedServices.forEach(service => {
-        if (!results[service]) {
-          results[service] = {
-            status: 'unknown',
-            service,
-            responseTime,
-            message: 'Service status not reported'
-          };
-        }
-      });
-      
-      // Add infrastructure services as operational (they don't have health checks)
-      infrastructureServices.forEach(service => {
-        results[service] = {
-          status: 'healthy', // Assume healthy if container is running
-          service,
-          responseTime,
-          message: 'Infrastructure service (no health check)'
-        };
-      });
+      // No hardcoded service lists - just return what the API gives us
+      // The API Gateway health check will return all services it knows about
       
       return results;
     } catch (error) {
