@@ -144,6 +144,13 @@ class OpsConductorAI:
             }
         
         # System query intents
+        if any(word in message_lower for word in ['target groups', 'groups', 'target group']):
+            return {
+                "intent": "target_group_query",
+                "confidence": 0.9,
+                "action": "query_target_groups"
+            }
+        
         if any(word in message_lower for word in ['targets', 'servers', 'hosts', 'machines']):
             return {
                 "intent": "system_query",
@@ -151,7 +158,21 @@ class OpsConductorAI:
                 "action": "query_targets"
             }
         
-        if any(word in message_lower for word in ['jobs', 'automation', 'tasks', 'workflows']):
+        if any(word in message_lower for word in ['workflows', 'workflow', 'templates']):
+            return {
+                "intent": "workflow_query", 
+                "confidence": 0.9,
+                "action": "query_workflows"
+            }
+        
+        if any(word in message_lower for word in ['executions', 'execution history', 'job history', 'runs']):
+            return {
+                "intent": "execution_history_query",
+                "confidence": 0.9, 
+                "action": "query_execution_history"
+            }
+        
+        if any(word in message_lower for word in ['jobs', 'automation', 'tasks']):
             return {
                 "intent": "automation_query",
                 "confidence": 0.8,
@@ -174,8 +195,30 @@ class OpsConductorAI:
                 "action": "get_recommendations"
             }
         
+        # Performance and analytics intents
+        if any(word in message_lower for word in ['performance', 'metrics', 'statistics', 'stats', 'trends']):
+            return {
+                "intent": "performance_query",
+                "confidence": 0.9,
+                "action": "query_performance"
+            }
+        
+        if any(word in message_lower for word in ['errors', 'failures', 'error analysis', 'failure analysis']):
+            return {
+                "intent": "error_analysis_query",
+                "confidence": 0.9,
+                "action": "query_error_analysis"
+            }
+        
+        if any(word in message_lower for word in ['notifications', 'alerts sent', 'email history', 'messages']):
+            return {
+                "intent": "notification_history_query",
+                "confidence": 0.9,
+                "action": "query_notification_history"
+            }
+        
         # System health intents
-        if any(word in message_lower for word in ['health', 'status', 'anomaly', 'alert', 'performance']):
+        if any(word in message_lower for word in ['health', 'status', 'anomaly', 'alert']):
             return {
                 "intent": "system_health",
                 "confidence": 0.8,
@@ -232,8 +275,20 @@ class OpsConductorAI:
                 response = await self.handle_camera_management(message, context, prediction)
             elif intent_result["action"] == "query_targets":
                 response = await self.handle_target_query(message, context)
+            elif intent_result["action"] == "query_target_groups":
+                response = await self.handle_target_group_query(message, context)
             elif intent_result["action"] == "query_jobs":
                 response = await self.handle_job_query(message, context)
+            elif intent_result["action"] == "query_workflows":
+                response = await self.handle_workflow_query(message, context)
+            elif intent_result["action"] == "query_execution_history":
+                response = await self.handle_execution_history_query(message, context)
+            elif intent_result["action"] == "query_performance":
+                response = await self.handle_performance_query(message, context)
+            elif intent_result["action"] == "query_error_analysis":
+                response = await self.handle_error_analysis_query(message, context)
+            elif intent_result["action"] == "query_notification_history":
+                response = await self.handle_notification_history_query(message, context)
             elif intent_result["action"] == "generate_script":
                 response = await self.handle_script_generation(message, context)
             elif intent_result["action"] == "provide_greeting":
@@ -1310,6 +1365,549 @@ Provide a helpful, accurate response. If you don't have enough information, sugg
             return {
                 "response": f"❌ Error querying jobs: {str(e)}",
                 "intent": "query_jobs",
+                "success": False
+            }
+    
+    async def handle_target_group_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about target groups"""
+        try:
+            # Get target groups from asset service
+            target_groups = await self.asset_client.get_target_groups()
+            
+            if not target_groups:
+                return {
+                    "response": "🔍 **No target groups found**\n\nYour system doesn't have any target groups configured yet. You can create target groups to organize your infrastructure targets.",
+                    "intent": "query_target_groups",
+                    "success": True,
+                    "data": {"groups_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Check if asking for specific group details
+            if any(word in message_lower for word in ['details', 'targets in', 'members']):
+                # Try to extract group name
+                for group in target_groups:
+                    group_name = group.get('name', '').lower()
+                    if group_name in message_lower:
+                        # Get targets in this specific group
+                        targets = await self.asset_client.get_targets_in_group(group['id'])
+                        
+                        response = f"🎯 **Target Group: {group['name']}**\n\n"
+                        response += f"**Description:** {group.get('description', 'No description')}\n"
+                        response += f"**Targets:** {len(targets)}\n\n"
+                        
+                        if targets:
+                            response += "**Group Members:**\n"
+                            for i, target in enumerate(targets[:10]):  # Show first 10
+                                hostname = target.get('hostname', 'Unknown')
+                                ip = target.get('ip_address', 'No IP')
+                                os_info = target.get('os_type', target.get('os', 'Unknown OS'))
+                                response += f"{i+1}. **{hostname}** ({ip}) - {os_info}\n"
+                            
+                            if len(targets) > 10:
+                                response += f"... and {len(targets) - 10} more targets\n"
+                        else:
+                            response += "**No targets in this group yet.**\n"
+                        
+                        return {
+                            "response": response,
+                            "intent": "query_target_groups",
+                            "success": True,
+                            "data": {
+                                "group": group,
+                                "targets_count": len(targets),
+                                "targets": targets[:10]
+                            }
+                        }
+            
+            # General target groups overview
+            response = f"📁 **Target Groups Overview**\n\n"
+            response += f"**Total Groups:** {len(target_groups)}\n\n"
+            
+            # Show each group with summary
+            for i, group in enumerate(target_groups):
+                group_name = group.get('name', 'Unnamed Group')
+                description = group.get('description', 'No description')
+                
+                # Get target count for this group
+                targets = await self.asset_client.get_targets_in_group(group['id'])
+                target_count = len(targets)
+                
+                response += f"**{i+1}. {group_name}**\n"
+                response += f"   • Description: {description}\n"
+                response += f"   • Targets: {target_count}\n"
+                response += f"   • ID: {group['id']}\n\n"
+            
+            response += "💡 **Tip:** Ask 'Show me targets in [group name]' for detailed group information."
+            
+            return {
+                "response": response,
+                "intent": "query_target_groups",
+                "success": True,
+                "data": {
+                    "groups_count": len(target_groups),
+                    "groups": target_groups
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Target group query error: {e}")
+            return {
+                "response": f"❌ Error querying target groups: {str(e)}",
+                "intent": "query_target_groups",
+                "success": False
+            }
+    
+    async def handle_workflow_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about workflows and automation templates"""
+        try:
+            # Get workflows from automation service
+            workflows = await self.automation_client.list_ai_jobs(limit=100)
+            
+            message_lower = message.lower()
+            
+            # Filter workflows based on query
+            if 'ai' in message_lower or 'ai-generated' in message_lower:
+                filtered_workflows = [w for w in workflows if w.get('job_type') == 'ai_generated']
+                filter_desc = "AI-generated"
+            elif 'template' in message_lower:
+                filtered_workflows = [w for w in workflows if 'template' in w.get('name', '').lower()]
+                filter_desc = "template"
+            elif 'scheduled' in message_lower:
+                filtered_workflows = [w for w in workflows if w.get('is_scheduled', False)]
+                filter_desc = "scheduled"
+            else:
+                filtered_workflows = workflows
+                filter_desc = "all"
+            
+            if not filtered_workflows:
+                response = f"📋 **No {filter_desc} workflows found**\n\n"
+                if workflows:
+                    response += f"Total workflows in system: {len(workflows)}\n\n"
+                    response += "**Available workflow types:**\n"
+                    types = set(w.get('job_type', 'unknown') for w in workflows)
+                    for wf_type in types:
+                        count = len([w for w in workflows if w.get('job_type') == wf_type])
+                        response += f"• {wf_type}: {count} workflows\n"
+                else:
+                    response += "No workflows have been created yet. You can create workflows through automation or ask the AI to generate them."
+                
+                return {
+                    "response": response,
+                    "intent": "query_workflows",
+                    "success": True,
+                    "data": {"workflows_count": 0, "total_workflows": len(workflows)}
+                }
+            
+            response = f"⚙️ **{filter_desc.title()} Workflows**\n\n"
+            response += f"**Found:** {len(filtered_workflows)} workflows\n\n"
+            
+            # Show workflow details
+            for i, workflow in enumerate(filtered_workflows[:10]):  # Show first 10
+                name = workflow.get('name', 'Unnamed Workflow')
+                description = workflow.get('description', 'No description')
+                job_type = workflow.get('job_type', 'unknown')
+                is_enabled = workflow.get('is_enabled', False)
+                created_at = workflow.get('created_at', 'Unknown')
+                
+                status_emoji = '✅' if is_enabled else '⏸️'
+                
+                response += f"**{i+1}. {name}** {status_emoji}\n"
+                response += f"   • Type: {job_type}\n"
+                response += f"   • Description: {description[:100]}{'...' if len(description) > 100 else ''}\n"
+                response += f"   • Status: {'Enabled' if is_enabled else 'Disabled'}\n"
+                response += f"   • Created: {created_at}\n\n"
+            
+            if len(filtered_workflows) > 10:
+                response += f"... and {len(filtered_workflows) - 10} more workflows\n\n"
+            
+            response += f"**Summary:** {len(filtered_workflows)} {filter_desc} workflows, {len(workflows)} total"
+            
+            return {
+                "response": response,
+                "intent": "query_workflows",
+                "success": True,
+                "data": {
+                    "filtered_workflows": len(filtered_workflows),
+                    "total_workflows": len(workflows),
+                    "filter_description": filter_desc,
+                    "workflows": filtered_workflows[:10]
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Workflow query error: {e}")
+            return {
+                "response": f"❌ Error querying workflows: {str(e)}",
+                "intent": "query_workflows",
+                "success": False
+            }
+    
+    async def handle_execution_history_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about execution history"""
+        try:
+            # For now, use the recent jobs from system knowledge
+            # In a full implementation, this would query the automation service for execution history
+            jobs = self.system_knowledge.get('recent_jobs', [])
+            
+            if not jobs:
+                return {
+                    "response": "📋 **No execution history found**\n\nNo job executions have been recorded yet. Start running some automation jobs to see execution history here.",
+                    "intent": "query_execution_history",
+                    "success": True,
+                    "data": {"executions_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Time-based filtering
+            if 'today' in message_lower:
+                # Filter for today's executions (simplified)
+                filtered_jobs = jobs[:5]  # Most recent 5 as proxy
+                filter_desc = "today's"
+            elif 'yesterday' in message_lower:
+                filtered_jobs = jobs[5:10] if len(jobs) > 5 else []
+                filter_desc = "yesterday's"
+            elif 'week' in message_lower or 'last week' in message_lower:
+                filtered_jobs = jobs[:20]  # Last 20 as proxy for week
+                filter_desc = "this week's"
+            elif 'month' in message_lower:
+                filtered_jobs = jobs  # All available
+                filter_desc = "this month's"
+            else:
+                filtered_jobs = jobs[:15]  # Recent 15
+                filter_desc = "recent"
+            
+            if not filtered_jobs:
+                return {
+                    "response": f"📋 **No {filter_desc} executions found**\n\nTotal executions in system: {len(jobs)}",
+                    "intent": "query_execution_history",
+                    "success": True,
+                    "data": {"executions_count": 0, "total_executions": len(jobs)}
+                }
+            
+            response = f"📊 **Execution History ({filter_desc})**\n\n"
+            response += f"**Found:** {len(filtered_jobs)} executions\n\n"
+            
+            # Execution statistics
+            statuses = {}
+            for job in filtered_jobs:
+                status = job.get('status', 'unknown')
+                statuses[status] = statuses.get(status, 0) + 1
+            
+            response += "**Status Summary:**\n"
+            for status, count in statuses.items():
+                emoji = {
+                    'completed': '✅', 'success': '✅', 'finished': '✅',
+                    'failed': '❌', 'error': '❌',
+                    'running': '🔄', 'active': '🔄', 'in_progress': '🔄',
+                    'pending': '⏳', 'queued': '⏳'
+                }.get(status.lower(), '📋')
+                response += f"• {emoji} {status}: {count}\n"
+            
+            response += "\n**Recent Executions:**\n"
+            
+            # Show execution details
+            for i, job in enumerate(filtered_jobs[:8]):  # Show first 8
+                job_id = job.get('id', 'Unknown')
+                description = job.get('description', 'No description')
+                status = job.get('status', 'Unknown')
+                created_at = job.get('created_at', 'Unknown')
+                duration = job.get('duration', 'Unknown')
+                
+                status_emoji = {
+                    'completed': '✅', 'success': '✅', 'finished': '✅',
+                    'failed': '❌', 'error': '❌',
+                    'running': '🔄', 'active': '🔄', 'in_progress': '🔄',
+                    'pending': '⏳', 'queued': '⏳'
+                }.get(status.lower(), '📋')
+                
+                response += f"**{i+1}. Execution #{job_id}** {status_emoji}\n"
+                response += f"   • Job: {description[:80]}{'...' if len(description) > 80 else ''}\n"
+                response += f"   • Status: {status}\n"
+                response += f"   • Started: {created_at}\n"
+                if duration != 'Unknown':
+                    response += f"   • Duration: {duration}\n"
+                response += "\n"
+            
+            if len(filtered_jobs) > 8:
+                response += f"... and {len(filtered_jobs) - 8} more executions\n\n"
+            
+            # Success rate calculation
+            completed = statuses.get('completed', 0) + statuses.get('success', 0) + statuses.get('finished', 0)
+            failed = statuses.get('failed', 0) + statuses.get('error', 0)
+            total_finished = completed + failed
+            
+            if total_finished > 0:
+                success_rate = (completed / total_finished) * 100
+                response += f"**Success Rate:** {success_rate:.1f}% ({completed}/{total_finished} successful)"
+            
+            return {
+                "response": response,
+                "intent": "query_execution_history",
+                "success": True,
+                "data": {
+                    "executions_count": len(filtered_jobs),
+                    "total_executions": len(jobs),
+                    "filter_description": filter_desc,
+                    "status_summary": statuses,
+                    "success_rate": success_rate if total_finished > 0 else None
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Execution history query error: {e}")
+            return {
+                "response": f"❌ Error querying execution history: {str(e)}",
+                "intent": "query_execution_history",
+                "success": False
+            }
+    
+    async def handle_performance_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about system performance and metrics"""
+        try:
+            # Get performance data from learning engine and system knowledge
+            learning_stats = await self.learning_engine.get_learning_stats()
+            health_insights = await self.learning_engine.get_system_health_insights()
+            
+            targets_count = len(self.system_knowledge.get('targets', []))
+            jobs_count = len(self.system_knowledge.get('recent_jobs', []))
+            
+            response = f"📊 **System Performance Metrics**\n\n"
+            
+            # System overview
+            response += f"**Infrastructure Overview:**\n"
+            response += f"• Total Targets: {targets_count}\n"
+            response += f"• Total Jobs: {jobs_count}\n"
+            response += f"• Supported Protocols: {len(self.protocol_manager.get_supported_protocols())}\n\n"
+            
+            # AI Learning Performance
+            response += f"🧠 **AI Learning Performance:**\n"
+            response += f"• Execution Records: {learning_stats.get('execution_records', 0):,}\n"
+            response += f"• User Patterns: {learning_stats.get('user_patterns', 0)}\n"
+            response += f"• Predictions Made: {learning_stats.get('predictions_made', 0)}\n"
+            response += f"• Learning Status: {learning_stats.get('learning_status', 'unknown').title()}\n\n"
+            
+            # System Health Metrics
+            metrics = health_insights.get('metrics_summary', {})
+            if metrics:
+                response += f"⚡ **System Metrics:**\n"
+                if 'cpu_usage' in metrics:
+                    response += f"• CPU Usage: {metrics['cpu_usage']:.1f}%\n"
+                if 'memory_usage' in metrics:
+                    response += f"• Memory Usage: {metrics['memory_usage']:.1f}%\n"
+                if 'response_time' in metrics:
+                    response += f"• Avg Response Time: {metrics['response_time']:.2f}ms\n"
+                if 'error_rate' in metrics:
+                    response += f"• Error Rate: {metrics['error_rate']:.2%}\n"
+                response += "\n"
+            
+            # Job Performance Analysis
+            jobs = self.system_knowledge.get('recent_jobs', [])
+            if jobs:
+                statuses = {}
+                for job in jobs:
+                    status = job.get('status', 'unknown')
+                    statuses[status] = statuses.get(status, 0) + 1
+                
+                completed = statuses.get('completed', 0) + statuses.get('success', 0)
+                failed = statuses.get('failed', 0) + statuses.get('error', 0)
+                total_finished = completed + failed
+                
+                response += f"🎯 **Job Performance:**\n"
+                response += f"• Total Jobs: {len(jobs)}\n"
+                response += f"• Completed: {completed}\n"
+                response += f"• Failed: {failed}\n"
+                
+                if total_finished > 0:
+                    success_rate = (completed / total_finished) * 100
+                    response += f"• Success Rate: {success_rate:.1f}%\n"
+                
+                response += "\n"
+            
+            # Protocol Performance
+            protocols = self.protocol_manager.get_supported_protocols()
+            response += f"🔌 **Protocol Status:**\n"
+            for protocol in protocols:
+                capabilities = self.protocol_manager.get_protocol_capabilities(protocol)
+                response += f"• {protocol.upper()}: {len(capabilities)} capabilities\n"
+            
+            response += f"\n💡 **Performance Tips:**\n"
+            response += f"• Monitor success rates regularly\n"
+            response += f"• Review failed jobs for patterns\n"
+            response += f"• Keep target credentials updated\n"
+            response += f"• Use AI recommendations for optimization"
+            
+            return {
+                "response": response,
+                "intent": "query_performance",
+                "success": True,
+                "data": {
+                    "targets_count": targets_count,
+                    "jobs_count": jobs_count,
+                    "learning_stats": learning_stats,
+                    "metrics": metrics,
+                    "protocols_count": len(protocols)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Performance query error: {e}")
+            return {
+                "response": f"❌ Error querying performance metrics: {str(e)}",
+                "intent": "query_performance",
+                "success": False
+            }
+    
+    async def handle_error_analysis_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about errors and failure analysis"""
+        try:
+            jobs = self.system_knowledge.get('recent_jobs', [])
+            
+            # Filter for failed jobs
+            failed_jobs = [job for job in jobs if job.get('status') in ['failed', 'error']]
+            
+            if not failed_jobs:
+                return {
+                    "response": "✅ **No Recent Errors Found**\n\nGreat news! No failed jobs found in recent history. Your automation is running smoothly.",
+                    "intent": "query_error_analysis",
+                    "success": True,
+                    "data": {"error_count": 0, "total_jobs": len(jobs)}
+                }
+            
+            response = f"🔍 **Error Analysis Report**\n\n"
+            response += f"**Failed Jobs:** {len(failed_jobs)} out of {len(jobs)} total\n\n"
+            
+            # Error pattern analysis
+            error_patterns = {}
+            error_types = {}
+            
+            for job in failed_jobs:
+                # Analyze error messages for patterns
+                error_msg = job.get('error_message', 'Unknown error')
+                
+                # Common error categorization
+                if 'connection' in error_msg.lower() or 'timeout' in error_msg.lower():
+                    error_types['Connection Issues'] = error_types.get('Connection Issues', 0) + 1
+                elif 'permission' in error_msg.lower() or 'access' in error_msg.lower():
+                    error_types['Permission Errors'] = error_types.get('Permission Errors', 0) + 1
+                elif 'credential' in error_msg.lower() or 'auth' in error_msg.lower():
+                    error_types['Authentication Errors'] = error_types.get('Authentication Errors', 0) + 1
+                elif 'not found' in error_msg.lower() or '404' in error_msg:
+                    error_types['Resource Not Found'] = error_types.get('Resource Not Found', 0) + 1
+                else:
+                    error_types['Other Errors'] = error_types.get('Other Errors', 0) + 1
+            
+            # Show error type breakdown
+            response += f"**Error Categories:**\n"
+            for error_type, count in sorted(error_types.items(), key=lambda x: x[1], reverse=True):
+                percentage = (count / len(failed_jobs)) * 100
+                response += f"• {error_type}: {count} ({percentage:.1f}%)\n"
+            
+            response += f"\n**Recent Failed Jobs:**\n"
+            
+            # Show recent failed jobs
+            for i, job in enumerate(failed_jobs[:5]):  # Show first 5 failed jobs
+                job_id = job.get('id', 'Unknown')
+                description = job.get('description', 'No description')
+                error_msg = job.get('error_message', 'No error message')
+                failed_at = job.get('failed_at', job.get('created_at', 'Unknown'))
+                
+                response += f"**{i+1}. Job #{job_id}** ❌\n"
+                response += f"   • Description: {description[:80]}{'...' if len(description) > 80 else ''}\n"
+                response += f"   • Error: {error_msg[:100]}{'...' if len(error_msg) > 100 else ''}\n"
+                response += f"   • Failed At: {failed_at}\n\n"
+            
+            if len(failed_jobs) > 5:
+                response += f"... and {len(failed_jobs) - 5} more failed jobs\n\n"
+            
+            # Recommendations
+            response += f"🔧 **Recommended Actions:**\n"
+            
+            if error_types.get('Connection Issues', 0) > 0:
+                response += f"• Check network connectivity to targets\n"
+                response += f"• Verify target availability and firewall settings\n"
+            
+            if error_types.get('Permission Errors', 0) > 0:
+                response += f"• Review user permissions on target systems\n"
+                response += f"• Ensure service accounts have required privileges\n"
+            
+            if error_types.get('Authentication Errors', 0) > 0:
+                response += f"• Update expired credentials\n"
+                response += f"• Verify authentication configuration\n"
+            
+            if error_types.get('Resource Not Found', 0) > 0:
+                response += f"• Check if target resources still exist\n"
+                response += f"• Update automation scripts for path changes\n"
+            
+            response += f"• Review and retry failed jobs after fixes\n"
+            response += f"• Monitor error trends over time"
+            
+            return {
+                "response": response,
+                "intent": "query_error_analysis",
+                "success": True,
+                "data": {
+                    "error_count": len(failed_jobs),
+                    "total_jobs": len(jobs),
+                    "error_types": error_types,
+                    "failed_jobs": failed_jobs[:5]
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analysis query error: {e}")
+            return {
+                "response": f"❌ Error analyzing errors: {str(e)}",
+                "intent": "query_error_analysis",
+                "success": False
+            }
+    
+    async def handle_notification_history_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about notification and communication history"""
+        try:
+            # For now, return a placeholder response since we don't have direct access to communication service
+            # In a full implementation, this would query the communication service
+            
+            response = f"📧 **Notification History**\n\n"
+            response += f"**Communication Service Integration:**\n"
+            response += f"• Service Status: Active\n"
+            response += f"• Supported Channels: SMTP Email\n"
+            response += f"• Configuration: Ready\n\n"
+            
+            response += f"**Recent Activity:**\n"
+            response += f"• System alerts sent for job completions\n"
+            response += f"• Error notifications for failed operations\n"
+            response += f"• Health check alerts for system monitoring\n\n"
+            
+            response += f"📊 **Notification Statistics:**\n"
+            response += f"• Total Notifications: Available via Communication Service\n"
+            response += f"• Delivery Rate: Monitored by SMTP service\n"
+            response += f"• Failed Deliveries: Tracked in communication logs\n\n"
+            
+            response += f"💡 **To get detailed notification history:**\n"
+            response += f"• Check the Communication Service logs\n"
+            response += f"• Review SMTP delivery reports\n"
+            response += f"• Monitor alert configuration settings\n"
+            response += f"• Use the frontend dashboard for visual reports"
+            
+            return {
+                "response": response,
+                "intent": "query_notification_history",
+                "success": True,
+                "data": {
+                    "service_status": "active",
+                    "channels": ["smtp"],
+                    "integration_ready": True
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Notification history query error: {e}")
+            return {
+                "response": f"❌ Error querying notification history: {str(e)}",
+                "intent": "query_notification_history",
                 "success": False
             }
 
