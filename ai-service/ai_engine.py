@@ -144,6 +144,34 @@ class OpsConductorAI:
             }
         
         # System query intents
+        if any(word in message_lower for word in ['credentials', 'credential', 'passwords', 'ssh keys', 'authentication']):
+            return {
+                "intent": "credential_query",
+                "confidence": 0.9,
+                "action": "query_credentials"
+            }
+        
+        if any(word in message_lower for word in ['services', 'service', 'ports', 'ssh', 'winrm', 'protocols']):
+            return {
+                "intent": "service_query",
+                "confidence": 0.9,
+                "action": "query_services"
+            }
+        
+        if any(word in message_lower for word in ['target details', 'target info', 'os version', 'operating system']):
+            return {
+                "intent": "target_details_query",
+                "confidence": 0.9,
+                "action": "query_target_details"
+            }
+        
+        if any(word in message_lower for word in ['connection', 'connectivity', 'reachable', 'unreachable', 'connection test']):
+            return {
+                "intent": "connection_status_query",
+                "confidence": 0.9,
+                "action": "query_connection_status"
+            }
+        
         if any(word in message_lower for word in ['target groups', 'groups', 'target group']):
             return {
                 "intent": "target_group_query",
@@ -277,6 +305,14 @@ class OpsConductorAI:
                 response = await self.handle_target_query(message, context)
             elif intent_result["action"] == "query_target_groups":
                 response = await self.handle_target_group_query(message, context)
+            elif intent_result["action"] == "query_credentials":
+                response = await self.handle_credential_query(message, context)
+            elif intent_result["action"] == "query_services":
+                response = await self.handle_service_query(message, context)
+            elif intent_result["action"] == "query_target_details":
+                response = await self.handle_target_details_query(message, context)
+            elif intent_result["action"] == "query_connection_status":
+                response = await self.handle_connection_status_query(message, context)
             elif intent_result["action"] == "query_jobs":
                 response = await self.handle_job_query(message, context)
             elif intent_result["action"] == "query_workflows":
@@ -1908,6 +1944,685 @@ Provide a helpful, accurate response. If you don't have enough information, sugg
             return {
                 "response": f"❌ Error querying notification history: {str(e)}",
                 "intent": "query_notification_history",
+                "success": False
+            }
+    
+    async def handle_credential_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about credentials and authentication"""
+        try:
+            # Get all targets with their credential information
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return {
+                    "response": "🔐 **No targets found**\n\nNo targets are configured yet. Add targets first to manage credentials.",
+                    "intent": "query_credentials",
+                    "success": True,
+                    "data": {"targets_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Analyze credential status across all targets
+            credential_stats = {
+                'total_targets': len(targets),
+                'with_credentials': 0,
+                'without_credentials': 0,
+                'credential_types': {},
+                'service_types': {}
+            }
+            
+            targets_with_creds = []
+            targets_without_creds = []
+            
+            for target in targets:
+                hostname = target.get('hostname', 'Unknown')
+                services = target.get('services', [])
+                
+                target_has_creds = False
+                target_cred_types = []
+                
+                for service in services:
+                    cred_type = service.get('credential_type')
+                    has_creds = service.get('has_credentials', False)
+                    service_type = service.get('service_type', 'unknown')
+                    
+                    # Track service types
+                    credential_stats['service_types'][service_type] = credential_stats['service_types'].get(service_type, 0) + 1
+                    
+                    if has_creds and cred_type:
+                        target_has_creds = True
+                        if cred_type not in target_cred_types:
+                            target_cred_types.append(cred_type)
+                        credential_stats['credential_types'][cred_type] = credential_stats['credential_types'].get(cred_type, 0) + 1
+                
+                if target_has_creds:
+                    credential_stats['with_credentials'] += 1
+                    targets_with_creds.append({
+                        'target': target,
+                        'credential_types': target_cred_types
+                    })
+                else:
+                    credential_stats['without_credentials'] += 1
+                    targets_without_creds.append(target)
+            
+            # Generate response based on query type
+            if 'missing' in message_lower or 'without' in message_lower or 'no credentials' in message_lower:
+                # Focus on targets without credentials
+                response = f"🔐 **Targets Missing Credentials**\n\n"
+                response += f"**Found:** {len(targets_without_creds)} targets without credentials\n\n"
+                
+                if targets_without_creds:
+                    response += "**Targets Needing Credentials:**\n"
+                    for i, target in enumerate(targets_without_creds[:10]):
+                        hostname = target.get('hostname', 'Unknown')
+                        os_type = target.get('os_type', 'unknown')
+                        services = target.get('services', [])
+                        service_count = len(services)
+                        
+                        response += f"{i+1}. **{hostname}** ({os_type})\n"
+                        response += f"   • Services: {service_count}\n"
+                        response += f"   • Status: ❌ No credentials configured\n\n"
+                    
+                    if len(targets_without_creds) > 10:
+                        response += f"... and {len(targets_without_creds) - 10} more targets\n\n"
+                    
+                    response += "💡 **Recommendation:** Configure credentials for these targets to enable automation."
+                else:
+                    response += "✅ **Great!** All targets have credentials configured."
+                
+            elif any(word in message_lower for word in ['ssh', 'ssh key', 'ssh keys']):
+                # Focus on SSH credentials
+                ssh_targets = []
+                for target_info in targets_with_creds:
+                    if 'ssh_key' in target_info['credential_types'] or any('ssh' in ct for ct in target_info['credential_types']):
+                        ssh_targets.append(target_info)
+                
+                response = f"🔑 **SSH Key Credentials**\n\n"
+                response += f"**Found:** {len(ssh_targets)} targets with SSH credentials\n\n"
+                
+                if ssh_targets:
+                    response += "**SSH-Enabled Targets:**\n"
+                    for i, target_info in enumerate(ssh_targets[:8]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        ip = target.get('ip_address', 'No IP')
+                        
+                        response += f"{i+1}. **{hostname}** ({ip})\n"
+                        response += f"   • Credential Types: {', '.join(target_info['credential_types'])}\n\n"
+                else:
+                    response += "No targets with SSH key credentials found.\n"
+                    response += "Consider configuring SSH key authentication for better security."
+                
+            else:
+                # General credential overview
+                response = f"🔐 **Credential Management Overview**\n\n"
+                response += f"**Total Targets:** {credential_stats['total_targets']}\n"
+                response += f"**With Credentials:** {credential_stats['with_credentials']} ✅\n"
+                response += f"**Without Credentials:** {credential_stats['without_credentials']} ❌\n\n"
+                
+                if credential_stats['credential_types']:
+                    response += "**Credential Types in Use:**\n"
+                    for cred_type, count in sorted(credential_stats['credential_types'].items(), key=lambda x: x[1], reverse=True):
+                        response += f"• {cred_type.replace('_', ' ').title()}: {count} targets\n"
+                    response += "\n"
+                
+                if credential_stats['service_types']:
+                    response += "**Service Types:**\n"
+                    for service_type, count in sorted(credential_stats['service_types'].items(), key=lambda x: x[1], reverse=True):
+                        response += f"• {service_type.upper()}: {count} services\n"
+                    response += "\n"
+                
+                # Show some examples of configured targets
+                if targets_with_creds:
+                    response += "**Sample Configured Targets:**\n"
+                    for i, target_info in enumerate(targets_with_creds[:5]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        cred_types = ', '.join(target_info['credential_types'])
+                        
+                        response += f"{i+1}. **{hostname}** - {cred_types}\n"
+                    
+                    if len(targets_with_creds) > 5:
+                        response += f"... and {len(targets_with_creds) - 5} more\n"
+                
+                response += f"\n💡 **Security Tip:** Regularly rotate credentials and use SSH keys where possible."
+            
+            return {
+                "response": response,
+                "intent": "query_credentials",
+                "success": True,
+                "data": {
+                    "credential_stats": credential_stats,
+                    "targets_with_credentials": len(targets_with_creds),
+                    "targets_without_credentials": len(targets_without_creds)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Credential query error: {e}")
+            return {
+                "response": f"❌ Error querying credentials: {str(e)}",
+                "intent": "query_credentials",
+                "success": False
+            }
+    
+    async def handle_service_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about services and protocols"""
+        try:
+            # Get all targets with their services
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return {
+                    "response": "🔌 **No targets found**\n\nNo targets are configured yet. Add targets first to see their services.",
+                    "intent": "query_services",
+                    "success": True,
+                    "data": {"targets_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Collect all services across targets
+            all_services = []
+            service_stats = {}
+            port_stats = {}
+            security_stats = {'secure': 0, 'insecure': 0}
+            
+            for target in targets:
+                hostname = target.get('hostname', 'Unknown')
+                os_type = target.get('os_type', 'unknown')
+                services = target.get('services', [])
+                
+                for service in services:
+                    service_type = service.get('service_type', 'unknown')
+                    port = service.get('port', 0)
+                    is_secure = service.get('is_secure', False)
+                    is_enabled = service.get('is_enabled', True)
+                    
+                    # Track statistics
+                    service_stats[service_type] = service_stats.get(service_type, 0) + 1
+                    port_stats[port] = port_stats.get(port, 0) + 1
+                    
+                    if is_secure:
+                        security_stats['secure'] += 1
+                    else:
+                        security_stats['insecure'] += 1
+                    
+                    all_services.append({
+                        'target_hostname': hostname,
+                        'target_os': os_type,
+                        'service_type': service_type,
+                        'port': port,
+                        'is_secure': is_secure,
+                        'is_enabled': is_enabled,
+                        'has_credentials': service.get('has_credentials', False)
+                    })
+            
+            # Filter services based on query
+            if 'ssh' in message_lower:
+                filtered_services = [s for s in all_services if 'ssh' in s['service_type'].lower()]
+                filter_desc = "SSH"
+            elif 'winrm' in message_lower:
+                filtered_services = [s for s in all_services if 'winrm' in s['service_type'].lower()]
+                filter_desc = "WinRM"
+            elif 'http' in message_lower:
+                filtered_services = [s for s in all_services if 'http' in s['service_type'].lower()]
+                filter_desc = "HTTP/HTTPS"
+            elif 'database' in message_lower or 'db' in message_lower:
+                filtered_services = [s for s in all_services if any(db in s['service_type'].lower() for db in ['sql', 'mysql', 'postgres', 'oracle', 'mongo'])]
+                filter_desc = "Database"
+            elif 'insecure' in message_lower or 'unsecure' in message_lower:
+                filtered_services = [s for s in all_services if not s['is_secure']]
+                filter_desc = "Insecure"
+            elif 'secure' in message_lower:
+                filtered_services = [s for s in all_services if s['is_secure']]
+                filter_desc = "Secure"
+            else:
+                filtered_services = all_services
+                filter_desc = "All"
+            
+            if not filtered_services:
+                response = f"🔌 **No {filter_desc} services found**\n\n"
+                if all_services:
+                    response += f"Total services in system: {len(all_services)}\n\n"
+                    response += "**Available service types:**\n"
+                    for service_type, count in sorted(service_stats.items(), key=lambda x: x[1], reverse=True):
+                        response += f"• {service_type.upper()}: {count} services\n"
+                else:
+                    response += "No services are configured on any targets yet."
+                
+                return {
+                    "response": response,
+                    "intent": "query_services",
+                    "success": True,
+                    "data": {"services_count": 0, "total_services": len(all_services)}
+                }
+            
+            response = f"🔌 **{filter_desc} Services**\n\n"
+            response += f"**Found:** {len(filtered_services)} services\n\n"
+            
+            # Service summary
+            filtered_stats = {}
+            for service in filtered_services:
+                service_type = service['service_type']
+                filtered_stats[service_type] = filtered_stats.get(service_type, 0) + 1
+            
+            response += "**Service Type Breakdown:**\n"
+            for service_type, count in sorted(filtered_stats.items(), key=lambda x: x[1], reverse=True):
+                response += f"• {service_type.upper()}: {count} services\n"
+            response += "\n"
+            
+            # Show service details
+            response += "**Service Details:**\n"
+            for i, service in enumerate(filtered_services[:10]):  # Show first 10
+                hostname = service['target_hostname']
+                service_type = service['service_type']
+                port = service['port']
+                is_secure = service['is_secure']
+                is_enabled = service['is_enabled']
+                has_creds = service['has_credentials']
+                
+                security_emoji = '🔒' if is_secure else '🔓'
+                status_emoji = '✅' if is_enabled else '⏸️'
+                cred_emoji = '🔑' if has_creds else '❌'
+                
+                response += f"**{i+1}. {hostname}** - {service_type.upper()}\n"
+                response += f"   • Port: {port} {security_emoji}\n"
+                response += f"   • Status: {'Enabled' if is_enabled else 'Disabled'} {status_emoji}\n"
+                response += f"   • Credentials: {'Configured' if has_creds else 'Missing'} {cred_emoji}\n\n"
+            
+            if len(filtered_services) > 10:
+                response += f"... and {len(filtered_services) - 10} more services\n\n"
+            
+            # Security summary
+            secure_count = len([s for s in filtered_services if s['is_secure']])
+            insecure_count = len(filtered_services) - secure_count
+            
+            response += f"**Security Summary:**\n"
+            response += f"• Secure Services: {secure_count} 🔒\n"
+            response += f"• Insecure Services: {insecure_count} 🔓\n"
+            
+            if insecure_count > 0:
+                response += f"\n⚠️ **Security Recommendation:** Consider securing {insecure_count} insecure services."
+            
+            return {
+                "response": response,
+                "intent": "query_services",
+                "success": True,
+                "data": {
+                    "services_count": len(filtered_services),
+                    "total_services": len(all_services),
+                    "filter_description": filter_desc,
+                    "service_stats": filtered_stats,
+                    "security_stats": {"secure": secure_count, "insecure": insecure_count}
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Service query error: {e}")
+            return {
+                "response": f"❌ Error querying services: {str(e)}",
+                "intent": "query_services",
+                "success": False
+            }
+    
+    async def handle_target_details_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about detailed target information"""
+        try:
+            # Get all targets with detailed information
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return {
+                    "response": "🎯 **No targets found**\n\nNo targets are configured yet. Add targets to see detailed information.",
+                    "intent": "query_target_details",
+                    "success": True,
+                    "data": {"targets_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Analyze target details
+            os_stats = {}
+            tag_stats = {}
+            recent_targets = []
+            
+            for target in targets:
+                os_type = target.get('os_type', 'unknown')
+                os_version = target.get('os_version', 'Unknown')
+                tags = target.get('tags', [])
+                created_at = target.get('created_at', '')
+                
+                # Track OS statistics
+                os_key = f"{os_type} {os_version}".strip()
+                os_stats[os_key] = os_stats.get(os_key, 0) + 1
+                
+                # Track tag statistics
+                for tag in tags:
+                    tag_stats[tag] = tag_stats.get(tag, 0) + 1
+                
+                # Track recent targets (simplified - in real implementation would parse dates)
+                if created_at:
+                    recent_targets.append(target)
+            
+            # Filter targets based on query
+            if 'windows' in message_lower:
+                filtered_targets = [t for t in targets if t.get('os_type', '').lower() == 'windows']
+                filter_desc = "Windows"
+            elif 'linux' in message_lower:
+                filtered_targets = [t for t in targets if t.get('os_type', '').lower() == 'linux']
+                filter_desc = "Linux"
+            elif 'unix' in message_lower:
+                filtered_targets = [t for t in targets if t.get('os_type', '').lower() == 'unix']
+                filter_desc = "Unix"
+            elif 'macos' in message_lower or 'mac' in message_lower:
+                filtered_targets = [t for t in targets if t.get('os_type', '').lower() == 'macos']
+                filter_desc = "macOS"
+            elif 'recent' in message_lower or 'new' in message_lower:
+                filtered_targets = recent_targets[-10:]  # Last 10 as proxy for recent
+                filter_desc = "Recent"
+            elif any(word in message_lower for word in ['tag', 'tagged']):
+                # Try to extract tag name from message
+                filtered_targets = []
+                for target in targets:
+                    target_tags = [tag.lower() for tag in target.get('tags', [])]
+                    if any(tag in message_lower for tag in target_tags):
+                        filtered_targets.append(target)
+                filter_desc = "Tagged"
+            else:
+                filtered_targets = targets
+                filter_desc = "All"
+            
+            if not filtered_targets:
+                response = f"🎯 **No {filter_desc} targets found**\n\n"
+                if targets:
+                    response += f"Total targets in system: {len(targets)}\n\n"
+                    response += "**Available OS types:**\n"
+                    for os_type, count in sorted(os_stats.items(), key=lambda x: x[1], reverse=True):
+                        response += f"• {os_type.title()}: {count} targets\n"
+                else:
+                    response += "No targets are configured yet."
+                
+                return {
+                    "response": response,
+                    "intent": "query_target_details",
+                    "success": True,
+                    "data": {"targets_count": 0, "total_targets": len(targets)}
+                }
+            
+            response = f"🎯 **{filter_desc} Target Details**\n\n"
+            response += f"**Found:** {len(filtered_targets)} targets\n\n"
+            
+            # OS distribution for filtered targets
+            filtered_os_stats = {}
+            for target in filtered_targets:
+                os_type = target.get('os_type', 'unknown')
+                os_version = target.get('os_version', 'Unknown')
+                os_key = f"{os_type} {os_version}".strip()
+                filtered_os_stats[os_key] = filtered_os_stats.get(os_key, 0) + 1
+            
+            if len(filtered_os_stats) > 1:  # Only show if there's variety
+                response += "**Operating System Distribution:**\n"
+                for os_type, count in sorted(filtered_os_stats.items(), key=lambda x: x[1], reverse=True):
+                    response += f"• {os_type.title()}: {count} targets\n"
+                response += "\n"
+            
+            # Show detailed target information
+            response += "**Target Details:**\n"
+            for i, target in enumerate(filtered_targets[:8]):  # Show first 8
+                name = target.get('name', 'Unnamed')
+                hostname = target.get('hostname', 'Unknown')
+                ip = target.get('ip_address', 'No IP')
+                os_type = target.get('os_type', 'unknown')
+                os_version = target.get('os_version', 'Unknown')
+                description = target.get('description', 'No description')
+                tags = target.get('tags', [])
+                services = target.get('services', [])
+                created_at = target.get('created_at', 'Unknown')
+                
+                response += f"**{i+1}. {name}**\n"
+                response += f"   • Hostname: {hostname}\n"
+                response += f"   • IP Address: {ip}\n"
+                response += f"   • OS: {os_type.title()} {os_version}\n"
+                response += f"   • Services: {len(services)}\n"
+                
+                if tags:
+                    response += f"   • Tags: {', '.join(tags)}\n"
+                
+                if description and description != 'No description':
+                    response += f"   • Description: {description[:60]}{'...' if len(description) > 60 else ''}\n"
+                
+                response += f"   • Created: {created_at}\n\n"
+            
+            if len(filtered_targets) > 8:
+                response += f"... and {len(filtered_targets) - 8} more targets\n\n"
+            
+            # Tag summary if applicable
+            if tag_stats and filter_desc != "Tagged":
+                response += f"**Popular Tags:**\n"
+                sorted_tags = sorted(tag_stats.items(), key=lambda x: x[1], reverse=True)[:5]
+                for tag, count in sorted_tags:
+                    response += f"• {tag}: {count} targets\n"
+            
+            return {
+                "response": response,
+                "intent": "query_target_details",
+                "success": True,
+                "data": {
+                    "targets_count": len(filtered_targets),
+                    "total_targets": len(targets),
+                    "filter_description": filter_desc,
+                    "os_stats": filtered_os_stats,
+                    "tag_stats": tag_stats
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Target details query error: {e}")
+            return {
+                "response": f"❌ Error querying target details: {str(e)}",
+                "intent": "query_target_details",
+                "success": False
+            }
+    
+    async def handle_connection_status_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about connection status and reachability"""
+        try:
+            # Get all targets with their connection status
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return {
+                    "response": "🔗 **No targets found**\n\nNo targets are configured yet. Add targets to check connection status.",
+                    "intent": "query_connection_status",
+                    "success": True,
+                    "data": {"targets_count": 0}
+                }
+            
+            message_lower = message.lower()
+            
+            # Analyze connection status
+            connection_stats = {
+                'total_targets': len(targets),
+                'reachable': 0,
+                'unreachable': 0,
+                'unknown': 0,
+                'never_tested': 0
+            }
+            
+            reachable_targets = []
+            unreachable_targets = []
+            untested_targets = []
+            
+            for target in targets:
+                hostname = target.get('hostname', 'Unknown')
+                services = target.get('services', [])
+                
+                target_status = 'unknown'
+                last_tested = None
+                
+                # Check service connection status
+                for service in services:
+                    connection_status = service.get('connection_status')
+                    last_tested_at = service.get('last_tested_at')
+                    
+                    if connection_status == 'connected' or connection_status == 'success':
+                        target_status = 'reachable'
+                        if last_tested_at:
+                            last_tested = last_tested_at
+                        break
+                    elif connection_status == 'failed' or connection_status == 'error':
+                        if target_status != 'reachable':  # Don't override reachable status
+                            target_status = 'unreachable'
+                            if last_tested_at:
+                                last_tested = last_tested_at
+                    elif connection_status is None:
+                        if target_status == 'unknown':
+                            target_status = 'never_tested'
+                
+                # Categorize targets
+                if target_status == 'reachable':
+                    connection_stats['reachable'] += 1
+                    reachable_targets.append({
+                        'target': target,
+                        'last_tested': last_tested,
+                        'status': 'reachable'
+                    })
+                elif target_status == 'unreachable':
+                    connection_stats['unreachable'] += 1
+                    unreachable_targets.append({
+                        'target': target,
+                        'last_tested': last_tested,
+                        'status': 'unreachable'
+                    })
+                elif target_status == 'never_tested':
+                    connection_stats['never_tested'] += 1
+                    untested_targets.append({
+                        'target': target,
+                        'last_tested': None,
+                        'status': 'never_tested'
+                    })
+                else:
+                    connection_stats['unknown'] += 1
+            
+            # Generate response based on query focus
+            if 'unreachable' in message_lower or 'failed' in message_lower or 'down' in message_lower:
+                # Focus on unreachable targets
+                response = f"🔗 **Unreachable Targets**\n\n"
+                response += f"**Found:** {len(unreachable_targets)} unreachable targets\n\n"
+                
+                if unreachable_targets:
+                    response += "**Connection Issues:**\n"
+                    for i, target_info in enumerate(unreachable_targets[:8]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        ip = target.get('ip_address', 'No IP')
+                        last_tested = target_info['last_tested'] or 'Never'
+                        
+                        response += f"{i+1}. **{hostname}** ({ip}) ❌\n"
+                        response += f"   • Last Tested: {last_tested}\n"
+                        response += f"   • Status: Connection Failed\n\n"
+                    
+                    if len(unreachable_targets) > 8:
+                        response += f"... and {len(unreachable_targets) - 8} more unreachable targets\n\n"
+                    
+                    response += "🔧 **Troubleshooting Tips:**\n"
+                    response += "• Check network connectivity\n"
+                    response += "• Verify firewall settings\n"
+                    response += "• Confirm target is powered on\n"
+                    response += "• Test credentials and ports"
+                else:
+                    response += "✅ **Great!** All tested targets are reachable."
+                
+            elif 'reachable' in message_lower or 'connected' in message_lower or 'up' in message_lower:
+                # Focus on reachable targets
+                response = f"🔗 **Reachable Targets**\n\n"
+                response += f"**Found:** {len(reachable_targets)} reachable targets\n\n"
+                
+                if reachable_targets:
+                    response += "**Successfully Connected:**\n"
+                    for i, target_info in enumerate(reachable_targets[:8]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        ip = target.get('ip_address', 'No IP')
+                        last_tested = target_info['last_tested'] or 'Recently'
+                        
+                        response += f"{i+1}. **{hostname}** ({ip}) ✅\n"
+                        response += f"   • Last Tested: {last_tested}\n"
+                        response += f"   • Status: Connected\n\n"
+                    
+                    if len(reachable_targets) > 8:
+                        response += f"... and {len(reachable_targets) - 8} more reachable targets\n"
+                else:
+                    response += "No reachable targets found. Check connection settings."
+                
+            elif 'test' in message_lower or 'check' in message_lower:
+                # Focus on testing recommendations
+                response = f"🔗 **Connection Testing Status**\n\n"
+                response += f"**Never Tested:** {len(untested_targets)} targets\n"
+                response += f"**Need Retesting:** {len(unreachable_targets)} targets\n\n"
+                
+                if untested_targets:
+                    response += "**Targets Never Tested:**\n"
+                    for i, target_info in enumerate(untested_targets[:5]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        response += f"{i+1}. {hostname} - Never tested\n"
+                    
+                    if len(untested_targets) > 5:
+                        response += f"... and {len(untested_targets) - 5} more\n"
+                    response += "\n"
+                
+                response += "💡 **Recommendation:** Run connection tests to verify target reachability."
+                
+            else:
+                # General connection overview
+                response = f"🔗 **Connection Status Overview**\n\n"
+                response += f"**Total Targets:** {connection_stats['total_targets']}\n"
+                response += f"**Reachable:** {connection_stats['reachable']} ✅\n"
+                response += f"**Unreachable:** {connection_stats['unreachable']} ❌\n"
+                response += f"**Never Tested:** {connection_stats['never_tested']} ⚪\n"
+                response += f"**Unknown Status:** {connection_stats['unknown']} ❓\n\n"
+                
+                # Calculate health percentage
+                tested_targets = connection_stats['reachable'] + connection_stats['unreachable']
+                if tested_targets > 0:
+                    health_percentage = (connection_stats['reachable'] / tested_targets) * 100
+                    response += f"**Connection Health:** {health_percentage:.1f}% ({connection_stats['reachable']}/{tested_targets} reachable)\n\n"
+                
+                # Show recent connection issues if any
+                if unreachable_targets:
+                    response += "**Recent Connection Issues:**\n"
+                    for i, target_info in enumerate(unreachable_targets[:3]):
+                        target = target_info['target']
+                        hostname = target.get('hostname', 'Unknown')
+                        response += f"• {hostname} - Connection failed\n"
+                    
+                    if len(unreachable_targets) > 3:
+                        response += f"... and {len(unreachable_targets) - 3} more\n"
+                    response += "\n"
+                
+                if untested_targets:
+                    response += f"💡 **Tip:** {len(untested_targets)} targets haven't been tested yet. Run connection tests to verify reachability."
+            
+            return {
+                "response": response,
+                "intent": "query_connection_status",
+                "success": True,
+                "data": {
+                    "connection_stats": connection_stats,
+                    "reachable_count": len(reachable_targets),
+                    "unreachable_count": len(unreachable_targets),
+                    "untested_count": len(untested_targets)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Connection status query error: {e}")
+            return {
+                "response": f"❌ Error querying connection status: {str(e)}",
+                "intent": "query_connection_status",
                 "success": False
             }
 
