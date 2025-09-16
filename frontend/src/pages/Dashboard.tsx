@@ -338,10 +338,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="compact-content" style={{ 
-          padding: '12px 8px', 
-          display: 'flex', 
-          alignItems: 'center',
-          justifyContent: 'center'
+          padding: '4px 8px'
         }}>
           <ServiceHealthMonitor 
             refreshTrigger={refreshTrigger} 
