@@ -284,6 +284,21 @@ class OpsConductorAI:
                     "keywords": ["connection", "connectivity", "reachable", "ping", "online", "offline", "status"],
                     "confidence": 0.8
                 },
+                "query_target_tags": {
+                    "patterns": [r"tags?", r"labels?", r"categories?", r"tag.list", r"all.tags"],
+                    "keywords": ["tag", "tags", "label", "labels", "category", "organize", "list", "show"],
+                    "confidence": 0.8
+                },
+                "query_targets_by_tag": {
+                    "patterns": [r"tagged", r"with.tag", r"tag:", r"labeled", r"find.*tag", r"filter.*tag"],
+                    "keywords": ["tagged", "tag", "label", "filter", "find", "with", "production", "development", "staging"],
+                    "confidence": 0.8
+                },
+                "query_tag_statistics": {
+                    "patterns": [r"tag.stats", r"tag.usage", r"tag.analytics", r"tag.distribution"],
+                    "keywords": ["statistics", "stats", "usage", "analytics", "distribution", "coverage", "popular"],
+                    "confidence": 0.8
+                },
                 
                 # Automation queries
                 "query_jobs": {
@@ -433,16 +448,20 @@ class OpsConductorAI:
         response = f"{greeting}\n\n"
         response += "**I can help you with:**\n"
         response += "• 🎯 Target and infrastructure queries\n"
+        response += "• 🏷️ Target tags and organization\n"
         response += "• ⚙️ Job and workflow management\n"
         response += "• 📧 Notification and communication tracking\n"
         response += "• 📊 System monitoring and analytics\n"
         response += "• 🔧 Script generation and automation\n\n"
         response += "**Try asking:**\n"
         response += "• *\"Show me Windows targets\"*\n"
+        response += "• *\"List all target tags\"*\n"
+        response += "• *\"Show production targets\"*\n"
         response += "• *\"What jobs failed today?\"*\n"
         response += "• *\"Show task queue status\"*\n"
         response += "• *\"Show notification history\"*\n"
-        response += "• *\"Analyze connection status\"*"
+        response += "• *\"Analyze connection status\"*\n"
+        response += "• *\"Tag usage statistics\"*"
         
         return {
             "response": response,

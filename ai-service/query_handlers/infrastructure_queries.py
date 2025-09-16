@@ -17,7 +17,10 @@ class InfrastructureQueryHandler(BaseQueryHandler):
         return [
             "query_targets",
             "query_target_groups", 
-            "query_connection_status"
+            "query_connection_status",
+            "query_target_tags",
+            "query_targets_by_tag",
+            "query_tag_statistics"
         ]
     
     async def handle_query(self, intent: str, message: str, context: List[Dict]) -> Dict[str, Any]:
@@ -29,6 +32,12 @@ class InfrastructureQueryHandler(BaseQueryHandler):
                 return await self.handle_target_group_query(message, context)
             elif intent == "query_connection_status":
                 return await self.handle_connection_status_query(message, context)
+            elif intent == "query_target_tags":
+                return await self.handle_target_tags_query(message, context)
+            elif intent == "query_targets_by_tag":
+                return await self.handle_targets_by_tag_query(message, context)
+            elif intent == "query_tag_statistics":
+                return await self.handle_tag_statistics_query(message, context)
             else:
                 return self.create_error_response(intent, Exception(f"Unsupported intent: {intent}"))
                 
@@ -471,3 +480,389 @@ class InfrastructureQueryHandler(BaseQueryHandler):
             
         except Exception as e:
             return self.create_error_response("query_connection_status", e)
+    
+    async def handle_target_tags_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about target tags"""
+        try:
+            # Get all targets from asset service
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return self.create_success_response(
+                    "query_target_tags",
+                    "🏷️ **No targets found**\n\nNo targets are currently registered in the system.",
+                    {"tags_count": 0, "targets_count": 0}
+                )
+            
+            # Extract all tags from targets
+            all_tags = set()
+            tag_usage = {}
+            targets_with_tags = 0
+            targets_without_tags = 0
+            
+            for target in targets:
+                target_tags = target.get('tags', [])
+                if target_tags:
+                    targets_with_tags += 1
+                    for tag in target_tags:
+                        all_tags.add(tag)
+                        tag_usage[tag] = tag_usage.get(tag, 0) + 1
+                else:
+                    targets_without_tags += 1
+            
+            if not all_tags:
+                return self.create_success_response(
+                    "query_target_tags",
+                    f"🏷️ **No tags found**\n\nYou have {len(targets)} targets but none have tags assigned.\n\n"
+                    "💡 **Tip:** Add tags to organize your targets by environment, role, or team!",
+                    {"tags_count": 0, "targets_count": len(targets), "targets_without_tags": targets_without_tags}
+                )
+            
+            # Sort tags by usage (most used first)
+            sorted_tags = sorted(tag_usage.items(), key=lambda x: x[1], reverse=True)
+            
+            response = f"🏷️ **Target Tags Overview**\n\n"
+            response += f"**Summary:**\n"
+            response += f"• Total unique tags: {len(all_tags)}\n"
+            response += f"• Targets with tags: {targets_with_tags}\n"
+            response += f"• Targets without tags: {targets_without_tags}\n"
+            response += f"• Total targets: {len(targets)}\n\n"
+            
+            response += f"**Most Used Tags:**\n"
+            for i, (tag, count) in enumerate(sorted_tags[:10]):
+                percentage = (count / len(targets)) * 100
+                response += f"• **{tag}** - {count} targets ({percentage:.1f}%)\n"
+            
+            if len(sorted_tags) > 10:
+                response += f"... and {len(sorted_tags) - 10} more tags\n"
+            
+            response += f"\n**Tag Categories Detected:**\n"
+            # Analyze tag patterns
+            env_tags = [tag for tag in all_tags if any(env in tag.lower() for env in ['prod', 'dev', 'test', 'staging', 'qa'])]
+            role_tags = [tag for tag in all_tags if any(role in tag.lower() for role in ['web', 'db', 'api', 'worker', 'cache'])]
+            team_tags = [tag for tag in all_tags if any(team in tag.lower() for team in ['team', 'dept', 'group', 'squad'])]
+            
+            if env_tags:
+                response += f"• **Environment:** {', '.join(env_tags[:5])}\n"
+            if role_tags:
+                response += f"• **Role/Service:** {', '.join(role_tags[:5])}\n"
+            if team_tags:
+                response += f"• **Team/Group:** {', '.join(team_tags[:5])}\n"
+            
+            return self.create_success_response(
+                "query_target_tags",
+                response,
+                {
+                    "tags_count": len(all_tags),
+                    "targets_count": len(targets),
+                    "targets_with_tags": targets_with_tags,
+                    "targets_without_tags": targets_without_tags,
+                    "tag_usage": tag_usage,
+                    "all_tags": list(all_tags)
+                }
+            )
+            
+        except Exception as e:
+            return self.create_error_response("query_target_tags", e)
+    
+    async def handle_targets_by_tag_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries for targets filtered by specific tags"""
+        try:
+            # Extract tag from message
+            message_lower = message.lower()
+            
+            # Common tag extraction patterns
+            tag_patterns = [
+                r'tag[:\s]+(["\']?)([^"\']+)\1',
+                r'tagged[:\s]+(["\']?)([^"\']+)\1',
+                r'with[:\s]+(["\']?)([^"\']+)\1',
+                r'labeled[:\s]+(["\']?)([^"\']+)\1',
+                r'(["\']?)([a-zA-Z0-9_-]+)\1[:\s]*tag',
+            ]
+            
+            import re
+            extracted_tag = None
+            for pattern in tag_patterns:
+                match = re.search(pattern, message_lower)
+                if match:
+                    extracted_tag = match.group(2).strip()
+                    break
+            
+            # Get all targets from asset service
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return self.create_success_response(
+                    "query_targets_by_tag",
+                    "🎯 **No targets found**\n\nNo targets are currently registered in the system.",
+                    {"targets_count": 0}
+                )
+            
+            # If no specific tag extracted, show available tags
+            if not extracted_tag:
+                all_tags = set()
+                for target in targets:
+                    target_tags = target.get('tags', [])
+                    all_tags.update(target_tags)
+                
+                if not all_tags:
+                    return self.create_success_response(
+                        "query_targets_by_tag",
+                        "🏷️ **No tags available**\n\nNo targets have tags assigned. Add tags to organize your targets!\n\n"
+                        "**Example:** *\"Show me targets tagged production\"*",
+                        {"available_tags": []}
+                    )
+                
+                response = f"🏷️ **Available Tags**\n\n"
+                response += f"Please specify which tag you'd like to filter by:\n\n"
+                
+                sorted_tags = sorted(all_tags)
+                for tag in sorted_tags[:15]:
+                    response += f"• `{tag}`\n"
+                
+                if len(sorted_tags) > 15:
+                    response += f"... and {len(sorted_tags) - 15} more\n"
+                
+                response += f"\n**Example queries:**\n"
+                response += f"• *\"Show me production targets\"*\n"
+                response += f"• *\"List targets tagged database\"*\n"
+                response += f"• *\"Find web servers\"*"
+                
+                return self.create_success_response(
+                    "query_targets_by_tag",
+                    response,
+                    {"available_tags": sorted_tags}
+                )
+            
+            # Filter targets by tag (case-insensitive partial match)
+            matching_targets = []
+            for target in targets:
+                target_tags = target.get('tags', [])
+                for tag in target_tags:
+                    if extracted_tag.lower() in tag.lower():
+                        matching_targets.append({
+                            'target': target,
+                            'matching_tag': tag
+                        })
+                        break
+            
+            if not matching_targets:
+                # Suggest similar tags
+                all_tags = set()
+                for target in targets:
+                    all_tags.update(target.get('tags', []))
+                
+                similar_tags = [tag for tag in all_tags if extracted_tag.lower() in tag.lower() or tag.lower() in extracted_tag.lower()]
+                
+                response = f"🔍 **No targets found with tag: '{extracted_tag}'**\n\n"
+                
+                if similar_tags:
+                    response += f"**Did you mean:**\n"
+                    for tag in similar_tags[:5]:
+                        response += f"• `{tag}`\n"
+                    response += f"\n"
+                
+                response += f"**Available tags:**\n"
+                sorted_tags = sorted(all_tags)[:10]
+                for tag in sorted_tags:
+                    response += f"• `{tag}`\n"
+                
+                return self.create_success_response(
+                    "query_targets_by_tag",
+                    response,
+                    {"searched_tag": extracted_tag, "available_tags": list(all_tags), "similar_tags": similar_tags}
+                )
+            
+            # Show matching targets
+            response = f"🎯 **Targets tagged with '{extracted_tag}'**\n\n"
+            response += f"**Found:** {len(matching_targets)} targets\n\n"
+            
+            for i, target_info in enumerate(matching_targets[:10]):
+                target = target_info['target']
+                matching_tag = target_info['matching_tag']
+                
+                name = target.get('name', 'Unknown')
+                hostname = target.get('hostname', 'Unknown')
+                ip_address = target.get('ip_address', 'Unknown')
+                os_type = target.get('os_type', 'Unknown')
+                all_tags = target.get('tags', [])
+                
+                # OS emoji
+                os_emoji = {
+                    'windows': '🪟',
+                    'linux': '🐧',
+                    'macos': '🍎',
+                    'unix': '🖥️'
+                }.get(os_type.lower(), '💻')
+                
+                response += f"**{i+1}. {name}** {os_emoji}\n"
+                response += f"   • Hostname: {hostname}\n"
+                response += f"   • IP: {ip_address}\n"
+                response += f"   • OS: {os_type}\n"
+                response += f"   • Matching tag: `{matching_tag}`\n"
+                
+                if len(all_tags) > 1:
+                    other_tags = [tag for tag in all_tags if tag != matching_tag]
+                    if other_tags:
+                        response += f"   • Other tags: {', '.join([f'`{tag}`' for tag in other_tags[:3]])}\n"
+                
+                response += "\n"
+            
+            if len(matching_targets) > 10:
+                response += f"... and {len(matching_targets) - 10} more targets\n\n"
+            
+            # Add summary statistics
+            os_counts = {}
+            for target_info in matching_targets:
+                os_type = target_info['target'].get('os_type', 'Unknown')
+                os_counts[os_type] = os_counts.get(os_type, 0) + 1
+            
+            if len(os_counts) > 1:
+                response += f"**OS Distribution:**\n"
+                for os_type, count in sorted(os_counts.items(), key=lambda x: x[1], reverse=True):
+                    response += f"• {os_type}: {count} targets\n"
+            
+            return self.create_success_response(
+                "query_targets_by_tag",
+                response,
+                {
+                    "searched_tag": extracted_tag,
+                    "matching_count": len(matching_targets),
+                    "total_targets": len(targets),
+                    "os_distribution": os_counts
+                }
+            )
+            
+        except Exception as e:
+            return self.create_error_response("query_targets_by_tag", e)
+    
+    async def handle_tag_statistics_query(self, message: str, context: List[Dict]) -> Dict[str, Any]:
+        """Handle queries about tag usage statistics and analytics"""
+        try:
+            # Get all targets from asset service
+            targets = await self.asset_client.get_all_targets()
+            
+            if not targets:
+                return self.create_success_response(
+                    "query_tag_statistics",
+                    "📊 **No targets found**\n\nNo targets are currently registered in the system.",
+                    {"targets_count": 0}
+                )
+            
+            # Analyze tag usage
+            tag_usage = {}
+            tag_combinations = {}
+            targets_with_tags = 0
+            targets_without_tags = 0
+            total_tag_assignments = 0
+            
+            for target in targets:
+                target_tags = target.get('tags', [])
+                if target_tags:
+                    targets_with_tags += 1
+                    total_tag_assignments += len(target_tags)
+                    
+                    # Count individual tag usage
+                    for tag in target_tags:
+                        tag_usage[tag] = tag_usage.get(tag, 0) + 1
+                    
+                    # Count tag combinations (for targets with multiple tags)
+                    if len(target_tags) > 1:
+                        sorted_tags = tuple(sorted(target_tags))
+                        tag_combinations[sorted_tags] = tag_combinations.get(sorted_tags, 0) + 1
+                else:
+                    targets_without_tags += 1
+            
+            if not tag_usage:
+                return self.create_success_response(
+                    "query_tag_statistics",
+                    f"📊 **Tag Statistics**\n\n"
+                    f"**No tags in use**\n\n"
+                    f"• Total targets: {len(targets)}\n"
+                    f"• Targets without tags: {targets_without_tags}\n\n"
+                    f"💡 **Recommendation:** Start organizing your infrastructure by adding tags!",
+                    {"targets_count": len(targets), "tags_count": 0}
+                )
+            
+            # Calculate statistics
+            avg_tags_per_target = total_tag_assignments / len(targets)
+            tag_coverage = (targets_with_tags / len(targets)) * 100
+            
+            # Sort tags by usage
+            sorted_tags = sorted(tag_usage.items(), key=lambda x: x[1], reverse=True)
+            
+            response = f"📊 **Tag Usage Statistics**\n\n"
+            
+            # Overview metrics
+            response += f"**Overview:**\n"
+            response += f"• Total targets: {len(targets)}\n"
+            response += f"• Unique tags: {len(tag_usage)}\n"
+            response += f"• Tag coverage: {tag_coverage:.1f}% ({targets_with_tags}/{len(targets)})\n"
+            response += f"• Avg tags per target: {avg_tags_per_target:.1f}\n"
+            response += f"• Total tag assignments: {total_tag_assignments}\n\n"
+            
+            # Top tags
+            response += f"**Most Popular Tags:**\n"
+            for i, (tag, count) in enumerate(sorted_tags[:8]):
+                percentage = (count / len(targets)) * 100
+                bar_length = min(int(percentage / 5), 20)
+                bar = "█" * bar_length + "░" * (20 - bar_length)
+                response += f"{i+1:2d}. **{tag}** ({count} targets, {percentage:.1f}%)\n"
+                response += f"    {bar}\n"
+            
+            if len(sorted_tags) > 8:
+                response += f"    ... and {len(sorted_tags) - 8} more tags\n"
+            
+            response += f"\n"
+            
+            # Tag distribution analysis
+            single_use_tags = [tag for tag, count in tag_usage.items() if count == 1]
+            popular_tags = [tag for tag, count in tag_usage.items() if count >= len(targets) * 0.1]
+            
+            response += f"**Tag Distribution:**\n"
+            response += f"• Single-use tags: {len(single_use_tags)} ({(len(single_use_tags)/len(tag_usage)*100):.1f}%)\n"
+            response += f"• Popular tags (>10% usage): {len(popular_tags)}\n"
+            
+            if single_use_tags:
+                response += f"• Rare tags: {', '.join([f'`{tag}`' for tag in single_use_tags[:5]])}\n"
+                if len(single_use_tags) > 5:
+                    response += f"  ... and {len(single_use_tags) - 5} more\n"
+            
+            # Tag combinations
+            if tag_combinations:
+                response += f"\n**Common Tag Combinations:**\n"
+                sorted_combinations = sorted(tag_combinations.items(), key=lambda x: x[1], reverse=True)
+                for i, (tags, count) in enumerate(sorted_combinations[:5]):
+                    tag_list = ', '.join([f'`{tag}`' for tag in tags])
+                    response += f"• {tag_list} - {count} targets\n"
+            
+            # Recommendations
+            response += f"\n**📈 Recommendations:**\n"
+            if tag_coverage < 50:
+                response += f"• **Low tag coverage** ({tag_coverage:.1f}%) - Consider tagging more targets\n"
+            if len(single_use_tags) > len(tag_usage) * 0.3:
+                response += f"• **Many single-use tags** - Consider standardizing tag names\n"
+            if avg_tags_per_target < 2:
+                response += f"• **Few tags per target** - Add more descriptive tags (environment, role, team)\n"
+            if not popular_tags:
+                response += f"• **No popular tags** - Establish tagging conventions for consistency\n"
+            
+            return self.create_success_response(
+                "query_tag_statistics",
+                response,
+                {
+                    "targets_count": len(targets),
+                    "tags_count": len(tag_usage),
+                    "tag_coverage": tag_coverage,
+                    "avg_tags_per_target": avg_tags_per_target,
+                    "targets_with_tags": targets_with_tags,
+                    "targets_without_tags": targets_without_tags,
+                    "tag_usage": tag_usage,
+                    "single_use_tags": single_use_tags,
+                    "popular_tags": popular_tags,
+                    "tag_combinations": dict(tag_combinations)
+                }
+            )
+            
+        except Exception as e:
+            return self.create_error_response("query_tag_statistics", e)

@@ -459,6 +459,7 @@ services:
       - ./ai-service/learning_api.py:/app/learning_api.py
       - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py
       - ./ai-service/migrate_to_modular.py:/app/migrate_to_modular.py
+      - ./ai-service/test_tag_functionality.py:/app/test_tag_functionality.py
       - ./ai-service/query_handlers/__init__.py:/app/query_handlers/__init__.py
       - ./ai-service/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
       - ./ai-service/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
