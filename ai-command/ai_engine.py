@@ -353,6 +353,18 @@ class OpsConductorAI:
             
             # Define comprehensive intent patterns covering ALL system capabilities
             intent_patterns = {
+                # Knowledge and Help Queries (Check FIRST for "what is", "how to", "explain", etc.)
+                "knowledge_query": {
+                    "patterns": [
+                        r"what\s+(is|are)\s+", r"how\s+(to|do|does|can)\s+", r"explain\s+", r"tell\s+me\s+about",
+                        r"describe\s+", r"define\s+", r"help\s+(with|me)", r"tutorial", r"guide\s+",
+                        r"difference\s+between", r"when\s+should", r"why\s+(is|does|should)",
+                        r"teach\s+me", r"learn\s+about"
+                    ],
+                    "keywords": ["what", "how", "explain", "tell", "describe", "define", "help", "tutorial", 
+                                "guide", "difference", "learn", "teach", "understand", "concept", "theory"],
+                    "confidence": 0.95
+                },
                 # Infrastructure Management
                 "query_targets": {
                     "patterns": [r"targets?", r"servers?", r"machines?", r"endpoints?", r"hosts?", r"show.*targets", r"list.*targets"],
@@ -474,7 +486,49 @@ class OpsConductorAI:
     async def _handle_general_query(self, message: str, context: List[Dict], intent_action: str) -> Dict[str, Any]:
         """Handle general queries and help requests"""
         try:
-            if intent_action in ["provide_greeting", "request_help"]:
+            # Handle knowledge queries directly
+            if intent_action == "knowledge_query":
+                knowledge_response = await self._search_knowledge_base(message)
+                if knowledge_response:
+                    return {
+                        "response": knowledge_response,
+                        "intent": intent_action,
+                        "success": True
+                    }
+                # If no knowledge found but Ollama is available, try general LLM response
+                if self.ollama_client and OLLAMA_AVAILABLE:
+                    try:
+                        general_prompt = f"""You are an expert IT operations assistant. 
+                        The user has asked: {message}
+                        
+                        Provide a helpful, detailed response that answers their question. If it's about
+                        a specific command or technology, explain it clearly and provide examples.
+                        
+                        Answer:"""
+                        
+                        response = await self.ollama_client.generate(
+                            model="llama2:7b",
+                            prompt=general_prompt,
+                            options={"temperature": 0.7, "num_predict": 400}
+                        )
+                        
+                        if response and response.get('response'):
+                            return {
+                                "response": response['response'],
+                                "intent": intent_action,
+                                "success": True
+                            }
+                    except Exception as e:
+                        logger.warning(f"Ollama generation failed: {e}")
+                
+                # Fallback message
+                return {
+                    "response": "I'm still learning about that topic. Please ask me something else or try rephrasing your question.",
+                    "intent": intent_action,
+                    "success": False
+                }
+            
+            elif intent_action in ["provide_greeting", "request_help"]:
                 response = "👋 **Welcome to OpsConductor AI!**\n\n"
                 response += "I'm your intelligent IT operations assistant with extensive knowledge in:\n"
                 response += "• System Administration (Linux/Windows)\n"
