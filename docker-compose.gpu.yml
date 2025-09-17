@@ -1,16 +1,81 @@
 # Docker Compose GPU Override
-# Use this file to ensure proper GPU access for AI services
+# Use this file to ensure proper GPU access for AI services in VMs with vfio-pci passthrough
 # Usage: docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up
 
-version: '3.8'
-
 services:
-  # NLP Service with GPU support
+  # AI Command Service with GPU support (vfio-pci VM compatibility)
+  ai-command:
+    runtime: nvidia
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # AI Orchestrator Service with GPU support (vfio-pci VM compatibility)
+  ai-orchestrator:
+    runtime: nvidia
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # NLP Service with GPU support (vfio-pci VM compatibility)
   nlp-service:
+    runtime: nvidia  # Keep nvidia runtime but with additional fixes
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
     environment:
-      - CUDA_VISIBLE_DEVICES=all
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     deploy:
       resources:
         reservations:
@@ -18,14 +83,26 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    runtime: nvidia
 
-  # Vector Service with GPU support  
+  # Vector Service with GPU support (vfio-pci VM compatibility) 
   vector-service:
+    runtime: nvidia
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
     environment:
-      - CUDA_VISIBLE_DEVICES=all
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     deploy:
       resources:
         reservations:
@@ -33,14 +110,26 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    runtime: nvidia
 
-  # LLM Service with GPU support
+  # LLM Service with GPU support (vfio-pci VM compatibility)
   llm-service:
+    runtime: nvidia
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
     environment:
-      - CUDA_VISIBLE_DEVICES=all
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     deploy:
       resources:
         reservations:
@@ -48,14 +137,26 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    runtime: nvidia
 
-  # Ollama with GPU support
+  # Ollama with GPU support (vfio-pci VM compatibility)
   ollama:
+    runtime: nvidia
+    privileged: true  # Required for vfio-pci GPU passthrough in VMs
     environment:
-      - CUDA_VISIBLE_DEVICES=all
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - CUDA_VISIBLE_DEVICES=0
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=all  # Use 'all' for VM compatibility
+      - NVIDIA_DISABLE_REQUIRE=1  # Disable some checks that fail in VMs
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64
+    devices:
+      - /dev/nvidia0:/dev/nvidia0
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia-uvm:/dev/nvidia-uvm
+      - /dev/nvidia-modeset:/dev/nvidia-modeset
+      - /dev/nvidia-caps:/dev/nvidia-caps
+    volumes:
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.580.82.09:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1:ro
+      - /usr/lib/x86_64-linux-gnu/libcuda.so.580.82.09:/usr/lib/x86_64-linux-gnu/libcuda.so.1:ro
     deploy:
       resources:
         reservations:
@@ -63,4 +164,3 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    runtime: nvidia

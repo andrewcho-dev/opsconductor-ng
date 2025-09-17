@@ -84,7 +84,7 @@ test_container_gpu() {
     print_status $BLUE "🧪 Testing GPU access in container..."
     
     # Test with a simple CUDA container
-    if docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
+    if docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi >/dev/null 2>&1; then
         print_status $GREEN "✅ GPU access confirmed in container"
     else
         print_status $RED "❌ Cannot access GPU in container"

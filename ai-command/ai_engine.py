@@ -130,10 +130,15 @@ class OpsConductorAI:
             if VECTOR_STORE_AVAILABLE:
                 try:
                     import chromadb
-                    chroma_client = chromadb.Client()
+                    from chromadb.config import Settings
+                    # Use persistent storage
+                    chroma_client = chromadb.PersistentClient(
+                        path="/app/chromadb_data",
+                        settings=Settings(anonymized_telemetry=False)
+                    )
                     self.vector_store = OpsConductorVectorStore(chroma_client)
                     await self.vector_store.initialize_collections()
-                    logger.info("Vector store initialized")
+                    logger.info("Vector store initialized with persistent storage")
                 except Exception as e:
                     logger.warning(f"Vector store initialization failed: {e}")
                     self.vector_store = None
@@ -471,22 +476,23 @@ class OpsConductorAI:
         try:
             if intent_action in ["provide_greeting", "request_help"]:
                 response = "👋 **Welcome to OpsConductor AI!**\n\n"
-                response += "I can help you with:\n\n"
+                response += "I'm your intelligent IT operations assistant with extensive knowledge in:\n"
+                response += "• System Administration (Linux/Windows)\n"
+                response += "• Networking, Cloud Platforms, DevOps\n"
+                response += "• Containers, Kubernetes, Automation\n"
+                response += "• Security, Monitoring, and more!\n\n"
+                response += "**I can help you with:**\n\n"
                 response += "🏗️ **Infrastructure Management**\n"
                 response += "• *\"Show me all targets\"*\n"
-                response += "• *\"What targets are tagged as production?\"*\n"
                 response += "• *\"Test connection to 192.168.1.100\"*\n\n"
                 response += "⚙️ **Automation & Commands**\n"
-                response += "• *\"Get directory of C: drive for 192.168.50.210\"*\n"
                 response += "• *\"List running jobs\"*\n"
                 response += "• *\"Run PowerShell command on server\"*\n\n"
-                response += "📧 **Communication**\n"
-                response += "• *\"Send notification to admin team\"*\n"
-                response += "• *\"Show notification history\"*\n\n"
-                response += "🗄️ **Database Queries**\n"
-                response += "• *\"What tables are in the database?\"*\n"
-                response += "• *\"Show me the schema structure\"*\n\n"
-                response += "Just ask me anything in natural language! 🚀"
+                response += "💡 **Technical Knowledge**\n"
+                response += "• *\"How do I configure Docker networking?\"*\n"
+                response += "• *\"Explain Kubernetes pods\"*\n"
+                response += "• *\"What is VLAN tagging?\"*\n\n"
+                response += "Just ask me anything! I'll provide detailed, helpful answers. 🚀"
                 
                 return {
                     "response": response,
@@ -494,15 +500,50 @@ class OpsConductorAI:
                     "success": True
                 }
             
-            # For other general queries, provide a helpful response
-            response = "🤔 **I'm not sure how to help with that specific request.**\n\n"
-            response += "Here are some things you can try:\n\n"
-            response += "• *\"Show me all targets\"*\n"
-            response += "• *\"Get directory of C: drive for 192.168.50.210\"*\n"
-            response += "• *\"List running jobs\"*\n"
-            response += "• *\"What jobs are running?\"*\n"
-            response += "• *\"Show failed notifications\"*\n"
-            response += "• *\"Analyze recent errors\"*"
+            # For other general queries, search knowledge base first
+            knowledge_response = await self._search_knowledge_base(message)
+            if knowledge_response:
+                return {
+                    "response": knowledge_response,
+                    "intent": "knowledge_query",
+                    "success": True
+                }
+            
+            # If no knowledge found but Ollama is available, try general LLM response
+            if self.ollama_client and OLLAMA_AVAILABLE:
+                try:
+                    general_prompt = f"""You are an expert IT operations assistant. 
+                    The user has asked: {message}
+                    
+                    Provide a helpful, informative response. If you don't have specific information,
+                    explain general concepts or provide guidance on where to find more information.
+                    Be conversational and helpful.
+                    
+                    Answer:"""
+                    
+                    response = await self.ollama_client.generate(
+                        model="llama2:7b",
+                        prompt=general_prompt,
+                        options={"temperature": 0.7, "num_predict": 400}
+                    )
+                    
+                    if response and response.get('response'):
+                        return {
+                            "response": response['response'],
+                            "intent": "general_llm_response",
+                            "success": True
+                        }
+                except Exception as e:
+                    logger.warning(f"General LLM response failed: {e}")
+            
+            # Final fallback
+            response = "I don't have specific information about that in my knowledge base yet. "
+            response += "Try asking about:\n"
+            response += "• System administration or Linux commands\n"
+            response += "• Docker, Kubernetes, or container orchestration\n"
+            response += "• Networking, routing, or security\n"
+            response += "• Cloud platforms (AWS, Azure, GCP)\n"
+            response += "• Or any OpsConductor-specific commands!"
             
             return {
                 "response": response,
@@ -542,6 +583,114 @@ class OpsConductorAI:
                 
         except Exception as e:
             logger.warning(f"Failed to store interaction: {e}")
+    
+    async def store_knowledge(self, content: str, category: str) -> bool:
+        """Store knowledge in the vector store for retrieval"""
+        try:
+            if not self.vector_store:
+                logger.warning("Vector store not available, trying to initialize...")
+                # Try to initialize vector store
+                try:
+                    import chromadb
+                    from chromadb.config import Settings
+                    # Use persistent storage
+                    chroma_client = chromadb.PersistentClient(
+                        path="/app/chromadb_data",
+                        settings=Settings(anonymized_telemetry=False)
+                    )
+                    self.vector_store = OpsConductorVectorStore(chroma_client)
+                    await self.vector_store.initialize_collections()
+                    logger.info("Vector store initialized successfully with persistent storage")
+                except Exception as e:
+                    logger.error(f"Failed to initialize vector store: {e}")
+                    return False
+            
+            # Store the knowledge
+            doc_id = await self.vector_store.store_knowledge(
+                content=content,
+                title=f"{category}_knowledge_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                category=category,
+                metadata={"source": "manual_training", "timestamp": datetime.now().isoformat()}
+            )
+            
+            logger.info(f"Successfully stored knowledge: {category} (ID: {doc_id})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to store knowledge: {e}")
+            return False
+    
+    async def _search_knowledge_base(self, query: str, limit: int = 5) -> Optional[str]:
+        """Search the knowledge base and generate an intelligent response using LLM"""
+        try:
+            # First, search the vector store for relevant knowledge
+            if self.vector_store:
+                results = await self.vector_store.search_knowledge(
+                    query=query,
+                    limit=limit
+                )
+                
+                if results:
+                    # Compile knowledge context
+                    knowledge_context = ""
+                    for result in results:
+                        if result and result.get('content'):
+                            knowledge_context += f"{result['content']}\n\n"
+                    
+                    # Now use Ollama to generate an intelligent, conversational response
+                    if self.ollama_client and OLLAMA_AVAILABLE:
+                        try:
+                            prompt = f"""You are an expert IT operations assistant. Based on the following knowledge base information, 
+                            provide a clear, helpful, and conversational answer to the user's question.
+                            
+                            User Question: {query}
+                            
+                            Relevant Knowledge:
+                            {knowledge_context[:3000]}  
+                            
+                            Instructions:
+                            1. Answer the specific question directly and conversationally
+                            2. Be helpful and informative but concise
+                            3. Use the knowledge to provide accurate information
+                            4. If the question asks "what is X", explain what X is
+                            5. If the question asks "how to", provide step-by-step instructions
+                            6. Format your response nicely with markdown when appropriate
+                            7. Don't just dump information - answer the actual question
+                            
+                            Answer:"""
+                            
+                            response = await self.ollama_client.generate(
+                                model="llama2:7b",
+                                prompt=prompt,
+                                options={
+                                    "temperature": 0.7,
+                                    "num_predict": 500
+                                }
+                            )
+                            
+                            if response and response.get('response'):
+                                return response['response']
+                            
+                        except Exception as ollama_error:
+                            logger.warning(f"Ollama generation failed: {ollama_error}")
+                            # Fall back to formatted knowledge if Ollama fails
+                            pass
+                    
+                    # Fallback: If Ollama is not available, at least format the knowledge nicely
+                    response = "📚 **Based on my knowledge base:**\n\n"
+                    for i, result in enumerate(results[:3], 1):
+                        if result and result.get('content'):
+                            doc_text = result['content'][:500]
+                            response += f"{doc_text}\n\n"
+                            if i < min(3, len(results)):
+                                response += "---\n\n"
+                    return response
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Knowledge search failed: {e}")
+            return None
     
     async def get_system_stats(self) -> Dict[str, Any]:
         """Get AI system statistics"""

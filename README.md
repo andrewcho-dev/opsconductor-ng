@@ -29,7 +29,9 @@ OpsConductor is an **intelligent infrastructure automation platform** that trans
 - Docker & Docker Compose
 - 8GB+ RAM (for AI services)
 - Git
-- **Optional:** NVIDIA GPU + drivers for AI acceleration ([GPU Setup Guide](GPU_SETUP.md))
+- **Optional:** NVIDIA GPU + drivers for AI acceleration
+  - [Standard GPU Setup Guide](GPU_SETUP.md)
+  - [GPU in VMs with vfio-pci](docs/GPU_VFIO_PCI_VM_FIX.md) - For virtualized environments
 
 ### One-Command Deployment
 ```bash

@@ -1,23 +1,48 @@
-FROM python:3.12.11-slim
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
+# Set non-interactive installation to avoid timezone prompts
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Los_Angeles
 
-WORKDIR /app
-
-# Install system dependencies (EXACT WORKING VERSIONS)
+# Install Python 3.12 and system dependencies
 RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
+    python3-pip \
     gcc \
     g++ \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.12 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+
+# Install pip for Python 3.12
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+
+# Set CUDA environment variables
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
 
 # Install Ollama
 RUN curl -fsSL https://ollama.ai/install.sh | sh
 
 # Copy requirements and install Python dependencies (EXACT WORKING ORDER)
 COPY requirements.txt .
+
+# Install PyTorch with CUDA support FIRST
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # 1. Core web framework
 RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn==0.24.0 pydantic>=2.8.0 httpx==0.25.2
@@ -41,7 +66,9 @@ RUN pip install --no-cache-dir --only-binary=all scipy>=1.11.0
 # 6. Other dependencies
 RUN pip install --no-cache-dir regex==2023.10.3
 RUN pip install --no-cache-dir chromadb==0.5.0
-RUN pip install --no-cache-dir sentence-transformers==2.2.2
+RUN pip install --no-cache-dir setuptools wheel
+RUN pip install --no-cache-dir sentence-transformers>=3.0.0
+RUN pip install --no-cache-dir transformers>=4.30.0
 
 # Copy shared utilities
 COPY shared/ ./shared/

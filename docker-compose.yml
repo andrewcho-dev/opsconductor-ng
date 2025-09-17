@@ -1,7 +1,7 @@
 services:
   # Infrastructure Services
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: opsconductor-postgres
     environment:
       POSTGRES_DB: opsconductor
@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     container_name: opsconductor-redis
     ports:
       - "6379:6379"
@@ -50,8 +50,8 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      AI_SERVICE_URL: http://ai-command-service:3005
-      AI_OVERVIEW_SERVICE_URL: http://ai-overview-service:3000
+      AI_SERVICE_URL: http://ai-command:3005
+      AI_OVERVIEW_SERVICE_URL: http://ai-orchestrator:3000
       NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
       LLM_SERVICE_URL: http://llm-service:3000
@@ -71,8 +71,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
     restart: unless-stopped
 
   # Core Services
@@ -224,7 +225,7 @@ services:
 
   # Vector Database for AI Knowledge
   chromadb:
-    image: chromadb/chroma:0.5.0
+    image: chromadb/chroma:0.6.1
     container_name: opsconductor-chromadb
     ports:
       - "8000:8000"
@@ -275,8 +276,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
     restart: unless-stopped
 
   vector-service:
@@ -311,8 +313,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
     restart: unless-stopped
 
   llm-service:
@@ -347,13 +350,14 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
     restart: unless-stopped
 
-  ai-overview-service:
+  ai-orchestrator:
     build: ./ai-orchestrator
-    container_name: opsconductor-ai-overview
+    container_name: opsconductor-ai-orchestrator
     ports:
       - "3010:3000"
     environment:
@@ -388,13 +392,14 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
     restart: unless-stopped
 
   # Ollama LLM Server
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.11.11
     container_name: opsconductor-ollama
     ports:
       - "11434:11434"
@@ -414,8 +419,8 @@ services:
     restart: unless-stopped
 
   # AI Command Service - Core Intent Classification and Command Execution
-  ai-command-service:
-    build: ./ai-service
+  ai-command:
+    build: ./ai-command
     container_name: opsconductor-ai-command
     ports:
       - "3005:3005"
@@ -444,38 +449,41 @@ services:
     networks:
       - opsconductor-net
     volumes:
+      # Persist ChromaDB data
+      - ai-chromadb-data:/app/chromadb_data
+      
       # Core AI Service Files - TRACKED FOR EXCEPTIONS & DEBUGGING
-      - ./ai-service/main.py:/app/main.py                                    # Main FastAPI app entry point
-      - ./ai-service/ai_engine.py:/app/ai_engine.py                          # Modular AI orchestrator (601 lines)
+      - ./ai-command/main.py:/app/main.py                                    # Main FastAPI app entry point
+      - ./ai-command/ai_engine.py:/app/ai_engine.py                          # Modular AI orchestrator (601 lines)
       
       # Service Clients - TRACKED FOR EXTERNAL API FAILURES  
-      - ./ai-service/asset_client.py:/app/asset_client.py                     # Asset service integration
-      - ./ai-service/automation_client.py:/app/automation_client.py           # Automation service integration
-      - ./ai-service/communication_client.py:/app/communication_client.py     # Communication service integration
+      - ./ai-command/asset_client.py:/app/asset_client.py                     # Asset service integration
+      - ./ai-command/automation_client.py:/app/automation_client.py           # Automation service integration
+      - ./ai-command/communication_client.py:/app/communication_client.py     # Communication service integration
       
       # Core AI Components - TRACKED FOR ML/NLP FAILURES
-      - ./ai-service/nlp_processor.py:/app/nlp_processor.py                   # Natural language processing
-      - ./ai-service/vector_store.py:/app/vector_store.py                     # Vector embeddings storage
-      - ./ai-service/learning_engine.py:/app/learning_engine.py               # Machine learning engine
-      - ./ai-service/predictive_analytics.py:/app/predictive_analytics.py     # Predictive analytics
-      - ./ai-service/learning_api.py:/app/learning_api.py                     # Learning API endpoints
+      - ./ai-command/nlp_processor.py:/app/nlp_processor.py                   # Natural language processing
+      - ./ai-command/vector_store.py:/app/vector_store.py                     # Vector embeddings storage
+      - ./ai-command/learning_engine.py:/app/learning_engine.py               # Machine learning engine
+      - ./ai-command/predictive_analytics.py:/app/predictive_analytics.py     # Predictive analytics
+      - ./ai-command/learning_api.py:/app/learning_api.py                     # Learning API endpoints
       
       # Infrastructure Components - TRACKED FOR CONNECTIVITY ISSUES
-      - ./ai-service/protocol_manager.py:/app/protocol_manager.py             # Protocol management
-      - ./ai-service/workflow_generator.py:/app/workflow_generator.py         # Workflow generation
-      - ./ai-service/schema_introspector.py:/app/schema_introspector.py       # Database schema analysis
+      - ./ai-command/protocol_manager.py:/app/protocol_manager.py             # Protocol management
+      - ./ai-command/workflow_generator.py:/app/workflow_generator.py         # Workflow generation
+      - ./ai-command/schema_introspector.py:/app/schema_introspector.py       # Database schema analysis
       
       # Modular Query Handlers - TRACKED FOR INTENT CLASSIFICATION FAILURES
-      - ./ai-service/query_handlers/__init__.py:/app/query_handlers/__init__.py
-      - ./ai-service/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
-      - ./ai-service/query_handlers/automation_queries.py:/app/query_handlers/automation_queries.py
-      - ./ai-service/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
-      - ./ai-service/query_handlers/communication_queries.py:/app/query_handlers/communication_queries.py
-      - ./ai-service/query_handlers/dynamic_schema_queries.py:/app/query_handlers/dynamic_schema_queries.py
+      - ./ai-command/query_handlers/__init__.py:/app/query_handlers/__init__.py
+      - ./ai-command/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
+      - ./ai-command/query_handlers/automation_queries.py:/app/query_handlers/automation_queries.py
+      - ./ai-command/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
+      - ./ai-command/query_handlers/communication_queries.py:/app/query_handlers/communication_queries.py
+      - ./ai-command/query_handlers/dynamic_schema_queries.py:/app/query_handlers/dynamic_schema_queries.py
       
       # Test Files - TRACKED FOR DEVELOPMENT DEBUGGING
-      - ./ai-service/test_phase3_learning.py:/app/test_phase3_learning.py     # Learning system tests
-      - ./ai-service/test_tag_functionality.py:/app/test_tag_functionality.py # Tag functionality tests
+      - ./ai-command/test_phase3_learning.py:/app/test_phase3_learning.py     # Learning system tests
+      - ./ai-command/test_tag_functionality.py:/app/test_tag_functionality.py # Tag functionality tests
       
       # Shared Libraries - TRACKED FOR CROSS-SERVICE ISSUES
       - ./shared:/app/shared                                                  # Shared utilities and middleware
@@ -648,3 +656,4 @@ volumes:
   chromadb_data:
   ollama_models:
   vector_data:
+  ai-chromadb-data:
