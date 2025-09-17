@@ -128,7 +128,7 @@ check_ai_requirements() {
     print_status $BLUE "🤖 Checking AI service requirements..."
     
     # Check if required directories exist
-    local required_dirs=("nlp-service" "vector-service" "llm-service")
+    local required_dirs=("ai-command" "vector-service" "llm-service")
     
     for dir in "${required_dirs[@]}"; do
         if [ -d "$dir" ]; then

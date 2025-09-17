@@ -181,7 +181,7 @@ Transform complex operations into simple conversations:
 docker-compose up -d
 
 # AI services only
-docker-compose up -d ai-orchestrator nlp-service vector-service llm-service
+docker-compose up -d ai-orchestrator vector-service llm-service
 
 # Development mode with hot reload
 docker-compose -f docker-compose.dev.yml up
@@ -190,7 +190,7 @@ docker-compose -f docker-compose.dev.yml up
 ### Individual Service Deployment
 ```bash
 # Build specific services
-docker-compose build ai-orchestrator nlp-service
+docker-compose build ai-orchestrator
 
 # Scale services
 docker-compose up -d --scale automation-worker=3
@@ -259,7 +259,7 @@ GET  /api/v1/auth/profile         - Get user profile
 python test_ai_microservices.py
 
 # Service-specific tests
-pytest tests/test_nlp_service.py
+pytest tests/test_ai_services.py
 pytest tests/test_vector_service.py
 pytest tests/test_llm_service.py
 
@@ -354,7 +354,7 @@ pytest tests/
 ```
 opsconductor-ng/
 ├── ai-orchestrator/     # AI coordination service
-├── nlp-service/         # Natural language processing
+├── ai-command/          # Main AI service with Ollama
 ├── vector-service/      # Knowledge storage and retrieval
 ├── llm-service/         # Large language model interface
 ├── api-gateway/         # Central API routing

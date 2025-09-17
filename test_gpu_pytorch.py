@@ -52,7 +52,7 @@ async def main():
     
     services = [
         ("ai-command", 3005),
-        ("nlp-service", 3006),  # Assuming port based on pattern
+
         ("vector-service", 3007),  # Assuming port based on pattern
         ("llm-service", 3008),  # Assuming port based on pattern
         ("ai-orchestrator", 3010),

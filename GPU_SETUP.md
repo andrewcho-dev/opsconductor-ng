@@ -4,9 +4,9 @@ This guide explains how to set up and verify GPU acceleration for OpsConductor's
 
 ## 🚀 Overview
 
-OpsConductor's AI services (NLP, Vector, and LLM services) are designed to leverage GPU acceleration for improved performance:
+OpsConductor's AI services (AI Command, Vector, and LLM services) are designed to leverage GPU acceleration for improved performance:
 
-- **NLP Service**: GPU-accelerated spaCy models and transformers
+- **AI Command**: GPU-accelerated Ollama models and processing
 - **Vector Service**: GPU-accelerated sentence transformers and FAISS
 - **LLM Service**: GPU monitoring and acceleration support for Ollama
 
@@ -147,7 +147,7 @@ nvidia-smi pmon
 - **Cause**: GPU packages not installed in container
 - **Solution**: Rebuild containers to install GPU dependencies:
   ```bash
-  docker-compose build --no-cache nlp-service vector-service llm-service
+  docker-compose build --no-cache ai-command vector-service llm-service
   ```
 
 ### Debug Commands
@@ -160,7 +160,7 @@ docker info | grep -i nvidia
 docker run --rm --gpus all nvidia/cuda:12.1-base-ubuntu22.04 nvidia-smi
 
 # Check service logs for GPU initialization
-docker-compose logs nlp-service | grep -i gpu
+docker-compose logs ai-command | grep -i gpu
 docker-compose logs vector-service | grep -i gpu
 docker-compose logs llm-service | grep -i gpu
 

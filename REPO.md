@@ -9,8 +9,8 @@ This document provides a comprehensive overview of the OpsConductor repository s
 ```
 opsconductor-ng/
 ├── 🤖 AI Services
-│   ├── ai-orchestrator/         # AI coordination and main interface
-│   ├── nlp-service/             # Natural language processing
+│   ├── ai-command/              # Main AI service with Ollama integration
+│   ├── ai-orchestrator/         # AI coordination and workflow management
 │   ├── vector-service/          # Knowledge storage and retrieval
 │   └── llm-service/             # Large language model interface
 │
@@ -55,7 +55,7 @@ ai-orchestrator/
 ├── main.py                 # FastAPI service entry point
 ├── orchestrator.py         # Core orchestration logic
 ├── protocol_manager.py     # AI workflow protocols
-├── workflow_generator.py   # Workflow generation from NLP
+├── workflow_generator.py   # Workflow generation from AI processing
 ├── requirements.txt        # Python dependencies
 ├── Dockerfile             # Container configuration
 └── shared/                # Shared utilities (symlinked)
@@ -68,24 +68,7 @@ ai-orchestrator/
 - Integration with asset and automation services
 - Protocol management for different AI workflows
 
-### NLP Service (`/nlp-service/`)
-**Natural language processing and understanding**
 
-```
-nlp-service/
-├── main.py                 # FastAPI service entry point
-├── nlp_processor.py        # Advanced NLP processing engine
-├── requirements.txt        # Python dependencies
-├── Dockerfile             # Container configuration
-└── shared/                # Shared utilities (symlinked)
-```
-
-**Key Responsibilities**:
-- Intent classification (restart, update, check, stop, start)
-- Entity extraction (operations, targets, groups, OS types)
-- Command parsing and normalization
-- Confidence scoring and validation
-- Multi-language support
 
 ### Vector Service (`/vector-service/`)
 **Knowledge storage and retrieval using vector embeddings**
@@ -319,7 +302,7 @@ scripts/
 **Comprehensive AI system testing suite**
 
 - Service health checks
-- NLP processing validation
+- AI processing validation
 - Vector storage and search testing
 - LLM generation testing
 - End-to-end integration testing
@@ -331,7 +314,7 @@ scripts/
 
 **Services Defined**:
 - Infrastructure: PostgreSQL, Redis, ChromaDB, Nginx
-- AI Services: AI Orchestrator, NLP, Vector, LLM, Ollama
+- AI Services: AI Command, AI Orchestrator, Vector, LLM
 - Core Services: API Gateway, Identity, Asset, Automation, Communication
 - Frontend: React web application
 - Monitoring: Celery Flower, health checks

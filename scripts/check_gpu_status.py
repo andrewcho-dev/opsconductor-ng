@@ -13,7 +13,7 @@ import time
 
 # AI Services to check
 AI_SERVICES = {
-    "nlp-service": "http://localhost:3006",
+    "ai-command": "http://localhost:3005",
     "vector-service": "http://localhost:3007", 
     "llm-service": "http://localhost:3008"
 }

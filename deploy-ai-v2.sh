@@ -40,7 +40,7 @@ echo "Step 1: Copying shared modules to services"
 echo "-------------------------------------------"
 
 # List of services that need shared modules
-SERVICES=("api-gateway" "ai-command" "ai-orchestrator" "nlp-service" "llm-service" "vector-service")
+SERVICES=("api-gateway" "ai-command" "ai-orchestrator" "llm-service" "vector-service")
 
 for SERVICE in "${SERVICES[@]}"; do
     if [ -d "$SERVICE" ]; then

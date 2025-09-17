@@ -21,7 +21,6 @@ class AIServiceType(Enum):
     INFRASTRUCTURE = "infrastructure"  # Infrastructure-specific
     AUTOMATION = "automation"      # Automation workflows
     ANALYTICS = "analytics"       # Data analysis
-    NLP = "nlp"                  # Natural language processing
     VISION = "vision"            # Computer vision (future)
 
 class CircuitBreakerState(Enum):
@@ -213,13 +212,6 @@ class AIRouter:
             service_type=AIServiceType.AUTOMATION
         )
         
-        # NLP Service
-        nlp_service = ServiceEndpoint(
-            name="nlp_service",
-            url="http://nlp-service:3000",
-            service_type=AIServiceType.NLP
-        )
-        
         # Initialize load balancers
         for service_type in AIServiceType:
             self.load_balancers[service_type] = LoadBalancer()
@@ -227,7 +219,6 @@ class AIRouter:
         # Add endpoints to load balancers
         self.load_balancers[AIServiceType.GENERAL].add_endpoint(ai_command)
         self.load_balancers[AIServiceType.AUTOMATION].add_endpoint(ai_orchestrator)
-        self.load_balancers[AIServiceType.NLP].add_endpoint(nlp_service)
         
         # AI Command can handle multiple types
         self.load_balancers[AIServiceType.INFRASTRUCTURE].add_endpoint(ai_command)
@@ -313,8 +304,8 @@ class AIRouter:
         if any(word in query_lower for word in ["analyze", "predict", "trend", "metric"]):
             return AIServiceType.ANALYTICS
         
-        if any(word in query_lower for word in ["translate", "summarize", "extract"]):
-            return AIServiceType.NLP
+        # NLP tasks (translate, summarize, extract) now handled by ai_command via GENERAL
+        # No separate NLP service needed - Ollama can handle these tasks
         
         # Default to general
         return AIServiceType.GENERAL

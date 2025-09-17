@@ -23,7 +23,6 @@ class MetricsCollector:
         self.service_urls = {
             "ai_command": "http://ai-command:3005",
             "ai_orchestrator": "http://ai-orchestrator:3000",
-            "nlp_service": "http://nlp-service:3000",
             "vector_service": "http://vector-service:3000",
             "llm_service": "http://llm-service:3000"
         }

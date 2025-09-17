@@ -67,8 +67,7 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
         return <Bot {...iconProps} />;
       case 'ai-overview-service':
         return <Network {...iconProps} />;
-      case 'nlp-service':
-        return <Brain {...iconProps} />;
+
       case 'vector-service':
         return <Search {...iconProps} />;
       case 'llm-service':

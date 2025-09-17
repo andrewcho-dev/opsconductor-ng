@@ -30,7 +30,7 @@ docker system prune -a --volumes
 
 ### 3. Rebuild all AI services with GPU support
 ```bash
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache ai-command ai-orchestrator nlp-service vector-service llm-service
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache ai-command ai-orchestrator vector-service llm-service
 ```
 
 ### 4. Start services with GPU support

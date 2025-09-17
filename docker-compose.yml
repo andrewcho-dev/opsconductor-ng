@@ -52,7 +52,6 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       AI_SERVICE_URL: http://ai-command:3005
       AI_OVERVIEW_SERVICE_URL: http://ai-orchestrator:3000
-      NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
       LLM_SERVICE_URL: http://llm-service:3000
       POSTGRES_HOST: postgres
@@ -249,38 +248,6 @@ services:
     restart: unless-stopped
 
   # AI Microservices
-  nlp-service:
-    build: ./nlp-service
-    container_name: opsconductor-nlp
-    ports:
-      - "3006:3000"
-    environment:
-      REDIS_URL: redis://redis:6379/6
-      CUDA_VISIBLE_DEVICES: all
-      NVIDIA_VISIBLE_DEVICES: all
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - opsconductor-net
-    volumes:
-      - ./nlp-service/main.py:/app/main.py
-      - ./nlp-service/nlp_processor.py:/app/nlp_processor.py
-      - ./shared:/app/shared
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 30s
-      retries: 10
-      start_period: 2000s
-    restart: unless-stopped
 
   vector-service:
     build: ./vector-service
@@ -362,7 +329,6 @@ services:
     ports:
       - "3010:3000"
     environment:
-      NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
       LLM_SERVICE_URL: http://llm-service:3000
       ASSET_SERVICE_URL: http://asset-service:3002
@@ -370,8 +336,6 @@ services:
       REDIS_URL: redis://redis:6379/5
     depends_on:
       redis:
-        condition: service_healthy
-      nlp-service:
         condition: service_healthy
       vector-service:
         condition: service_healthy

@@ -66,7 +66,6 @@ SERVICE_ROUTES = {
     # AI Services
     "/api/v1/ai": "AI_SERVICE_URL",  # AI Orchestrator
     "/api/v1/ai-overview": "AI_OVERVIEW_SERVICE_URL",  # AI Overview Service
-    "/api/v1/nlp": "NLP_SERVICE_URL",  # NLP Service
     "/api/v1/vector": "VECTOR_SERVICE_URL",  # Vector Service
     "/api/v1/llm": "LLM_SERVICE_URL",  # LLM Service
 }

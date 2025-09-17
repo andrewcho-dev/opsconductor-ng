@@ -199,15 +199,10 @@ services:
     build: ./ai-orchestrator
     ports: ["3005:3000"]
     environment:
-      NLP_SERVICE_URL: http://nlp-service:3000
       VECTOR_SERVICE_URL: http://vector-service:3000
       LLM_SERVICE_URL: http://llm-service:3000
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
-
-  nlp-service:
-    build: ./nlp-service
-    ports: ["3006:3000"]
 
   vector-service:
     build: ./vector-service
@@ -236,8 +231,8 @@ services:
 
 ```bash
 # Build and start all AI services
-docker-compose build ai-orchestrator nlp-service vector-service llm-service
-docker-compose up -d ai-orchestrator nlp-service vector-service llm-service ollama chromadb
+docker-compose build ai-orchestrator vector-service llm-service
+docker-compose up -d ai-orchestrator vector-service llm-service ollama chromadb
 
 # Test the system
 python test_ai_microservices.py
@@ -255,7 +250,7 @@ curl -X POST http://localhost:3005/ai/chat \
 The system includes a comprehensive test suite (`test_ai_microservices.py`) that validates:
 
 - **Service Health**: All microservices are running and responsive
-- **NLP Processing**: Intent classification and entity extraction accuracy
+- **AI Processing**: Intent classification and entity extraction accuracy
 - **Vector Operations**: Knowledge storage and semantic search
 - **LLM Generation**: Text generation and chat functionality
 - **Integration**: End-to-end AI pipeline functionality
@@ -301,7 +296,6 @@ curl -X POST http://localhost:3005/ai/chat \
 
 #### AI Orchestrator
 ```bash
-NLP_SERVICE_URL=http://nlp-service:3000
 VECTOR_SERVICE_URL=http://vector-service:3000
 LLM_SERVICE_URL=http://llm-service:3000
 ASSET_SERVICE_URL=http://asset-service:3002
@@ -356,7 +350,7 @@ for port in 3005 3006 3007 3008; do
 done
 
 # Monitor resource usage
-docker stats ai-orchestrator nlp-service vector-service llm-service
+docker stats ai-orchestrator vector-service llm-service
 ```
 
 ### Logging
@@ -365,7 +359,7 @@ Each service provides structured logging with correlation IDs for request tracin
 ```bash
 # View service logs
 docker-compose logs -f ai-orchestrator
-docker-compose logs -f nlp-service
+docker-compose logs -f ai-command
 docker-compose logs -f vector-service
 docker-compose logs -f llm-service
 ```
@@ -389,7 +383,7 @@ docker-compose logs -f llm-service
 #### Service Communication Failures
 ```bash
 # Check network connectivity
-docker-compose exec ai-orchestrator ping nlp-service
+docker-compose exec ai-orchestrator ping vector-service
 docker-compose exec ai-orchestrator ping vector-service
 docker-compose exec ai-orchestrator ping llm-service
 
