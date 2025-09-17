@@ -46,6 +46,19 @@ except ImportError:
     VECTOR_STORE_AVAILABLE = False
     OpsConductorVectorStore = None
 
+# Import centralized components
+try:
+    import sys
+    sys.path.append('/app/shared')
+    from vector_client import VectorStoreClient, VectorCollection
+    from learning_engine import LearningOrchestrator
+    from ai_common import Intent, classify_intent
+    CENTRALIZED_COMPONENTS = True
+except ImportError:
+    CENTRALIZED_COMPONENTS = False
+    VectorStoreClient = None
+    LearningOrchestrator = None
+
 try:
     from protocol_manager import protocol_manager, ProtocolResult
     PROTOCOL_MANAGER_AVAILABLE = True
@@ -85,6 +98,10 @@ class OpsConductorAI:
         self.vector_store = None
         self.db_pool = None
         self.redis_client = None
+        
+        # Centralized components
+        self.vector_client = None
+        self.learning_orchestrator = None
         
         # Service clients
         self.asset_client = None
@@ -182,6 +199,23 @@ class OpsConductorAI:
             else:
                 logger.warning("Redis not available")
                 self.redis_client = None
+            
+            # Initialize centralized components
+            if CENTRALIZED_COMPONENTS:
+                try:
+                    # Use centralized vector client instead of local store
+                    self.vector_client = VectorStoreClient("http://vector-service:3000")
+                    logger.info("Centralized vector client initialized")
+                    
+                    # Initialize learning orchestrator
+                    self.learning_orchestrator = LearningOrchestrator(
+                        vector_service_url="http://vector-service:3000",
+                        redis_client=self.redis_client
+                    )
+                    await self.learning_orchestrator.start_background_tasks()
+                    logger.info("Learning orchestrator initialized")
+                except Exception as e:
+                    logger.warning(f"Centralized components initialization failed: {e}")
             
             # Initialize service clients
             if SERVICE_CLIENTS_AVAILABLE:

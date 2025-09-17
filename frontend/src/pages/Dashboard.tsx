@@ -1,33 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { userApi, targetApi, jobApi, jobRunApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
-import { Users, Target, Settings, Play, Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw } from 'lucide-react';
-
-interface ChatMessage {
-  id: string;
-  type: 'user' | 'ai' | 'system';
-  content: string;
-  timestamp: Date;
-  jobId?: string;
-  executionId?: string;
-  confidence?: number;
-  status?: 'pending' | 'success' | 'error';
-}
-
-interface ChatResponse {
-  response: string;
-  intent: string;
-  confidence: number;
-  job_id?: string;
-  execution_id?: string;
-  automation_job_id?: number;
-  workflow?: any;
-  execution_started: boolean;
-}
-
-const CHAT_HISTORY_KEY = 'opsconductor_ai_chat_history';
+import AIChat from '../components/AIChat';
+import AIMonitor from '../components/AIMonitor';
+import { Users, Target, Settings, Play, RefreshCw, Activity } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
@@ -38,190 +16,9 @@ const Dashboard: React.FC = () => {
     recentRuns: 0,
   });
   const [loading, setLoading] = useState(true);
-
-  // AI Chat state
-  const loadChatHistory = (): ChatMessage[] => {
-    try {
-      const saved = localStorage.getItem(CHAT_HISTORY_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }));
-      }
-    } catch (error) {
-      console.warn('Failed to load chat history:', error);
-    }
-    
-    return [
-      {
-        id: '1',
-        type: 'system',
-        content: 'Welcome to OpsConductor AI! I can help you automate tasks, check system health, get personalized recommendations, and more. Try asking: "What are my personalized recommendations?" or "Show me system health status".',
-        timestamp: new Date()
-      }
-    ];
-  };
-
-  const [messages, setMessages] = useState<ChatMessage[]>(loadChatHistory());
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [showAIMonitor, setShowAIMonitor] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [serviceHealthLastUpdate, setServiceHealthLastUpdate] = useState<Date | null>(null);
-
-  // Save chat history to localStorage whenever messages change
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(messages));
-    } catch (error) {
-      console.warn('Failed to save chat history:', error);
-    }
-  }, [messages]);
-
-  // Focus input field when component mounts
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, []);
-
-  const clearChatHistory = () => {
-    if (window.confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
-      const welcomeMessage: ChatMessage = {
-        id: Date.now().toString(),
-        type: 'system',
-        content: 'Welcome to OpsConductor AI! I can help you automate tasks, check system health, get personalized recommendations, and more. Try asking: "What are my personalized recommendations?" or "Show me system health status".',
-        timestamp: new Date()
-      };
-      setMessages([welcomeMessage]);
-      // Focus input field after clearing chat
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim() || isLoading) return;
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: inputValue.trim(),
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    setIsLoading(true);
-
-    try {
-      const accessToken = localStorage.getItem('access_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch('/api/v1/ai/chat', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          message: userMessage.content
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result: ChatResponse = await response.json();
-
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        content: result.response,
-        timestamp: new Date(),
-        jobId: result.job_id,
-        executionId: result.execution_id || undefined,
-        confidence: result.confidence,
-        status: result.intent === 'question' ? 'success' : (result.execution_started ? 'success' : 'error')
-      };
-
-      setMessages(prev => [...prev, aiMessage]);
-
-      if (result.intent === 'job_creation' && result.workflow && result.execution_started) {
-        const workflowMessage: ChatMessage = {
-          id: (Date.now() + 2).toString(),
-          type: 'system',
-          content: `Created workflow "${result.workflow.name}" with ${result.workflow.steps?.length || 0} steps targeting "${result.workflow.target_groups?.join(', ') || 'unknown targets'}". Job ID: ${result.automation_job_id || result.job_id}`,
-          timestamp: new Date(),
-          status: 'success'
-        };
-        setMessages(prev => [...prev, workflowMessage]);
-      }
-
-    } catch (error) {
-      console.error('Error calling AI service:', error);
-      
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        type: 'ai',
-        content: `Sorry, I encountered an error processing your request: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or check if the AI service is running.`,
-        timestamp: new Date(),
-        status: 'error'
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-      // Focus the input field after the response is complete
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    }
-  };
-
-  const getMessageIcon = (message: ChatMessage) => {
-    switch (message.type) {
-      case 'user':
-        return <User size={16} style={{ color: 'var(--primary-blue)' }} />;
-      case 'ai':
-        return <Bot size={16} style={{ color: 'var(--success-green)' }} />;
-      case 'system':
-        return message.status === 'success' ? 
-          <CheckCircle size={16} style={{ color: 'var(--success-green)' }} /> :
-          message.status === 'error' ?
-          <AlertCircle size={16} style={{ color: 'var(--danger-red)' }} /> :
-          <Clock size={16} style={{ color: 'var(--neutral-500)' }} />;
-      default:
-        return null;
-    }
-  };
-
-  const getMessageStyle = (message: ChatMessage) => {
-    const baseStyle = "chat-message";
-    
-    switch (message.type) {
-      case 'user':
-        return `${baseStyle} chat-message-user`;
-      case 'ai':
-        return `${baseStyle} chat-message-ai`;
-      case 'system':
-        return `${baseStyle} chat-message-system`;
-      default:
-        return baseStyle;
-    }
-  };
-
-  const formatTimestamp = (timestamp: Date) => {
-    return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
 
   const handleRefreshServices = () => {
     setRefreshTrigger(prev => prev + 1);
@@ -297,246 +94,263 @@ const Dashboard: React.FC = () => {
         <div className="header-left">
           <h1>Dashboard</h1>
         </div>
-        <div className="header-stats">
-          <Link to="/user-management" className="stat-pill"><Users size={14} /> {stats.users}</Link>
-          <Link to="/targets-management" className="stat-pill"><Target size={14} /> {stats.targets}</Link>
-          <Link to="/job-management" className="stat-pill"><Settings size={14} /> {stats.jobs}</Link>
-          <Link to="/job-runs" className="stat-pill"><Play size={14} /> {stats.recentRuns}</Link>
-
+        <div className="header-right">
+          <div className="inline-stats">
+            <Link to="/users" className="stat">
+              <Users size={14} />
+              <span className="count">{stats.users}</span>
+              <span className="label">Users</span>
+            </Link>
+            <Link to="/targets" className="stat">
+              <Target size={14} />
+              <span className="count">{stats.targets}</span>
+              <span className="label">Targets</span>
+            </Link>
+            <Link to="/jobs" className="stat">
+              <Settings size={14} />
+              <span className="count">{stats.jobs}</span>
+              <span className="label">Jobs</span>
+            </Link>
+            <Link to="/monitoring" className="stat">
+              <Play size={14} />
+              <span className="count">{stats.recentRuns}</span>
+              <span className="label">Runs</span>
+            </Link>
+          </div>
         </div>
       </div>
 
-      {/* Full-width Service Health Card */}
-      <div className="dashboard-section" style={{ 
-        marginBottom: '12px',
-        width: '100%',
-        height: '120px',
+      {/* Tabs for switching between AI Chat and AI Monitor */}
+      <div className="dashboard-tabs" style={{ 
+        display: 'flex', 
+        gap: '1rem', 
+        padding: '0.5rem 1rem',
+        borderBottom: '1px solid var(--neutral-200)',
         flexShrink: 0
       }}>
-        <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Service Health</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {serviceHealthLastUpdate && (
-              <span style={{ 
-                fontSize: '12px', 
-                color: 'var(--neutral-600)',
-                fontWeight: 'normal'
-              }}>
-                Last updated: {serviceHealthLastUpdate.toLocaleTimeString()}
-              </span>
-            )}
-            <button
-              onClick={handleRefreshServices}
-              style={{
-                background: 'none',
-                border: '1px solid var(--neutral-300)',
-                borderRadius: '4px',
-                padding: '4px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                color: 'var(--neutral-600)'
-              }}
-              title="Refresh service health"
-            >
-              <RefreshCw size={12} />
-            </button>
-          </div>
-        </div>
-        <div className="compact-content" style={{ 
-          padding: '4px 8px'
-        }}>
-          <ServiceHealthMonitor 
-            refreshTrigger={refreshTrigger} 
-            onLastUpdateChange={setServiceHealthLastUpdate}
-          />
-        </div>
+        <button
+          onClick={() => setShowAIMonitor(false)}
+          className={`btn btn-sm ${!showAIMonitor ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ minWidth: '120px' }}
+        >
+          AI Assistant
+        </button>
+        <button
+          onClick={() => setShowAIMonitor(true)}
+          className={`btn btn-sm ${showAIMonitor ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ minWidth: '120px' }}
+        >
+          <Activity size={14} style={{ marginRight: '4px' }} />
+          AI Monitor
+        </button>
       </div>
 
-      {/* AI Chat Interface - Takes remaining space */}
-      <div className="dashboard-section" style={{ 
+      {/* Main content area - scrollable */}
+      <div style={{ 
         flex: 1,
-        margin: 0,
-        borderRadius: '6px',
         display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0
+        gap: '12px',
+        padding: '12px',
+        minHeight: 0,
+        overflow: 'auto'
       }}>
-        <div className="section-header" style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          flexShrink: 0
+        {/* Service Health Monitor - Fixed width */}
+        <div className="dashboard-section service-health-section" style={{ 
+          width: '280px',
+          flexShrink: 0,
+          maxHeight: '100%'
         }}>
-          <span>AI Assistant</span>
-          <button
-            onClick={clearChatHistory}
-            style={{ 
-              background: 'none',
-              border: '1px solid var(--neutral-300)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              fontSize: '12px',
-              color: 'var(--neutral-600)'
-            }}
-            title="Clear AI chat history"
-          >
-            <Trash2 size={12} />
-            Clear Chat
-          </button>
-        </div>
-        <div className="compact-content" style={{ 
-          display: 'flex', 
-          flexDirection: 'column',
-          flex: 1,
-          minHeight: 0,
-          padding: 0
-        }}>
-          {/* Messages Area */}
-          <div style={{ 
-            flex: 1, 
-            overflowY: 'auto', 
-            padding: '8px',
-            backgroundColor: 'var(--neutral-25)',
-            minHeight: 0
+          <div className="section-header" style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center' 
           }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {/* Show loading indicator at the top when processing */}
-              {isLoading && (
-                <div className="chat-message chat-message-system">
-                  <div style={{ flexShrink: 0 }}>
-                    <Loader size={14} className="loading-spinner" />
-                  </div>
-                  <div style={{ fontSize: '13px', color: 'var(--neutral-600)' }}>
-                    AI is processing your request...
-                  </div>
-                </div>
+            <span>Service Health</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {serviceHealthLastUpdate && (
+                <span style={{ fontSize: '10px', color: 'var(--neutral-500)' }}>
+                  {serviceHealthLastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
               )}
-              {/* Display messages in reverse order (newest first) */}
-              {[...messages].reverse().map((message) => (
-                <div key={message.id} className={getMessageStyle(message)}>
-                  <div style={{ flexShrink: 0 }}>
-                    {getMessageIcon(message)}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '13px', lineHeight: '1.4' }}>
-                      {message.content}
-                    </div>
-                    <div style={{ 
-                      fontSize: '11px', 
-                      color: 'var(--neutral-500)',
-                      marginTop: '4px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <span>{formatTimestamp(message.timestamp)}</span>
-                      {message.confidence && (
-                        <span className="status-badge status-badge-info">
-                          {Math.round(message.confidence * 100)}%
-                        </span>
-                      )}
-                      {message.jobId && (
-                        <span className="status-badge status-badge-neutral">
-                          {message.jobId.substring(0, 8)}...
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Input Area - Enhanced and Prominent */}
-          <div style={{ 
-            padding: '16px', 
-            borderTop: '2px solid var(--primary-blue)',
-            backgroundColor: 'white',
-            boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
-            flexShrink: 0
-          }}>
-            <div style={{ 
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: 'var(--primary-blue)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <Bot size={16} />
-              Ask AI Assistant
-            </div>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask me anything... (e.g., 'What are my personalized recommendations?' or 'Show system health')"
-                  disabled={isLoading}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: '2px solid var(--neutral-300)',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none',
-                    backgroundColor: isLoading ? 'var(--neutral-100)' : 'white',
-                    transition: 'all 0.2s ease',
-                    fontFamily: 'inherit'
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = 'var(--primary-blue)';
-                    e.target.style.boxShadow = '0 0 0 3px var(--primary-blue-light)';
-                    e.target.style.transform = 'translateY(-1px)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'var(--neutral-300)';
-                    e.target.style.boxShadow = 'none';
-                    e.target.style.transform = 'translateY(0)';
-                  }}
-                />
-              </div>
               <button
-                type="submit"
-                disabled={!inputValue.trim() || isLoading}
-                className="btn btn-primary"
+                onClick={handleRefreshServices}
                 style={{ 
-                  fontSize: '14px', 
-                  padding: '12px 20px',
-                  borderRadius: '8px',
-                  fontWeight: '600',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '2px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  minWidth: '100px',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease'
+                  color: 'var(--neutral-600)'
                 }}
+                title="Refresh service health"
               >
-                {isLoading ? (
-                  <>
-                    <Loader size={16} className="loading-spinner" />
-                    Thinking...
-                  </>
-                ) : (
-                  <>
-                    <Send size={16} />
-                    Send
-                  </>
-                )}
+                <RefreshCw size={12} />
               </button>
-            </form>
+            </div>
+          </div>
+          <div className="compact-content" style={{ 
+            padding: '4px 8px'
+          }}>
+            <ServiceHealthMonitor 
+              refreshTrigger={refreshTrigger} 
+              onLastUpdateChange={setServiceHealthLastUpdate}
+            />
           </div>
         </div>
+
+        {/* AI Interface - Takes remaining space */}
+        <div style={{ 
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0
+        }}>
+          {showAIMonitor ? (
+            <AIMonitor />
+          ) : (
+            <AIChat />
+          )}
+        </div>
       </div>
+
+      <style jsx>{`
+        .dashboard-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 20px;
+          background: white;
+          border-bottom: 1px solid var(--neutral-200);
+        }
+
+        .dashboard-header h1 {
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--neutral-800);
+          margin: 0;
+        }
+
+        .inline-stats {
+          display: flex;
+          gap: 20px;
+        }
+
+        .stat {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          background: var(--neutral-50);
+          border-radius: 6px;
+          text-decoration: none;
+          transition: all 0.2s;
+        }
+
+        .stat:hover {
+          background: var(--primary-blue-light);
+          transform: translateY(-1px);
+        }
+
+        .stat .count {
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--neutral-800);
+        }
+
+        .stat .label {
+          font-size: 12px;
+          color: var(--neutral-600);
+        }
+
+        .dashboard-section {
+          background: white;
+          border: 1px solid var(--neutral-200);
+          border-radius: 8px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .section-header {
+          padding: 10px 12px;
+          background: var(--neutral-50);
+          border-bottom: 1px solid var(--neutral-200);
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--neutral-700);
+        }
+
+        .compact-content {
+          flex: 1;
+          overflow: auto;
+        }
+
+        .dashboard-tabs {
+          background: white;
+        }
+
+        .btn {
+          padding: 6px 12px;
+          border: 1px solid var(--neutral-300);
+          border-radius: 6px;
+          background: white;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 500;
+          transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .btn-primary {
+          background: var(--primary-blue);
+          color: white;
+          border-color: var(--primary-blue);
+        }
+
+        .btn-secondary {
+          background: white;
+          color: var(--neutral-700);
+          border-color: var(--neutral-300);
+        }
+
+        .btn-secondary:hover {
+          background: var(--neutral-50);
+        }
+
+        .loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: rgba(255, 255, 255, 0.9);
+          z-index: 9999;
+        }
+
+        .loading-spinner {
+          width: 40px;
+          height: 40px;
+          border: 4px solid var(--neutral-200);
+          border-top-color: var(--primary-blue);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
+          }
+        }
+
+        .service-health-section {
+          min-height: 200px;
+        }
+      `}</style>
     </div>
   );
 };

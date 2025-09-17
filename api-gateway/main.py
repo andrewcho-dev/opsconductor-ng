@@ -8,6 +8,7 @@ import os
 import sys
 import asyncio
 import time
+import json
 from typing import Dict, Any, Optional
 from urllib.parse import urljoin
 
@@ -22,6 +23,14 @@ sys.path.append('/app/shared')
 from base_service import HealthCheck
 
 logger = structlog.get_logger("api-gateway")
+
+# Import AI Router
+try:
+    from ai_router import AIRouter
+    AI_ROUTER_AVAILABLE = True
+except ImportError:
+    AI_ROUTER_AVAILABLE = False
+    logger.warning("AI Router not available")
 
 # ============================================================================
 # SERVICE CONFIGURATION
@@ -112,6 +121,7 @@ class APIGateway:
         self.rate_limiter: Optional[RateLimiter] = None
         self.service_urls: Dict[str, str] = {}
         self.redis = None
+        self.ai_router: Optional[AIRouter] = None
         
         # Setup middleware
         self._setup_middleware()
@@ -145,6 +155,26 @@ class APIGateway:
         # Initialize rate limiter
         self.rate_limiter = RateLimiter(self)
         
+        # Initialize AI Router if available
+        if AI_ROUTER_AVAILABLE:
+            try:
+                self.ai_router = AIRouter(redis_client=self.redis)
+                logger.info("AI Router initialized successfully")
+            except Exception as e:
+                logger.error("Failed to initialize AI Router", error=str(e))
+                self.ai_router = None
+        
+        # Initialize AI Monitoring Dashboard
+        try:
+            from ai_monitoring import AIMonitoringDashboard
+            self.ai_dashboard = AIMonitoringDashboard(redis_client=self.redis)
+            # Start monitoring in background
+            asyncio.create_task(self.ai_dashboard.start_monitoring(interval=30))
+            logger.info("AI Monitoring Dashboard initialized")
+        except Exception as e:
+            logger.warning(f"AI Monitoring Dashboard not available: {e}")
+            self.ai_dashboard = None
+        
         # Load service URLs
         for route, env_var in SERVICE_ROUTES.items():
             url = os.getenv(env_var)
@@ -155,9 +185,11 @@ class APIGateway:
                 logger.warning("Service URL not configured", route=route, env_var=env_var)
     
     async def on_shutdown(self):
-        """Close HTTP client and Redis connection"""
+        """Close HTTP client, Redis connection, and AI router"""
         if self.http_client:
             await self.http_client.aclose()
+        if self.ai_router:
+            await self.ai_router.cleanup()
         if self.redis:
             await self.redis.close()
     
@@ -368,6 +400,245 @@ class APIGateway:
                 "timestamp": time.time(),
                 "checks": [check.model_dump() for check in checks]
             }
+        
+        # Unified AI endpoint
+        @self.app.post("/api/v1/ai/chat")
+        async def unified_ai_chat(request: Request):
+            """Unified AI chat endpoint with intelligent routing"""
+            if not self.ai_router:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="AI Router not available"
+                )
+            
+            try:
+                # Get request body
+                body = await request.json()
+                
+                # Extract user info from headers if available
+                user_info = {}
+                if request.headers.get("x-user-id"):
+                    user_info = {
+                        "id": request.headers.get("x-user-id"),
+                        "username": request.headers.get("x-username", ""),
+                        "email": request.headers.get("x-user-email", ""),
+                        "role": request.headers.get("x-user-role", "viewer")
+                    }
+                
+                # Add user context to request
+                if user_info:
+                    body["user_id"] = user_info.get("id", "anonymous")
+                    body["user_context"] = user_info
+                
+                # Route through AI router
+                response = await self.ai_router.route_request(body)
+                
+                return JSONResponse(content=response)
+                
+            except Exception as e:
+                logger.error("AI chat error", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"AI processing failed: {str(e)}"
+                )
+        
+        # AI service health endpoint
+        @self.app.get("/api/v1/ai/health")
+        async def ai_health():
+            """Get health status of all AI services"""
+            if not self.ai_router:
+                return {
+                    "status": "unavailable",
+                    "message": "AI Router not initialized"
+                }
+            
+            try:
+                health_status = await self.ai_router.get_service_health()
+                
+                # Determine overall status
+                all_healthy = all(
+                    s.get("status") == "healthy" 
+                    for s in health_status.values()
+                )
+                
+                return {
+                    "status": "healthy" if all_healthy else "degraded",
+                    "services": health_status,
+                    "timestamp": time.time()
+                }
+            except Exception as e:
+                logger.error("AI health check failed", error=str(e))
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": time.time()
+                }
+        
+        # Circuit breaker reset endpoint (admin only)
+        @self.app.post("/api/v1/ai/circuit-breaker/reset/{service_name}")
+        async def reset_circuit_breaker(service_name: str, request: Request):
+            """Reset circuit breaker for a specific AI service (admin only)"""
+            # Check if user is admin
+            user_role = request.headers.get("x-user-role", "")
+            if user_role != "admin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only admins can reset circuit breakers"
+                )
+            
+            if not self.ai_router:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="AI Router not available"
+                )
+            
+            try:
+                await self.ai_router.reset_circuit_breaker(service_name)
+                return {
+                    "success": True,
+                    "message": f"Circuit breaker for {service_name} has been reset"
+                }
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to reset circuit breaker: {str(e)}"
+                )
+        
+        # AI Monitoring Dashboard endpoints
+        @self.app.get("/api/v1/ai/monitoring/dashboard")
+        async def get_ai_dashboard():
+            """Get AI monitoring dashboard data"""
+            if not self.ai_dashboard:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="AI Monitoring Dashboard not available"
+                )
+            
+            try:
+                dashboard_data = await self.ai_dashboard.get_dashboard_data()
+                return JSONResponse(content=dashboard_data)
+            except Exception as e:
+                logger.error(f"Failed to get dashboard data: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get dashboard data: {str(e)}"
+                )
+        
+        @self.app.get("/api/v1/ai/monitoring/service/{service_name}")
+        async def get_service_monitoring(service_name: str):
+            """Get detailed monitoring data for a specific AI service"""
+            if not self.ai_dashboard:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="AI Monitoring Dashboard not available"
+                )
+            
+            try:
+                service_data = await self.ai_dashboard.get_service_details(service_name)
+                return JSONResponse(content=service_data)
+            except Exception as e:
+                logger.error(f"Failed to get service data: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to get service data: {str(e)}"
+                )
+        
+        @self.app.post("/api/v1/ai/monitoring/health-check")
+        async def trigger_ai_health_check(request: Request):
+            """Manually trigger health check of all AI services (admin only)"""
+            # Check if user is admin
+            user_role = request.headers.get("x-user-role", "")
+            if user_role != "admin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only admins can trigger health checks"
+                )
+            
+            if not self.ai_dashboard:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="AI Monitoring Dashboard not available"
+                )
+            
+            try:
+                results = await self.ai_dashboard.trigger_health_check()
+                return JSONResponse(content=results)
+            except Exception as e:
+                logger.error(f"Failed to trigger health check: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to trigger health check: {str(e)}"
+                )
+        
+        # AI Feedback endpoint
+        @self.app.post("/api/v1/ai/feedback")
+        async def submit_ai_feedback(request: Request):
+            """Submit feedback for an AI interaction"""
+            try:
+                body = await request.json()
+                
+                # Extract required fields
+                interaction_id = body.get("interaction_id")
+                rating = body.get("rating")  # 1-5 scale
+                
+                if not interaction_id or rating is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="interaction_id and rating are required"
+                    )
+                
+                # Get user info from headers
+                user_id = request.headers.get("x-user-id", "anonymous")
+                
+                # Forward to learning system if available
+                if self.ai_router and hasattr(self.ai_router, 'submit_feedback'):
+                    result = await self.ai_router.submit_feedback(
+                        interaction_id=interaction_id,
+                        user_id=user_id,
+                        rating=rating,
+                        comment=body.get("comment"),
+                        correction=body.get("correction")
+                    )
+                    return JSONResponse(content={
+                        "success": True,
+                        "message": "Feedback submitted successfully",
+                        "feedback_id": result.get("feedback_id")
+                    })
+                else:
+                    # Store feedback in Redis for later processing
+                    if self.redis:
+                        feedback_data = {
+                            "interaction_id": interaction_id,
+                            "user_id": user_id,
+                            "rating": rating,
+                            "comment": body.get("comment"),
+                            "correction": body.get("correction"),
+                            "timestamp": time.time()
+                        }
+                        
+                        feedback_key = f"ai:feedback:{interaction_id}"
+                        await self.redis.setex(
+                            feedback_key,
+                            86400 * 7,  # 7 days TTL
+                            json.dumps(feedback_data)
+                        )
+                        
+                        return JSONResponse(content={
+                            "success": True,
+                            "message": "Feedback stored for processing"
+                        })
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Feedback system not available"
+                        )
+                        
+            except Exception as e:
+                logger.error(f"Failed to submit feedback: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to submit feedback: {str(e)}"
+                )
         
         @self.app.websocket("/{path:path}")
         async def proxy_websocket(websocket, path: str):

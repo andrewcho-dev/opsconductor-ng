@@ -13,14 +13,22 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
+  success: boolean;
   response: string;
-  intent: string;
-  confidence: number;
+  intent?: string;
+  confidence?: number;
   job_id?: string;
   execution_id?: string;
   automation_job_id?: number;
   workflow?: any;
-  execution_started: boolean;
+  execution_started?: boolean;
+  _routing?: {
+    service: string;
+    service_type: string;
+    response_time: number;
+    cached: boolean;
+  };
+  error?: string;
 }
 
 const CHAT_HISTORY_KEY = 'opsconductor_ai_chat_history';
@@ -92,7 +100,7 @@ const AIChat: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
-        body: JSON.stringify({ message: userMessage.content })
+        body: JSON.stringify({ query: userMessage.content })  // Changed from 'message' to 'query'
       });
 
       if (!response.ok) {
@@ -101,10 +109,23 @@ const AIChat: React.FC = () => {
 
       const data: ChatResponse = await response.json();
       
+      // Check if the AI request was successful
+      if (!data.success) {
+        throw new Error(data.error || 'AI request failed');
+      }
+      
+      // Create AI message with routing info if available
+      let aiContent = data.response;
+      if (data._routing) {
+        const cached = data._routing.cached ? ' (cached)' : '';
+        const responseTime = data._routing.response_time.toFixed(2);
+        aiContent += `\n\n[Processed by ${data._routing.service} in ${responseTime}s${cached}]`;
+      }
+      
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        content: data.response,
+        content: aiContent,
         timestamp: new Date(),
         confidence: data.confidence,
         jobId: data.job_id,

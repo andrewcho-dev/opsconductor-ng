@@ -67,6 +67,7 @@ services:
       - opsconductor-net
     volumes:
       - ./api-gateway/main.py:/app/main.py
+      - ./api-gateway/ai_router.py:/app/ai_router.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
