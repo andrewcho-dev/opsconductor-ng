@@ -11,7 +11,7 @@ import {
   Settings, 
   Calendar, 
   Play, 
-
+  MessageSquare,
   LogOut,
   Menu,
   ChevronRight,
@@ -96,6 +96,15 @@ const Navbar: React.FC = () => {
               >
                 <span className="nav-icon"><BarChart3 size={16} /></span>
                 Dashboard
+              </Link>
+
+              <Link 
+                to="/ai-chat" 
+                className={`nav-menu-item ${isActive('/ai-chat') ? 'active' : ''}`} 
+                onClick={closeMenu}
+              >
+                <span className="nav-icon"><MessageSquare size={16} /></span>
+                AI Assistant
               </Link>
 
               <Link 

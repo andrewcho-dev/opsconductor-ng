@@ -128,7 +128,17 @@ const AIMonitor: React.FC = () => {
       }
     }, 30000); // 30 seconds
 
-    return () => clearInterval(interval);
+    // Listen for external refresh events
+    const handleRefresh = () => {
+      fetchHealth();
+      fetchDashboard();
+    };
+    window.addEventListener('refreshAIMonitor', handleRefresh);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refreshAIMonitor', handleRefresh);
+    };
   }, [autoRefresh]);
 
   const getStatusIcon = (status: string) => {
@@ -172,355 +182,404 @@ const AIMonitor: React.FC = () => {
   };
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <div className="card-title-row">
-          <h3 className="card-title">
-            <Activity size={20} />
-            AI System Monitor
-          </h3>
-          <div className="card-actions">
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`btn btn-sm ${autoRefresh ? 'btn-primary' : ''}`}
-              title={autoRefresh ? 'Auto-refresh enabled' : 'Auto-refresh disabled'}
-            >
-              <RefreshCw size={14} className={autoRefresh ? 'loading-spinner' : ''} />
-            </button>
-            <button
-              onClick={() => {
-                fetchHealth();
-                fetchDashboard();
-              }}
-              className="btn btn-sm"
-              disabled={loading}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-        <p className="card-subtitle">
-          Real-time monitoring of AI services and performance
-        </p>
-      </div>
+    <div className="ai-monitor-container">
+      <style>
+        {`
+          /* AI Monitor styles - conforming to site visual standards */
+          .ai-monitor-container {
+            font-size: 13px;
+          }
+          .monitor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .monitor-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--neutral-800);
+            margin: 0;
+          }
+          .monitor-actions {
+            display: flex;
+            gap: 4px;
+          }
+          .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin: 0 1px;
+            padding: 2px;
+            color: var(--neutral-500);
+          }
+          .btn-icon:hover {
+            color: var(--neutral-700);
+          }
+          .btn-icon.active {
+            color: var(--primary-blue);
+          }
+          .btn-small {
+            padding: 4px 8px;
+            border: 1px solid var(--neutral-300);
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .btn-small:hover {
+            background: var(--neutral-50);
+          }
+          .btn-small:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+          .error-message {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+          }
+          .monitor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 12px;
+          }
+          .monitor-section {
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 6px;
+            overflow: hidden;
+          }
+          .section-header {
+            background: var(--neutral-100);
+            padding: 8px 12px;
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--neutral-700);
+            border-bottom: 1px solid var(--neutral-200);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .section-content {
+            padding: 8px 12px;
+          }
+          .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-weight: 500;
+            font-size: 12px;
+          }
+          .status-success {
+            background: var(--success-green-light);
+            color: var(--success-green);
+          }
+          .status-warning {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange);
+          }
+          .services-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 8px;
+          }
+          .section-header-small {
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--neutral-700);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--neutral-200);
+          }
+          .alerts-section, .stats-section {
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+            padding: 8px;
+          }
+          .service-card {
+            background: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+            padding: 8px;
+            grid-column: span 2;
+          }
+          .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+          }
+          .service-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            font-size: 12px;
+          }
+          .service-type {
+            font-size: 10px;
+            color: var(--neutral-500);
+            background: var(--neutral-200);
+            padding: 2px 6px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .service-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+          }
+          .metric {
+            display: flex;
+            flex-direction: column;
+          }
+          .metric-label {
+            font-size: 10px;
+            color: var(--neutral-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+          }
+          .metric-value {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+          .circuit-breaker {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding-top: 6px;
+            border-top: 1px solid var(--neutral-200);
+            font-size: 11px;
+          }
+          .cb-label {
+            color: var(--neutral-500);
+          }
+          .cb-state {
+            font-weight: 600;
+            text-transform: uppercase;
+          }
+          .btn-reset {
+            padding: 2px 6px;
+            border: 1px solid var(--danger-red);
+            border-radius: 3px;
+            background: white;
+            color: var(--danger-red);
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: 500;
+            transition: all 0.2s;
+          }
+          .btn-reset:hover {
+            background: var(--danger-red);
+            color: white;
+          }
+          .alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+          .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid var(--neutral-300);
+            font-size: 11px;
+          }
+          .alert-severity {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+            min-width: 60px;
+          }
+          .alert-service {
+            font-weight: 500;
+            color: var(--neutral-700);
+            min-width: 80px;
+          }
+          .alert-message {
+            flex: 1;
+            color: var(--neutral-600);
+          }
+          .recommendations-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+          }
+          .recommendations-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid var(--neutral-200);
+            color: var(--neutral-600);
+            font-size: 12px;
+          }
+          .recommendations-list li:last-child {
+            border-bottom: none;
+          }
+          .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+          }
+          .stat-card {
+            display: flex;
+            flex-direction: column;
+            padding: 6px 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid var(--neutral-200);
+          }
+          .stat-label {
+            font-size: 10px;
+            color: var(--neutral-500);
+            text-transform: capitalize;
+            margin-bottom: 2px;
+          }
+          .stat-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+        `}
+      </style>
+
+
 
       {error && (
-        <div className="alert alert-danger">
-          <AlertCircle size={16} />
+        <div className="error-message">
+          <AlertCircle size={14} />
           {error}
         </div>
       )}
 
       {health && (
-        <div className="ai-monitor-grid">
-          {/* Overall Status */}
-          <div className="monitor-section">
-            <h4>System Status</h4>
-            <div className={`status-badge ${health.status === 'healthy' ? 'status-success' : 'status-warning'}`}>
-              {getStatusIcon(health.status)}
-              <span>{health.status.toUpperCase()}</span>
-            </div>
-          </div>
-
-          {/* Services Grid */}
-          <div className="monitor-section">
-            <h4>AI Services</h4>
-            <div className="services-grid">
-              {Object.entries(health.services).map(([name, service]) => (
-                <div key={name} className="service-card">
-                  <div className="service-header">
-                    <div className="service-name">
-                      {getStatusIcon(service.status)}
-                      <span>{name}</span>
-                    </div>
-                    <span className="service-type">{service.service_type}</span>
-                  </div>
-                  
-                  <div className="service-metrics">
-                    <div className="metric">
-                      <span className="metric-label">Success Rate</span>
-                      <span className="metric-value">
-                        {(service.success_rate * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="metric">
-                      <span className="metric-label">Avg Response</span>
-                      <span className="metric-value">
-                        {service.avg_response_time.toFixed(3)}s
-                      </span>
-                    </div>
-                    <div className="metric">
-                      <span className="metric-label">Requests</span>
-                      <span className="metric-value">{service.request_count}</span>
-                    </div>
-                  </div>
-
-                  <div className="circuit-breaker">
-                    <span className="cb-label">Circuit Breaker:</span>
-                    <span 
-                      className="cb-state"
-                      style={{ color: getCircuitBreakerColor(service.circuit_breaker) }}
-                    >
-                      {service.circuit_breaker}
-                    </span>
-                    {service.circuit_breaker === 'open' && (
-                      <button
-                        onClick={() => resetCircuitBreaker(name)}
-                        className="btn btn-xs btn-danger"
-                        disabled={loading}
-                      >
-                        Reset
-                      </button>
-                    )}
-                  </div>
+        <div className="services-grid">
+          {/* Direct service cards as subcards */}
+          {Object.entries(health.services).map(([name, service]) => (
+            <div key={name} className="service-card">
+              <div className="service-header">
+                <div className="service-name">
+                  {getStatusIcon(service.status)}
+                  <span>{name}</span>
                 </div>
-              ))}
-            </div>
-          </div>
+                <span className="service-type">{service.service_type}</span>
+              </div>
+              
+              <div className="service-metrics">
+                <div className="metric">
+                  <span className="metric-label">Success Rate</span>
+                  <span className="metric-value">
+                    {(service.success_rate * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="metric">
+                  <span className="metric-label">Avg Response</span>
+                  <span className="metric-value">
+                    {service.avg_response_time.toFixed(3)}s
+                  </span>
+                </div>
+                <div className="metric">
+                  <span className="metric-label">Requests</span>
+                  <span className="metric-value">{service.request_count}</span>
+                </div>
+              </div>
 
-          {/* Alerts Section */}
-          {dashboard?.analysis?.alerts && dashboard.analysis.alerts.length > 0 && (
-            <div className="monitor-section">
-              <h4>Active Alerts</h4>
-              <div className="alerts-list">
-                {dashboard.analysis.alerts.map((alert, idx) => (
-                  <div key={idx} className="alert-item">
-                    <div 
-                      className="alert-severity"
-                      style={{ color: getSeverityColor(alert.severity) }}
-                    >
-                      <AlertCircle size={14} />
-                      {alert.severity}
-                    </div>
-                    <span className="alert-service">{alert.service}</span>
-                    <span className="alert-message">{alert.message}</span>
-                  </div>
-                ))}
+              <div className="circuit-breaker">
+                <span className="cb-label">Circuit Breaker:</span>
+                <span 
+                  className="cb-state"
+                  style={{ color: getCircuitBreakerColor(service.circuit_breaker) }}
+                >
+                  {service.circuit_breaker}
+                </span>
+                {service.circuit_breaker === 'open' && (
+                  <button
+                    onClick={() => resetCircuitBreaker(name)}
+                    className="btn-reset"
+                    disabled={loading}
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
             </div>
-          )}
-
-          {/* Recommendations */}
-          {dashboard?.analysis?.recommendations && dashboard.analysis.recommendations.length > 0 && (
-            <div className="monitor-section">
-              <h4>Recommendations</h4>
-              <ul className="recommendations-list">
-                {dashboard.analysis.recommendations.map((rec, idx) => (
-                  <li key={idx}>{rec}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Statistics */}
-          {dashboard?.statistics && (
-            <div className="monitor-section">
-              <h4>Performance Statistics</h4>
-              <div className="stats-grid">
-                {Object.entries(dashboard.statistics).map(([key, value]: [string, any]) => (
-                  <div key={key} className="stat-card">
-                    <span className="stat-label">{key.replace(/_/g, ' ')}</span>
-                    <span className="stat-value">
-                      {typeof value === 'number' ? value.toFixed(2) : value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          ))}
         </div>
       )}
 
-      <style jsx>{`
-        .ai-monitor-grid {
-          display: flex;
-          flex-direction: column;
-          gap: 1.5rem;
-          padding: 1rem;
-        }
+      {/* Alerts Section - Keep this */}
+      {dashboard?.analysis?.alerts && dashboard.analysis.alerts.length > 0 && (
+        <div className="alerts-section" style={{ marginTop: '12px' }}>
+          <div className="section-header-small">Active Alerts</div>
+          <div className="alerts-list">
+            {dashboard.analysis.alerts.map((alert, idx) => (
+              <div key={idx} className="alert-item">
+                <div 
+                  className="alert-severity"
+                  style={{ color: getSeverityColor(alert.severity) }}
+                >
+                  <AlertCircle size={12} />
+                  {alert.severity}
+                </div>
+                <span className="alert-service">{alert.service}</span>
+                <span className="alert-message">{alert.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-        .monitor-section h4 {
-          margin-bottom: 0.75rem;
-          color: var(--neutral-700);
-          font-size: 0.875rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.25rem 0.75rem;
-          border-radius: var(--radius-md);
-          font-weight: 500;
-        }
-
-        .status-success {
-          background: var(--success-green-light);
-          color: var(--success-green);
-        }
-
-        .status-warning {
-          background: var(--warning-orange-light);
-          color: var(--warning-orange);
-        }
-
-        .services-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-          gap: 1rem;
-        }
-
-        .service-card {
-          background: var(--neutral-100);
-          border: 1px solid var(--neutral-200);
-          border-radius: var(--radius-md);
-          padding: 1rem;
-        }
-
-        .service-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 0.75rem;
-        }
-
-        .service-name {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-weight: 500;
-        }
-
-        .service-type {
-          font-size: 0.75rem;
-          color: var(--neutral-500);
-          background: var(--neutral-200);
-          padding: 0.125rem 0.375rem;
-          border-radius: var(--radius-sm);
-        }
-
-        .service-metrics {
-          display: flex;
-          gap: 1rem;
-          margin-bottom: 0.75rem;
-        }
-
-        .metric {
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-        }
-
-        .metric-label {
-          font-size: 0.625rem;
-          color: var(--neutral-500);
-          text-transform: uppercase;
-        }
-
-        .metric-value {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: var(--neutral-700);
-        }
-
-        .circuit-breaker {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding-top: 0.5rem;
-          border-top: 1px solid var(--neutral-200);
-          font-size: 0.75rem;
-        }
-
-        .cb-label {
-          color: var(--neutral-500);
-        }
-
-        .cb-state {
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-
-        .alerts-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-        }
-
-        .alert-item {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 0.5rem;
-          background: var(--neutral-100);
-          border-radius: var(--radius-sm);
-        }
-
-        .alert-severity {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          font-size: 0.75rem;
-        }
-
-        .alert-service {
-          font-weight: 500;
-          color: var(--neutral-700);
-        }
-
-        .alert-message {
-          flex: 1;
-          color: var(--neutral-600);
-        }
-
-        .recommendations-list {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-
-        .recommendations-list li {
-          padding: 0.5rem 0;
-          border-bottom: 1px solid var(--neutral-200);
-          color: var(--neutral-600);
-          font-size: 0.875rem;
-        }
-
-        .recommendations-list li:last-child {
-          border-bottom: none;
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-          gap: 0.75rem;
-        }
-
-        .stat-card {
-          display: flex;
-          flex-direction: column;
-          padding: 0.5rem;
-          background: var(--neutral-100);
-          border-radius: var(--radius-sm);
-        }
-
-        .stat-label {
-          font-size: 0.625rem;
-          color: var(--neutral-500);
-          text-transform: capitalize;
-        }
-
-        .stat-value {
-          font-size: 1rem;
-          font-weight: 600;
-          color: var(--neutral-700);
-        }
-      `}</style>
+      {/* Statistics - Keep this */}
+      {dashboard?.statistics && (
+        <div className="stats-section" style={{ marginTop: '12px' }}>
+          <div className="section-header-small">Performance Statistics</div>
+          <div className="stats-grid">
+            {Object.entries(dashboard.statistics).map(([key, value]: [string, any]) => (
+              <div key={key} className="stat-card">
+                <span className="stat-label">{key.replace(/_/g, ' ')}</span>
+                <span className="stat-value">
+                  {typeof value === 'number' ? value.toFixed(2) : value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
