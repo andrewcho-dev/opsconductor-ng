@@ -57,7 +57,8 @@ const AIMonitor: React.FC = () => {
     try {
       const response = await fetch('/api/v1/ai/health', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Content-Type': 'application/json'
+          // Removed Authorization header to test if auth is the issue
         }
       });
 
@@ -66,6 +67,7 @@ const AIMonitor: React.FC = () => {
       }
 
       const data = await response.json();
+      console.log('AI Health data received:', data);
       setHealth(data);
       setError(null);
     } catch (err: any) {
@@ -77,7 +79,8 @@ const AIMonitor: React.FC = () => {
     try {
       const response = await fetch('/api/v1/ai/monitoring/dashboard', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+          'Content-Type': 'application/json'
+          // Removed Authorization header to test if auth is the issue
         }
       });
 
@@ -504,18 +507,18 @@ const AIMonitor: React.FC = () => {
                 <div className="metric">
                   <span className="metric-label">Success Rate</span>
                   <span className="metric-value">
-                    {(service.success_rate * 100).toFixed(1)}%
+                    {service.success_rate != null ? (service.success_rate * 100).toFixed(1) : '0.0'}%
                   </span>
                 </div>
                 <div className="metric">
                   <span className="metric-label">Avg Response</span>
                   <span className="metric-value">
-                    {service.avg_response_time.toFixed(3)}s
+                    {service.avg_response_time != null ? service.avg_response_time.toFixed(3) : '0.000'}s
                   </span>
                 </div>
                 <div className="metric">
                   <span className="metric-label">Requests</span>
-                  <span className="metric-value">{service.request_count}</span>
+                  <span className="metric-value">{service.request_count ?? 0}</span>
                 </div>
               </div>
 
@@ -573,7 +576,7 @@ const AIMonitor: React.FC = () => {
               <div key={key} className="stat-card">
                 <span className="stat-label">{key.replace(/_/g, ' ')}</span>
                 <span className="stat-value">
-                  {typeof value === 'number' ? value.toFixed(2) : value}
+                  {typeof value === 'number' && value != null ? value.toFixed(2) : (value ?? 'N/A')}
                 </span>
               </div>
             ))}

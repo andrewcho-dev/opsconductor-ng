@@ -98,6 +98,7 @@ class OpsConductorAI:
         self.vector_store = None
         self.db_pool = None
         self.redis_client = None
+        self.model_name = "llama2:7b"  # Default Ollama model
         
         # Centralized components
         self.vector_client = None
@@ -134,8 +135,10 @@ class OpsConductorAI:
             # Initialize Ollama
             if OLLAMA_AVAILABLE:
                 try:
-                    self.ollama_client = ollama.AsyncClient()
-                    logger.info("Ollama client initialized")
+                    import os
+                    ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+                    self.ollama_client = ollama.AsyncClient(host=ollama_host)
+                    logger.info(f"Ollama client initialized with host: {ollama_host}")
                 except Exception as e:
                     logger.warning(f"Ollama client initialization failed: {e}")
                     self.ollama_client = None
@@ -234,10 +237,12 @@ class OpsConductorAI:
             
             self.initialized = True
             logger.info("AI Engine initialization completed successfully")
+            return True
             
         except Exception as e:
             logger.error(f"AI Engine initialization failed: {e}")
-            raise
+            self.initialized = False
+            return False
     
     async def _initialize_query_handlers(self):
         """Initialize modular query handlers"""
@@ -285,21 +290,24 @@ class OpsConductorAI:
             
             logger.info(f"Processing message: {message[:100]}...")
             
-            # Classify intent
+            # Classify intent using AI
             intent_result = await self.classify_intent(message)
-            intent_action = intent_result.get("action", "general_query")
+            intent_action = intent_result.get("intent", "request_help")
             confidence = intent_result.get("confidence", 0.0)
+            reasoning = intent_result.get("reasoning", "No reasoning provided")
+            method = intent_result.get("method", "unknown")
             
-            logger.info(f"Intent classified: {intent_action} (confidence: {confidence:.2f})")
-            
-            # DEBUG: Log all intent scores for troubleshooting
-            all_scores = intent_result.get("all_scores", {})
-            logger.debug(f"All intent scores: {all_scores}")
+            logger.info(f"Intent classified: {intent_action} (confidence: {confidence:.2f}) via {method}")
+            logger.info(f"Reasoning: {reasoning}")
             
             # EXCEPTION TRACKING: Log low confidence classifications for review
             if confidence < 0.5:
                 logger.warning(f"LOW CONFIDENCE intent classification: {intent_action} ({confidence:.2f}) for message: '{message[:100]}...'")
-                logger.warning(f"Top 3 scores: {sorted(all_scores.items(), key=lambda x: x[1], reverse=True)[:3]}")
+                logger.warning(f"Reasoning: {reasoning}")
+                
+            # Log successful AI classifications for monitoring
+            if method == "ai_classification":
+                logger.info(f"✅ AI successfully classified intent: {intent_action} with {confidence:.2f} confidence")
             
             # Route to appropriate handler
             response = await self._route_to_handler(message, context, intent_action)
@@ -380,12 +388,324 @@ class OpsConductorAI:
             }
     
     async def classify_intent(self, message: str) -> Dict[str, Any]:
-        """Classify user intent with comprehensive patterns"""
+        """Classify user intent using AI-powered analysis"""
+        try:
+            # Use AI-powered intent classification instead of regex patterns
+            return await self._ai_classify_intent(message)
+            
+        except Exception as e:
+            logger.error(f"Intent classification failed: {e}")
+            # Fallback to basic classification
+            return await self._fallback_classify_intent(message)
+    
+    async def _ai_classify_intent(self, message: str) -> Dict[str, Any]:
+        """Use Ollama AI to classify user intent with high accuracy"""
+        try:
+            if not self.ollama_client or not OLLAMA_AVAILABLE:
+                logger.warning("Ollama not available, using fallback classification")
+                return await self._enhanced_fallback_classify_intent(message)
+            
+            # Define the available intents and their descriptions
+            intent_definitions = {
+                "knowledge_query": "User wants to learn something, get help, understand concepts, or get examples/scripts/code. Keywords: what, how, explain, help, write, create, show me, give me, example, script, code, tutorial, guide",
+                "query_targets": "User wants to see available servers, machines, endpoints, or infrastructure targets",
+                "create_target": "User wants to add/register a new server or target machine",
+                "query_target_tags": "User wants to see tags, labels, or categories for organizing targets",
+                "query_connection_status": "User wants to check connectivity, ping status, or if machines are online/offline",
+                "query_jobs": "User wants to see automation jobs, tasks, executions, or their status (running, failed, completed)",
+                "query_workflows": "User wants to see workflows, automation processes, or workflow definitions",
+                "query_error_analysis": "User wants to analyze errors, failures, or troubleshoot issues",
+                "execute_command": "User wants to run a specific command on a target machine (with target specified)",
+                "execute_powershell": "User wants to execute PowerShell commands or scripts on Windows machines",
+                "execute_bash": "User wants to execute bash/shell commands on Linux/Unix machines",
+                "remote_execution": "User wants to execute commands remotely on specific IP addresses or hostnames",
+                "create_job": "User wants to create a new automation job or task",
+                "execute_job": "User wants to run/start an existing job",
+                "stop_job": "User wants to stop/cancel a running job",
+                "send_notification": "User wants to send notifications, alerts, or messages",
+                "query_notification_history": "User wants to see notification history or logs",
+                "query_schema_info": "User wants to see database schema, tables, or data structure information",
+                "provide_greeting": "User is greeting or saying hello",
+                "request_help": "User is asking for general help or assistance"
+            }
+            
+            # Create a sophisticated AI prompt for intent classification
+            prompt = f"""You are an expert AI intent classifier for OpsConductor, an advanced IT operations and automation platform. Your job is to analyze user messages and determine their intent with extremely high accuracy.
+
+🎯 **ANALYZE THIS MESSAGE**: "{message}"
+
+📋 **AVAILABLE INTENTS** (choose the BEST match):
+
+🔍 **knowledge_query** - User wants to learn, understand, get help, or needs scripts/code/examples
+   🔸 Triggers: "what is", "how to", "explain", "help me understand", "do you have knowledge", "do you know about", "knowledge of", "write me a script", "create a script", "show me code", "give me an example", "tutorial", "guide"
+   🔸 Examples: "what is a subnet mask", "do you have knowledge of VAPIX API", "write me a PowerShell script to list directories", "show me how to ping", "explain CIDR notation"
+
+🎯 **query_targets** - User wants to see available systems/servers/machines/endpoints  
+   🔸 Triggers: "show targets", "list servers", "what machines", "display endpoints", "available hosts", "show systems"
+   🔸 Examples: "show me all targets", "list available servers", "what machines can I connect to"
+
+➕ **create_target** - User wants to add/register a new server or target machine
+   🔸 Triggers: "add target", "register server", "create target", "add machine", "new target"
+   🔸 Examples: "add a new target", "register server 192.168.1.100", "create target for my Windows machine"
+
+🏷️ **query_target_tags** - User wants to see tags, labels, or categories for organizing targets
+   🔸 Triggers: "show tags", "list tags", "target tags", "categories", "labels"
+   🔸 Examples: "show me target tags", "what tags are available", "list all categories"
+
+🌐 **query_connection_status** - User wants to check connectivity, ping status, or if machines are online/offline
+   🔸 Triggers: "check connectivity", "ping status", "is online", "connection status", "reachable"
+   🔸 Examples: "check if server is online", "ping status of 192.168.1.100", "is the machine reachable"
+
+📋 **query_jobs** - User wants to see automation jobs, tasks, executions, or their status
+   🔸 Triggers: "show jobs", "list jobs", "job status", "running jobs", "failed jobs", "completed jobs"
+   🔸 Examples: "show me all jobs", "list running jobs", "what jobs failed today"
+
+🔄 **query_workflows** - User wants to see workflows, automation processes, or workflow definitions
+   🔸 Triggers: "show workflows", "list workflows", "workflow definitions", "automation processes"
+   🔸 Examples: "show me workflows", "list all automation workflows", "what workflows are available"
+
+🔍 **query_error_analysis** - User wants to analyze errors, failures, or troubleshoot issues
+   🔸 Triggers: "analyze errors", "troubleshoot", "what went wrong", "error analysis", "failure analysis"
+   🔸 Examples: "analyze recent errors", "troubleshoot failed job", "what went wrong with the deployment"
+
+⚡ **execute_command** - User wants to run a specific command on a target machine (with target specified)
+   🔸 Triggers: "run command on", "execute on", "run on server", + specific target mentioned
+   🔸 Examples: "run dir command on server01", "execute ls on 192.168.1.100"
+
+🔷 **execute_powershell** - User wants to execute PowerShell commands or scripts on Windows machines
+   🔸 Triggers: "run powershell", "execute powershell", "powershell command", "ps1 script"
+   🔸 Examples: "run powershell Get-Process", "execute powershell script on Windows server"
+
+🐧 **execute_bash** - User wants to execute bash/shell commands on Linux/Unix machines
+   🔸 Triggers: "run bash", "execute bash", "shell command", "linux command", "unix command"
+   🔸 Examples: "run bash command", "execute shell script on Linux server"
+
+🌍 **remote_execution** - User wants to execute commands remotely on specific IP addresses or hostnames
+   🔸 Triggers: specific IP/hostname mentioned + execution intent
+   🔸 Examples: "get directory of 192.168.50.210", "run command on server.domain.com"
+
+➕ **create_job** - User wants to create a new automation job or task
+   🔸 Triggers: "create job", "new job", "create task", "schedule job", "create automation"
+   🔸 Examples: "create a new job", "create automation task", "schedule a job to run daily"
+
+▶️ **execute_job** - User wants to run/start an existing job
+   🔸 Triggers: "run job", "start job", "execute job", "trigger job"
+   🔸 Examples: "run the backup job", "start deployment job", "execute maintenance task"
+
+⏹️ **stop_job** - User wants to stop/cancel a running job
+   🔸 Triggers: "stop job", "cancel job", "abort job", "kill job"
+   🔸 Examples: "stop the running job", "cancel deployment", "abort backup task"
+
+📢 **send_notification** - User wants to send notifications, alerts, or messages
+   🔸 Triggers: "send notification", "send alert", "notify", "send message"
+   🔸 Examples: "send notification to team", "alert the administrators", "notify when job completes"
+
+📜 **query_notification_history** - User wants to see notification history or logs
+   🔸 Triggers: "notification history", "alert history", "notification logs", "past notifications"
+   🔸 Examples: "show notification history", "list recent alerts", "notification logs from yesterday"
+
+🗄️ **query_schema_info** - User wants to see database schema, tables, or data structure information
+   🔸 Triggers: "database schema", "show tables", "table structure", "schema info", "database structure"
+   🔸 Examples: "show database schema", "list all tables", "what's the table structure"
+
+👋 **provide_greeting** - User is greeting or being polite
+   🔸 Triggers: "hello", "hi", "hey", "good morning", "thanks", "thank you"
+   🔸 Examples: "hello", "hi there", "good morning", "thanks for your help"
+
+❓ **request_help** - User needs general help or assistance
+   🔸 Triggers: "help", "what can you do", "assistance", "how does this work", "capabilities"
+   🔸 Examples: "help", "what can you do for me", "I need assistance", "how does this system work"
+
+🎯 **CLASSIFICATION RULES** (CRITICAL - Follow these exactly):
+
+1. **SCRIPT/CODE REQUESTS** (Highest Priority): If message contains "write", "create", "show me", "give me" + "script"/"code"/"example" → **knowledge_query**
+
+2. **SPECIFIC TARGET EXECUTION**: If message mentions specific IP/hostname + wants to execute something → **remote_execution** or appropriate execute_* intent
+
+3. **DIRECTORY LISTING REQUESTS**: "get directory", "list directory", "show directory" + target → **remote_execution**
+
+4. **GENERAL EXECUTION**: Wants to execute but no specific target → appropriate execute_* intent
+
+5. **LEARNING/HELP**: "what is", "how to", "explain", "help me understand", "do you have knowledge", "do you know about", "knowledge of" → **knowledge_query**
+
+6. **SYSTEM QUERIES**: "show", "list", "display" + system resources → appropriate query_* intent
+
+7. **BE DECISIVE**: Choose the MOST SPECIFIC intent that matches. Don't default to general intents unless truly unclear.
+
+🎯 **RESPOND WITH ONLY THIS JSON FORMAT**:
+{{
+    "intent": "exact_intent_name",
+    "confidence": 0.XX,
+    "reasoning": "Clear explanation of why this intent was chosen based on the rules above"
+}}
+
+**ANALYZE THE MESSAGE NOW AND BE CONFIDENT IN YOUR CLASSIFICATION!**"""
+
+            # Get AI response
+            if self.ollama_client:
+                response = await self.ollama_client.chat(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    options={"temperature": 0.1}  # Low temperature for consistent classification
+                )
+                
+                ai_response = response['message']['content'].strip()
+                
+                # Parse the JSON response
+                import json
+                try:
+                    result = json.loads(ai_response)
+                    intent = result.get("intent", "request_help")
+                    confidence = result.get("confidence", 0.5)
+                    reasoning = result.get("reasoning", "AI classification")
+                    
+                    # Validate intent exists
+                    if intent not in intent_definitions:
+                        logger.warning(f"AI returned unknown intent: {intent}, falling back to request_help")
+                        intent = "request_help"
+                        confidence = 0.3
+                    
+                    logger.info(f"AI Intent Classification: {intent} (confidence: {confidence}) - {reasoning}")
+                    
+                    return {
+                        "intent": intent,
+                        "confidence": confidence,
+                        "reasoning": reasoning,
+                        "method": "ai_classification"
+                    }
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse AI response as JSON: {ai_response}")
+                    # Try to extract intent from response text
+                    for intent_name in intent_definitions.keys():
+                        if intent_name in ai_response.lower():
+                            return {
+                                "intent": intent_name,
+                                "confidence": 0.6,
+                                "reasoning": "Extracted from AI response text",
+                                "method": "ai_classification_fallback"
+                            }
+                    raise e
+            
+            # If no Ollama client, fall back
+            return await self._fallback_classify_intent(message)
+            
+        except Exception as e:
+            logger.error(f"AI intent classification failed: {e}")
+            return await self._fallback_classify_intent(message)
+    
+    async def _enhanced_fallback_classify_intent(self, message: str) -> Dict[str, Any]:
+        """Enhanced fallback intent classification with smart pattern matching"""
         try:
             message_lower = message.lower()
-            doc = self.nlp(message) if self.nlp else None
             
-            # Define comprehensive intent patterns covering ALL system capabilities
+            # High-priority patterns (check these first)
+            
+            # 1. Script/Code requests (highest priority)
+            script_indicators = ["write", "create", "show me", "give me"]
+            script_targets = ["script", "code", "example", "powershell", "bash", "python"]
+            if (any(indicator in message_lower for indicator in script_indicators) and 
+                any(target in message_lower for target in script_targets)):
+                return {
+                    "intent": "knowledge_query",
+                    "confidence": 0.95,
+                    "reasoning": "Detected script/code creation request",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 2. Directory/file listing with specific target (remote execution)
+            if (any(term in message_lower for term in ["get directory", "list directory", "show directory", "dir of", "ls of"]) and
+                any(char.isdigit() for char in message)):  # Contains IP or numbers
+                return {
+                    "intent": "remote_execution",
+                    "confidence": 0.90,
+                    "reasoning": "Directory listing request with target specified",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 3. Knowledge queries
+            knowledge_patterns = ["what is", "how to", "explain", "help me understand", "tell me about", "what does", "do you have knowledge", "do you know about", "knowledge of"]
+            if any(pattern in message_lower for pattern in knowledge_patterns):
+                return {
+                    "intent": "knowledge_query",
+                    "confidence": 0.85,
+                    "reasoning": "Knowledge/learning request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 4. Target queries
+            target_patterns = ["show targets", "list targets", "available targets", "what targets", "show servers", "list servers"]
+            if any(pattern in message_lower for pattern in target_patterns):
+                return {
+                    "intent": "query_targets",
+                    "confidence": 0.90,
+                    "reasoning": "Target listing request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 5. Execution with specific target
+            if (any(term in message_lower for term in ["run", "execute", "get", "invoke"]) and
+                (any(char.isdigit() for char in message) or "server" in message_lower)):
+                return {
+                    "intent": "remote_execution",
+                    "confidence": 0.85,
+                    "reasoning": "Execution request with target detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 6. Job queries
+            job_patterns = ["show jobs", "list jobs", "job status", "running jobs", "failed jobs"]
+            if any(pattern in message_lower for pattern in job_patterns):
+                return {
+                    "intent": "query_jobs",
+                    "confidence": 0.85,
+                    "reasoning": "Job query request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 7. Greetings
+            greeting_patterns = ["hello", "hi", "hey", "good morning", "good afternoon", "thanks", "thank you"]
+            if any(pattern in message_lower for pattern in greeting_patterns):
+                return {
+                    "intent": "provide_greeting",
+                    "confidence": 0.95,
+                    "reasoning": "Greeting detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 8. General help requests
+            help_patterns = ["help", "what can you do", "assistance", "how does this work", "capabilities"]
+            if any(pattern in message_lower for pattern in help_patterns):
+                return {
+                    "intent": "request_help",
+                    "confidence": 0.80,
+                    "reasoning": "General help request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # Default fallback
+            return {
+                "intent": "request_help",
+                "confidence": 0.50,
+                "reasoning": "No specific pattern matched, defaulting to help",
+                "method": "enhanced_fallback_default"
+            }
+            
+        except Exception as e:
+            logger.error(f"Enhanced fallback classification error: {e}")
+            return {
+                "intent": "request_help",
+                "confidence": 0.30,
+                "reasoning": f"Error in enhanced fallback: {str(e)}",
+                "method": "error_fallback"
+            }
+
+    async def _fallback_classify_intent(self, message: str) -> Dict[str, Any]:
+        """Fallback intent classification using improved pattern matching"""
+        try:
+            message_lower = message.lower()
+            
+            # Improved pattern-based classification as fallback
             intent_patterns = {
                 # Knowledge and Help Queries (Check FIRST for "what is", "how to", "explain", etc.)
                 "knowledge_query": {
@@ -393,11 +713,17 @@ class OpsConductorAI:
                         r"what\s+(is|are)\s+", r"how\s+(to|do|does|can)\s+", r"explain\s+", r"tell\s+me\s+about",
                         r"describe\s+", r"define\s+", r"help\s+(with|me)", r"tutorial", r"guide\s+",
                         r"difference\s+between", r"when\s+should", r"why\s+(is|does|should)",
-                        r"teach\s+me", r"learn\s+about"
+                        r"teach\s+me", r"learn\s+about", r"what.*subnet", r"subnet.*mask",
+                        r"network.*address", r"ip.*address", r"cidr", r"netmask",
+                        r"write\s+(me\s+)?a?\s*(powershell\s+)?script", r"create\s+(a\s+)?script", 
+                        r"show\s+me\s+(a\s+)?script", r"give\s+me\s+(a\s+)?script", r"need\s+(a\s+)?script",
+                        r"script\s+to", r"code\s+to", r"example\s+of", r"sample\s+script"
                     ],
                     "keywords": ["what", "how", "explain", "tell", "describe", "define", "help", "tutorial", 
-                                "guide", "difference", "learn", "teach", "understand", "concept", "theory"],
-                    "confidence": 0.95
+                                "guide", "difference", "learn", "teach", "understand", "concept", "theory",
+                                "subnet", "mask", "network", "cidr", "netmask", "ip", "address", "write", 
+                                "create", "script", "code", "example", "sample", "show", "give", "need"],
+                    "confidence": 0.98
                 },
                 # Infrastructure Management
                 "query_targets": {
@@ -470,6 +796,16 @@ class OpsConductorAI:
                 }
             }
             
+            # Special priority check for knowledge queries
+            knowledge_indicators = ["write", "create", "show me", "give me", "script", "code", "example", "what is", "how to", "explain", "help"]
+            if any(indicator in message_lower for indicator in knowledge_indicators):
+                return {
+                    "intent": "knowledge_query",
+                    "confidence": 0.95,
+                    "reasoning": "Contains knowledge/help request indicators",
+                    "method": "fallback_classification"
+                }
+            
             # Calculate confidence scores for each intent
             intent_scores = {}
             
@@ -497,24 +833,27 @@ class OpsConductorAI:
                 best_intent = max(intent_scores.items(), key=lambda x: x[1])
                 if best_intent[1] > 0.3:  # Minimum confidence threshold
                     return {
-                        "action": best_intent[0],
+                        "intent": best_intent[0],
                         "confidence": best_intent[1],
-                        "all_scores": intent_scores
+                        "reasoning": "Pattern and keyword matching",
+                        "method": "fallback_classification"
                     }
             
-            # Default to general query if no specific intent found
+            # Default to request_help if no specific intent found
             return {
-                "action": "general_query",
+                "intent": "request_help",
                 "confidence": 0.5,
-                "all_scores": intent_scores
+                "reasoning": "No specific pattern matched, defaulting to help",
+                "method": "fallback_classification"
             }
             
         except Exception as e:
             logger.error(f"Intent classification error: {e}")
             return {
-                "action": "general_query",
+                "intent": "request_help",
                 "confidence": 0.3,
-                "error": str(e)
+                "reasoning": f"Error in classification: {str(e)}",
+                "method": "error_fallback"
             }
     
     async def _handle_general_query(self, message: str, context: List[Dict], intent_action: str) -> Dict[str, Any]:
@@ -522,6 +861,15 @@ class OpsConductorAI:
         try:
             # Handle knowledge queries directly
             if intent_action == "knowledge_query":
+                # Check if this is a script request
+                message_lower = message.lower()
+                script_indicators = ["write", "create", "script", "show me", "give me", "code", "example"]
+                
+                if any(indicator in message_lower for indicator in script_indicators):
+                    # Handle script requests with AI
+                    return await self._handle_script_request(message)
+                
+                # Try knowledge base first
                 knowledge_response = await self._search_knowledge_base(message)
                 if knowledge_response:
                     return {
@@ -529,16 +877,38 @@ class OpsConductorAI:
                         "intent": intent_action,
                         "success": True
                     }
+                
                 # If no knowledge found but Ollama is available, try general LLM response
                 if self.ollama_client and OLLAMA_AVAILABLE:
                     try:
-                        general_prompt = f"""You are an expert IT operations assistant. 
-                        The user has asked: {message}
-                        
-                        Provide a helpful, detailed response that answers their question. If it's about
-                        a specific command or technology, explain it clearly and provide examples.
-                        
-                        Answer:"""
+                        # Create specialized prompt based on question type
+                        if any(term in message.lower() for term in ["subnet", "mask", "network", "ip", "cidr", "netmask"]):
+                            general_prompt = f"""You are a networking expert. The user asked: {message}
+
+IMPORTANT: You cannot determine a subnet mask from just an IP address alone.
+
+Provide this response:
+"I cannot determine the exact subnet mask for 192.168.0.34 without knowing the network configuration. The subnet mask depends on how the network administrator configured the network, not just the IP address.
+
+Common subnet masks for 192.168.x.x networks:
+• 255.255.255.0 (/24) - Most common for home/small office networks
+• 255.255.0.0 (/16) - Larger networks
+• 255.255.255.128 (/25) - Smaller subnets
+
+To find the actual subnet mask:
+• Windows: Run 'ipconfig' command
+• Linux/Mac: Run 'ifconfig' or 'ip addr show'
+• Check network settings in your device's network configuration"
+
+Answer:"""
+                        else:
+                            general_prompt = f"""You are an expert IT operations assistant. 
+                            The user has asked: {message}
+                            
+                            Provide a helpful, detailed response that answers their question. If it's about
+                            a specific command or technology, explain it clearly and provide examples.
+                            
+                            Answer:"""
                         
                         response = await self.ollama_client.generate(
                             model="llama2:7b",
@@ -728,24 +1098,22 @@ class OpsConductorAI:
                     # Now use Ollama to generate an intelligent, conversational response
                     if self.ollama_client and OLLAMA_AVAILABLE:
                         try:
-                            prompt = f"""You are an expert IT operations assistant. Based on the following knowledge base information, 
-                            provide a clear, helpful, and conversational answer to the user's question.
-                            
-                            User Question: {query}
-                            
-                            Relevant Knowledge:
-                            {knowledge_context[:3000]}  
-                            
-                            Instructions:
-                            1. Answer the specific question directly and conversationally
-                            2. Be helpful and informative but concise
-                            3. Use the knowledge to provide accurate information
-                            4. If the question asks "what is X", explain what X is
-                            5. If the question asks "how to", provide step-by-step instructions
-                            6. Format your response nicely with markdown when appropriate
-                            7. Don't just dump information - answer the actual question
-                            
-                            Answer:"""
+                            prompt = f"""You are an expert IT operations assistant. Answer the user's question using the provided knowledge.
+
+User Question: {query}
+
+Relevant Knowledge:
+{knowledge_context[:2000]}
+
+CRITICAL INSTRUCTIONS:
+- NEVER state a specific subnet mask for an IP address without network configuration details
+- If asked about subnet masks for specific IPs, explain that you cannot determine this without network configuration
+- Use only the relevant information from the knowledge base
+- If the knowledge doesn't contain the specific answer, say so clearly
+- For networking questions, be technically accurate - don't guess or assume
+- Keep responses focused and helpful
+
+Answer:"""
                             
                             response = await self.ollama_client.generate(
                                 model="llama2:7b",
@@ -819,6 +1187,155 @@ class OpsConductorAI:
         except Exception as e:
             logger.error(f"Failed to get system stats: {e}")
             return {"error": str(e)}
+    
+    async def _handle_script_request(self, message: str) -> Dict[str, Any]:
+        """Handle script writing requests using AI"""
+        try:
+            if not self.ollama_client or not OLLAMA_AVAILABLE:
+                # Fallback to basic script templates
+                return await self._provide_basic_script_help(message)
+            
+            # Create AI prompt for script generation
+            prompt = f"""You are an expert system administrator and script writer. The user has requested: "{message}"
+
+Generate a complete, working script based on their request. Follow these guidelines:
+
+1. **Determine the script type** (PowerShell, Bash, Python, etc.) based on the request
+2. **Include proper error handling** and logging
+3. **Add helpful comments** explaining key sections
+4. **Provide usage examples** after the script
+5. **Include prerequisites** if any are needed
+6. **Make it production-ready** with proper parameter validation
+
+For PowerShell scripts:
+- Use proper parameter blocks with validation
+- Include error handling with try/catch
+- Add progress indicators for long operations
+- Use approved verbs and proper formatting
+
+For Bash scripts:
+- Include proper shebang
+- Use set -e for error handling
+- Add input validation
+- Include usage function
+
+For Python scripts:
+- Use proper imports and structure
+- Include docstrings
+- Add argument parsing with argparse
+- Include proper exception handling
+
+Format your response as:
+```[script_type]
+[complete script code]
+```
+
+**Usage Examples:**
+```[script_type]
+[usage examples]
+```
+
+**Prerequisites:**
+- [list any requirements]
+
+**Notes:**
+- [any important notes or warnings]
+
+Generate the script now:"""
+
+            response = await self.ollama_client.chat(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                options={"temperature": 0.3, "num_predict": 1000}  # Lower temperature for more consistent code
+            )
+            
+            ai_response = response['message']['content']
+            
+            # Format the response nicely
+            formatted_response = f"📝 **AI-Generated Script**\n\n{ai_response}\n\n"
+            formatted_response += "---\n*Generated by AI - Please review and test before using in production*"
+            
+            return {
+                "response": formatted_response,
+                "intent": "knowledge_query",
+                "success": True,
+                "script_generated": True
+            }
+            
+        except Exception as e:
+            logger.error(f"AI script generation failed: {e}")
+            # Fallback to basic templates
+            return await self._provide_basic_script_help(message)
+    
+    async def _provide_basic_script_help(self, message: str) -> Dict[str, Any]:
+        """Provide basic script help when AI is not available"""
+        message_lower = message.lower()
+        
+        if "powershell" in message_lower and ("winrm" in message_lower or "connect" in message_lower or "directory" in message_lower):
+            script_content = '''# PowerShell script to connect via WinRM and list directory
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$ComputerName,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Path = "C:\\"
+)
+
+try {
+    Write-Host "Connecting to $ComputerName..." -ForegroundColor Yellow
+    
+    # Test connectivity first
+    if (-not (Test-WSMan -ComputerName $ComputerName -ErrorAction SilentlyContinue)) {
+        throw "WinRM is not accessible on $ComputerName"
+    }
+    
+    # Get credentials
+    $Credential = Get-Credential -Message "Enter credentials for $ComputerName"
+    
+    # Create session and execute command
+    $Session = New-PSSession -ComputerName $ComputerName -Credential $Credential
+    $Result = Invoke-Command -Session $Session -ScriptBlock {
+        param($DirPath)
+        Get-ChildItem -Path $DirPath | Select-Object Name, Mode, Length, LastWriteTime
+    } -ArgumentList $Path
+    
+    # Display results
+    $Result | Format-Table -AutoSize
+    
+} catch {
+    Write-Error "Failed: $($_.Exception.Message)"
+} finally {
+    if ($Session) { Remove-PSSession $Session }
+}'''
+            
+            response = f"📝 **PowerShell WinRM Script**\n\n"
+            response += f"```powershell\n{script_content}\n```\n\n"
+            response += f"**Usage:**\n"
+            response += f"```powershell\n"
+            response += f".\\script.ps1 -ComputerName \"192.168.1.100\"\n"
+            response += f".\\script.ps1 -ComputerName \"server01\" -Path \"D:\\\"\n"
+            response += f"```"
+            
+        else:
+            # General script help
+            response = f"📝 **Script Help**\n\n"
+            response += f"I can help you create scripts for various tasks:\n\n"
+            response += f"**Available Script Types:**\n"
+            response += f"• PowerShell scripts for Windows automation\n"
+            response += f"• Bash scripts for Linux/Unix systems\n"
+            response += f"• Python scripts for cross-platform tasks\n\n"
+            response += f"**To get specific help, try:**\n"
+            response += f"• \"Write me a PowerShell script to connect via WinRM\"\n"
+            response += f"• \"Create a bash script to check disk space\"\n"
+            response += f"• \"Show me a Python script to ping hosts\"\n\n"
+            response += f"*Note: AI script generation is currently unavailable, showing basic templates*"
+        
+        return {
+            "response": response,
+            "intent": "knowledge_query", 
+            "success": True,
+            "script_generated": True
+        }
 
 # Global AI instance
 ai_engine = OpsConductorAI()

@@ -35,9 +35,9 @@ class CircuitBreaker:
     
     def __init__(
         self,
-        failure_threshold: int = 5,
-        timeout: float = 60.0,
-        half_open_requests: int = 3
+        failure_threshold: int = 10,  # Increased from 5 to 10
+        timeout: float = 30.0,        # Reduced from 60 to 30 seconds
+        half_open_requests: int = 5   # Increased from 3 to 5
     ):
         self.failure_threshold = failure_threshold
         self.timeout = timeout
@@ -350,7 +350,10 @@ class AIRouter:
             )
             
             if response.status_code == 200:
-                return response.json()
+                result = response.json()
+                # Mark as successful if we got a 200 response
+                result["success"] = True
+                return result
             else:
                 return {
                     "success": False,

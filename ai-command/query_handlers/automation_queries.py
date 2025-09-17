@@ -633,15 +633,24 @@ class AutomationQueryHandler(BaseQueryHandler):
         try:
             logger.info(f"Processing command execution: {intent}")
             
+            # Check if this is actually a request for help/script writing
+            message_lower = message.lower()
+            help_indicators = [
+                "write", "create", "script", "show me", "give me", "need", "example", 
+                "sample", "how to", "help", "code"
+            ]
+            
+            if any(indicator in message_lower for indicator in help_indicators):
+                # This is a help request, not a command execution request
+                return await self._provide_script_help(message, intent)
+            
             # Extract target information from message
             target_info = self._extract_target_info(message)
             command_info = self._extract_command_info(message, intent)
             
             if not target_info:
-                return self.create_error_response(
-                    intent,
-                    Exception("Target Required: Please specify a target IP address or hostname.\n\nExample: \"Get directory of C: drive for 192.168.50.210\"")
-                )
+                # Instead of just erroring, provide helpful guidance
+                return await self._provide_execution_guidance(message, intent, command_info)
             
             if not command_info:
                 return self.create_error_response(
@@ -747,6 +756,211 @@ class AutomationQueryHandler(BaseQueryHandler):
                     }
         
         return None
+    
+    async def _provide_script_help(self, message: str, intent: str) -> Dict[str, Any]:
+        """Provide script examples and help instead of demanding execution parameters"""
+        message_lower = message.lower()
+        
+        if "powershell" in message_lower and ("winrm" in message_lower or "connect" in message_lower):
+            # PowerShell WinRM script request
+            script_content = '''# PowerShell script to connect via WinRM and list C:\\ directory
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$ComputerName,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Username,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Password,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$UseSSL
+)
+
+# Function to create credentials
+function Get-RemoteCredentials {
+    param($Username, $Password)
+    
+    if ($Username -and $Password) {
+        $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+        return New-Object System.Management.Automation.PSCredential($Username, $SecurePassword)
+    } elseif ($Username) {
+        return Get-Credential -UserName $Username -Message "Enter password for $Username"
+    } else {
+        return Get-Credential -Message "Enter credentials for remote connection"
+    }
+}
+
+# Main script
+try {
+    Write-Host "Connecting to $ComputerName via WinRM..." -ForegroundColor Yellow
+    
+    # Get credentials
+    $Credential = Get-RemoteCredentials -Username $Username -Password $Password
+    
+    # Set up session options
+    $SessionOptions = New-PSSessionOption -SkipCACheck -SkipCNCheck
+    
+    # Create connection parameters
+    $ConnectionParams = @{
+        ComputerName = $ComputerName
+        Credential = $Credential
+        SessionOption = $SessionOptions
+    }
+    
+    # Add SSL if specified
+    if ($UseSSL) {
+        $ConnectionParams.UseSSL = $true
+        $ConnectionParams.Port = 5986
+    } else {
+        $ConnectionParams.Port = 5985
+    }
+    
+    # Test WinRM connectivity first
+    Write-Host "Testing WinRM connectivity..." -ForegroundColor Yellow
+    if (-not (Test-WSMan -ComputerName $ComputerName -Port $ConnectionParams.Port -UseSSL:$UseSSL -ErrorAction SilentlyContinue)) {
+        throw "WinRM is not accessible on $ComputerName. Please ensure WinRM is enabled and configured."
+    }
+    
+    # Create PS Session
+    $Session = New-PSSession @ConnectionParams -ErrorAction Stop
+    
+    Write-Host "Successfully connected to $ComputerName" -ForegroundColor Green
+    Write-Host "Listing contents of C:\\ drive..." -ForegroundColor Yellow
+    Write-Host "=" * 60
+    
+    # Execute directory listing on remote machine
+    $Result = Invoke-Command -Session $Session -ScriptBlock {
+        Get-ChildItem -Path "C:\\" | Select-Object Mode, LastWriteTime, Length, Name | Format-Table -AutoSize
+    }
+    
+    # Display results
+    $Result
+    
+} catch {
+    Write-Error "Failed to connect or execute command: $($_.Exception.Message)"
+    
+    # Provide troubleshooting tips
+    Write-Host "\\nTroubleshooting Tips:" -ForegroundColor Yellow
+    Write-Host "1. Ensure WinRM is enabled on the target machine:"
+    Write-Host "   winrm quickconfig"
+    Write-Host "2. Check if the WinRM service is running:"
+    Write-Host "   Get-Service WinRM"
+    Write-Host "3. Verify firewall rules allow WinRM traffic (ports 5985/5986)"
+    
+} finally {
+    # Clean up session
+    if ($Session) {
+        Remove-PSSession $Session
+        Write-Host "\\nSession closed." -ForegroundColor Green
+    }
+}'''
+            
+            response = "📝 **PowerShell WinRM Script**\\n\\n"
+            response += "Here's a complete PowerShell script to connect to a Windows machine via WinRM and list the C:\\ directory:\\n\\n"
+            response += "```powershell\\n{script_content}\\n```\\n\\n"
+            response += "**Usage Examples:**\\n"
+            response += "```powershell\\n"
+            response += "# Basic usage (will prompt for credentials):\\n"
+            response += f".\WinRM-DirectoryList.ps1 -ComputerName \"192.168.1.100\"\n\n"
+            response += "# With username (will prompt for password):\\n"
+            response += f".\WinRM-DirectoryList.ps1 -ComputerName \"server01\" -Username \"domain\\administrator\"\n\n"
+            response += "# Using SSL:\\n"
+            response += f".\WinRM-DirectoryList.ps1 -ComputerName \"server01\" -Username \"admin\" -UseSSL\n"
+            response += "```\\n\\n"
+            response += "**Prerequisites on Target Machine:**\\n"
+            response += "```powershell\\n"
+            response += "# Enable WinRM\\n"
+            response += "winrm quickconfig -y\\n\\n"
+            response += "# Configure WinRM for remote access\\n"
+            response += "winrm set winrm/config/service '@{AllowUnencrypted=\"true\"}'\n"
+            response += "winrm set winrm/config/service/auth '@{Basic=\"true\"}'\n"
+            response += f"```"
+            
+            return self.create_success_response(intent, response, {"script_type": "powershell_winrm"})
+        
+        elif "directory" in message_lower or "dir" in message_lower:
+            # General directory listing help
+            response = "📝 **Directory Listing Scripts**\\n\\n"
+            response += "Here are scripts to list directory contents on different systems:\\n\\n"
+            response += "**PowerShell (Windows):**\\n"
+            response += "```powershell\\n"
+            response += "# List C: drive contents\\n"
+            response += "Get-ChildItem -Path C:\\ | Select-Object Name, Mode, Length, LastWriteTime | Format-Table -AutoSize\\n\\n"
+            response += "# List with detailed info\\n"
+            response += "Get-ChildItem -Path C:\\ -Force | Format-List Name, FullName, Length, CreationTime, LastWriteTime\\n"
+            response += "```\\n\\n"
+            response += "**Bash (Linux/macOS):**\\n"
+            response += "```bash\\n"
+            response += "# List directory contents\\n"
+            response += "ls -la /\\n\\n"
+            response += "# List with human-readable sizes\\n"
+            response += "ls -lah /\\n\\n"
+            response += "# List recursively\\n"
+            response += "find / -maxdepth 1 -type f -ls\\n"
+            response += "```\\n\\n"
+            response += "**Command Prompt (Windows):**\\n"
+            response += "```cmd\\n"
+            response += "dir C:\\ /a\\n"
+            response += f"```"
+            
+            return self.create_success_response(intent, response, {"script_type": "directory_listing"})
+        
+        else:
+            # General script help
+            response = "📝 **Script Help**\\n\\n"
+            response += "I can help you create scripts for various tasks. Here are some examples:\\n\\n"
+            response += "**Available Script Types:**\\n"
+            response += "• PowerShell scripts for Windows automation\\n"
+            response += "• Bash scripts for Linux/Unix systems\\n"
+            response += "• Python scripts for cross-platform tasks\\n"
+            response += "• Batch files for Windows command line\\n\\n"
+            response += "**Common Tasks:**\\n"
+            response += "• Remote connections (WinRM, SSH)\\n"
+            response += "• File and directory operations\\n"
+            response += "• System monitoring and health checks\\n"
+            response += "• Network connectivity testing\\n"
+            response += "• Service management\\n\\n"
+            response += "**To get specific help, try asking:**\\n"
+            response += '• "Write me a PowerShell script to connect via WinRM"\\n'
+            response += '• "Create a bash script to check disk space"\\n'
+            response += '• "Show me a Python script to ping multiple hosts"\\n'
+            response += '• "Give me a script to list files in a directory"'
+            
+            return self.create_success_response(intent, response, {"script_type": "general_help"})
+    
+    async def _provide_execution_guidance(self, message: str, intent: str, command_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Provide helpful guidance when target is missing instead of just erroring"""
+        response = "🎯 **Execution Guidance**\\n\\n"
+        
+        if command_info:
+            response += "I understand you want to: **{command_info.get('description', 'execute a command')}**\\n\\n"
+            response += "To execute this command, I need to know the target system. You can specify:\\n\\n"
+            response += "**Target Options:**\\n"
+            response += '• IP address: "Get directory of C: drive for 192.168.1.100"\\n'
+            response += '• Hostname: "List files on server01"\\n'
+            response += '• Server name: "Check disk space on web-server"\\n\\n'
+            response += "**Or, if you want help creating a script instead:**\\n"
+            response += '• "Write me a script to ' + command_info.get('description', 'do this task') + '"\\n'
+            response += '• "Show me how to ' + command_info.get('description', 'accomplish this') + '"\\n\\n'
+        else:
+            response += "I can help you with command execution or script creation.\\n\\n"
+            response += "**For immediate execution, specify a target:**\\n"
+            response += '• \"Get directory of C: drive for 192.168.1.100\"\n'
+            response += '• "List processes on server01"\\n\\n'
+            response += "**For script help:**\\n"
+            response += '• \"Write me a PowerShell script to list directories\"\n'
+            response += '• "Create a bash script to check system status"\\n\\n'
+        
+        response += "**Available Command Types:**\\n"
+        response += "• Directory listings (dir, ls)\\n"
+        response += "• System information (processes, services)\\n"
+        response += "• Network diagnostics (ping, connectivity)\\n"
+        response += "• File operations (copy, move, delete)\\n"
+        response += f"• Custom PowerShell/Bash commands"
+        
+        return self.create_success_response(intent, response, {"guidance_type": "execution_help"})
     
     def _extract_command_info(self, message: str, intent_action: str) -> Dict[str, Any]:
         """Extract command information from message"""

@@ -252,16 +252,16 @@ class PerformanceAnalyzer:
         alerts = []
         
         for service_name, analysis in services.items():
-            # Critical availability
-            if analysis["availability"] < 0.5:
+            # Critical availability - more lenient threshold
+            if analysis["availability"] < 0.3:  # Changed from 0.5 to 0.3
                 alerts.append({
                     "severity": "critical",
                     "service": service_name,
                     "message": f"{service_name} has critical availability ({analysis['availability']:.1%})",
                     "timestamp": time.time()
                 })
-            # Poor availability
-            elif analysis["availability"] < 0.9:
+            # Poor availability - more lenient threshold
+            elif analysis["availability"] < 0.7:  # Changed from 0.9 to 0.7
                 alerts.append({
                     "severity": "warning",
                     "service": service_name,

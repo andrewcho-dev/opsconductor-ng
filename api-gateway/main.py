@@ -168,8 +168,8 @@ class APIGateway:
         try:
             from ai_monitoring import AIMonitoringDashboard
             self.ai_dashboard = AIMonitoringDashboard(redis_client=self.redis)
-            # Start monitoring in background
-            asyncio.create_task(self.ai_dashboard.start_monitoring(interval=30))
+            # Start monitoring in background with longer interval
+            asyncio.create_task(self.ai_dashboard.start_monitoring(interval=60))
             logger.info("AI Monitoring Dashboard initialized")
         except Exception as e:
             logger.warning(f"AI Monitoring Dashboard not available: {e}")

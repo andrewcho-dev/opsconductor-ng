@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
+import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check } from 'lucide-react';
 
 interface ChatMessage {
   id: string;
@@ -13,7 +13,7 @@ interface ChatMessage {
 }
 
 interface ChatResponse {
-  success: boolean;
+  success?: boolean;
   response: string;
   intent?: string;
   confidence?: number;
@@ -33,7 +33,17 @@ interface ChatResponse {
 
 const CHAT_HISTORY_KEY = 'opsconductor_ai_chat_history';
 
-const AIChat: React.FC = () => {
+interface AIChatProps {
+  onClearChat?: () => void;
+  onFirstMessage?: (message: string) => void;
+  activeChatId?: string | null;
+}
+
+export interface AIChatRef {
+  clearChat: () => void;
+}
+
+const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstMessage, activeChatId }, ref) => {
   // AI Chat state
   const loadChatHistory = (): ChatMessage[] => {
     try {
@@ -65,13 +75,7 @@ const AIChat: React.FC = () => {
   const [chatError, setChatError] = useState<string | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages]);
+  // Remove auto-scroll entirely - let users scroll manually
 
   useEffect(() => {
     saveChatHistory(chatMessages);
@@ -88,7 +92,14 @@ const AIChat: React.FC = () => {
       timestamp: new Date()
     };
 
-    setChatMessages(prev => [...prev, userMessage]);
+    setChatMessages(prev => {
+      const newMessages = [...prev, userMessage];
+      // Call onFirstMessage if this is the first user message
+      if (prev.length === 0 && onFirstMessage) {
+        onFirstMessage(userMessage.content);
+      }
+      return newMessages;
+    });
     setChatInput('');
     setIsChatLoading(true);
     setChatError(null);
@@ -109,9 +120,9 @@ const AIChat: React.FC = () => {
 
       const data: ChatResponse = await response.json();
       
-      // Check if the AI request was successful
-      if (!data.success) {
-        throw new Error(data.error || 'AI request failed');
+      // Check if there's an error in the response
+      if (data.error) {
+        throw new Error(data.error);
       }
       
       // Create AI message with routing info if available
@@ -167,7 +178,12 @@ const AIChat: React.FC = () => {
   const clearChatHistory = () => {
     setChatMessages([]);
     localStorage.removeItem(CHAT_HISTORY_KEY);
+    onClearChat?.();
   };
+
+  useImperativeHandle(ref, () => ({
+    clearChat: clearChatHistory
+  }));
 
   const getMessageIcon = (message: ChatMessage) => {
     switch (message.type) {
@@ -191,116 +207,352 @@ const AIChat: React.FC = () => {
     return 'var(--neutral-600)';
   };
 
-  return (
-    <div className="card">
-      <div className="card-header">
-        <div className="card-title-row">
-          <h3 className="card-title">
-            <Bot size={20} />
-            AI Assistant
-          </h3>
-          <div className="card-actions">
+  const [copiedBlocks, setCopiedBlocks] = useState<Set<string>>(new Set());
+
+  const copyToClipboard = async (text: string, blockId: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedBlocks(prev => new Set(prev).add(blockId));
+      setTimeout(() => {
+        setCopiedBlocks(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(blockId);
+          return newSet;
+        });
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  };
+
+  const formatMessageContent = (content: string, messageId: string) => {
+    // Detect code blocks with triple backticks
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    let blockIndex = 0;
+
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      // Add text before code block
+      if (match.index > lastIndex) {
+        parts.push(
+          <span key={`text-${blockIndex}`}>
+            {content.slice(lastIndex, match.index)}
+          </span>
+        );
+      }
+
+      const language = match[1] || 'text';
+      const code = match[2].trim();
+      const blockId = `${messageId}-${blockIndex}`;
+      const isCopied = copiedBlocks.has(blockId);
+
+      parts.push(
+        <div key={`code-${blockIndex}`} className="code-block">
+          <div className="code-header">
+            <span>{language}</span>
             <button
-              onClick={clearChatHistory}
-              className="btn btn-sm"
-              title="Clear chat history"
+              className={`copy-button ${isCopied ? 'copied' : ''}`}
+              onClick={() => copyToClipboard(code, blockId)}
             >
-              <Trash2 size={14} />
+              {isCopied ? <Check size={12} /> : <Copy size={12} />}
+              {isCopied ? 'Copied!' : 'Copy'}
             </button>
           </div>
+          <div className="code-content">{code}</div>
         </div>
-        <p className="card-subtitle">
-          Ask me to run automation tasks, check system status, or get help with OpsConductor
-        </p>
+      );
+
+      lastIndex = match.index + match[0].length;
+      blockIndex++;
+    }
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(
+        <span key={`text-${blockIndex}`}>
+          {content.slice(lastIndex)}
+        </span>
+      );
+    }
+
+    return parts.length > 1 ? <div>{parts}</div> : content;
+  };
+
+  return (
+    <div className="chatgpt-container">
+      <style>
+        {`
+          .chatgpt-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            background: var(--neutral-50);
+          }
+          .chat-messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+          }
+          .chat-content-wrapper {
+            display: grid;
+            grid-template-columns: 2fr 8fr 2fr;
+            gap: 16px;
+            width: 100%;
+          }
+          .chat-messages-column {
+            grid-column: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+          }
+          .chat-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            position: relative;
+            width: fit-content;
+            font-size: 16px;
+          }
+          .chat-bubble-user {
+            background: var(--neutral-200);
+            color: var(--neutral-800);
+            align-self: flex-end;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+          }
+          .chat-bubble-ai {
+            background: transparent;
+            color: var(--neutral-800);
+            align-self: stretch;
+            border: none;
+            border-radius: 0;
+            width: 100%;
+            padding: 16px 0;
+            line-height: 1.6;
+          }
+          .chat-bubble-system {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange-dark);
+            align-self: center;
+            border-radius: 12px;
+            font-size: 12px;
+            max-width: 90%;
+            text-align: center;
+          }
+
+          .chat-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: var(--neutral-500);
+            text-align: center;
+          }
+          .chat-suggestions {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+          }
+          .chat-input-area {
+            padding: 32px 0;
+            background: white;
+            border-top: 2px solid var(--neutral-300);
+            display: grid;
+            grid-template-columns: 2fr 8fr 2fr;
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+          }
+          .chat-input-wrapper {
+            grid-column: 2;
+            position: relative;
+          }
+          .chat-input-field {
+            width: 100%;
+            min-height: 56px;
+            max-height: 140px;
+            padding: 16px 60px 16px 20px;
+            border: 2px solid var(--neutral-300);
+            border-radius: 28px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background: white;
+            resize: none;
+            font-family: inherit;
+            line-height: 1.5;
+          }
+          .chat-input-field:focus {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px var(--primary-blue-light), 0 2px 8px rgba(0, 0, 0, 0.1);
+          }
+          .chat-input-field:disabled {
+            background: var(--neutral-100);
+            color: var(--neutral-500);
+          }
+          .chat-send-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 18px;
+            background: var(--primary-blue);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+          .chat-send-btn:hover:not(:disabled) {
+            background: var(--primary-blue-dark);
+          }
+          .chat-send-btn:disabled {
+            background: var(--neutral-300);
+            cursor: not-allowed;
+          }
+          .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            align-self: stretch;
+            width: 100%;
+            color: var(--neutral-600);
+            font-size: 16px;
+          }
+          .code-block {
+            background: var(--neutral-100);
+            border: 1px solid var(--neutral-200);
+            border-radius: 8px;
+            margin: 12px 0;
+            position: relative;
+            overflow: hidden;
+          }
+          .code-header {
+            background: var(--neutral-200);
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--neutral-600);
+            border-bottom: 1px solid var(--neutral-300);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          .code-content {
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            overflow-x: auto;
+            white-space: pre;
+            color: var(--neutral-800);
+          }
+          .copy-button {
+            background: var(--neutral-300);
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            color: var(--neutral-700);
+            transition: background-color 0.15s ease;
+          }
+          .copy-button:hover {
+            background: var(--neutral-400);
+          }
+          .copy-button.copied {
+            background: var(--success-green);
+            color: white;
+          }
+        `}
+      </style>
+
+      {/* Messages Area */}
+      <div className="chat-messages-area">
+        <div className="chat-content-wrapper">
+          <div className="chat-messages-column">
+            {chatMessages.length === 0 ? (
+              <div className="chat-empty-state">
+                <Bot size={48} style={{ color: 'var(--neutral-400)' }} />
+                <p>Hi! I'm your AI assistant. Ask me to run automation tasks or help with OpsConductor.</p>
+                <div className="chat-suggestions">
+                  <button 
+                    onClick={() => setChatInput('Show me the system status')}
+                    className="btn btn-sm"
+                  >
+                    System Status
+                  </button>
+                  <button 
+                    onClick={() => setChatInput('List all targets')}
+                    className="btn btn-sm"
+                  >
+                    List Targets
+                  </button>
+                  <button 
+                    onClick={() => setChatInput('Show recent job runs')}
+                    className="btn btn-sm"
+                  >
+                    Recent Jobs
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Reverse the order so newest messages appear on top
+              [...chatMessages].reverse().map((message) => (
+                <div key={message.id} className={`chat-bubble chat-bubble-${message.type}`}>
+                  {message.type === 'ai' ? formatMessageContent(message.content, message.id) : message.content}
+                </div>
+              ))
+            )}
+            
+            {/* Loading indicator */}
+            {isChatLoading && (
+              <div>
+                <div className="loading-indicator">
+                  <Loader size={16} className="loading-spinner" />
+                  <span>Thinking...</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="chat-container">
-        <div className="chat-messages">
-          {chatMessages.length === 0 ? (
-            <div className="chat-empty-state">
-              <Bot size={48} style={{ color: 'var(--neutral-400)' }} />
-              <p>Hi! I'm your AI assistant. Ask me to run automation tasks or help with OpsConductor.</p>
-              <div className="chat-suggestions">
-                <button 
-                  onClick={() => setChatInput('Show me the system status')}
-                  className="btn btn-sm"
-                >
-                  System Status
-                </button>
-                <button 
-                  onClick={() => setChatInput('List all targets')}
-                  className="btn btn-sm"
-                >
-                  List Targets
-                </button>
-                <button 
-                  onClick={() => setChatInput('Show recent job runs')}
-                  className="btn btn-sm"
-                >
-                  Recent Jobs
-                </button>
-              </div>
-            </div>
-          ) : (
-            chatMessages.map((message) => (
-              <div key={message.id} className={`chat-message chat-message-${message.type}`}>
-                <div className="chat-message-header">
-                  <div className="chat-message-icon" style={{ color: getMessageStatusColor(message) }}>
-                    {getMessageIcon(message)}
-                  </div>
-                  <span className="chat-message-time">
-                    {message.timestamp.toLocaleTimeString()}
-                  </span>
-                  {message.confidence && (
-                    <span className="chat-confidence">
-                      {Math.round(message.confidence * 100)}% confident
-                    </span>
-                  )}
-                </div>
-                <div className="chat-message-content">
-                  {message.content}
-                </div>
-              </div>
-            ))
-          )}
-          {isChatLoading && (
-            <div className="chat-message chat-message-ai">
-              <div className="chat-message-header">
-                <div className="chat-message-icon">
-                  <Loader size={16} className="loading-spinner" />
-                </div>
-                <span className="chat-message-time">Now</span>
-              </div>
-              <div className="chat-message-content">
-                Thinking...
-              </div>
-            </div>
-          )}
-          <div ref={chatMessagesEndRef} />
-        </div>
-
-        <form onSubmit={handleChatSubmit} className="chat-input-form">
-          <div className="chat-input-container">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask me to run automation tasks..."
-              className="chat-input"
-              disabled={isChatLoading}
-            />
-            <button
-              type="submit"
-              disabled={!chatInput.trim() || isChatLoading}
-              className="chat-send-button"
-            >
-              {isChatLoading ? <Loader size={16} className="loading-spinner" /> : <Send size={16} />}
-            </button>
-          </div>
+      {/* Fixed Input Area */}
+      <div className="chat-input-area">
+        <form onSubmit={handleChatSubmit} className="chat-input-wrapper">
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            placeholder="Ask me to run automation tasks..."
+            className="chat-input-field"
+            disabled={isChatLoading}
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim() || isChatLoading}
+            className="chat-send-btn"
+          >
+            {isChatLoading ? <Loader size={16} className="loading-spinner" /> : <Send size={16} />}
+          </button>
         </form>
       </div>
     </div>
   );
-};
+});
 
 export default AIChat;

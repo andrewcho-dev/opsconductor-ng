@@ -63,9 +63,15 @@ RUN pip install --no-cache-dir --only-binary=all pandas>=2.1.0
 RUN pip install --no-cache-dir --only-binary=all scikit-learn>=1.3.0
 RUN pip install --no-cache-dir --only-binary=all scipy>=1.11.0
 
-# 6. Other dependencies
+# 6. NLP dependencies (compatible versions)
+RUN pip install --no-cache-dir "numpy>=1.26.0,<2.0.0"
+RUN pip install --no-cache-dir "spacy>=3.7.0,<3.8.0"
+RUN python -m spacy download en_core_web_sm
+
+# 7. Other dependencies
 RUN pip install --no-cache-dir regex==2023.10.3
-RUN pip install --no-cache-dir chromadb==0.5.0
+RUN pip install --no-cache-dir "chromadb>=1.1.0"
+RUN pip install --no-cache-dir "ollama>=0.2.0"
 RUN pip install --no-cache-dir setuptools wheel
 RUN pip install --no-cache-dir sentence-transformers>=3.0.0
 RUN pip install --no-cache-dir transformers>=4.30.0
@@ -76,39 +82,19 @@ COPY shared/ ./shared/
 # Copy application code
 COPY . .
 
-# Create startup script that handles GPU detection
+# Create startup script
 RUN echo '#!/bin/bash\n\
 echo "Starting OpsConductor AI Service..."\n\
+echo "Using external Ollama service at $OLLAMA_HOST"\n\
 \n\
-# Check for GPU availability\n\
-if nvidia-smi > /dev/null 2>&1; then\n\
-    echo "GPU detected! Starting Ollama with GPU support..."\n\
-    export OLLAMA_GPU=1\n\
-else\n\
-    echo "No GPU detected. Starting Ollama in CPU mode..."\n\
-    export OLLAMA_GPU=0\n\
-fi\n\
+# Wait for external Ollama service to be ready\n\
+echo "Waiting for external Ollama service to be ready..."\n\
+until curl -f $OLLAMA_HOST/api/tags > /dev/null 2>&1; do\n\
+    echo "Waiting for Ollama service..."\n\
+    sleep 5\n\
+done\n\
 \n\
-# Start Ollama in background\n\
-echo "Starting Ollama server..."\n\
-ollama serve &\n\
-OLLAMA_PID=$!\n\
-\n\
-# Wait for Ollama to be ready\n\
-echo "Waiting for Ollama to be ready..."\n\
-sleep 15\n\
-\n\
-# Pull required models (start with smaller models for testing)\n\
-echo "Pulling CodeLlama 7B model..."\n\
-ollama pull codellama:7b &\n\
-\n\
-echo "Pulling Llama2 7B model..."\n\
-ollama pull llama2:7b &\n\
-\n\
-# Wait for models to download\n\
-wait\n\
-\n\
-echo "Models downloaded successfully!"\n\
+echo "Ollama service is ready!"\n\
 echo "Starting FastAPI application..."\n\
 \n\
 # Start the application\n\
@@ -118,7 +104,6 @@ RUN chmod +x /app/start.sh
 
 # Expose ports
 EXPOSE 3005
-EXPOSE 11434
 
 # Run the startup script
 CMD ["/app/start.sh"]

@@ -61,11 +61,14 @@ automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", 
 async def startup_event():
     """Initialize AI engine on startup"""
     logger.info("Initializing AI engine...")
-    success = await ai_engine.initialize()
-    if success:
-        logger.info("AI engine initialized successfully")
-    else:
-        logger.error("Failed to initialize AI engine")
+    try:
+        success = await ai_engine.initialize()
+        if success:
+            logger.info("AI engine initialized successfully")
+        else:
+            logger.error("Failed to initialize AI engine")
+    except Exception as e:
+        logger.error(f"Exception during AI engine initialization: {e}")
 
 class JobRequest(BaseModel):
     description: str
