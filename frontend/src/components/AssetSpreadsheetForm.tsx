@@ -118,30 +118,22 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // COMPREHENSIVE FIELD DEFINITIONS - MATCHING OUR ACTUAL DATABASE SCHEMA
+  // COMPREHENSIVE FIELD DEFINITIONS - RESTORED TO YOUR PERFECT ORGANIZATION
   const fieldDefinitions: FieldDefinition[] = [
-    // ========== BASIC INFORMATION ==========
+    // ========== BASIC ASSET INFORMATION ==========
     { 
       field: 'name', 
       label: 'Asset Name', 
       type: 'text', 
       required: true,
-      section: 'Basic Information',
+      section: 'Basic Asset Information',
       placeholder: 'Enter a descriptive name for this asset'
-    },
-    { 
-      field: 'hostname', 
-      label: 'Hostname', 
-      type: 'text', 
-      required: true,
-      section: 'Basic Information',
-      placeholder: 'server.example.com'
     },
     { 
       field: 'ip_address', 
       label: 'IP Address', 
       type: 'text', 
-      section: 'Basic Information',
+      section: 'Basic Asset Information',
       placeholder: '192.168.1.100',
       validation: (value) => {
         if (!value) return null;
@@ -150,64 +142,33 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       }
     },
     { 
+      field: 'hostname', 
+      label: 'Hostname', 
+      type: 'text', 
+      required: true,
+      section: 'Basic Asset Information',
+      placeholder: 'server.example.com'
+    },
+    { 
       field: 'description', 
       label: 'Description', 
       type: 'textarea', 
-      section: 'Basic Information',
+      section: 'Basic Asset Information',
       placeholder: 'Brief description of this asset...'
     },
-    { 
-      field: 'tags', 
-      label: 'Tags', 
-      type: 'tags', 
-      section: 'Basic Information',
-      placeholder: 'production, web-server, critical (comma-separated)'
-    },
-    
-    // ========== DEVICE/HARDWARE INFORMATION ==========
     { 
       field: 'device_type', 
       label: 'Device Type', 
       type: 'dropdown', 
       options: ['server', 'workstation', 'router', 'switch', 'firewall', 'database', 'web-server', 'application-server', 'storage', 'other'], 
-      section: 'Device/Hardware Information'
+      section: 'Basic Asset Information'
     },
     { 
-      field: 'hardware_make', 
-      label: 'Hardware Make', 
-      type: 'text', 
-      section: 'Device/Hardware Information',
-      placeholder: 'Dell, HP, Cisco, VMware, etc.'
-    },
-    { 
-      field: 'hardware_model', 
-      label: 'Hardware Model', 
-      type: 'text', 
-      section: 'Device/Hardware Information',
-      placeholder: 'PowerEdge R740, ProLiant DL380, etc.'
-    },
-    { 
-      field: 'serial_number', 
-      label: 'Serial Number', 
-      type: 'text', 
-      section: 'Device/Hardware Information',
-      placeholder: 'ABC123DEF456'
-    },
-    
-    // ========== SYSTEM INFORMATION ==========
-    { 
-      field: 'os_type', 
-      label: 'Operating System', 
-      type: 'dropdown', 
-      options: ['linux', 'windows', 'macos', 'unix', 'freebsd', 'solaris', 'aix', 'other'], 
-      section: 'System Information'
-    },
-    { 
-      field: 'os_version', 
-      label: 'OS Version', 
-      type: 'text', 
-      section: 'System Information',
-      placeholder: 'Ubuntu 22.04, Windows Server 2019, etc.'
+      field: 'tags', 
+      label: 'Tags', 
+      type: 'tags', 
+      section: 'Basic Asset Information',
+      placeholder: 'production, web-server, critical (comma-separated)'
     },
     
     // ========== LOCATION INFORMATION ==========
@@ -247,13 +208,6 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       placeholder: 'Rack 15, U24-U26'
     },
     { 
-      field: 'rack_location', 
-      label: 'Rack Location', 
-      type: 'text', 
-      section: 'Location Information',
-      placeholder: 'Rack 42, Row 3, Position 15U'
-    },
-    { 
       field: 'gps_coordinates', 
       label: 'GPS Coordinates', 
       type: 'text', 
@@ -264,6 +218,141 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         const gpsRegex = /^-?\d+\.?\d*,\s*-?\d+\.?\d*$/;
         return !gpsRegex.test(value) ? 'Please enter coordinates as: latitude, longitude' : null;
       }
+    },
+    
+    // ========== HARDWARE INFORMATION ==========
+    { 
+      field: 'hardware_make', 
+      label: 'Hardware Make', 
+      type: 'text', 
+      section: 'Hardware Information',
+      placeholder: 'Dell, HP, Cisco, VMware, etc.'
+    },
+    { 
+      field: 'hardware_model', 
+      label: 'Hardware Model', 
+      type: 'text', 
+      section: 'Hardware Information',
+      placeholder: 'PowerEdge R740, ProLiant DL380, etc.'
+    },
+    { 
+      field: 'serial_number', 
+      label: 'Serial Number', 
+      type: 'text', 
+      section: 'Hardware Information',
+      placeholder: 'ABC123DEF456'
+    },
+    
+    // ========== SYSTEM INFORMATION ==========
+    { 
+      field: 'os_type', 
+      label: 'OS Type', 
+      type: 'dropdown', 
+      options: ['linux', 'windows', 'macos', 'unix', 'freebsd', 'solaris', 'aix', 'other'], 
+      section: 'System Information'
+    },
+    { 
+      field: 'os_version', 
+      label: 'OS Version', 
+      type: 'text', 
+      section: 'System Information',
+      placeholder: 'Ubuntu 22.04, Windows Server 2019, etc.'
+    },
+    
+    // ========== STATUS & MANAGEMENT ==========
+    { 
+      field: 'status', 
+      label: 'Status', 
+      type: 'dropdown', 
+      options: ['active', 'inactive', 'maintenance', 'decommissioned'], 
+      section: 'Status & Management'
+    },
+    { 
+      field: 'environment', 
+      label: 'Environment', 
+      type: 'dropdown', 
+      options: ['production', 'staging', 'development', 'testing', 'qa'], 
+      section: 'Status & Management'
+    },
+    { 
+      field: 'criticality', 
+      label: 'Criticality', 
+      type: 'dropdown', 
+      options: ['low', 'medium', 'high', 'critical'], 
+      section: 'Status & Management'
+    },
+    { 
+      field: 'owner', 
+      label: 'Owner', 
+      type: 'text', 
+      section: 'Status & Management',
+      placeholder: 'IT Operations Team, John Doe, etc.'
+    },
+    { 
+      field: 'support_contact', 
+      label: 'Support Contact', 
+      type: 'text', 
+      section: 'Status & Management',
+      placeholder: 'support@company.com, +1-555-123-4567'
+    },
+    { 
+      field: 'contract_number', 
+      label: 'Contract Number', 
+      type: 'text', 
+      section: 'Status & Management',
+      placeholder: 'SUPP-2024-001'
+    },
+    
+    // ========== PRIMARY SERVICE & CREDENTIALS ==========
+    { 
+      field: 'service_type', 
+      label: 'Service Type', 
+      type: 'dropdown', 
+      options: ['ssh', 'rdp', 'winrm', 'http', 'https', 'database', 'telnet', 'ftp', 'sftp'], 
+      required: true, 
+      section: 'Primary Service & Credentials'
+    },
+    { 
+      field: 'port', 
+      label: 'Port', 
+      type: 'number', 
+      section: 'Primary Service & Credentials',
+      placeholder: '22, 3389, 5985, 80, 443, etc.'
+    },
+    { 
+      field: 'credential_type', 
+      label: 'Credential Type', 
+      type: 'dropdown', 
+      options: ['username_password', 'ssh_key', 'certificate', 'api_key', 'bearer_token'], 
+      section: 'Primary Service & Credentials'
+    },
+    { 
+      field: 'username', 
+      label: 'Username', 
+      type: 'text', 
+      section: 'Primary Service & Credentials',
+      placeholder: 'admin, root, service_account, etc.'
+    },
+    { 
+      field: 'password', 
+      label: 'Password', 
+      type: 'password', 
+      section: 'Primary Service & Credentials',
+      placeholder: 'Enter password (will be encrypted)'
+    },
+    { 
+      field: 'private_key', 
+      label: 'SSH Key', 
+      type: 'textarea', 
+      section: 'Primary Service & Credentials',
+      placeholder: 'Paste SSH private key here (will be encrypted)'
+    },
+    { 
+      field: 'certificate', 
+      label: 'Certificate', 
+      type: 'textarea', 
+      section: 'Primary Service & Credentials',
+      placeholder: 'Paste certificate here (will be encrypted)'
     },
     
     // ========== STATUS & MANAGEMENT ==========
@@ -432,6 +521,24 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       label: 'Database Name', 
       type: 'text', 
       section: 'Database-specific Fields',
+      placeholder: 'production_db',
+      conditional: (formData) => formData.service_type === 'database'
+    },
+    
+    // ========== DATABASE INFORMATION ==========
+    { 
+      field: 'database_type', 
+      label: 'Database Type', 
+      type: 'dropdown', 
+      options: ['mysql', 'postgresql', 'mssql', 'oracle', 'mongodb', 'redis'], 
+      section: 'Database Information',
+      conditional: (formData) => formData.service_type === 'database'
+    },
+    { 
+      field: 'database_name', 
+      label: 'Database Name', 
+      type: 'text', 
+      section: 'Database Information',
       placeholder: 'production_db',
       conditional: (formData) => formData.service_type === 'database'
     },
@@ -791,18 +898,17 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     }
   };
 
-  // Organize sections into two columns - MATCHING OUR COMPREHENSIVE SECTIONS
+  // Organize sections into two columns - RESTORED TO YOUR PERFECT ORGANIZATION
   const leftColumnSections = [
-    'Basic Information', 
-    'Device/Hardware Information',
-    'System Information', 
-    'Location Information',
-    'Status & Management'
+    'Basic Asset Information',
+    'Location Information', 
+    'Hardware Information',
+    'System Information'
   ];
   const rightColumnSections = [
-    'Primary Communication Service',
-    'Primary Service Credentials', 
-    'Database-specific Fields',
+    'Status & Management',
+    'Primary Service & Credentials',
+    'Database Information',
     'Secondary Communication',
     'Additional Information'
   ];
