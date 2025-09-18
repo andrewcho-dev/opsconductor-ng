@@ -130,11 +130,9 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
         <table className="asset-table">
           <thead>
             <tr>
-              <th>Name</th>
               <th>IP Address</th>
               <th>Hostname</th>
               <th>Device Type</th>
-              <th>Service</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -146,9 +144,6 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
                 onClick={() => handleAssetClick(asset)}
                 onDoubleClick={() => handleDoubleClick(asset)}
               >
-                <td className="name-cell">
-                  {asset.name}
-                </td>
                 <td className="ip-cell">
                   {asset.ip_address || '-'}
                 </td>
@@ -157,9 +152,6 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
                 </td>
                 <td className="device-type-cell">
                   {asset.device_type || getDeviceType(asset)}
-                </td>
-                <td className="service-cell">
-                  {asset.service_type}:{asset.port}
                 </td>
                 <td className="actions-cell">
                   <div className="action-buttons">
