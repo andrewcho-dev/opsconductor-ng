@@ -8,7 +8,7 @@ import Users from './pages/Users';
 import AIChatPage from './pages/AIChat';
 
 
-import Targets from './pages/Targets';
+import Assets from './pages/Assets';
 
 
 import Jobs from './pages/Jobs';
@@ -56,9 +56,9 @@ const App: React.FC = () => {
                     <Route path="/user-management/:action" element={<Users />} />
                     <Route path="/user-management/:action/:id" element={<Users />} />
 
-                    <Route path="/targets-management" element={<Targets />} />
-                    <Route path="/targets-management/:action" element={<Targets />} />
-                    <Route path="/targets-management/:action/:id" element={<Targets />} />
+                    <Route path="/assets" element={<Assets />} />
+                    <Route path="/assets/:action" element={<Assets />} />
+                    <Route path="/assets/:action/:id" element={<Assets />} />
 
 
                     <Route path="/job-management" element={<Jobs />} />
