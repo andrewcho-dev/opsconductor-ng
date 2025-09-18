@@ -134,7 +134,6 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
               <th>IP Address</th>
               <th>Hostname</th>
               <th>Device Type</th>
-              <th>Location</th>
               <th>Service</th>
               <th>Actions</th>
             </tr>
@@ -158,9 +157,6 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
                 </td>
                 <td className="device-type-cell">
                   {asset.device_type || getDeviceType(asset)}
-                </td>
-                <td className="location-cell">
-                  {asset.data_center || asset.building || asset.room || '-'}
                 </td>
                 <td className="service-cell">
                   {asset.service_type}:{asset.port}
