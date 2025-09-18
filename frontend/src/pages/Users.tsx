@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Trash2, Check, X, Edit3, Shield } from 'lucide-react';
+import { Plus, Trash2, Check, X, Edit3, Shield, Users as UsersIcon, Target, Settings, Play, MessageSquare } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { userApi, rolesApi } from '../services/api';
 import { User, UserCreate } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -639,10 +640,10 @@ const Users: React.FC = () => {
         <div className="header-left">
           <h1>User Management</h1>
         </div>
-        <div className="header-actions">
+        <div className="header-stats">
           {hasPermission(currentUser, PERMISSIONS.USERS_CREATE) && (
             <button 
-              className="btn-icon btn-success"
+              className="btn-icon"
               onClick={startAddingNew}
               title="Add new user"
               disabled={addingNew || !!editingUser}
@@ -650,6 +651,26 @@ const Users: React.FC = () => {
               <Plus size={16} />
             </button>
           )}
+          <Link to="/users" className="stat-pill">
+            <UsersIcon size={14} />
+            <span>{users.length} Users</span>
+          </Link>
+          <Link to="/assets" className="stat-pill">
+            <Target size={14} />
+            <span>Assets</span>
+          </Link>
+          <Link to="/jobs" className="stat-pill">
+            <Settings size={14} />
+            <span>Jobs</span>
+          </Link>
+          <Link to="/monitoring" className="stat-pill">
+            <Play size={14} />
+            <span>Runs</span>
+          </Link>
+          <Link to="/ai-chat" className="stat-pill">
+            <MessageSquare size={14} />
+            <span>AI Assistant</span>
+          </Link>
         </div>
       </div>
 

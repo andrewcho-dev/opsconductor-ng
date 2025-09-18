@@ -110,34 +110,7 @@ export interface CredentialDecrypted extends Credential {
   passphrase?: string;
 }
 
-// Target Types
-export interface Target {
-  id: number;
-  name: string;
-  hostname: string;
-  ip_address?: string;
-  protocol: string;
-  port: number;
-  os_type: string;
-  credential_ref: number;
-  tags: string[];
-  metadata: Record<string, any>;
-  depends_on: number[];
-  created_at: string;
-}
 
-export interface TargetCreate {
-  name: string;
-  hostname: string;
-  ip_address?: string;
-  protocol: string;
-  port: number;
-  os_type: string;
-  credential_ref: number;
-  tags?: string[];
-  metadata?: Record<string, any>;
-  depends_on?: number[];
-}
 
 // Job Types
 export interface Job {
@@ -212,40 +185,7 @@ export interface JobRunStep {
   output_data?: Record<string, any>;
 }
 
-export interface WinRMTestResult {
-  test: {
-    status: 'success' | 'error';
-    details: {
-      message?: string;
-      whoami?: string;
-      powershellVersion?: string;
-      hostname?: string;
-      port?: number;
-      transport?: string;
-    };
-  };
-  note?: string;
-}
 
-export interface SSHTestResult {
-  test: {
-    status: 'success' | 'error';
-    details: {
-      message?: string;
-      whoami?: string;
-      hostname?: string;
-      port?: number;
-      os_info?: {
-        name?: string;
-        version?: string;
-        kernel?: string;
-        architecture?: string;
-        uptime?: string;
-      };
-    };
-  };
-  note?: string;
-}
 
 // List Response Types
 export interface UserListResponse {
@@ -264,10 +204,7 @@ export interface CredentialListResponse {
   total: number;
 }
 
-export interface TargetListResponse {
-  targets: Target[];
-  total: number;
-}
+
 
 export interface JobListResponse {
   jobs: Job[];

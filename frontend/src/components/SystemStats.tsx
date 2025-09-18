@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, Target, Settings, Play } from 'lucide-react';
-import { userApi, targetApi, jobApi, jobRunApi } from '../services/api';
+import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
 
 interface SystemStats {
   users: number;
@@ -22,18 +22,25 @@ const SystemStats: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [usersResponse, targetsResponse, jobsResponse, runsResponse] = await Promise.all([
+        const [usersResponse, assetsResponse, jobsResponse, runsResponse] = await Promise.all([
           userApi.list(),
-          targetApi.list(),
+          assetApi.list(),
           jobApi.list(),
           jobRunApi.list(0, 10) // Get recent 10 runs
         ]);
 
+        const getTotal = (response: any) => {
+          if (response?.meta?.total_items !== undefined) return response.meta.total_items;
+          if (response?.data?.total !== undefined) return response.data.total;
+          if (response?.total !== undefined) return response.total;
+          return 0;
+        };
+
         setStats({
-          users: usersResponse.total || usersResponse.length || 0,
-          targets: targetsResponse.total || targetsResponse.length || 0,
-          jobs: jobsResponse.total || jobsResponse.length || 0,
-          recentRuns: runsResponse.total || runsResponse.length || 0,
+          users: getTotal(usersResponse),
+          targets: getTotal(assetsResponse),
+          jobs: getTotal(jobsResponse),
+          recentRuns: getTotal(runsResponse),
         });
       } catch (error) {
         console.error('Failed to fetch dashboard stats:', error);
@@ -61,10 +68,10 @@ const SystemStats: React.FC = () => {
       color: 'var(--primary-blue)'
     },
     {
-      title: 'Targets',
+      title: 'Assets',
       value: stats.targets,
       icon: Target,
-      link: '/targets-management',
+      link: '/assets',
       color: 'var(--success-green)'
     },
     {

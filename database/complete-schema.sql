@@ -69,52 +69,31 @@ CREATE TABLE IF NOT EXISTS identity.user_preferences (
 );
 
 -- ============================================================================
--- ASSETS SERVICE SCHEMA
+-- ASSETS SERVICE SCHEMA - CONSOLIDATED
 -- ============================================================================
 
--- Legacy targets table (for backward compatibility)
-CREATE TABLE IF NOT EXISTS assets.targets (
+-- Consolidated assets table containing all target/asset information
+CREATE TABLE IF NOT EXISTS assets.assets (
+    -- Primary Key
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    host VARCHAR(255) NOT NULL,
-    port INTEGER,
-    target_type VARCHAR(50) NOT NULL, -- 'windows', 'linux', 'network', 'cloud'
-    connection_type VARCHAR(50) NOT NULL, -- 'ssh', 'winrm', 'http', 'snmp'
-    tags JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT true,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Enhanced targets (for new UI)
-CREATE TABLE IF NOT EXISTS assets.enhanced_targets (
-    id SERIAL PRIMARY KEY,
+    
+    -- Basic Asset Information
     name VARCHAR(255) NOT NULL,
     hostname VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45), -- IPv4 or IPv6
-    os_type VARCHAR(50) DEFAULT 'other', -- 'windows', 'linux', 'unix', 'macos', 'other'
-    os_version VARCHAR(100),
     description TEXT,
     tags JSONB DEFAULT '[]',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Target services (for enhanced targets)
-CREATE TABLE IF NOT EXISTS assets.target_services (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER REFERENCES assets.enhanced_targets(id) ON DELETE CASCADE,
+    
+    -- Operating System Information
+    os_type VARCHAR(50) DEFAULT 'other', -- 'windows', 'linux', 'unix', 'macos', 'other'
+    os_version VARCHAR(100),
+    
+    -- Primary Connection Service
     service_type VARCHAR(100) NOT NULL, -- 'ssh', 'rdp', 'winrm', 'http', 'https', etc.
     port INTEGER NOT NULL,
-    is_default BOOLEAN DEFAULT false,
     is_secure BOOLEAN DEFAULT false,
-    is_enabled BOOLEAN DEFAULT true,
-    notes TEXT,
     
-    -- Embedded credential fields
+    -- Primary Service Credentials (ONE credential type per service)
     credential_type VARCHAR(50), -- 'username_password', 'ssh_key', 'api_key', 'bearer_token', 'certificate'
     username VARCHAR(255),
     password_encrypted TEXT,
@@ -126,68 +105,20 @@ CREATE TABLE IF NOT EXISTS assets.target_services (
     passphrase_encrypted TEXT,
     domain VARCHAR(255), -- For Windows domain authentication
     
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Constraint: Exactly one default service per target
-DROP INDEX IF EXISTS idx_target_services_one_default;
-CREATE UNIQUE INDEX idx_target_services_one_default 
-ON assets.target_services (target_id) 
-WHERE is_default = true;
-
--- Target credentials table (for legacy compatibility)
-CREATE TABLE IF NOT EXISTS assets.target_credentials (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER NOT NULL REFERENCES assets.targets(id) ON DELETE CASCADE,
-    encrypted_credentials TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    -- Additional Services (each with their own single credential)
+    additional_services JSONB DEFAULT '[]', -- Array of service objects, each with ONE credential
     
-    -- Ensure one credential set per target
-    UNIQUE(target_id)
-);
-
--- Target groups table with materialized path for efficient hierarchy queries
-CREATE TABLE IF NOT EXISTS assets.target_groups (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    parent_group_id INTEGER REFERENCES assets.target_groups(id) ON DELETE CASCADE,
-    path VARCHAR(500) NOT NULL, -- Materialized path like '/1/2/4/'
-    level INTEGER CHECK (level >= 1 AND level <= 3) NOT NULL,
-    color VARCHAR(7), -- Hex color like '#FF5733'
-    icon VARCHAR(50), -- Icon name/class for UI
+    -- Status and Metadata
+    is_active BOOLEAN DEFAULT true,
+    connection_status VARCHAR(50), -- 'unknown', 'connected', 'failed', 'timeout'
+    last_tested_at TIMESTAMP WITH TIME ZONE,
+    notes TEXT,
+    
+    -- Audit Fields
+    created_by INTEGER, -- Reference to identity.users(id)
+    updated_by INTEGER, -- Reference to identity.users(id)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Constraints
-    CONSTRAINT unique_name_per_parent UNIQUE (name, parent_group_id),
-    CONSTRAINT valid_path_format CHECK (path ~ '^(/\d+)+/$')
-);
-
--- Target group memberships (many-to-many relationship)
-CREATE TABLE IF NOT EXISTS assets.target_group_memberships (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER REFERENCES assets.enhanced_targets(id) ON DELETE CASCADE,
-    group_id INTEGER REFERENCES assets.target_groups(id) ON DELETE CASCADE,
-    added_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    added_by INTEGER, -- Could reference identity.users(id) if needed
-    
-    -- Prevent duplicate memberships
-    UNIQUE(target_id, group_id)
-);
-
--- Service definitions table (for frontend metadata)
-CREATE TABLE IF NOT EXISTS assets.service_definitions (
-    id SERIAL PRIMARY KEY,
-    service_type VARCHAR(100) UNIQUE NOT NULL,
-    display_name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    default_port INTEGER NOT NULL,
-    is_secure_by_default BOOLEAN DEFAULT false,
-    description TEXT,
-    is_common BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ============================================================================
@@ -330,28 +261,15 @@ CREATE INDEX IF NOT EXISTS idx_users_active ON identity.users(is_active);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON identity.user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON identity.user_sessions(expires_at);
 
--- Assets service indexes
-CREATE INDEX IF NOT EXISTS idx_targets_host ON assets.targets(host);
-CREATE INDEX IF NOT EXISTS idx_targets_type ON assets.targets(target_type);
-CREATE INDEX IF NOT EXISTS idx_targets_active ON assets.targets(is_active);
-CREATE INDEX IF NOT EXISTS idx_enhanced_targets_ip ON assets.enhanced_targets(ip_address);
-CREATE INDEX IF NOT EXISTS idx_enhanced_targets_hostname ON assets.enhanced_targets(hostname);
-CREATE INDEX IF NOT EXISTS idx_enhanced_targets_os_type ON assets.enhanced_targets(os_type);
-CREATE INDEX IF NOT EXISTS idx_target_services_target_id ON assets.target_services(target_id);
-CREATE INDEX IF NOT EXISTS idx_target_services_service_type ON assets.target_services(service_type);
-CREATE INDEX IF NOT EXISTS idx_target_credentials_target_id ON assets.target_credentials(target_id);
-
--- Target groups indexes
-CREATE INDEX IF NOT EXISTS idx_target_groups_path ON assets.target_groups(path);
-CREATE INDEX IF NOT EXISTS idx_target_groups_parent ON assets.target_groups(parent_group_id);
-CREATE INDEX IF NOT EXISTS idx_target_groups_level ON assets.target_groups(level);
-CREATE INDEX IF NOT EXISTS idx_target_groups_name ON assets.target_groups(name);
-CREATE INDEX IF NOT EXISTS idx_target_group_memberships_target ON assets.target_group_memberships(target_id);
-CREATE INDEX IF NOT EXISTS idx_target_group_memberships_group ON assets.target_group_memberships(group_id);
-
--- Service definitions indexes
-CREATE INDEX IF NOT EXISTS idx_service_definitions_category ON assets.service_definitions(category);
-CREATE INDEX IF NOT EXISTS idx_service_definitions_common ON assets.service_definitions(is_common);
+-- Assets service indexes (consolidated)
+CREATE INDEX IF NOT EXISTS idx_assets_hostname ON assets.assets(hostname);
+CREATE INDEX IF NOT EXISTS idx_assets_ip_address ON assets.assets(ip_address);
+CREATE INDEX IF NOT EXISTS idx_assets_os_type ON assets.assets(os_type);
+CREATE INDEX IF NOT EXISTS idx_assets_service_type ON assets.assets(service_type);
+CREATE INDEX IF NOT EXISTS idx_assets_is_active ON assets.assets(is_active);
+CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets.assets(created_at);
+CREATE INDEX IF NOT EXISTS idx_assets_tags ON assets.assets USING GIN(tags);
+CREATE INDEX IF NOT EXISTS idx_assets_additional_services ON assets.assets USING GIN(additional_services);
 
 -- Automation service indexes
 CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON automation.jobs(is_enabled);
@@ -373,108 +291,21 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON communication.audit_logs
 -- FUNCTIONS AND TRIGGERS
 -- ============================================================================
 
--- Function to automatically update path when parent changes
-CREATE OR REPLACE FUNCTION assets.update_target_group_path()
+-- Function to automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
-DECLARE
-    parent_path VARCHAR(500) := '';
-    new_path VARCHAR(500);
 BEGIN
-    -- If this is a root group (no parent)
-    IF NEW.parent_group_id IS NULL THEN
-        NEW.path := '/' || NEW.id || '/';
-        NEW.level := 1;
-    ELSE
-        -- Get parent's path and level
-        SELECT path, level INTO parent_path, NEW.level 
-        FROM assets.target_groups 
-        WHERE id = NEW.parent_group_id;
-        
-        -- Increment level
-        NEW.level := NEW.level + 1;
-        
-        -- Build new path
-        NEW.path := parent_path || NEW.id || '/';
-        
-        -- Enforce 3-level limit
-        IF NEW.level > 3 THEN
-            RAISE EXCEPTION 'Target groups cannot exceed 3 levels deep';
-        END IF;
-    END IF;
-    
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to automatically maintain path and level
-DROP TRIGGER IF EXISTS trigger_update_target_group_path ON assets.target_groups;
-CREATE TRIGGER trigger_update_target_group_path
-    BEFORE INSERT OR UPDATE OF parent_group_id ON assets.target_groups
+-- Trigger to automatically update updated_at for assets
+DROP TRIGGER IF EXISTS trigger_assets_updated_at ON assets.assets;
+CREATE TRIGGER trigger_assets_updated_at
+    BEFORE UPDATE ON assets.assets
     FOR EACH ROW
-    EXECUTE FUNCTION assets.update_target_group_path();
-
--- Function to prevent circular references
-CREATE OR REPLACE FUNCTION assets.prevent_circular_group_reference()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Check if the new parent would create a circular reference
-    IF NEW.parent_group_id IS NOT NULL THEN
-        -- Check if the new parent is a descendant of this group
-        IF EXISTS (
-            SELECT 1 FROM assets.target_groups 
-            WHERE id = NEW.parent_group_id 
-            AND path LIKE (SELECT path || '%' FROM assets.target_groups WHERE id = NEW.id)
-        ) THEN
-            RAISE EXCEPTION 'Cannot create circular reference: group cannot be its own ancestor';
-        END IF;
-    END IF;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to prevent circular references
-DROP TRIGGER IF EXISTS trigger_prevent_circular_group_reference ON assets.target_groups;
-CREATE TRIGGER trigger_prevent_circular_group_reference
-    BEFORE UPDATE OF parent_group_id ON assets.target_groups
-    FOR EACH ROW
-    EXECUTE FUNCTION assets.prevent_circular_group_reference();
-
--- Function to update all descendant paths when a group is moved
-CREATE OR REPLACE FUNCTION assets.update_descendant_paths()
-RETURNS TRIGGER AS $$
-DECLARE
-    old_path VARCHAR(500);
-    new_path VARCHAR(500);
-    descendant RECORD;
-BEGIN
-    -- Only process if path actually changed
-    IF OLD.path != NEW.path THEN
-        old_path := OLD.path;
-        new_path := NEW.path;
-        
-        -- Update all descendants
-        FOR descendant IN 
-            SELECT id, path FROM assets.target_groups 
-            WHERE path LIKE old_path || '%' AND id != NEW.id
-        LOOP
-            UPDATE assets.target_groups 
-            SET path = new_path || substring(descendant.path from length(old_path) + 1),
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = descendant.id;
-        END LOOP;
-    END IF;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to update descendant paths
-DROP TRIGGER IF EXISTS trigger_update_descendant_paths ON assets.target_groups;
-CREATE TRIGGER trigger_update_descendant_paths
-    AFTER UPDATE OF path ON assets.target_groups
-    FOR EACH ROW
-    EXECUTE FUNCTION assets.update_descendant_paths();
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
 -- INITIAL DATA
@@ -533,65 +364,6 @@ SELECT 'system_alert', 'email', 'System Alert: {{alert_type}}', 'System alert: {
 FROM identity.users u WHERE u.username = 'admin'
 ON CONFLICT (name) DO NOTHING;
 
--- Create default target groups
-INSERT INTO assets.target_groups (name, description, parent_group_id) VALUES
-('Production', 'Production environment systems', NULL),
-('Development', 'Development environment systems', NULL),
-('Testing', 'Testing environment systems', NULL)
-ON CONFLICT (name, parent_group_id) DO NOTHING;
-
--- Insert service definitions for frontend metadata
-INSERT INTO assets.service_definitions (service_type, display_name, category, default_port, is_secure_by_default, description, is_common) VALUES
--- Remote Access
-('ssh', 'SSH', 'Remote Access', 22, true, 'Secure Shell remote access', true),
-('rdp', 'RDP', 'Remote Access', 3389, false, 'Remote Desktop Protocol', true),
-('vnc', 'VNC', 'Remote Access', 5900, false, 'Virtual Network Computing', true),
-('telnet', 'Telnet', 'Remote Access', 23, false, 'Telnet remote access (insecure)', false),
-
--- Windows Management
-('winrm', 'WinRM HTTP', 'Windows Management', 5985, false, 'Windows Remote Management over HTTP', true),
-('winrm_https', 'WinRM HTTPS', 'Windows Management', 5986, true, 'Windows Remote Management over HTTPS', true),
-('wmi', 'WMI', 'Windows Management', 135, false, 'Windows Management Instrumentation', true),
-('smb', 'SMB/CIFS', 'Windows Management', 445, false, 'Server Message Block file sharing', true),
-
--- Web Services
-('http', 'HTTP', 'Web Services', 80, false, 'Hypertext Transfer Protocol', true),
-('https', 'HTTPS', 'Web Services', 443, true, 'HTTP over SSL/TLS', true),
-('http_alt', 'HTTP (Alt)', 'Web Services', 8080, false, 'HTTP on alternative port', true),
-('https_alt', 'HTTPS (Alt)', 'Web Services', 8443, true, 'HTTPS on alternative port', true),
-
--- Database Services
-('mysql', 'MySQL', 'Database Services', 3306, false, 'MySQL database server', true),
-('postgresql', 'PostgreSQL', 'Database Services', 5432, false, 'PostgreSQL database server', true),
-('sql_server', 'SQL Server', 'Database Services', 1433, false, 'Microsoft SQL Server', true),
-('oracle', 'Oracle DB', 'Database Services', 1521, false, 'Oracle database server', true),
-('mongodb', 'MongoDB', 'Database Services', 27017, false, 'MongoDB document database', true),
-('redis', 'Redis', 'Database Services', 6379, false, 'Redis key-value store', true),
-
--- Email Services
-('smtp', 'SMTP', 'Email Services', 25, false, 'Simple Mail Transfer Protocol', true),
-('smtps', 'SMTPS', 'Email Services', 465, true, 'SMTP over SSL', true),
-('smtp_submission', 'SMTP Submission', 'Email Services', 587, true, 'SMTP with STARTTLS', true),
-('imap', 'IMAP', 'Email Services', 143, false, 'Internet Message Access Protocol', true),
-('imaps', 'IMAPS', 'Email Services', 993, true, 'IMAP over SSL', true),
-('pop3', 'POP3', 'Email Services', 110, false, 'Post Office Protocol v3', true),
-('pop3s', 'POP3S', 'Email Services', 995, true, 'POP3 over SSL', true),
-
--- File Transfer
-('ftp', 'FTP', 'File Transfer', 21, false, 'File Transfer Protocol', true),
-('ftps', 'FTPS', 'File Transfer', 990, true, 'FTP over SSL', true),
-('sftp', 'SFTP', 'File Transfer', 22, true, 'SSH File Transfer Protocol', true),
-
--- Network Services
-('dns', 'DNS', 'Network Services', 53, false, 'Domain Name System', true),
-('snmp', 'SNMP', 'Network Services', 161, false, 'Simple Network Management Protocol', true),
-('ntp', 'NTP', 'Network Services', 123, false, 'Network Time Protocol', true)
-ON CONFLICT (service_type) DO UPDATE SET
-    display_name = EXCLUDED.display_name,
-    category = EXCLUDED.category,
-    default_port = EXCLUDED.default_port,
-    is_secure_by_default = EXCLUDED.is_secure_by_default,
-    description = EXCLUDED.description,
-    is_common = EXCLUDED.is_common;
+-- No additional initial data needed for consolidated assets table
 
 COMMIT;

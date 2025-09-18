@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { userApi, targetApi, jobApi, jobRunApi } from '../services/api';
+import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import AIMonitor from '../components/AIMonitor';
@@ -26,14 +26,14 @@ const Dashboard: React.FC = () => {
     try {
       const requests = [
         userApi.list(0, 1),
-        targetApi.list(0, 1),
+        assetApi.list(0, 1),
         jobApi.list(0, 1),
         jobRunApi.list(0, 1)
       ];
 
       const [
         usersRes,
-        targetsRes,
+        assetsRes,
         jobsRes,
         runsRes
       ] = await Promise.allSettled(requests);
@@ -44,18 +44,22 @@ const Dashboard: React.FC = () => {
         if (res.value?.meta?.total_items !== undefined) {
           return res.value.meta.total_items;
         }
+        // Handle asset API response format with data.total
+        if (res.value?.data?.total !== undefined) {
+          return res.value.data.total;
+        }
         // Handle old API response format with total
         return res.value?.total ?? 0;
       };
       // Log failures for debugging but keep dashboard rendering
       if (usersRes.status === 'rejected') console.warn('Users stats failed:', usersRes.reason);
-      if (targetsRes.status === 'rejected') console.warn('Targets stats failed:', targetsRes.reason);
+      if (assetsRes.status === 'rejected') console.warn('Assets stats failed:', assetsRes.reason);
       if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
       if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
 
       setStats({
         users: getTotal(usersRes),
-        targets: getTotal(targetsRes),
+        targets: getTotal(assetsRes),
         jobs: getTotal(jobsRes),
         recentRuns: getTotal(runsRes)
       });

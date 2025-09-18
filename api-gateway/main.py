@@ -44,7 +44,7 @@ SERVICE_ROUTES = {
     "/api/v1/available-roles": "IDENTITY_SERVICE_URL",
     
     # Asset Service
-    "/api/v1/targets": "ASSET_SERVICE_URL",
+    "/api/v1/assets": "ASSET_SERVICE_URL",
     "/api/v1/metadata": "ASSET_SERVICE_URL",
     
     # Automation Service

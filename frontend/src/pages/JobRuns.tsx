@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { jobRunApi, jobApi, userApi, targetApi } from '../services/api';
-import { JobRun, JobRunStep, Job, User, Target } from '../types';
+import { jobRunApi, jobApi, userApi, assetApi } from '../services/api';
+import { JobRun, JobRunStep, Job, User } from '../types';
 import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, Maximize2, Upload } from 'lucide-react';
 
 
@@ -12,7 +12,7 @@ const JobRuns: React.FC = () => {
   const [runs, setRuns] = useState<JobRun[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [targets, setTargets] = useState<Target[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState<number | undefined>(undefined);
   const [selectedRunId, setSelectedRunId] = useState<number | undefined>(undefined);
@@ -78,12 +78,12 @@ const JobRuns: React.FC = () => {
     }
   }, []);
 
-  const fetchTargets = useCallback(async () => {
+  const fetchAssets = useCallback(async () => {
     try {
-      const response = await targetApi.list(0, 100); // Get all targets
-      setTargets(response.targets || []);
+      const response = await assetApi.list(0, 100); // Get all assets
+      setAssets(response.data?.assets || []);
     } catch (error: any) {
-      console.error('Failed to fetch targets:', error);
+      console.error('Failed to fetch assets:', error);
     }
   }, []);
 
@@ -147,8 +147,8 @@ const JobRuns: React.FC = () => {
     fetchRuns();
     fetchJobs();
     fetchUsers();
-    fetchTargets();
-  }, [selectedJobId, fetchRuns, fetchJobs, fetchUsers, fetchTargets]);
+    fetchAssets();
+  }, [selectedJobId, fetchRuns, fetchJobs, fetchUsers, fetchAssets]);
 
   useEffect(() => {
     if (selectedRun) {
@@ -250,12 +250,12 @@ const JobRuns: React.FC = () => {
     return user ? user.username : `User ${userId}`;
   };
 
-  const getTargetInfo = (targetId: number) => {
-    const target = targets.find(t => t.id === targetId);
-    if (target) {
-      return target.ip_address || target.hostname;
+  const getAssetInfo = (assetId: number) => {
+    const asset = assets.find((a: any) => a.id === assetId);
+    if (asset) {
+      return asset.ip_address || asset.hostname;
     }
-    return `Target ${targetId}`;
+    return `Asset ${assetId}`;
   };
 
   const getStepCommand = (step: JobRunStep) => {

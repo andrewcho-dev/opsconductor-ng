@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
-import { dashboardApi } from '../services/api';
+import { userApi, assetApi, jobApi } from '../services/api';
 
 interface ChatSession {
   id: string;
@@ -15,9 +15,8 @@ interface ChatSession {
 const AIChatPage: React.FC = () => {
   const [stats, setStats] = useState({
     users: 0,
-    targets: 0,
-    jobs: 0,
-    recentRuns: 0
+    assets: 0,
+    jobs: 0
   });
   const aiChatRef = useRef<AIChatRef>(null);
   
@@ -127,7 +126,25 @@ const AIChatPage: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await dashboardApi.getStats();
+        // Get basic stats from individual APIs
+        const [usersRes, assetsRes, jobsRes] = await Promise.allSettled([
+          userApi.list(0, 1),
+          assetApi.list(0, 1),
+          jobApi.list(0, 1)
+        ]);
+        
+        const getTotal = (res: any) => {
+          if (res.status !== 'fulfilled') return 0;
+          if (res.value?.meta?.total_items !== undefined) return res.value.meta.total_items;
+          if (res.value?.data?.total !== undefined) return res.value.data.total;
+          return res.value?.total ?? 0;
+        };
+        
+        const response = {
+          users: getTotal(usersRes),
+          assets: getTotal(assetsRes),
+          jobs: getTotal(jobsRes)
+        };
         setStats(response);
       } catch (error) {
         console.error('Failed to fetch dashboard stats:', error);
@@ -488,9 +505,9 @@ const AIChatPage: React.FC = () => {
             <Users size={14} />
             <span>{stats.users} Users</span>
           </Link>
-          <Link to="/targets" className="stat-pill">
+          <Link to="/assets" className="stat-pill">
             <Target size={14} />
-            <span>{stats.targets} Targets</span>
+            <span>{stats.assets} Assets</span>
           </Link>
           <Link to="/jobs" className="stat-pill">
             <Settings size={14} />
@@ -498,7 +515,7 @@ const AIChatPage: React.FC = () => {
           </Link>
           <Link to="/monitoring" className="stat-pill">
             <Play size={14} />
-            <span>{stats.recentRuns} Runs</span>
+            <span>0 Runs</span>
           </Link>
           <Link to="/" className="stat-pill">
             <MessageSquare size={14} />

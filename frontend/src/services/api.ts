@@ -2,7 +2,6 @@ import axios, { AxiosResponse } from 'axios';
 import {
   User, UserCreate, UserUpdate, UserListResponse,
   Credential, CredentialCreate, CredentialListResponse, CredentialDecrypted,
-  Target, TargetCreate, TargetListResponse, WinRMTestResult, SSHTestResult,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
 
@@ -176,54 +175,52 @@ export const rolesApi = {
 
 
 
-// Target API
-export const targetApi = {
-  list: async (skip = 0, limit = 100): Promise<TargetListResponse> => {
-    const response: AxiosResponse<TargetListResponse> = await api.get('/api/v1/targets', {
-      params: { skip, limit }
-    });
+// Asset API (replaces Target API)
+export const assetApi = {
+  list: async (skip = 0, limit = 100, filters?: any): Promise<any> => {
+    const params: any = { skip, limit };
+    if (filters) {
+      Object.assign(params, filters);
+    }
+    const response = await api.get('/api/v1/assets', { params });
     return response.data;
   },
 
-  get: async (id: number): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.get(`/api/v1/targets/${id}`);
+  get: async (id: number): Promise<any> => {
+    const response = await api.get(`/api/v1/assets/${id}`);
     return response.data;
   },
 
-  create: async (targetData: TargetCreate): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.post('/api/v1/targets', targetData);
+  create: async (assetData: any): Promise<any> => {
+    const response = await api.post('/api/v1/assets', assetData);
     return response.data;
   },
 
-  update: async (id: number, targetData: Partial<TargetCreate>): Promise<Target> => {
-    const response: AxiosResponse<Target> = await api.put(`/api/v1/targets/${id}`, targetData);
+  update: async (id: number, assetData: any): Promise<any> => {
+    const response = await api.put(`/api/v1/assets/${id}`, assetData);
     return response.data;
   },
 
   delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/targets/${id}`);
+    await api.delete(`/api/v1/assets/${id}`);
   },
 
-  testWinRM: async (id: number): Promise<WinRMTestResult> => {
-    const response = await api.post(`/api/v1/targets/${id}/test-winrm`);
+  test: async (id: number): Promise<any> => {
+    const response = await api.post(`/api/v1/assets/${id}/test`);
     return response.data;
   },
 
-  testSSH: async (id: number): Promise<SSHTestResult> => {
-    const response = await api.post(`/api/v1/targets/${id}/test-ssh`);
+  getMetadata: async (): Promise<any> => {
+    const response = await api.get('/api/v1/metadata');
     return response.data;
   }
 };
 
 
 
-// Asset Service Target API (for getting all targets)
-export const assetTargetApi = {
-  list: async (): Promise<any> => {
-    const response = await api.get('/api/v1/targets');
-    return response.data;
-  }
-};
+
+
+
 
 // Job API
 export const jobApi = {

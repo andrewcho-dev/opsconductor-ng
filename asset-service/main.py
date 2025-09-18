@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-OpsConductor Asset Service - Simplified (No Target Groups)
-Handles targets with embedded credentials
+OpsConductor Asset Service - Consolidated
+Single table approach for all asset/target information
 """
 
 import sys
@@ -9,9 +9,9 @@ import os
 import json
 import base64
 from cryptography.fernet import Fernet
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import Query, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
@@ -20,50 +20,159 @@ from base_service import BaseService
 # MODELS
 # ============================================================================
 
-# Enhanced Target Models (for frontend compatibility)
-class TargetServiceCreate(BaseModel):
+class AdditionalService(BaseModel):
+    """Model for additional services in JSON array"""
     service_type: str
     port: int
-    is_default: bool = False
     is_secure: bool = False
-    is_enabled: bool = True
-    notes: Optional[str] = None
-    
-    # Embedded credential fields
-    credential_type: Optional[str] = None  # 'username_password', 'ssh_key', 'api_key', 'bearer_token'
+    credential_type: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None  # Will be encrypted in backend
-    private_key: Optional[str] = None  # Will be encrypted in backend
+    password_encrypted: Optional[str] = None
+    private_key_encrypted: Optional[str] = None
     public_key: Optional[str] = None
-    api_key: Optional[str] = None  # Will be encrypted in backend
-    bearer_token: Optional[str] = None  # Will be encrypted in backend
-    certificate: Optional[str] = None  # Will be encrypted in backend
-    passphrase: Optional[str] = None  # Will be encrypted in backend
-    domain: Optional[str] = None  # For Windows domain authentication
+    api_key_encrypted: Optional[str] = None
+    bearer_token_encrypted: Optional[str] = None
+    certificate_encrypted: Optional[str] = None
+    passphrase_encrypted: Optional[str] = None
+    domain: Optional[str] = None
+    notes: Optional[str] = None
 
-class TargetServiceSummary(BaseModel):
-    id: int
-    service_type: str
-    port: int
-    is_default: bool
-    is_secure: bool
-    is_enabled: bool
-    credential_type: Optional[str]
-    has_credentials: bool
-    connection_status: Optional[str] = None
-    last_tested_at: Optional[str] = None
-
-class EnhancedTargetCreate(BaseModel):
+class AssetCreate(BaseModel):
+    """Model for creating a new asset"""
     name: str
     hostname: str
     ip_address: Optional[str] = None
-    os_type: str = "other"  # 'windows', 'linux', 'unix', 'macos', 'other'
-    os_version: Optional[str] = None
     description: Optional[str] = None
     tags: List[str] = []
-    services: List[TargetServiceCreate] = []
+    
+    # Device/Hardware Information
+    device_type: str = "other"
+    hardware_make: Optional[str] = None
+    hardware_model: Optional[str] = None
+    serial_number: Optional[str] = None
+    
+    # Operating System Information
+    os_type: str = "other"
+    os_version: Optional[str] = None
+    
+    # Location Information
+    physical_address: Optional[str] = None
+    data_center: Optional[str] = None
+    building: Optional[str] = None
+    room: Optional[str] = None
+    rack_position: Optional[str] = None
+    rack_location: Optional[str] = None
+    gps_coordinates: Optional[str] = None
+    
+    # Status and Management
+    status: str = "active"
+    environment: str = "production"
+    criticality: str = "medium"
+    owner: Optional[str] = None
+    support_contact: Optional[str] = None
+    contract_number: Optional[str] = None
+    
+    # Primary service
+    service_type: str
+    port: int
+    is_secure: bool = False
+    
+    # Primary service credentials
+    credential_type: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None  # Will be encrypted
+    private_key: Optional[str] = None  # Will be encrypted
+    public_key: Optional[str] = None
+    api_key: Optional[str] = None  # Will be encrypted
+    bearer_token: Optional[str] = None  # Will be encrypted
+    certificate: Optional[str] = None  # Will be encrypted
+    passphrase: Optional[str] = None  # Will be encrypted
+    domain: Optional[str] = None
+    
+    # Database-specific fields
+    database_type: Optional[str] = None
+    database_name: Optional[str] = None
+    
+    # Secondary service
+    secondary_service_type: str = "none"
+    secondary_port: Optional[int] = None
+    ftp_type: Optional[str] = None
+    secondary_username: Optional[str] = None
+    secondary_password: Optional[str] = None  # Will be encrypted
+    
+    # Additional services
+    additional_services: List[Dict[str, Any]] = []
+    notes: Optional[str] = None
 
-class EnhancedTargetSummary(BaseModel):
+class AssetUpdate(BaseModel):
+    """Model for updating an asset"""
+    name: Optional[str] = None
+    hostname: Optional[str] = None
+    ip_address: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    
+    # Device/Hardware Information
+    device_type: Optional[str] = None
+    hardware_make: Optional[str] = None
+    hardware_model: Optional[str] = None
+    serial_number: Optional[str] = None
+    
+    # Operating System Information
+    os_type: Optional[str] = None
+    os_version: Optional[str] = None
+    
+    # Location Information
+    physical_address: Optional[str] = None
+    data_center: Optional[str] = None
+    building: Optional[str] = None
+    room: Optional[str] = None
+    rack_position: Optional[str] = None
+    rack_location: Optional[str] = None
+    gps_coordinates: Optional[str] = None
+    
+    # Status and Management
+    status: Optional[str] = None
+    environment: Optional[str] = None
+    criticality: Optional[str] = None
+    owner: Optional[str] = None
+    support_contact: Optional[str] = None
+    contract_number: Optional[str] = None
+    
+    # Primary service
+    service_type: Optional[str] = None
+    port: Optional[int] = None
+    is_secure: Optional[bool] = None
+    
+    # Primary service credentials
+    credential_type: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None  # Will be encrypted
+    private_key: Optional[str] = None  # Will be encrypted
+    public_key: Optional[str] = None
+    api_key: Optional[str] = None  # Will be encrypted
+    bearer_token: Optional[str] = None  # Will be encrypted
+    certificate: Optional[str] = None  # Will be encrypted
+    passphrase: Optional[str] = None  # Will be encrypted
+    domain: Optional[str] = None
+    
+    # Database-specific fields
+    database_type: Optional[str] = None
+    database_name: Optional[str] = None
+    
+    # Secondary service
+    secondary_service_type: Optional[str] = None
+    secondary_port: Optional[int] = None
+    ftp_type: Optional[str] = None
+    secondary_username: Optional[str] = None
+    secondary_password: Optional[str] = None  # Will be encrypted
+    
+    # Additional services
+    additional_services: Optional[List[Dict[str, Any]]] = None
+    notes: Optional[str] = None
+
+class AssetSummary(BaseModel):
+    """Model for asset list view"""
     id: int
     name: str
     hostname: str
@@ -72,11 +181,60 @@ class EnhancedTargetSummary(BaseModel):
     os_version: Optional[str]
     description: Optional[str]
     tags: List[str]
-    services: List[TargetServiceSummary]
+    
+    # Primary service info
+    service_type: str
+    port: int
+    is_secure: bool
+    has_credentials: bool
+    
+    # Additional services count
+    additional_services_count: int
+    
+    # Status
+    is_active: bool
+    connection_status: Optional[str]
+    last_tested_at: Optional[str]
+    
     created_at: str
     updated_at: Optional[str]
 
-class AssetService(BaseService):
+class AssetDetail(BaseModel):
+    """Model for detailed asset view"""
+    id: int
+    name: str
+    hostname: str
+    ip_address: Optional[str]
+    description: Optional[str]
+    tags: List[str]
+    os_type: str
+    os_version: Optional[str]
+    
+    # Primary service
+    service_type: str
+    port: int
+    is_secure: bool
+    credential_type: Optional[str]
+    username: Optional[str]
+    # Note: encrypted fields are not returned in API responses
+    domain: Optional[str]
+    
+    # Additional services (decrypted for display)
+    additional_services: List[Dict[str, Any]]
+    
+    # Status and metadata
+    is_active: bool
+    connection_status: Optional[str]
+    last_tested_at: Optional[str]
+    notes: Optional[str]
+    
+    # Audit
+    created_by: Optional[int]
+    updated_by: Optional[int]
+    created_at: str
+    updated_at: Optional[str]
+
+class ConsolidatedAssetService(BaseService):
     def __init__(self):
         super().__init__("asset-service", port=3002)
         self.encryption_key = self._get_encryption_key()
@@ -96,25 +254,85 @@ class AssetService(BaseService):
                 f.write(key)
             return key
 
-    def _encrypt_field(self, value: str) -> str:
+    def _encrypt_field(self, value: str) -> Optional[str]:
         """Encrypt a field value"""
         if not value:
             return None
         return self.fernet.encrypt(value.encode()).decode()
 
-    def _decrypt_field(self, encrypted_value: str) -> str:
+    def _decrypt_field(self, encrypted_value: str) -> Optional[str]:
         """Decrypt a field value"""
         if not encrypted_value:
             return None
-        return self.fernet.decrypt(encrypted_value.encode()).decode()
-
-    async def _resolve_ip_address(self, hostname: str) -> Optional[str]:
-        """Resolve hostname to IP address"""
-        import socket
         try:
-            return socket.gethostbyname(hostname)
+            return self.fernet.decrypt(encrypted_value.encode()).decode()
         except:
             return None
+
+    def _encrypt_additional_services(self, services: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Encrypt credential fields in additional services"""
+        encrypted_services = []
+        for service in services:
+            encrypted_service = service.copy()
+            
+            # Encrypt credential fields
+            if service.get('password'):
+                encrypted_service['password_encrypted'] = self._encrypt_field(service['password'])
+                del encrypted_service['password']
+            
+            if service.get('private_key'):
+                encrypted_service['private_key_encrypted'] = self._encrypt_field(service['private_key'])
+                del encrypted_service['private_key']
+            
+            if service.get('api_key'):
+                encrypted_service['api_key_encrypted'] = self._encrypt_field(service['api_key'])
+                del encrypted_service['api_key']
+            
+            if service.get('bearer_token'):
+                encrypted_service['bearer_token_encrypted'] = self._encrypt_field(service['bearer_token'])
+                del encrypted_service['bearer_token']
+            
+            if service.get('certificate'):
+                encrypted_service['certificate_encrypted'] = self._encrypt_field(service['certificate'])
+                del encrypted_service['certificate']
+            
+            if service.get('passphrase'):
+                encrypted_service['passphrase_encrypted'] = self._encrypt_field(service['passphrase'])
+                del encrypted_service['passphrase']
+            
+            encrypted_services.append(encrypted_service)
+        
+        return encrypted_services
+
+    def _decrypt_additional_services(self, services: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Decrypt credential fields in additional services for display"""
+        decrypted_services = []
+        for service in services:
+            decrypted_service = service.copy()
+            
+            # Decrypt and replace encrypted fields (for display only)
+            if service.get('password_encrypted'):
+                decrypted_service['password'] = self._decrypt_field(service['password_encrypted'])
+                # Keep encrypted version for storage
+            
+            if service.get('private_key_encrypted'):
+                decrypted_service['private_key'] = self._decrypt_field(service['private_key_encrypted'])
+            
+            if service.get('api_key_encrypted'):
+                decrypted_service['api_key'] = self._decrypt_field(service['api_key_encrypted'])
+            
+            if service.get('bearer_token_encrypted'):
+                decrypted_service['bearer_token'] = self._decrypt_field(service['bearer_token_encrypted'])
+            
+            if service.get('certificate_encrypted'):
+                decrypted_service['certificate'] = self._decrypt_field(service['certificate_encrypted'])
+            
+            if service.get('passphrase_encrypted'):
+                decrypted_service['passphrase'] = self._decrypt_field(service['passphrase_encrypted'])
+            
+            decrypted_services.append(decrypted_service)
+        
+        return decrypted_services
 
     def setup_routes(self):
         # ============================================================================
@@ -131,24 +349,54 @@ class AssetService(BaseService):
                         {"value": "username_password", "label": "Username/Password"},
                         {"value": "ssh_key", "label": "SSH Key"},
                         {"value": "api_key", "label": "API Key"},
-                        {"value": "bearer_token", "label": "Bearer Token"}
+                        {"value": "bearer_token", "label": "Bearer Token"},
+                        {"value": "certificate", "label": "Certificate"}
                     ],
                     "service_types": [
-                        {"value": "ssh", "label": "SSH", "default_port": 22},
-                        {"value": "winrm_http", "label": "WinRM HTTP", "default_port": 5985},
-                        {"value": "winrm_https", "label": "WinRM HTTPS", "default_port": 5986},
-                        {"value": "rdp", "label": "RDP", "default_port": 3389},
-                        {"value": "vnc", "label": "VNC", "default_port": 5900},
-                        {"value": "http", "label": "HTTP", "default_port": 80},
-                        {"value": "https", "label": "HTTPS", "default_port": 443},
-                        {"value": "ftp", "label": "FTP", "default_port": 21},
-                        {"value": "sftp", "label": "SFTP", "default_port": 22},
-                        {"value": "telnet", "label": "Telnet", "default_port": 23},
-                        {"value": "smtp", "label": "SMTP", "default_port": 25},
-                        {"value": "dns", "label": "DNS", "default_port": 53},
-                        {"value": "snmp", "label": "SNMP", "default_port": 161},
-                        {"value": "ldap", "label": "LDAP", "default_port": 389},
-                        {"value": "ldaps", "label": "LDAPS", "default_port": 636}
+                        # Remote Access
+                        {"value": "ssh", "label": "SSH", "default_port": 22, "category": "Remote Access"},
+                        {"value": "rdp", "label": "RDP", "default_port": 3389, "category": "Remote Access"},
+                        {"value": "vnc", "label": "VNC", "default_port": 5900, "category": "Remote Access"},
+                        {"value": "telnet", "label": "Telnet", "default_port": 23, "category": "Remote Access"},
+                        
+                        # Windows Management
+                        {"value": "winrm", "label": "WinRM HTTP", "default_port": 5985, "category": "Windows Management"},
+                        {"value": "winrm_https", "label": "WinRM HTTPS", "default_port": 5986, "category": "Windows Management"},
+                        {"value": "wmi", "label": "WMI", "default_port": 135, "category": "Windows Management"},
+                        {"value": "smb", "label": "SMB/CIFS", "default_port": 445, "category": "Windows Management"},
+                        
+                        # Web Services
+                        {"value": "http", "label": "HTTP", "default_port": 80, "category": "Web Services"},
+                        {"value": "https", "label": "HTTPS", "default_port": 443, "category": "Web Services"},
+                        {"value": "http_alt", "label": "HTTP (Alt)", "default_port": 8080, "category": "Web Services"},
+                        {"value": "https_alt", "label": "HTTPS (Alt)", "default_port": 8443, "category": "Web Services"},
+                        
+                        # Database Services
+                        {"value": "mysql", "label": "MySQL", "default_port": 3306, "category": "Database Services"},
+                        {"value": "postgresql", "label": "PostgreSQL", "default_port": 5432, "category": "Database Services"},
+                        {"value": "sql_server", "label": "SQL Server", "default_port": 1433, "category": "Database Services"},
+                        {"value": "oracle", "label": "Oracle DB", "default_port": 1521, "category": "Database Services"},
+                        {"value": "mongodb", "label": "MongoDB", "default_port": 27017, "category": "Database Services"},
+                        {"value": "redis", "label": "Redis", "default_port": 6379, "category": "Database Services"},
+                        
+                        # Email Services
+                        {"value": "smtp", "label": "SMTP", "default_port": 25, "category": "Email Services"},
+                        {"value": "smtps", "label": "SMTPS", "default_port": 465, "category": "Email Services"},
+                        {"value": "smtp_submission", "label": "SMTP Submission", "default_port": 587, "category": "Email Services"},
+                        {"value": "imap", "label": "IMAP", "default_port": 143, "category": "Email Services"},
+                        {"value": "imaps", "label": "IMAPS", "default_port": 993, "category": "Email Services"},
+                        {"value": "pop3", "label": "POP3", "default_port": 110, "category": "Email Services"},
+                        {"value": "pop3s", "label": "POP3S", "default_port": 995, "category": "Email Services"},
+                        
+                        # File Transfer
+                        {"value": "ftp", "label": "FTP", "default_port": 21, "category": "File Transfer"},
+                        {"value": "ftps", "label": "FTPS", "default_port": 990, "category": "File Transfer"},
+                        {"value": "sftp", "label": "SFTP", "default_port": 22, "category": "File Transfer"},
+                        
+                        # Network Services
+                        {"value": "dns", "label": "DNS", "default_port": 53, "category": "Network Services"},
+                        {"value": "snmp", "label": "SNMP", "default_port": 161, "category": "Network Services"},
+                        {"value": "ntp", "label": "NTP", "default_port": 123, "category": "Network Services"}
                     ],
                     "os_types": [
                         {"value": "windows", "label": "Windows"},
@@ -161,630 +409,426 @@ class AssetService(BaseService):
             }
         
         # ============================================================================
-        # ENHANCED TARGETS ENDPOINTS
+        # ASSET ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/targets")
-        async def list_enhanced_targets(
+        @self.app.get("/assets")
+        async def list_assets(
             skip: int = Query(0, ge=0),
-            limit: int = Query(100, ge=1, le=1000)
+            limit: int = Query(100, ge=1, le=1000),
+            search: Optional[str] = Query(None),
+            os_type: Optional[str] = Query(None),
+            service_type: Optional[str] = Query(None),
+            is_active: Optional[bool] = Query(None)
         ):
-            """List all enhanced targets"""
+            """List all assets with optional filtering"""
             try:
+                # Build WHERE clause
+                where_conditions = []
+                params = []
+                param_count = 0
+                
+                if search:
+                    param_count += 1
+                    where_conditions.append(f"(name ILIKE ${param_count} OR hostname ILIKE ${param_count} OR description ILIKE ${param_count})")
+                    params.append(f"%{search}%")
+                
+                if os_type:
+                    param_count += 1
+                    where_conditions.append(f"os_type = ${param_count}")
+                    params.append(os_type)
+                
+                if service_type:
+                    param_count += 1
+                    where_conditions.append(f"service_type = ${param_count}")
+                    params.append(service_type)
+                
+                if is_active is not None:
+                    param_count += 1
+                    where_conditions.append(f"is_active = ${param_count}")
+                    params.append(is_active)
+                
+                where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+                
+                # Add pagination params
+                params.extend([skip, limit])
+                offset_param = param_count + 1
+                limit_param = param_count + 2
+                
                 async with self.db.pool.acquire() as conn:
-                    targets = await conn.fetch("""
-                        SELECT id, name, hostname, ip_address, os_type, os_version, 
-                               description, tags, created_at, updated_at
-                        FROM assets.enhanced_targets
+                    # Get assets
+                    query = f"""
+                        SELECT id, name, hostname, ip_address, os_type, os_version, description, tags,
+                               service_type, port, is_secure, credential_type, username, password_encrypted,
+                               private_key_encrypted, api_key_encrypted, bearer_token_encrypted,
+                               certificate_encrypted, additional_services, is_active, connection_status,
+                               last_tested_at, created_at, updated_at
+                        FROM assets.assets
+                        {where_clause}
                         ORDER BY created_at DESC
-                        OFFSET $1 LIMIT $2
-                    """, skip, limit)
+                        OFFSET ${offset_param} LIMIT ${limit_param}
+                    """
                     
-                    total = await conn.fetchval("SELECT COUNT(*) FROM assets.enhanced_targets")
+                    assets = await conn.fetch(query, *params)
                     
-                    target_list = []
-                    for target in targets:
-                        # Get services for this target
-                        services = await conn.fetch("""
-                            SELECT id, service_type, port, is_default, is_secure, is_enabled,
-                                   credential_type, username, password_encrypted, private_key_encrypted, 
-                                   public_key, api_key_encrypted, bearer_token_encrypted, 
-                                   certificate_encrypted, passphrase_encrypted, domain,
-                                   connection_status, last_tested_at
-                            FROM assets.target_services
-                            WHERE target_id = $1
-                            ORDER BY is_default DESC, port ASC
-                        """, target['id'])
-                        
-                        service_list = []
-                        for service in services:
-                            has_credentials = any([
-                                service['password_encrypted'],
-                                service['private_key_encrypted'],
-                                service['api_key_encrypted'],
-                                service['bearer_token_encrypted'],
-                                service['certificate_encrypted']
-                            ])
-                            
-                            service_list.append(TargetServiceSummary(
-                                id=service['id'],
-                                service_type=service['service_type'],
-                                port=service['port'],
-                                is_default=service['is_default'],
-                                is_secure=service['is_secure'],
-                                is_enabled=service['is_enabled'],
-                                credential_type=service['credential_type'],
-                                has_credentials=has_credentials,
-                                connection_status=service['connection_status'],
-                                last_tested_at=service['last_tested_at'].isoformat() if service['last_tested_at'] else None
-                            ))
+                    # Get total count
+                    count_query = f"SELECT COUNT(*) FROM assets.assets {where_clause}"
+                    total = await conn.fetchval(count_query, *params[:-2])  # Exclude skip/limit params
+                    
+                    asset_list = []
+                    for asset in assets:
+                        # Check if has credentials
+                        has_credentials = any([
+                            asset['password_encrypted'],
+                            asset['private_key_encrypted'],
+                            asset['api_key_encrypted'],
+                            asset['bearer_token_encrypted'],
+                            asset['certificate_encrypted']
+                        ])
                         
                         # Parse tags
-                        tags = target['tags']
+                        tags = asset['tags'] if asset['tags'] else []
                         if isinstance(tags, str):
                             tags = json.loads(tags)
-                        elif tags is None:
-                            tags = []
                         
-                        target_list.append(EnhancedTargetSummary(
-                            id=target['id'],
-                            name=target['name'],
-                            hostname=target['hostname'],
-                            ip_address=target['ip_address'],
-                            os_type=target['os_type'],
-                            os_version=target['os_version'],
-                            description=target['description'],
+                        # Count additional services
+                        additional_services = asset['additional_services'] if asset['additional_services'] else []
+                        if isinstance(additional_services, str):
+                            additional_services = json.loads(additional_services)
+                        
+                        asset_list.append(AssetSummary(
+                            id=asset['id'],
+                            name=asset['name'],
+                            hostname=asset['hostname'],
+                            ip_address=asset['ip_address'],
+                            os_type=asset['os_type'],
+                            os_version=asset['os_version'],
+                            description=asset['description'],
                             tags=tags,
-                            services=service_list,
-                            created_at=target['created_at'].isoformat(),
-                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
+                            service_type=asset['service_type'],
+                            port=asset['port'],
+                            is_secure=asset['is_secure'],
+                            has_credentials=has_credentials,
+                            additional_services_count=len(additional_services),
+                            is_active=asset['is_active'],
+                            connection_status=asset['connection_status'],
+                            last_tested_at=asset['last_tested_at'].isoformat() if asset['last_tested_at'] else None,
+                            created_at=asset['created_at'].isoformat(),
+                            updated_at=asset['updated_at'].isoformat() if asset['updated_at'] else None
                         ))
                     
                     return {
-                        "targets": target_list,
-                        "total": total,
-                        "skip": skip,
-                        "limit": limit
+                        "success": True,
+                        "data": {
+                            "assets": asset_list,
+                            "total": total,
+                            "skip": skip,
+                            "limit": limit
+                        }
                     }
             except Exception as e:
-                self.logger.error("Failed to list enhanced targets", error=str(e))
+                self.logger.error("Failed to list assets", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to list enhanced targets"
+                    detail="Failed to list assets"
                 )
 
-        @self.app.post("/targets")
-        async def create_enhanced_target(target_data: EnhancedTargetCreate):
-            """Create a new enhanced target"""
+        @self.app.post("/assets")
+        async def create_asset(asset_data: AssetCreate):
+            """Create a new asset"""
             try:
                 async with self.db.pool.acquire() as conn:
                     async with conn.transaction():
-                        # Create target
-                        target_id = await conn.fetchval("""
-                            INSERT INTO assets.enhanced_targets 
-                            (name, hostname, ip_address, os_type, os_version, description, tags)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7)
-                            RETURNING id
+                        # Encrypt credential fields
+                        password_encrypted = self._encrypt_field(asset_data.password)
+                        private_key_encrypted = self._encrypt_field(asset_data.private_key)
+                        api_key_encrypted = self._encrypt_field(asset_data.api_key)
+                        bearer_token_encrypted = self._encrypt_field(asset_data.bearer_token)
+                        certificate_encrypted = self._encrypt_field(asset_data.certificate)
+                        passphrase_encrypted = self._encrypt_field(asset_data.passphrase)
+                        secondary_password_encrypted = self._encrypt_field(asset_data.secondary_password)
+                        
+                        # Encrypt additional services
+                        encrypted_additional_services = self._encrypt_additional_services(asset_data.additional_services)
+                        
+                        # Create asset
+                        asset_id = await conn.fetchval("""
+                            INSERT INTO assets.assets (
+                                name, hostname, ip_address, description, tags,
+                                device_type, hardware_make, hardware_model, serial_number,
+                                os_type, os_version,
+                                physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates,
+                                status, environment, criticality, owner, support_contact, contract_number,
+                                service_type, port, is_secure, credential_type, username,
+                                password_encrypted, private_key_encrypted, public_key,
+                                api_key_encrypted, bearer_token_encrypted, certificate_encrypted,
+                                passphrase_encrypted, domain,
+                                database_type, database_name,
+                                secondary_service_type, secondary_port, ftp_type, secondary_username, secondary_password_encrypted,
+                                additional_services, notes, created_by
+                            ) VALUES (
+                                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
+                                $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34,
+                                $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
+                            ) RETURNING id
                         """, 
-                        target_data.name,
-                        target_data.hostname,
-                        target_data.ip_address,
-                        target_data.os_type,
-                        target_data.os_version,
-                        target_data.description,
-                        json.dumps(target_data.tags)
+                        asset_data.name,
+                        asset_data.hostname,
+                        asset_data.ip_address,
+                        asset_data.description,
+                        json.dumps(asset_data.tags),
+                        asset_data.device_type,
+                        asset_data.hardware_make,
+                        asset_data.hardware_model,
+                        asset_data.serial_number,
+                        asset_data.os_type,
+                        asset_data.os_version,
+                        asset_data.physical_address,
+                        asset_data.data_center,
+                        asset_data.building,
+                        asset_data.room,
+                        asset_data.rack_position,
+                        asset_data.rack_location,
+                        asset_data.gps_coordinates,
+                        asset_data.status,
+                        asset_data.environment,
+                        asset_data.criticality,
+                        asset_data.owner,
+                        asset_data.support_contact,
+                        asset_data.contract_number,
+                        asset_data.service_type,
+                        asset_data.port,
+                        asset_data.is_secure,
+                        asset_data.credential_type,
+                        asset_data.username,
+                        password_encrypted,
+                        private_key_encrypted,
+                        asset_data.public_key,
+                        api_key_encrypted,
+                        bearer_token_encrypted,
+                        certificate_encrypted,
+                        passphrase_encrypted,
+                        asset_data.domain,
+                        asset_data.database_type,
+                        asset_data.database_name,
+                        asset_data.secondary_service_type,
+                        asset_data.secondary_port,
+                        asset_data.ftp_type,
+                        asset_data.secondary_username,
+                        secondary_password_encrypted,
+                        json.dumps(encrypted_additional_services),
+                        asset_data.notes,
+                        1  # Default to admin user
                         )
                         
-                        # Create services
-                        for service in target_data.services:
-                            await self._create_target_service(conn, target_id, service)
-                        
-                        return {"success": True, "target_id": target_id}
+                        return {
+                            "success": True,
+                            "data": {"asset_id": asset_id}
+                        }
             except Exception as e:
-                self.logger.error("Failed to create enhanced target", error=str(e))
+                self.logger.error("Failed to create asset", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create enhanced target"
+                    detail="Failed to create asset"
                 )
 
-        @self.app.get("/targets/{target_id}")
-        async def get_enhanced_target(target_id: int):
-            """Get enhanced target by ID"""
+        @self.app.get("/assets/{asset_id}")
+        async def get_asset(asset_id: int):
+            """Get asset by ID with decrypted credentials for display"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    target = await conn.fetchrow("""
-                        SELECT id, name, hostname, ip_address, os_type, os_version, 
-                               description, tags, created_at, updated_at
-                        FROM assets.enhanced_targets WHERE id = $1
-                    """, target_id)
+                    asset = await conn.fetchrow("""
+                        SELECT * FROM assets.assets WHERE id = $1
+                    """, asset_id)
                     
-                    if not target:
-                        raise HTTPException(status_code=404, detail="Target not found")
-                    
-                    # Get services
-                    services = await conn.fetch("""
-                        SELECT id, service_type, port, is_default, is_secure, is_enabled,
-                               credential_type, username, password_encrypted, private_key_encrypted, 
-                               public_key, api_key_encrypted, bearer_token_encrypted, 
-                               certificate_encrypted, passphrase_encrypted, domain, notes,
-                               connection_status, last_tested_at
-                        FROM assets.target_services
-                        WHERE target_id = $1
-                        ORDER BY is_default DESC, port ASC
-                    """, target_id)
-                    
-                    service_list = []
-                    for service in services:
-                        has_credentials = any([
-                            service['password_encrypted'],
-                            service['private_key_encrypted'],
-                            service['api_key_encrypted'],
-                            service['bearer_token_encrypted'],
-                            service['certificate_encrypted']
-                        ])
-                        
-                        service_list.append({
-                            "id": service['id'],
-                            "service_type": service['service_type'],
-                            "port": service['port'],
-                            "is_default": service['is_default'],
-                            "is_secure": service['is_secure'],
-                            "is_enabled": service['is_enabled'],
-                            "credential_type": service['credential_type'],
-                            "has_credentials": has_credentials,
-                            "notes": service['notes'],
-                            "connection_status": service['connection_status'],
-                            "last_tested_at": service['last_tested_at'].isoformat() if service['last_tested_at'] else None
-                        })
+                    if not asset:
+                        raise HTTPException(status_code=404, detail="Asset not found")
                     
                     # Parse tags
-                    tags = target['tags']
+                    tags = asset['tags'] if asset['tags'] else []
                     if isinstance(tags, str):
                         tags = json.loads(tags)
-                    elif tags is None:
-                        tags = []
+                    
+                    # Parse and decrypt additional services
+                    additional_services = asset['additional_services'] if asset['additional_services'] else []
+                    if isinstance(additional_services, str):
+                        additional_services = json.loads(additional_services)
+                    
+                    decrypted_additional_services = self._decrypt_additional_services(additional_services)
                     
                     return {
                         "success": True,
-                        "data": {
-                            "id": target['id'],
-                            "name": target['name'],
-                            "hostname": target['hostname'],
-                            "ip_address": target['ip_address'],
-                            "os_type": target['os_type'],
-                            "os_version": target['os_version'],
-                            "description": target['description'],
-                            "tags": tags,
-                            "services": service_list,
-                            "created_at": target['created_at'].isoformat(),
-                            "updated_at": target['updated_at'].isoformat() if target['updated_at'] else None
-                        }
+                        "data": AssetDetail(
+                            id=asset['id'],
+                            name=asset['name'],
+                            hostname=asset['hostname'],
+                            ip_address=asset['ip_address'],
+                            description=asset['description'],
+                            tags=tags,
+                            os_type=asset['os_type'],
+                            os_version=asset['os_version'],
+                            service_type=asset['service_type'],
+                            port=asset['port'],
+                            is_secure=asset['is_secure'],
+                            credential_type=asset['credential_type'],
+                            username=asset['username'],
+                            domain=asset['domain'],
+                            additional_services=decrypted_additional_services,
+                            is_active=asset['is_active'],
+                            connection_status=asset['connection_status'],
+                            last_tested_at=asset['last_tested_at'].isoformat() if asset['last_tested_at'] else None,
+                            notes=asset['notes'],
+                            created_by=asset['created_by'],
+                            updated_by=asset['updated_by'],
+                            created_at=asset['created_at'].isoformat(),
+                            updated_at=asset['updated_at'].isoformat() if asset['updated_at'] else None
+                        )
                     }
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to get enhanced target", error=str(e))
+                self.logger.error("Failed to get asset", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to get enhanced target"
+                    detail="Failed to get asset"
                 )
 
-        @self.app.delete("/targets/{target_id}")
-        async def delete_enhanced_target(target_id: int):
-            """Delete enhanced target"""
+        @self.app.put("/assets/{asset_id}")
+        async def update_asset(asset_id: int, asset_data: AssetUpdate):
+            """Update an asset"""
             try:
                 async with self.db.pool.acquire() as conn:
                     async with conn.transaction():
-                        # Check if target exists
-                        target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
-                        if not target:
-                            raise HTTPException(status_code=404, detail="Target not found")
+                        # Check if asset exists
+                        existing = await conn.fetchrow("SELECT id FROM assets.assets WHERE id = $1", asset_id)
+                        if not existing:
+                            raise HTTPException(status_code=404, detail="Asset not found")
                         
-                        # Delete services (cascade will handle this, but explicit is better)
-                        await conn.execute("DELETE FROM assets.target_services WHERE target_id = $1", target_id)
+                        # Build update query dynamically
+                        update_fields = []
+                        params = []
+                        param_count = 0
                         
-                        # Delete target
-                        await conn.execute("DELETE FROM assets.enhanced_targets WHERE id = $1", target_id)
+                        # Basic fields
+                        for field in ['name', 'hostname', 'ip_address', 'description', 'os_type', 'os_version',
+                                    'device_type', 'hardware_make', 'hardware_model', 'serial_number',
+                                    'physical_address', 'data_center', 'building', 'room', 'rack_position', 'rack_location', 'gps_coordinates',
+                                    'status', 'environment', 'criticality', 'owner', 'support_contact', 'contract_number',
+                                    'service_type', 'port', 'is_secure', 'credential_type', 'username',
+                                    'public_key', 'domain', 'database_type', 'database_name',
+                                    'secondary_service_type', 'secondary_port', 'ftp_type', 'secondary_username',
+                                    'notes']:
+                            value = getattr(asset_data, field, None)
+                            if value is not None:
+                                param_count += 1
+                                update_fields.append(f"{field} = ${param_count}")
+                                params.append(value)
                         
-                        return {"success": True, "message": "Target deleted"}
+                        # Tags (JSON)
+                        if asset_data.tags is not None:
+                            param_count += 1
+                            update_fields.append(f"tags = ${param_count}")
+                            params.append(json.dumps(asset_data.tags))
+                        
+                        # Encrypted credential fields
+                        if asset_data.password is not None:
+                            param_count += 1
+                            update_fields.append(f"password_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.password))
+                        
+                        if asset_data.private_key is not None:
+                            param_count += 1
+                            update_fields.append(f"private_key_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.private_key))
+                        
+                        if asset_data.api_key is not None:
+                            param_count += 1
+                            update_fields.append(f"api_key_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.api_key))
+                        
+                        if asset_data.bearer_token is not None:
+                            param_count += 1
+                            update_fields.append(f"bearer_token_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.bearer_token))
+                        
+                        if asset_data.certificate is not None:
+                            param_count += 1
+                            update_fields.append(f"certificate_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.certificate))
+                        
+                        if asset_data.passphrase is not None:
+                            param_count += 1
+                            update_fields.append(f"passphrase_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.passphrase))
+                        
+                        if asset_data.secondary_password is not None:
+                            param_count += 1
+                            update_fields.append(f"secondary_password_encrypted = ${param_count}")
+                            params.append(self._encrypt_field(asset_data.secondary_password))
+                        
+                        # Additional services
+                        if asset_data.additional_services is not None:
+                            param_count += 1
+                            update_fields.append(f"additional_services = ${param_count}")
+                            encrypted_services = self._encrypt_additional_services(asset_data.additional_services)
+                            params.append(json.dumps(encrypted_services))
+                        
+                        if not update_fields:
+                            return {"success": True, "message": "No fields to update"}
+                        
+                        # Add updated_by and updated_at
+                        param_count += 1
+                        update_fields.append(f"updated_by = ${param_count}")
+                        params.append(1)  # Default to admin user
+                        
+                        param_count += 1
+                        update_fields.append(f"updated_at = ${param_count}")
+                        params.append(datetime.utcnow())
+                        
+                        # Add asset_id for WHERE clause
+                        param_count += 1
+                        params.append(asset_id)
+                        
+                        query = f"""
+                            UPDATE assets.assets 
+                            SET {', '.join(update_fields)}
+                            WHERE id = ${param_count}
+                        """
+                        
+                        await conn.execute(query, *params)
+                        
+                        return {"success": True, "message": "Asset updated successfully"}
             except HTTPException:
                 raise
             except Exception as e:
-                self.logger.error("Failed to delete enhanced target", error=str(e))
+                self.logger.error("Failed to update asset", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to delete enhanced target"
+                    detail="Failed to update asset"
                 )
 
-        @self.app.get("/targets/{target_id}/credentials")
-        async def get_target_credentials(target_id: int):
-            """Get target service credentials for editing (decrypted)"""
+        @self.app.delete("/assets/{asset_id}")
+        async def delete_asset(asset_id: int):
+            """Delete an asset"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Check if target exists
-                    target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
-                    if not target:
-                        raise HTTPException(status_code=404, detail="Target not found")
+                    result = await conn.execute("DELETE FROM assets.assets WHERE id = $1", asset_id)
                     
-                    # Get services with credentials
-                    services = await conn.fetch("""
-                        SELECT id, service_type, port, is_default, is_secure, is_enabled,
-                               credential_type, username, password_encrypted, private_key_encrypted, 
-                               public_key, api_key_encrypted, bearer_token_encrypted, 
-                               certificate_encrypted, passphrase_encrypted, domain, notes
-                        FROM assets.target_services
-                        WHERE target_id = $1
-                        ORDER BY is_default DESC, port ASC
-                    """, target_id)
+                    if result == "DELETE 0":
+                        raise HTTPException(status_code=404, detail="Asset not found")
                     
-                    service_list = []
-                    for service in services:
-                        # Decrypt credentials if they exist
-                        decrypted_service = {
-                            "id": service['id'],
-                            "service_type": service['service_type'],
-                            "port": service['port'],
-                            "is_default": service['is_default'],
-                            "is_secure": service['is_secure'],
-                            "is_enabled": service['is_enabled'],
-                            "credential_type": service['credential_type'],
-                            "username": service['username'],
-                            "domain": service['domain'],
-                            "notes": service['notes']
-                        }
-                        
-                        # Decrypt encrypted fields
-                        try:
-                            if service['password_encrypted']:
-                                decrypted_service['password'] = self._decrypt_field(service['password_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt password for service {service['id']}: {str(e)}")
-                            decrypted_service['password'] = ''
-                        
-                        try:
-                            if service['private_key_encrypted']:
-                                decrypted_service['private_key'] = self._decrypt_field(service['private_key_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt private_key for service {service['id']}: {str(e)}")
-                            decrypted_service['private_key'] = ''
-                        
-                        try:
-                            if service['api_key_encrypted']:
-                                decrypted_service['api_key'] = self._decrypt_field(service['api_key_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt api_key for service {service['id']}: {str(e)}")
-                            decrypted_service['api_key'] = ''
-                        
-                        try:
-                            if service['bearer_token_encrypted']:
-                                decrypted_service['bearer_token'] = self._decrypt_field(service['bearer_token_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt bearer_token for service {service['id']}: {str(e)}")
-                            decrypted_service['bearer_token'] = ''
-                        
-                        try:
-                            if service['certificate_encrypted']:
-                                decrypted_service['certificate'] = self._decrypt_field(service['certificate_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt certificate for service {service['id']}: {str(e)}")
-                            decrypted_service['certificate'] = ''
-                        
-                        try:
-                            if service['passphrase_encrypted']:
-                                decrypted_service['passphrase'] = self._decrypt_field(service['passphrase_encrypted'])
-                        except Exception as e:
-                            self.logger.warning(f"Failed to decrypt passphrase for service {service['id']}: {str(e)}")
-                            decrypted_service['passphrase'] = ''
-                        
-                        # Add public key (not encrypted)
-                        if service['public_key']:
-                            decrypted_service['public_key'] = service['public_key']
-                        
-                        service_list.append(decrypted_service)
-                    
-                    return {
-                        "success": True,
-                        "services": service_list
-                    }
+                    return {"success": True, "message": "Asset deleted successfully"}
             except HTTPException:
                 raise
             except Exception as e:
-                import traceback
-                error_details = f"{str(e)} - {traceback.format_exc()}"
-                self.logger.error("Failed to get target credentials", error=error_details)
+                self.logger.error("Failed to delete asset", error=str(e))
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to get target credentials: {str(e)}"
+                    detail="Failed to delete asset"
                 )
 
-        @self.app.put("/targets/{target_id}")
-        async def update_enhanced_target(target_id: int, target_data: EnhancedTargetCreate):
-            """Update enhanced target"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    async with conn.transaction():
-                        # Check if target exists
-                        existing_target = await conn.fetchrow("SELECT id FROM assets.enhanced_targets WHERE id = $1", target_id)
-                        if not existing_target:
-                            raise HTTPException(status_code=404, detail="Target not found")
-                        
-                        # Resolve IP if not provided
-                        ip_address = target_data.ip_address
-                        if not ip_address and target_data.hostname:
-                            ip_address = await self._resolve_ip_address(target_data.hostname)
-                        
-                        # Update target
-                        await conn.execute("""
-                            UPDATE assets.enhanced_targets 
-                            SET name = $2, hostname = $3, ip_address = $4, os_type = $5, 
-                                os_version = $6, description = $7, tags = $8, updated_at = NOW()
-                            WHERE id = $1
-                        """, 
-                        target_id, target_data.name, target_data.hostname, ip_address, 
-                        target_data.os_type, target_data.os_version, target_data.description, 
-                        json.dumps(target_data.tags or [])
-                        )
-                        
-                        # Get existing services to preserve credentials
-                        existing_services = await conn.fetch("""
-                            SELECT id, service_type, port, is_default, is_secure, is_enabled,
-                                   credential_type, username, password_encrypted, private_key_encrypted, 
-                                   public_key, api_key_encrypted, bearer_token_encrypted, 
-                                   certificate_encrypted, passphrase_encrypted, domain, notes,
-                                   connection_status, last_tested_at
-                            FROM assets.target_services
-                            WHERE target_id = $1
-                        """, target_id)
-                        
-                        # Create a map of existing services by service_type and port
-                        existing_map = {}
-                        for existing in existing_services:
-                            key = (existing['service_type'], existing['port'])
-                            existing_map[key] = existing
-                        
-                        # Delete existing services
-                        await conn.execute("DELETE FROM assets.target_services WHERE target_id = $1", target_id)
-                        
-                        # Create new services, preserving credentials from existing ones
-                        for service in target_data.services:
-                            key = (service.service_type, service.port)
-                            existing = existing_map.get(key)
-                            
-                            # If service exists and no credentials provided in update, preserve existing credentials
-                            if existing and not any([service.credential_type, service.username, service.password, 
-                                                   service.private_key, service.api_key, service.bearer_token, 
-                                                   service.certificate, service.passphrase]):
-                                # Create service with preserved credentials
-                                preserved_service = TargetServiceCreate(
-                                    service_type=service.service_type,
-                                    port=service.port,
-                                    is_default=service.is_default,
-                                    is_secure=service.is_secure,
-                                    is_enabled=service.is_enabled,
-                                    notes=service.notes,
-                                    credential_type=existing['credential_type'],
-                                    username=existing['username'],
-                                    password=self._decrypt_field(existing['password_encrypted']) if existing['password_encrypted'] else None,
-                                    private_key=self._decrypt_field(existing['private_key_encrypted']) if existing['private_key_encrypted'] else None,
-                                    public_key=existing['public_key'],
-                                    api_key=self._decrypt_field(existing['api_key_encrypted']) if existing['api_key_encrypted'] else None,
-                                    bearer_token=self._decrypt_field(existing['bearer_token_encrypted']) if existing['bearer_token_encrypted'] else None,
-                                    certificate=self._decrypt_field(existing['certificate_encrypted']) if existing['certificate_encrypted'] else None,
-                                    passphrase=self._decrypt_field(existing['passphrase_encrypted']) if existing['passphrase_encrypted'] else None,
-                                    domain=existing['domain']
-                                )
-                                await self._create_target_service(conn, target_id, preserved_service, 
-                                                                 existing['connection_status'], existing['last_tested_at'])
-                            else:
-                                # Create service with new/updated credentials
-                                await self._create_target_service(conn, target_id, service)
-                        
-                        # Get updated target with services
-                        target = await conn.fetchrow("""
-                            SELECT id, name, hostname, ip_address, os_type, os_version, 
-                                   description, tags, created_at, updated_at
-                            FROM assets.enhanced_targets
-                            WHERE id = $1
-                        """, target_id)
-                        
-                        services = await conn.fetch("""
-                            SELECT id, service_type, port, is_default, is_secure, is_enabled, 
-                                   credential_type, username, password_encrypted, private_key_encrypted, 
-                                   public_key, api_key_encrypted, bearer_token_encrypted, 
-                                   certificate_encrypted, passphrase_encrypted, domain,
-                                   connection_status, last_tested_at
-                            FROM assets.target_services
-                            WHERE target_id = $1
-                            ORDER BY is_default DESC, service_type
-                        """, target_id)
-                        
-                        # Build services summary
-                        services_summary = []
-                        for service in services:
-                            has_credentials = any([
-                                service['password_encrypted'],
-                                service['private_key_encrypted'],
-                                service['api_key_encrypted'],
-                                service['bearer_token_encrypted'],
-                                service['certificate_encrypted']
-                            ])
-                            
-                            services_summary.append(TargetServiceSummary(
-                                id=service['id'],
-                                service_type=service['service_type'],
-                                port=service['port'],
-                                is_default=service['is_default'],
-                                is_secure=service['is_secure'],
-                                is_enabled=service['is_enabled'],
-                                credential_type=service['credential_type'],
-                                has_credentials=has_credentials,
-                                connection_status=service['connection_status'],
-                                last_tested_at=service['last_tested_at'].isoformat() if service['last_tested_at'] else None
-                            ))
-                        
-                        return EnhancedTargetSummary(
-                            id=target['id'],
-                            name=target['name'],
-                            hostname=target['hostname'],
-                            ip_address=target['ip_address'],
-                            os_type=target['os_type'],
-                            os_version=target['os_version'],
-                            description=target['description'],
-                            tags=json.loads(target['tags']) if target['tags'] else [],
-                            services=services_summary,
-                            created_at=target['created_at'].isoformat(),
-                            updated_at=target['updated_at'].isoformat() if target['updated_at'] else None
-                        )
-                        
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to update enhanced target", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to update enhanced target"
-                )
 
-        @self.app.post("/targets/{target_id}/services/{service_id}/test")
-        async def test_service_connection(target_id: int, service_id: int):
-            """Test connection to a specific service"""
-            try:
-                async with self.db.pool.acquire() as conn:
-                    # Get service details with target info
-                    service_row = await conn.fetchrow("""
-                        SELECT ts.*, t.hostname, t.ip_address, t.name as target_name
-                        FROM assets.target_services ts
-                        JOIN assets.enhanced_targets t ON ts.target_id = t.id
-                        WHERE ts.id = $1 AND ts.target_id = $2
-                    """, service_id, target_id)
-                    
-                    if not service_row:
-                        raise HTTPException(status_code=404, detail="Service not found")
-                    
-                    if not service_row['is_enabled']:
-                        raise HTTPException(status_code=400, detail="Service is disabled")
-                    
-                    # Determine connection host (prefer IP, fallback to hostname)
-                    host = service_row['ip_address'] or service_row['hostname']
-                    if not host:
-                        raise HTTPException(status_code=400, detail="No host configured")
-                    
-                    # Call automation service for connection test
-                    import aiohttp
-                    import time
-                    
-                    start_time = time.time()
-                    
-                    connection_data = {
-                        "host": host,
-                        "port": service_row['port'],
-                        "service_type": service_row['service_type'],
-                        "credential_type": service_row['credential_type'],
-                        "username": service_row['username'],
-                        "service_id": service_id,
-                        "target_id": target_id
-                    }
-                    
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                "http://automation-service:3003/automation/test-connection",
-                                json=connection_data,
-                                timeout=aiohttp.ClientTimeout(total=30)
-                            ) as response:
-                                if response.status == 200:
-                                    result = await response.json()
-                                    success = result.get('success', False)
-                                    error_message = result.get('error', '')
-                                else:
-                                    success = False
-                                    error_message = f"Automation service returned status {response.status}"
-                    except Exception as e:
-                        success = False
-                        error_message = f"Failed to call automation service: {str(e)}"
-                    
-                    end_time = time.time()
-                    response_time = int((end_time - start_time) * 1000)
-                    
-                    # Build connection type string
-                    connection_type = service_row['service_type']
-                    if service_row['credential_type']:
-                        connection_type += f" ({service_row['credential_type']})"
-                    
-                    # Build test result
-                    if success:
-                        test_result = {
-                            "status": "success",
-                            "message": f"Successfully connected to {service_row['service_type']} service",
-                            "response_time_ms": response_time
-                        }
-                        connection_status = "connected"
-                    else:
-                        test_result = {
-                            "status": "failed",
-                            "message": error_message or f"Failed to connect to {service_row['service_type']} service",
-                            "response_time_ms": response_time
-                        }
-                        connection_status = "failed"
-                    
-                    # Update connection status in database
-                    await conn.execute("""
-                        UPDATE assets.target_services 
-                        SET connection_status = $1, last_tested_at = NOW()
-                        WHERE id = $2 AND target_id = $3
-                    """, connection_status, service_id, target_id)
-                    
-                    return {
-                        "success": True,
-                        "data": {
-                            "service_id": service_id,
-                            "target_name": service_row['target_name'],
-                            "service_type": service_row['service_type'],
-                            "host": host,
-                            "port": service_row['port'],
-                            "connection_type": connection_type,
-                            "status": test_result['status'],
-                            "message": test_result['message'],
-                            "response_time_ms": test_result.get('response_time_ms'),
-                            "connection_status": connection_status,
-                            "tested_at": datetime.utcnow().isoformat()
-                        }
-                    }
-            except HTTPException:
-                raise
-            except Exception as e:
-                self.logger.error("Failed to test service connection", error=str(e))
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to test service connection"
-                )
-
-    async def _create_target_service(self, conn, target_id: int, service: TargetServiceCreate, 
-                                   connection_status: str = 'unknown', last_tested_at = None):
-        """Create a target service with encrypted credentials"""
-        # Encrypt sensitive fields
-        password_encrypted = self._encrypt_field(service.password) if service.password else None
-        private_key_encrypted = self._encrypt_field(service.private_key) if service.private_key else None
-        api_key_encrypted = self._encrypt_field(service.api_key) if service.api_key else None
-        bearer_token_encrypted = self._encrypt_field(service.bearer_token) if service.bearer_token else None
-        certificate_encrypted = self._encrypt_field(service.certificate) if service.certificate else None
-        passphrase_encrypted = self._encrypt_field(service.passphrase) if service.passphrase else None
-        
-        await conn.execute("""
-            INSERT INTO assets.target_services 
-            (target_id, service_type, port, is_default, is_secure, is_enabled, notes,
-             credential_type, username, password_encrypted, private_key_encrypted, 
-             public_key, api_key_encrypted, bearer_token_encrypted, certificate_encrypted, 
-             passphrase_encrypted, domain, connection_status, last_tested_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        """, 
-        target_id, service.service_type, service.port, service.is_default, 
-        service.is_secure, service.is_enabled, service.notes, service.credential_type,
-        service.username, password_encrypted, private_key_encrypted, service.public_key,
-        api_key_encrypted, bearer_token_encrypted, certificate_encrypted, 
-        passphrase_encrypted, service.domain, connection_status, last_tested_at
-        )
 
 if __name__ == "__main__":
-    service = AssetService()
+    service = ConsolidatedAssetService()
     service.run()
