@@ -306,7 +306,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       field: 'service_type', 
       label: 'Service Type', 
       type: 'dropdown', 
-      options: ['ssh', 'rdp', 'winrm', 'http', 'https', 'database', 'telnet', 'ftp', 'sftp'], 
+      options: ['ssh', 'winrm', 'api', 'database'], 
       required: true, 
       section: 'Primary Service & Credentials'
     },
@@ -315,42 +315,55 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       label: 'Port', 
       type: 'number', 
       section: 'Primary Service & Credentials',
-      placeholder: '22, 3389, 5985, 80, 443, etc.'
+      placeholder: 'Auto-populated based on service type'
     },
     { 
       field: 'credential_type', 
       label: 'Credential Type', 
       type: 'dropdown', 
-      options: ['username_password', 'ssh_key', 'certificate', 'api_key', 'bearer_token'], 
-      section: 'Primary Service & Credentials'
+      options: [], // Will be populated dynamically based on service_type
+      section: 'Primary Service & Credentials',
+      conditional: (formData) => !!formData.service_type
     },
     { 
       field: 'username', 
       label: 'Username', 
       type: 'text', 
       section: 'Primary Service & Credentials',
-      placeholder: 'admin, root, service_account, etc.'
+      placeholder: 'Enter username',
+      conditional: (formData) => ['username_password', 'ssh_key'].includes(formData.credential_type)
     },
     { 
       field: 'password', 
       label: 'Password', 
       type: 'password', 
       section: 'Primary Service & Credentials',
-      placeholder: 'Enter password (will be encrypted)'
+      placeholder: 'Enter password (will be encrypted)',
+      conditional: (formData) => formData.credential_type === 'username_password'
     },
     { 
       field: 'private_key', 
-      label: 'SSH Key', 
+      label: 'SSH Private Key', 
       type: 'textarea', 
       section: 'Primary Service & Credentials',
-      placeholder: 'Paste SSH private key here (will be encrypted)'
+      placeholder: 'Paste SSH private key here (will be encrypted)',
+      conditional: (formData) => formData.credential_type === 'ssh_key'
     },
     { 
-      field: 'certificate', 
-      label: 'Certificate', 
-      type: 'textarea', 
+      field: 'api_key', 
+      label: 'API Key', 
+      type: 'password', 
       section: 'Primary Service & Credentials',
-      placeholder: 'Paste certificate here (will be encrypted)'
+      placeholder: 'Enter API key (will be encrypted)',
+      conditional: (formData) => formData.credential_type === 'api_key'
+    },
+    { 
+      field: 'bearer_token', 
+      label: 'Bearer Token', 
+      type: 'password', 
+      section: 'Primary Service & Credentials',
+      placeholder: 'Enter bearer token (will be encrypted)',
+      conditional: (formData) => formData.credential_type === 'bearer_token'
     },
     
     // ========== DATABASE INFORMATION ==========
@@ -376,7 +389,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       field: 'secondary_service_type', 
       label: 'Secondary Service Type', 
       type: 'dropdown', 
-      options: ['none', 'telnet', 'ftp_sftp'], 
+      options: ['none', 'ftp', 'sftp', 'telnet', 'wmi', 'rdp', 'vnc'], 
       section: 'Secondary Communication'
     },
     { 
@@ -384,45 +397,32 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       label: 'Secondary Port', 
       type: 'number', 
       section: 'Secondary Communication',
-      placeholder: '23 (Telnet), 21 (FTP), 22 (SFTP)',
+      placeholder: 'Auto-populated based on service type',
       conditional: (formData) => formData.secondary_service_type && formData.secondary_service_type !== 'none'
     },
     { 
-      field: 'ftp_type', 
-      label: 'FTP Type', 
+      field: 'secondary_credential_type', 
+      label: 'Secondary Credential Type', 
       type: 'dropdown', 
-      options: ['ftp', 'ftps', 'sftp'], 
+      options: [], // Will be populated dynamically based on secondary_service_type
       section: 'Secondary Communication',
-      conditional: (formData) => formData.secondary_service_type === 'ftp_sftp'
+      conditional: (formData) => formData.secondary_service_type && formData.secondary_service_type !== 'none'
     },
     { 
       field: 'secondary_username', 
       label: 'Secondary Username', 
       type: 'text', 
       section: 'Secondary Communication',
-      conditional: (formData) => formData.secondary_service_type && formData.secondary_service_type !== 'none'
+      placeholder: 'Enter username',
+      conditional: (formData) => formData.secondary_credential_type === 'username_password'
     },
     { 
       field: 'secondary_password', 
       label: 'Secondary Password', 
       type: 'password', 
       section: 'Secondary Communication',
-      conditional: (formData) => formData.secondary_service_type && formData.secondary_service_type !== 'none'
-    },
-    
-    // ========== ADDITIONAL INFORMATION ==========
-    { 
-      field: 'notes', 
-      label: 'Notes', 
-      type: 'textarea', 
-      section: 'Additional Information',
-      placeholder: 'Additional notes about this asset...'
-    },
-    { 
-      field: 'is_active', 
-      label: 'Active', 
-      type: 'boolean', 
-      section: 'Additional Information'
+      placeholder: 'Enter password (will be encrypted)',
+      conditional: (formData) => formData.secondary_credential_type === 'username_password'
     },
 
   ];
@@ -440,7 +440,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     switch (serviceType) {
       case 'ssh': return 22;
       case 'winrm': return 5985;
-      case 'http_api': return 443; // HTTPS default, could be 80 for HTTP
+      case 'api': return 443; // HTTPS default
       case 'database':
         switch (databaseType) {
           case 'mysql': return 3306;
@@ -451,9 +451,31 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
           case 'redis': return 6379;
           default: return 3306; // Default to MySQL port
         }
+      // Secondary service ports
+      case 'ftp': return 21;
+      case 'sftp': return 22;
       case 'telnet': return 23;
-      case 'ftp_sftp': return 21; // Will be updated based on FTP type
+      case 'wmi': return 135;
+      case 'rdp': return 3389;
+      case 'vnc': return 5900;
       default: return null;
+    }
+  };
+
+  const getCredentialOptions = (serviceType: string) => {
+    switch (serviceType) {
+      case 'ssh': return ['username_password', 'ssh_key'];
+      case 'winrm': return ['username_password'];
+      case 'api': return ['api_key', 'bearer_token', 'username_password'];
+      case 'database': return ['username_password'];
+      // Secondary services
+      case 'ftp':
+      case 'sftp':
+      case 'telnet':
+      case 'wmi':
+      case 'rdp':
+      case 'vnc': return ['username_password'];
+      default: return [];
     }
   };
 
@@ -471,12 +493,14 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         newData.device_type = getDeviceTypeFromService(serviceType, osType);
       }
       
-      // Auto-populate port for primary service
+      // Auto-populate port and reset credential type for primary service
       if (field === 'service_type') {
         const defaultPort = getDefaultPort(value, newData.database_type);
         if (defaultPort) {
           newData.port = defaultPort;
         }
+        // Reset credential type when service type changes
+        newData.credential_type = '';
       }
       
       // Auto-populate port for database type change
@@ -487,28 +511,18 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         }
       }
       
-      // Auto-populate port for secondary service
+      // Auto-populate port and reset credential type for secondary service
       if (field === 'secondary_service_type') {
-        if (value === 'telnet') {
-          newData.secondary_port = 23;
-        } else if (value === 'ftp_sftp') {
-          // Default to FTP port, will be updated when FTP type is selected
-          newData.secondary_port = 21;
-        } else if (value === 'none') {
+        if (value === 'none') {
           newData.secondary_port = '';
-        }
-      }
-      
-      // Auto-populate secondary port based on FTP type
-      if (field === 'ftp_type') {
-        switch (value) {
-          case 'ftp':
-          case 'ftps':
-            newData.secondary_port = 21;
-            break;
-          case 'sftp':
-            newData.secondary_port = 22;
-            break;
+          newData.secondary_credential_type = '';
+        } else {
+          const defaultPort = getDefaultPort(value);
+          if (defaultPort) {
+            newData.secondary_port = defaultPort;
+          }
+          // Reset secondary credential type when service type changes
+          newData.secondary_credential_type = '';
         }
       }
       
@@ -656,11 +670,12 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       
       case 'dropdown':
         const getOptionLabel = (option: string) => {
-          if (fieldDef.field === 'credential_type') {
+          if (fieldDef.field === 'credential_type' || fieldDef.field === 'secondary_credential_type') {
             switch (option) {
               case 'username_password': return 'Username & Password';
               case 'ssh_key': return 'SSH Key';
-              case 'certificate': return 'Certificate';
+              case 'api_key': return 'API Key';
+              case 'bearer_token': return 'Bearer Token';
               default: return option;
             }
           }
@@ -668,7 +683,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
             switch (option) {
               case 'ssh': return 'SSH';
               case 'winrm': return 'WinRM';
-              case 'http_api': return 'HTTP/API';
+              case 'api': return 'API (HTTP/HTTPS)';
               case 'database': return 'Database';
               default: return option;
             }
@@ -676,13 +691,25 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
           if (fieldDef.field === 'secondary_service_type') {
             switch (option) {
               case 'none': return 'None';
+              case 'ftp': return 'FTP';
+              case 'sftp': return 'SFTP';
               case 'telnet': return 'Telnet';
-              case 'ftp_sftp': return 'FTP/SFTP';
+              case 'wmi': return 'WMI';
+              case 'rdp': return 'RDP';
+              case 'vnc': return 'VNC';
               default: return option;
             }
           }
           return option.charAt(0).toUpperCase() + option.slice(1).replace(/[-_]/g, ' ');
         };
+
+        // Get dynamic options for credential fields
+        let options = fieldDef.options || [];
+        if (fieldDef.field === 'credential_type' && formData.service_type) {
+          options = getCredentialOptions(formData.service_type);
+        } else if (fieldDef.field === 'secondary_credential_type' && formData.secondary_service_type) {
+          options = getCredentialOptions(formData.secondary_service_type);
+        }
         
         return (
           <select
@@ -692,7 +719,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
             className={`field-select ${hasError ? 'error' : ''}`}
           >
             <option value="">Select {fieldDef.label}</option>
-            {(fieldDef.options || []).map(option => (
+            {options.map(option => (
               <option key={option} value={option}>
                 {getOptionLabel(option)}
               </option>
@@ -736,8 +763,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     'Status & Management',
     'Primary Service & Credentials',
     'Database Information',
-    'Secondary Communication',
-    'Additional Information'
+    'Secondary Communication'
   ];
 
 
