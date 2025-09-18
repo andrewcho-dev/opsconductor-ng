@@ -220,30 +220,28 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       }
     },
     
-    // ========== HARDWARE INFORMATION ==========
+    // ========== SYSTEM INFORMATION ==========
     { 
       field: 'hardware_make', 
       label: 'Hardware Make', 
       type: 'text', 
-      section: 'Hardware Information',
+      section: 'System Information',
       placeholder: 'Dell, HP, Cisco, VMware, etc.'
     },
     { 
       field: 'hardware_model', 
       label: 'Hardware Model', 
       type: 'text', 
-      section: 'Hardware Information',
+      section: 'System Information',
       placeholder: 'PowerEdge R740, ProLiant DL380, etc.'
     },
     { 
       field: 'serial_number', 
       label: 'Serial Number', 
       type: 'text', 
-      section: 'Hardware Information',
+      section: 'System Information',
       placeholder: 'ABC123DEF456'
     },
-    
-    // ========== SYSTEM INFORMATION ==========
     { 
       field: 'os_type', 
       label: 'OS Type', 
@@ -728,11 +726,10 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     }
   };
 
-  // Organize sections into two columns - RESTORED TO YOUR PERFECT ORGANIZATION
+  // Organize sections into two columns - CONSOLIDATED SYSTEM INFORMATION
   const leftColumnSections = [
     'Basic Asset Information',
     'Location Information', 
-    'Hardware Information',
     'System Information'
   ];
   const rightColumnSections = [
