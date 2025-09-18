@@ -18,8 +18,31 @@ const Assets: React.FC = () => {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [addingNew, setAddingNew] = useState(false);
+  const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const assetListRef = useRef<AssetTableListRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch detailed asset data (includes credential information)
+  const fetchDetailedAssetData = async (assetId: number): Promise<Asset | null> => {
+    try {
+      setLoadingAssetDetails(true);
+      console.log('Fetching detailed asset data for ID:', assetId);
+      const response = await assetApi.get(assetId);
+      console.log('Raw API response:', response);
+      
+      // The API returns {success: true, data: {...}}, so we need response.data
+      const assetData = response.data || response;
+      console.log('Extracted asset data:', assetData);
+      console.log('Asset credential_type:', assetData.credential_type);
+      
+      return assetData;
+    } catch (error) {
+      console.error('Failed to fetch detailed asset data:', error);
+      return null;
+    } finally {
+      setLoadingAssetDetails(false);
+    }
+  };
 
   // CSV field definitions in import/export order (ALL fields supported by backend)
   const csvFields = [
@@ -449,14 +472,30 @@ const Assets: React.FC = () => {
     } else if (action === 'edit' && id) {
       const asset = assets.find(a => a.id.toString() === id);
       if (asset) {
-        setEditingAsset(asset);
+        // Fetch detailed asset data for editing (includes credential_type)
+        fetchDetailedAssetData(parseInt(id)).then(detailedAsset => {
+          if (detailedAsset) {
+            setEditingAsset(detailedAsset);
+          } else {
+            // Fallback to list data if detailed fetch fails
+            setEditingAsset(asset);
+          }
+        });
         setSelectedAsset(null);
         setAddingNew(false);
       }
     } else if (action === 'view' && id) {
       const asset = assets.find(a => a.id.toString() === id);
       if (asset) {
-        setSelectedAsset(asset);
+        // Fetch detailed asset data for viewing (includes credential_type)
+        fetchDetailedAssetData(parseInt(id)).then(detailedAsset => {
+          if (detailedAsset) {
+            setSelectedAsset(detailedAsset);
+          } else {
+            // Fallback to list data if detailed fetch fails
+            setSelectedAsset(asset);
+          }
+        });
         setEditingAsset(null);
         setAddingNew(false);
       }
@@ -687,7 +726,24 @@ const Assets: React.FC = () => {
             <AssetTableList
               ref={assetListRef}
               onSelectionChanged={(selectedAssets) => {
-                setSelectedAsset(selectedAssets.length > 0 ? selectedAssets[0] : null);
+                if (selectedAssets.length > 0) {
+                  const asset = selectedAssets[0];
+                  console.log('Asset selection changed to:', asset.name, 'ID:', asset.id);
+                  
+                  // Fetch detailed asset data when selecting from list
+                  fetchDetailedAssetData(asset.id).then(detailedAsset => {
+                    console.log('Detailed asset data loaded for:', detailedAsset?.name);
+                    if (detailedAsset) {
+                      setSelectedAsset(detailedAsset);
+                    } else {
+                      // Fallback to list data if detailed fetch fails
+                      setSelectedAsset(asset);
+                    }
+                  });
+                } else {
+                  console.log('Asset selection cleared');
+                  setSelectedAsset(null);
+                }
               }}
               onRowDoubleClicked={(asset) => {
                 navigate(`/assets/edit/${asset.id}`);
@@ -776,12 +832,29 @@ const Assets: React.FC = () => {
                 Asset Details: {selectedAsset.name}
               </div>
               <div className="compact-content">
-                <AssetSpreadsheetForm
-                  mode="view"
-                  asset={selectedAsset}
-                  onCancel={() => {}}
-                  onSave={() => {}}
-                />
+                {loadingAssetDetails ? (
+                  <div className="loading-state">
+                    <p>Loading asset details...</p>
+                  </div>
+                ) : (
+                  <AssetSpreadsheetForm
+                    mode="view"
+                    asset={selectedAsset}
+                    onCancel={() => {}}
+                    onSave={() => {}}
+                  />
+                )}
+              </div>
+            </>
+          ) : loadingAssetDetails ? (
+            <>
+              <div className="section-header">
+                Asset Details
+              </div>
+              <div className="compact-content">
+                <div className="loading-state">
+                  <p>Loading asset details...</p>
+                </div>
               </div>
             </>
           ) : (

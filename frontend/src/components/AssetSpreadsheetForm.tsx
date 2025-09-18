@@ -21,6 +21,15 @@ interface FieldDefinition {
 }
 
 const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSave, onCancel, mode }) => {
+  // State to track existing credentials for visual indicators
+  const [hasExistingCredentials, setHasExistingCredentials] = useState<{
+    password?: boolean;
+    private_key?: boolean;
+    api_key?: boolean;
+    bearer_token?: boolean;
+    secondary_password?: boolean;
+  }>({});
+
   // Helper function to derive device type from service type
   const getDeviceTypeFromService = (serviceType: string, osType: string): string => {
     switch (serviceType?.toLowerCase()) {
@@ -118,6 +127,50 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Detect existing credentials when asset data is loaded
+  React.useEffect(() => {
+    if (asset && (mode === 'edit' || mode === 'view')) {
+      console.log('AssetSpreadsheetForm - Raw asset prop passed to component:', JSON.stringify(asset, null, 2));
+      const credentialType = asset.credential_type;
+      const secondaryCredentialType = (asset as any).secondary_credential_type;
+      
+      console.log('AssetSpreadsheetForm - Asset data:', asset);
+      console.log('AssetSpreadsheetForm - All asset keys:', Object.keys(asset));
+      console.log('AssetSpreadsheetForm - Credential type:', credentialType);
+      console.log('AssetSpreadsheetForm - Secondary credential type:', secondaryCredentialType);
+      console.log('AssetSpreadsheetForm - Service type:', asset.service_type);
+      console.log('AssetSpreadsheetForm - Username:', asset.username);
+      console.log('AssetSpreadsheetForm - Has credentials flag:', asset.has_credentials);
+      
+      // Detect existing credentials based on credential_type being set
+      const existingCreds: any = {};
+      
+      if (credentialType) {
+        switch (credentialType) {
+          case 'username_password':
+            existingCreds.password = true;
+            break;
+          case 'ssh_key':
+            existingCreds.private_key = true;
+            break;
+          case 'api_key':
+            existingCreds.api_key = true;
+            break;
+          case 'bearer_token':
+            existingCreds.bearer_token = true;
+            break;
+        }
+      }
+      
+      if (secondaryCredentialType === 'username_password') {
+        existingCreds.secondary_password = true;
+      }
+      
+      console.log('AssetSpreadsheetForm - Setting hasExistingCredentials to:', existingCreds);
+      setHasExistingCredentials(existingCreds);
+    }
+  }, [asset, mode]);
+
   // COMPREHENSIVE FIELD DEFINITIONS - RESTORED TO YOUR PERFECT ORGANIZATION
   const fieldDefinitions: FieldDefinition[] = [
     // ========== BASIC ASSET INFORMATION ==========
@@ -125,7 +178,6 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       field: 'name', 
       label: 'Asset Name', 
       type: 'text', 
-      required: true,
       section: 'Basic Asset Information',
       placeholder: 'Enter a descriptive name for this asset'
     },
@@ -145,7 +197,6 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
       field: 'hostname', 
       label: 'Hostname', 
       type: 'text', 
-      required: true,
       section: 'Basic Asset Information',
       placeholder: 'server.example.com'
     },
@@ -620,14 +671,20 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         );
       
       case 'password':
+        // Check if this field has existing credentials
+        const hasExisting = hasExistingCredentials[fieldDef.field as keyof typeof hasExistingCredentials];
+        const enhancedPlaceholder = hasExisting 
+          ? "••••••••• (encrypted - leave empty to keep)" 
+          : (isReadOnly ? '' : fieldDef.placeholder);
+        
         return (
           <input
             type={isReadOnly ? 'text' : 'password'}
             value={value || ''}
             onChange={(e) => handleFieldChange(fieldDef.field, e.target.value)}
             readOnly={isReadOnly}
-            className={`field-input ${hasError ? 'error' : ''}`}
-            placeholder={isReadOnly ? '' : fieldDef.placeholder}
+            className={`field-input ${hasError ? 'error' : ''} ${hasExisting ? 'has-existing-credential' : ''}`}
+            placeholder={enhancedPlaceholder}
           />
         );
       
@@ -785,8 +842,21 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         
         return (
           <div key={sectionName} className="form-section">
-            <div className="section-header">
+            <div className="section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3>{sectionName}</h3>
+              {/* Show credential badge for Primary Service & Credentials section */}
+              {sectionName === 'Primary Service & Credentials' && Object.values(hasExistingCredentials).some(Boolean) && (
+                <span style={{ 
+                  padding: '2px 8px', 
+                  backgroundColor: 'var(--success-green-light)', 
+                  color: 'var(--success-green)', 
+                  fontSize: 'var(--font-size-xs)', 
+                  borderRadius: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  Stored: {formData.credential_type?.replace('_', ' ').toUpperCase()}
+                </span>
+              )}
             </div>
             <div className="section-grid">
               {visibleFields.map((fieldDef) => (
@@ -795,6 +865,14 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
                     <label className={`field-label ${fieldDef.required ? 'required' : ''}`}>
                       {fieldDef.label}
                       {fieldDef.required && <span className="required-asterisk">*</span>}
+                      {/* Show credential indicator for password fields */}
+                      {fieldDef.type === 'password' && hasExistingCredentials[fieldDef.field as keyof typeof hasExistingCredentials] && (
+                        <span className="credential-indicator" title="Encrypted credential stored">●</span>
+                      )}
+                      {/* Show indicator for username fields when they have values */}
+                      {(fieldDef.field === 'username' || fieldDef.field === 'secondary_username') && formData[fieldDef.field] && (
+                        <span className="username-indicator" title="Username stored">●</span>
+                      )}
                     </label>
                   </div>
                   <div className="field-value-cell">

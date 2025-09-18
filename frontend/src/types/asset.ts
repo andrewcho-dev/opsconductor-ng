@@ -58,6 +58,7 @@ export interface Asset {
   ftp_type?: string;
   secondary_username?: string;
   secondary_password?: string;
+  secondary_credential_type?: string;
   
   // Additional Information
   notes?: string;

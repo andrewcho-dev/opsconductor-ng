@@ -1,4 +1,5 @@
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 import { assetApi } from '../services/api';
 import { Asset } from '../types/asset';
 
@@ -27,6 +28,8 @@ const AssetList = forwardRef<AssetListRef, AssetListProps>(({
   const [loading, setLoading] = useState(true);
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const hasLoadedRef = useRef(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +110,40 @@ const AssetList = forwardRef<AssetListRef, AssetListProps>(({
     }
   };
 
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort assets
+  const sortedAssets = React.useMemo(() => {
+    if (!sortField) return assets;
+
+    return [...assets].sort((a, b) => {
+      let aValue = '';
+      let bValue = '';
+
+      if (sortField === 'ip_address') {
+        aValue = a.ip_address || '';
+        bValue = b.ip_address || '';
+      } else if (sortField === 'hostname') {
+        aValue = a.hostname || '';
+        bValue = b.hostname || '';
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  }, [assets, sortField, sortDirection]);
+
   if (loading) {
     return (
       <div className="asset-list loading">
@@ -117,8 +154,44 @@ const AssetList = forwardRef<AssetListRef, AssetListProps>(({
 
   return (
     <div className="asset-list">
+      <div className="sort-header">
+        <div className="sort-controls">
+          <button 
+            className={`sort-button ${sortField === 'ip_address' ? 'active' : ''}`}
+            onClick={() => handleSort('ip_address')}
+          >
+            <span>Sort by IP Address</span>
+            <div className="sort-indicators">
+              <ChevronUp 
+                size={12} 
+                className={`sort-icon ${sortField === 'ip_address' && sortDirection === 'asc' ? 'active' : ''}`} 
+              />
+              <ChevronDown 
+                size={12} 
+                className={`sort-icon ${sortField === 'ip_address' && sortDirection === 'desc' ? 'active' : ''}`} 
+              />
+            </div>
+          </button>
+          <button 
+            className={`sort-button ${sortField === 'hostname' ? 'active' : ''}`}
+            onClick={() => handleSort('hostname')}
+          >
+            <span>Sort by Hostname</span>
+            <div className="sort-indicators">
+              <ChevronUp 
+                size={12} 
+                className={`sort-icon ${sortField === 'hostname' && sortDirection === 'asc' ? 'active' : ''}`} 
+              />
+              <ChevronDown 
+                size={12} 
+                className={`sort-icon ${sortField === 'hostname' && sortDirection === 'desc' ? 'active' : ''}`} 
+              />
+            </div>
+          </button>
+        </div>
+      </div>
       <div className="asset-list-container">
-        {assets.map((asset) => (
+        {sortedAssets.map((asset) => (
           <div
             key={asset.id}
             className={`asset-item ${selectedAssetId === asset.id ? 'selected' : ''}`}
@@ -184,7 +257,7 @@ const AssetList = forwardRef<AssetListRef, AssetListProps>(({
           </div>
         ))}
         
-        {assets.length === 0 && (
+        {sortedAssets.length === 0 && (
           <div className="empty-state">
             <h3>No assets found</h3>
             <p>Create your first asset to get started.</p>
@@ -197,6 +270,66 @@ const AssetList = forwardRef<AssetListRef, AssetListProps>(({
           height: 100%;
           display: flex;
           flex-direction: column;
+        }
+
+        .sort-header {
+          padding: 8px 12px;
+          border-bottom: 1px solid #dee2e6;
+          background-color: #f8f9fa;
+        }
+
+        .sort-controls {
+          display: flex;
+          gap: 8px;
+        }
+
+        .sort-button {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          border: 1px solid #dee2e6;
+          border-radius: 4px;
+          background: white;
+          color: #6c757d;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .sort-button:hover {
+          border-color: #0d6efd;
+          color: #0d6efd;
+        }
+
+        .sort-button.active {
+          border-color: #0d6efd;
+          background-color: #e3f2fd;
+          color: #0d6efd;
+        }
+
+        .sort-indicators {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+          opacity: 0.5;
+        }
+
+        .sort-button:hover .sort-indicators {
+          opacity: 0.8;
+        }
+
+        .sort-button.active .sort-indicators {
+          opacity: 1;
+        }
+
+        .sort-icon {
+          color: inherit;
+          transition: color 0.2s ease;
+        }
+
+        .sort-icon.active {
+          color: #0d6efd;
         }
         
         .loading {

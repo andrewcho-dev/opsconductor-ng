@@ -496,10 +496,10 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                     System Status
                   </button>
                   <button 
-                    onClick={() => setChatInput('List all targets')}
+                    onClick={() => setChatInput('List all assets')}
                     className="btn btn-sm"
                   >
-                    List Targets
+                    List Assets
                   </button>
                   <button 
                     onClick={() => setChatInput('Show recent job runs')}

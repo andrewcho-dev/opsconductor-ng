@@ -5,7 +5,7 @@ import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
 
 interface SystemStats {
   users: number;
-  targets: number;
+  assets: number;
   jobs: number;
   recentRuns: number;
 }
@@ -13,7 +13,7 @@ interface SystemStats {
 const SystemStats: React.FC = () => {
   const [stats, setStats] = useState<SystemStats>({
     users: 0,
-    targets: 0,
+    assets: 0,
     jobs: 0,
     recentRuns: 0,
   });
@@ -38,7 +38,7 @@ const SystemStats: React.FC = () => {
 
         setStats({
           users: getTotal(usersResponse),
-          targets: getTotal(assetsResponse),
+          assets: getTotal(assetsResponse),
           jobs: getTotal(jobsResponse),
           recentRuns: getTotal(runsResponse),
         });
@@ -47,7 +47,7 @@ const SystemStats: React.FC = () => {
         // Set fallback stats so the dashboard still shows something
         setStats({
           users: 0,
-          targets: 0,
+          assets: 0,
           jobs: 0,
           recentRuns: 0,
         });
@@ -69,7 +69,7 @@ const SystemStats: React.FC = () => {
     },
     {
       title: 'Assets',
-      value: stats.targets,
+      value: stats.assets,
       icon: Target,
       link: '/assets',
       color: 'var(--success-green)'

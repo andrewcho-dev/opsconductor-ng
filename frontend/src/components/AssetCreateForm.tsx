@@ -345,10 +345,9 @@ const AssetCreateForm: React.FC<AssetCreateFormProps> = ({ onCancel, onSuccess }
             <div className="section-header">Basic Information</div>
             <div className="four-column-grid">
               <div className="form-field">
-                <label className="form-label required">Asset Name</label>
+                <label className="form-label">Asset Name</label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   className="form-input"
@@ -357,10 +356,9 @@ const AssetCreateForm: React.FC<AssetCreateFormProps> = ({ onCancel, onSuccess }
               </div>
 
               <div className="form-field">
-                <label className="form-label required">Hostname</label>
+                <label className="form-label">Hostname</label>
                 <input
                   type="text"
-                  required
                   value={formData.hostname}
                   onChange={(e) => handleInputChange('hostname', e.target.value)}
                   className="form-input"

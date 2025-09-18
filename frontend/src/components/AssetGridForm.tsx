@@ -34,8 +34,8 @@ const AssetGridForm: React.FC<AssetGridFormProps> = ({ asset, onSave, onCancel, 
 
   // Field definitions
   const fieldDefinitions: FieldDefinition[] = [
-    { field: 'name', label: 'Asset Name', type: 'text', required: true },
-    { field: 'hostname', label: 'Hostname', type: 'text', required: true },
+    { field: 'name', label: 'Asset Name', type: 'text' },
+    { field: 'hostname', label: 'Hostname', type: 'text' },
     { field: 'ip_address', label: 'IP Address', type: 'text' },
     { field: 'description', label: 'Description', type: 'text' },
     { field: 'os_type', label: 'OS Type', type: 'dropdown', options: ['linux', 'windows', 'macos', 'unix'], required: true },

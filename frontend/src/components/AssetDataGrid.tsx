@@ -30,6 +30,8 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{x: number, y: number} | null>(null);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const hasLoadedRef = useRef(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -139,6 +141,40 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     }
   };
 
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort assets
+  const sortedAssets = React.useMemo(() => {
+    if (!sortField) return assets;
+
+    return [...assets].sort((a, b) => {
+      let aValue = '';
+      let bValue = '';
+
+      if (sortField === 'ip_address') {
+        aValue = a.ip_address || '';
+        bValue = b.ip_address || '';
+      } else if (sortField === 'hostname') {
+        aValue = a.hostname || '';
+        bValue = b.hostname || '';
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  }, [assets, sortField, sortDirection]);
+
   // Convert assets to ReactGrid format
   const getColumns = (): Column[] => [
     { columnId: 'name', width: 200 },
@@ -151,12 +187,17 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
   ];
 
   const getRows = (): Row[] => {
+    const getSortIndicator = (field: string) => {
+      if (sortField !== field) return '';
+      return sortDirection === 'asc' ? ' ↑' : ' ↓';
+    };
+
     const headerRow: Row = {
       rowId: 'header',
       cells: [
         { type: 'header', text: 'Name' },
-        { type: 'header', text: 'Hostname' },
-        { type: 'header', text: 'IP Address' },
+        { type: 'header', text: `Hostname${getSortIndicator('hostname')}` },
+        { type: 'header', text: `IP Address${getSortIndicator('ip_address')}` },
         { type: 'header', text: 'OS Type' },
         { type: 'header', text: 'Status' },
         { type: 'header', text: 'Tags' },
@@ -164,7 +205,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
       ]
     };
 
-    const dataRows: Row[] = assets.map((asset) => ({
+    const dataRows: Row[] = sortedAssets.map((asset) => ({
       rowId: asset.id.toString(),
       cells: [
         { type: 'text', text: asset.name },
@@ -180,10 +221,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     return [headerRow, ...dataRows];
   };
 
-  // Handle cell changes
-  const handleChanges = (changes: any[]) => {
-    console.log('ReactGrid changes:', changes);
-  };
+
 
   // Handle row selection
   const handleSelectionChange = (selectedRowIds: string[]) => {
@@ -198,8 +236,18 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
 
   // Handle row click for selection
   const handleRowClick = (rowId: string, event: React.MouseEvent) => {
-    // Skip header row
-    if (rowId === 'header') return;
+    // Handle header row clicks for sorting
+    if (rowId === 'header') {
+      const target = event.target as HTMLElement;
+      const cell = target.closest('.rg-cell');
+      const columnIndex = Array.from(cell?.parentElement?.children || []).indexOf(cell as Element);
+      const columnId = getColumns()[columnIndex]?.columnId || '';
+      
+      if (columnId === 'hostname' || columnId === 'ip_address') {
+        handleSort(columnId);
+      }
+      return;
+    }
     
     // Don't interfere with action button clicks
     const target = event.target as HTMLElement;
@@ -222,7 +270,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     }
     
     setSelectedRowIds(newSelection);
-    const selectedAssets = assets.filter(asset => 
+    const selectedAssets = sortedAssets.filter(asset => 
       newSelection.includes(asset.id.toString())
     );
     onSelectionChanged?.(selectedAssets);
@@ -274,7 +322,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
           if (cell) {
             const rowElement = cell.closest('.rg-row');
             const rowId = rowElement?.getAttribute('data-row-id') || '';
-            const asset = assets.find(a => a.id.toString() === rowId);
+            const asset = sortedAssets.find(a => a.id.toString() === rowId);
             if (asset) {
               onRowDoubleClicked?.(asset);
             }
@@ -284,7 +332,6 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
         <ReactGrid
           rows={getRows()}
           columns={getColumns()}
-          onChanges={handleChanges}
         />
       </div>
 
@@ -366,6 +413,18 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
           background-color: #f8f9fa;
           font-weight: 600;
           color: #495057;
+        }
+
+        /* Make hostname and IP address headers clickable */
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(2),
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(3) {
+          cursor: pointer;
+          user-select: none;
+        }
+
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(2):hover,
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(3):hover {
+          background-color: #e9ecef;
         }
         
         .reactgrid .rg-cell.rg-cell-focus {

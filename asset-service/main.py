@@ -207,8 +207,33 @@ class AssetDetail(BaseModel):
     ip_address: Optional[str]
     description: Optional[str]
     tags: List[str]
+    
+    # Device/Hardware Information
+    device_type: Optional[str]
+    hardware_make: Optional[str]
+    hardware_model: Optional[str]
+    serial_number: Optional[str]
+    
+    # Operating System Information
     os_type: str
     os_version: Optional[str]
+    
+    # Location Information
+    physical_address: Optional[str]
+    data_center: Optional[str]
+    building: Optional[str]
+    room: Optional[str]
+    rack_position: Optional[str]
+    rack_location: Optional[str]
+    gps_coordinates: Optional[str]
+    
+    # Status and Management
+    status: Optional[str]
+    environment: Optional[str]
+    criticality: Optional[str]
+    owner: Optional[str]
+    support_contact: Optional[str]
+    contract_number: Optional[str]
     
     # Primary service
     service_type: str
@@ -218,6 +243,17 @@ class AssetDetail(BaseModel):
     username: Optional[str]
     # Note: encrypted fields are not returned in API responses
     domain: Optional[str]
+    
+    # Database-specific fields
+    database_type: Optional[str]
+    database_name: Optional[str]
+    
+    # Secondary service
+    secondary_service_type: Optional[str]
+    secondary_port: Optional[int]
+    ftp_type: Optional[str]
+    secondary_username: Optional[str]
+    # Note: secondary_password is encrypted and not returned
     
     # Additional services (decrypted for display)
     additional_services: List[Dict[str, Any]]
@@ -665,14 +701,53 @@ class ConsolidatedAssetService(BaseService):
                             ip_address=asset['ip_address'],
                             description=asset['description'],
                             tags=tags,
+                            
+                            # Device/Hardware Information
+                            device_type=asset['device_type'],
+                            hardware_make=asset['hardware_make'],
+                            hardware_model=asset['hardware_model'],
+                            serial_number=asset['serial_number'],
+                            
+                            # Operating System Information
                             os_type=asset['os_type'],
                             os_version=asset['os_version'],
+                            
+                            # Location Information
+                            physical_address=asset['physical_address'],
+                            data_center=asset['data_center'],
+                            building=asset['building'],
+                            room=asset['room'],
+                            rack_position=asset['rack_position'],
+                            rack_location=asset['rack_location'],
+                            gps_coordinates=asset['gps_coordinates'],
+                            
+                            # Status and Management
+                            status=asset['status'],
+                            environment=asset['environment'],
+                            criticality=asset['criticality'],
+                            owner=asset['owner'],
+                            support_contact=asset['support_contact'],
+                            contract_number=asset['contract_number'],
+                            
+                            # Primary service
                             service_type=asset['service_type'],
                             port=asset['port'],
                             is_secure=asset['is_secure'],
                             credential_type=asset['credential_type'],
                             username=asset['username'],
                             domain=asset['domain'],
+                            
+                            # Database-specific fields
+                            database_type=asset['database_type'],
+                            database_name=asset['database_name'],
+                            
+                            # Secondary service
+                            secondary_service_type=asset['secondary_service_type'],
+                            secondary_port=asset['secondary_port'],
+                            ftp_type=asset['ftp_type'],
+                            secondary_username=asset['secondary_username'],
+                            
+                            # Additional services and metadata
                             additional_services=decrypted_additional_services,
                             is_active=asset['is_active'],
                             connection_status=asset['connection_status'],

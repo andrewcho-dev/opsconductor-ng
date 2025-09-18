@@ -1,5 +1,5 @@
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
-import { Edit3, Trash2 } from 'lucide-react';
+import { Edit3, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { assetApi } from '../services/api';
 import { Asset } from '../types/asset';
 
@@ -25,6 +25,8 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const hasLoadedRef = useRef(false);
 
   // Load assets
@@ -81,6 +83,40 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
     onDeleteAsset?.(assetId);
   };
 
+  // Handle sorting
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort assets
+  const sortedAssets = React.useMemo(() => {
+    if (!sortField) return assets;
+
+    return [...assets].sort((a, b) => {
+      let aValue = '';
+      let bValue = '';
+
+      if (sortField === 'ip_address') {
+        aValue = a.ip_address || '';
+        bValue = b.ip_address || '';
+      } else if (sortField === 'hostname') {
+        aValue = a.hostname || '';
+        bValue = b.hostname || '';
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  }, [assets, sortField, sortDirection]);
+
   // Get device type from service type
   const getDeviceType = (asset: Asset): string => {
     switch (asset.service_type?.toLowerCase()) {
@@ -130,14 +166,42 @@ const AssetTableList = forwardRef<AssetTableListRef, AssetTableListProps>(({
         <table className="asset-table">
           <thead>
             <tr>
-              <th>IP Address</th>
-              <th>Hostname</th>
+              <th className="sortable-header" onClick={() => handleSort('ip_address')}>
+                <div className="header-content">
+                  <span>IP Address</span>
+                  <div className="sort-indicators">
+                    <ChevronUp 
+                      size={12} 
+                      className={`sort-icon ${sortField === 'ip_address' && sortDirection === 'asc' ? 'active' : ''}`} 
+                    />
+                    <ChevronDown 
+                      size={12} 
+                      className={`sort-icon ${sortField === 'ip_address' && sortDirection === 'desc' ? 'active' : ''}`} 
+                    />
+                  </div>
+                </div>
+              </th>
+              <th className="sortable-header" onClick={() => handleSort('hostname')}>
+                <div className="header-content">
+                  <span>Hostname</span>
+                  <div className="sort-indicators">
+                    <ChevronUp 
+                      size={12} 
+                      className={`sort-icon ${sortField === 'hostname' && sortDirection === 'asc' ? 'active' : ''}`} 
+                    />
+                    <ChevronDown 
+                      size={12} 
+                      className={`sort-icon ${sortField === 'hostname' && sortDirection === 'desc' ? 'active' : ''}`} 
+                    />
+                  </div>
+                </div>
+              </th>
               <th>Device Type</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {assets.map((asset) => (
+            {sortedAssets.map((asset) => (
               <tr
                 key={asset.id}
                 className={`asset-row ${selectedAssetId === asset.id ? 'selected' : ''}`}
@@ -219,6 +283,44 @@ const tableStyles = `
     border-right: 1px solid #d0d7de;
     white-space: nowrap;
     font-size: 11px;
+  }
+
+  .sortable-header {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .sortable-header:hover {
+    background-color: #f0f3f6;
+  }
+
+  .header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .sort-indicators {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    opacity: 0.3;
+    transition: opacity 0.2s ease;
+  }
+
+  .sortable-header:hover .sort-indicators {
+    opacity: 0.6;
+  }
+
+  .sort-icon {
+    color: #656d76;
+    transition: color 0.2s ease;
+  }
+
+  .sort-icon.active {
+    color: #0969da;
+    opacity: 1;
   }
   
   .asset-table th:last-child {

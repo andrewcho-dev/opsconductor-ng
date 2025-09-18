@@ -83,6 +83,11 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasExistingCredentials, setHasExistingCredentials] = useState<{
+    password?: boolean;
+    private_key?: boolean;
+    api_key?: boolean;
+  }>({});
 
   useEffect(() => {
     fetchMetadata();
@@ -121,6 +126,9 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
 
       const data = await response.json();
       const assetDetails = data.data;
+      
+      // Debug: Log the asset details to see what we're getting
+      console.log('Asset details from API:', assetDetails);
 
       setFormData({
         name: assetDetails.name || '',
@@ -142,6 +150,25 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
         additional_services: assetDetails.additional_services || [],
         notes: assetDetails.notes || ''
       });
+
+      // Detect existing credentials based on credential_type being set
+      // If credential_type is set, we assume credentials exist (since they wouldn't be set without credentials)
+      const credentialType = assetDetails.credential_type;
+      
+      console.log('Credential type from API:', credentialType);
+      
+      if (credentialType) {
+        const existingCreds = {
+          password: credentialType === 'password',
+          private_key: credentialType === 'private_key',
+          api_key: credentialType === 'api_key'
+        };
+        console.log('Setting hasExistingCredentials to:', existingCreds);
+        setHasExistingCredentials(existingCreds);
+      } else {
+        console.log('No credential type found, clearing hasExistingCredentials');
+        setHasExistingCredentials({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch asset details');
     } finally {
@@ -362,10 +389,9 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
             <div className="section-header">Basic Information</div>
             <div className="four-column-grid">
               <div className="form-field">
-                <label className="form-label required">Asset Name</label>
+                <label className="form-label">Asset Name</label>
                 <input
                   type="text"
-                  required
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   className="form-input"
@@ -374,10 +400,9 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
               </div>
 
               <div className="form-field">
-                <label className="form-label required">Hostname</label>
+                <label className="form-label">Hostname</label>
                 <input
                   type="text"
-                  required
                   value={formData.hostname}
                   onChange={(e) => handleInputChange('hostname', e.target.value)}
                   className="form-input"
@@ -560,35 +585,55 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
           {/* Credentials */}
           {formData.credential_type && (
             <div>
-              <div className="section-header">Credentials</div>
+              <div className="section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Credentials</span>
+                {Object.values(hasExistingCredentials).some(Boolean) && (
+                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                    Stored: {formData.credential_type.replace('_', ' ').toUpperCase()}
+                  </span>
+                )}
+              </div>
               <div className="bg-yellow-50 border border-yellow-200 rounded p-3 mb-4">
                 <p className="text-sm text-yellow-800">
                   <strong>Security Note:</strong> Existing credentials are not shown for security reasons. 
-                  Leave credential fields empty to keep existing values, or fill them to update.
+                  {Object.values(hasExistingCredentials).some(Boolean) 
+                    ? ' Leave credential fields empty to keep existing values, or fill them to update.'
+                    : ' Fill in the credential fields below to add authentication.'
+                  }
                 </p>
               </div>
               <div className="three-column-grid">
                 {(formData.credential_type === 'password' || formData.credential_type === 'private_key') && (
                   <>
                     <div className="form-field">
-                      <label className="form-label">Username</label>
+                      <label className="form-label">
+                        Username
+                        {formData.username && (
+                          <span className="ml-1 text-blue-600 text-xs">●</span>
+                        )}
+                      </label>
                       <input
                         type="text"
                         value={formData.username}
                         onChange={(e) => handleInputChange('username', e.target.value)}
-                        className="form-input"
-                        placeholder="Leave empty to keep existing"
+                        className={`form-input ${formData.username ? 'border-blue-300 bg-blue-50' : ''}`}
+                        placeholder={formData.username ? "Current username stored" : "Enter username"}
                       />
                     </div>
 
                     <div className="form-field">
-                      <label className="form-label">Domain</label>
+                      <label className="form-label">
+                        Domain
+                        {formData.domain && (
+                          <span className="ml-1 text-blue-600 text-xs">●</span>
+                        )}
+                      </label>
                       <input
                         type="text"
                         value={formData.domain}
                         onChange={(e) => handleInputChange('domain', e.target.value)}
-                        className="form-input"
-                        placeholder="Optional domain"
+                        className={`form-input ${formData.domain ? 'border-blue-300 bg-blue-50' : ''}`}
+                        placeholder={formData.domain ? "Current domain stored" : "Optional domain"}
                       />
                     </div>
                   </>
@@ -596,14 +641,19 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
 
                 {formData.credential_type === 'password' && (
                   <div className="form-field">
-                    <label className="form-label">Password</label>
+                    <label className="form-label">
+                      Password
+                      {hasExistingCredentials.password && (
+                        <span className="ml-1 text-green-600 text-xs">●</span>
+                      )}
+                    </label>
                     <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={formData.password}
                         onChange={(e) => handleInputChange('password', e.target.value)}
-                        className="form-input pr-10"
-                        placeholder="Leave empty to keep existing"
+                        className={`form-input pr-10 ${hasExistingCredentials.password ? 'border-green-300 bg-green-50' : ''}`}
+                        placeholder={hasExistingCredentials.password ? "••••••••• (encrypted - leave empty to keep)" : "Enter password"}
                       />
                       <button
                         type="button"
@@ -618,14 +668,19 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
 
                 {formData.credential_type === 'private_key' && (
                   <div className="form-field">
-                    <label className="form-label">Private Key</label>
+                    <label className="form-label">
+                      Private Key
+                      {hasExistingCredentials.private_key && (
+                        <span className="ml-1 text-green-600 text-xs">●</span>
+                      )}
+                    </label>
                     <div className="relative">
                       <textarea
                         value={formData.private_key}
                         onChange={(e) => handleInputChange('private_key', e.target.value)}
                         rows={3}
-                        className="form-input pr-10 font-mono text-xs"
-                        placeholder="Leave empty to keep existing"
+                        className={`form-input pr-10 font-mono text-xs ${hasExistingCredentials.private_key ? 'border-green-300 bg-green-50' : ''}`}
+                        placeholder={hasExistingCredentials.private_key ? "••••••••• (encrypted - leave empty to keep)" : "Enter private key"}
                       />
                       <button
                         type="button"
@@ -640,14 +695,19 @@ const AssetEditForm: React.FC<AssetEditFormProps> = ({ asset, onClose, onSuccess
 
                 {formData.credential_type === 'api_key' && (
                   <div className="form-field">
-                    <label className="form-label">API Key</label>
+                    <label className="form-label">
+                      API Key
+                      {hasExistingCredentials.api_key && (
+                        <span className="ml-1 text-green-600 text-xs">●</span>
+                      )}
+                    </label>
                     <div className="relative">
                       <input
                         type={showApiKey ? 'text' : 'password'}
                         value={formData.api_key}
                         onChange={(e) => handleInputChange('api_key', e.target.value)}
-                        className="form-input pr-10"
-                        placeholder="Leave empty to keep existing"
+                        className={`form-input pr-10 ${hasExistingCredentials.api_key ? 'border-green-300 bg-green-50' : ''}`}
+                        placeholder={hasExistingCredentials.api_key ? "••••••••• (encrypted - leave empty to keep)" : "Enter API key"}
                       />
                       <button
                         type="button"

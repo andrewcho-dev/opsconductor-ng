@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { Users, Target, Settings, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
 
 interface SystemStats {
   users: number;
-  targets: number;
+  assets: number;
   jobs: number;
   recentRuns: number;
 }
 
 const SystemBadges: React.FC = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats>({
     users: 0,
-    targets: 0,
+    assets: 0,
     jobs: 0,
     recentRuns: 0,
   });
@@ -37,7 +39,7 @@ const SystemBadges: React.FC = () => {
 
         setStats({
           users: getTotal(usersResponse),
-          targets: getTotal(assetsResponse),
+          assets: getTotal(assetsResponse),
           jobs: getTotal(jobsResponse),
           recentRuns: getTotal(runsResponse),
         });
@@ -45,7 +47,7 @@ const SystemBadges: React.FC = () => {
         console.error('Failed to fetch system badges stats:', error);
         setStats({
           users: 0,
-          targets: 0,
+          assets: 0,
           jobs: 0,
           recentRuns: 0,
         });
@@ -62,25 +64,29 @@ const SystemBadges: React.FC = () => {
       title: 'Users',
       value: stats.users,
       icon: Users,
-      color: 'var(--primary-blue)'
+      color: 'var(--primary-blue)',
+      onClick: () => navigate('/user-management')
     },
     {
-      title: 'Targets',
-      value: stats.targets,
+      title: 'Assets',
+      value: stats.assets,
       icon: Target,
-      color: 'var(--success-green)'
+      color: 'var(--success-green)',
+      onClick: () => navigate('/assets')
     },
     {
       title: 'Jobs',
       value: stats.jobs,
       icon: Settings,
-      color: 'var(--warning-orange)'
+      color: 'var(--warning-orange)',
+      onClick: () => navigate('/job-management')
     },
     {
       title: 'Runs',
       value: stats.recentRuns,
       icon: Play,
-      color: 'var(--secondary-gray)'
+      color: 'var(--secondary-gray)',
+      onClick: () => navigate('/history/job-runs')
     }
   ];
 
@@ -99,7 +105,13 @@ const SystemBadges: React.FC = () => {
       {badges.map((badge) => {
         const IconComponent = badge.icon;
         return (
-          <div key={badge.title} className="system-badge" title={badge.title}>
+          <div 
+            key={badge.title} 
+            className="system-badge clickable" 
+            title={`${badge.title} - Click to view`}
+            onClick={badge.onClick}
+            style={{ cursor: 'pointer' }}
+          >
             <IconComponent 
               className="badge-icon" 
               style={{ color: badge.color }}

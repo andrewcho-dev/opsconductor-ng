@@ -1542,3 +1542,23 @@ body {
     margin-left: 0;
   }
 }
+
+/* Credential Indicators */
+.credential-indicator {
+  color: var(--success-green);
+  font-size: var(--font-size-xs);
+  margin-left: 4px;
+  font-weight: bold;
+}
+
+.username-indicator {
+  color: var(--primary-blue);
+  font-size: var(--font-size-xs);
+  margin-left: 4px;
+  font-weight: bold;
+}
+
+.has-existing-credential {
+  border-color: var(--success-green) !important;
+  background-color: var(--success-green-light) !important;
+}

@@ -10,7 +10,7 @@ const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [stats, setStats] = useState({
     users: 0,
-    targets: 0,
+    assets: 0,
     jobs: 0,
     recentRuns: 0,
   });
@@ -59,7 +59,7 @@ const Dashboard: React.FC = () => {
 
       setStats({
         users: getTotal(usersRes),
-        targets: getTotal(assetsRes),
+        assets: getTotal(assetsRes),
         jobs: getTotal(jobsRes),
         recentRuns: getTotal(runsRes)
       });
@@ -215,15 +215,15 @@ const Dashboard: React.FC = () => {
           <h1>Dashboard</h1>
         </div>
         <div className="header-stats">
-          <Link to="/users" className="stat-pill">
+          <Link to="/user-management" className="stat-pill">
             <Users size={14} />
             <span>{stats.users} Users</span>
           </Link>
-          <Link to="/targets" className="stat-pill">
+          <Link to="/assets" className="stat-pill">
             <Target size={14} />
-            <span>{stats.targets} Targets</span>
+            <span>{stats.assets} Assets</span>
           </Link>
-          <Link to="/jobs" className="stat-pill">
+          <Link to="/job-management" className="stat-pill">
             <Settings size={14} />
             <span>{stats.jobs} Jobs</span>
           </Link>

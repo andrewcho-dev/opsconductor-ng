@@ -119,19 +119,19 @@ const Navbar: React.FC = () => {
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
                   <span className="nav-icon"><Target size={16} /></span>
-                  Targets
+                  Assets
                   <span className="nav-chevron">
                     <ChevronRight size={14} />
                   </span>
                 </div>
                 <div className="nav-submenu">
                   <Link 
-                    to="/targets-management" 
-                    className={`nav-submenu-item ${location.pathname === '/targets-management' || location.pathname.startsWith('/targets-management/') ? 'active' : ''}`} 
+                    to="/assets" 
+                    className={`nav-submenu-item ${location.pathname === '/assets' || location.pathname.startsWith('/assets/') ? 'active' : ''}`} 
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Target size={14} /></span>
-                    Target Management
+                    Asset Management
                   </Link>
 
                 </div>
