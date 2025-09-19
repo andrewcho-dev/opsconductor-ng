@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Users as UsersIcon, Target, Settings, Play, MessageSquare, Upload, Download, X, Check, Edit3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Plus, X, Users as UsersIcon, Target, Settings, Play, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import { userApi } from '../services/api';
-import UserTableList, { UserTableListRef } from '../components/UserTableList';
+import UserDataGrid, { UserDataGridRef } from '../components/UserDataGrid';
 import UserSpreadsheetForm from '../components/UserSpreadsheetForm';
 import { User } from '../types';
 
@@ -17,268 +17,77 @@ const Users: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const [loadingUserDetails, setLoadingUserDetails] = useState(false);
-  const userListRef = useRef<UserTableListRef>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const userListRef = useRef<UserDataGridRef>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch detailed user data
-  const fetchDetailedUserData = async (userId: number): Promise<User | null> => {
+  const fetchDetailedUserData = useCallback(async (userId: number): Promise<User | null> => {
     try {
       setLoadingUserDetails(true);
-      console.log('Fetching detailed user data for ID:', userId);
       const response = await userApi.get(userId);
-      console.log('Raw API response:', response);
       
+      // The API returns {success: true, data: {...}}, so we need response.data
       const userData = (response as any).data || response;
-      console.log('Extracted user data:', userData);
       
       return userData;
     } catch (error) {
-      console.error('Failed to fetch detailed user data:', error);
       return null;
     } finally {
       setLoadingUserDetails(false);
     }
-  };
+  }, []);
 
-  // CSV field definitions for user import/export
-  const csvFields = [
-    // Basic Information
-    { field: 'username', label: 'Username' },
-    { field: 'email', label: 'Email Address' },
-    { field: 'first_name', label: 'First Name' },
-    { field: 'last_name', label: 'Last Name' },
+  // Debounced function to fetch detailed user data
+  const debouncedFetchUserDetails = useCallback((user: User) => {
+    // Immediately set the basic user data to prevent flashing
+    setSelectedUser(user);
     
-    // Contact Information
-    { field: 'telephone', label: 'Phone Number' },
-    { field: 'title', label: 'Job Title' },
-    
-    // Authentication
-    { field: 'role', label: 'Role' },
-    { field: 'password', label: 'Password' },
-    
-    // Status
-    { field: 'is_active', label: 'Active Status' }
-  ];
+    // Clear any existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
 
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
-
-  // Export CSV template
-  const handleExportTemplate = () => {
-    const headers = csvFields.map(field => field.label);
-    
-    // Example row with sample data
-    const exampleRow = csvFields.map(field => {
-      switch (field.field) {
-        case 'username': return 'john.doe';
-        case 'email': return 'john.doe@company.com';
-        case 'first_name': return 'John';
-        case 'last_name': return 'Doe';
-        case 'telephone': return '+1 (555) 123-4567';
-        case 'title': return 'System Administrator';
-        case 'role': return 'operator';
-        case 'password': return 'secure_password_123';
-        case 'is_active': return 'true';
-        default: return '';
-      }
-    });
-    
-    // Comments row explaining valid values
-    const commentsRow = csvFields.map(field => {
-      switch (field.field) {
-        case 'username': return 'REQUIRED - Unique username for login';
-        case 'email': return 'REQUIRED - Valid email address';
-        case 'first_name': return 'Optional - User\'s first name';
-        case 'last_name': return 'Optional - User\'s last name';
-        case 'telephone': return 'Optional - Phone number';
-        case 'title': return 'Optional - Job title or position';
-        case 'role': return 'REQUIRED - Valid roles: admin, manager, operator, developer, viewer';
-        case 'password': return 'REQUIRED - Minimum 6 characters (will be encrypted)';
-        case 'is_active': return 'Optional - true/false, default: true';
-        default: return 'Optional field';
-      }
-    });
-    
-    // Build CSV content with headers, example, and comments
-    const csvLines = [
-      headers.join(','),
-      '# EXAMPLE ROW (delete this line and add your data below):',
-      '#' + exampleRow.map(value => {
-        // Escape commas and quotes in CSV
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(','),
-      '',
-      '# FIELD VALIDATION RULES AND EXAMPLES:',
-      '#' + commentsRow.map(comment => `"${comment}"`).join(','),
-      '',
-      '# DELETE ALL LINES STARTING WITH # AND ADD YOUR USER DATA BELOW:'
-    ];
-    
-    const csvContent = csvLines.join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'user_import_template.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Export current users
-  const handleExportUsers = () => {
-    const headers = csvFields.map(field => field.label);
-    const rows = users.map(user => {
-      return csvFields.map(field => {
-        let value = user[field.field as keyof User] || '';
-        
-        // Handle special formatting
-        if (field.field === 'password') {
-          value = '••••••••'; // Don't export actual passwords
-        }
-        
-        // Escape commas and quotes in CSV
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          value = `"${value.replace(/"/g, '""')}"`;
-        }
-        
-        return value;
-      });
-    });
-    
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `users_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Import CSV file
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const csvContent = e.target?.result as string;
-        const lines = csvContent.split('\n').filter(line => line.trim() && !line.startsWith('#'));
-        
-        if (lines.length < 2) {
-          alert('CSV file must contain at least a header row and one data row');
-          return;
-        }
-
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-        const dataLines = lines.slice(1);
-
-        const importedUsers: any[] = [];
-        const errors: string[] = [];
-
-        for (let i = 0; i < dataLines.length; i++) {
-          const values = dataLines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-          
-          if (values.length !== headers.length) {
-            errors.push(`Row ${i + 1}: Column count mismatch`);
-            continue;
-          }
-
-          const userData: any = {};
-          headers.forEach((header, index) => {
-            const field = csvFields.find(f => f.label === header);
-            if (field) {
-              let value = values[index];
-              
-              // Handle boolean fields
-              if (field.field === 'is_active') {
-                userData[field.field] = value.toLowerCase() === 'true';
-              } else {
-                userData[field.field] = value;
-              }
+    // Set a new timeout for detailed data
+    debounceTimeoutRef.current = setTimeout(() => {
+      fetchDetailedUserData(user.id).then(detailedUser => {
+        if (detailedUser) {
+          // Only update if we're still looking at the same user
+          setSelectedUser(currentUser => {
+            if (currentUser && currentUser.id === detailedUser.id) {
+              return detailedUser;
             }
+            return currentUser;
           });
-
-          // Validation
-          if (!userData.username?.trim()) {
-            errors.push(`Row ${i + 1}: Username is required`);
-            continue;
-          }
-          if (!userData.email?.trim()) {
-            errors.push(`Row ${i + 1}: Email is required`);
-            continue;
-          }
-          if (!userData.password?.trim()) {
-            errors.push(`Row ${i + 1}: Password is required`);
-            continue;
-          }
-          if (!userData.role?.trim()) {
-            errors.push(`Row ${i + 1}: Role is required`);
-            continue;
-          }
-
-          // Email validation
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.email)) {
-            errors.push(`Row ${i + 1}: Invalid email format`);
-            continue;
-          }
-
-          // Role validation
-          const validRoles = ['admin', 'manager', 'operator', 'developer', 'viewer'];
-          if (!validRoles.includes(userData.role.toLowerCase())) {
-            errors.push(`Row ${i + 1}: Invalid role. Must be one of: ${validRoles.join(', ')}`);
-            continue;
-          }
-
-          importedUsers.push(userData);
         }
+      });
+    }, 300); // 300ms delay
+  }, [fetchDetailedUserData]);
 
-        if (errors.length > 0) {
-          alert(`Import errors:\n${errors.join('\n')}`);
-          return;
-        }
-
-        // Import users
-        let successCount = 0;
-        for (const userData of importedUsers) {
-          try {
-            await userApi.create(userData);
-            successCount++;
-          } catch (error) {
-            console.error('Failed to import user:', error);
-          }
-        }
-
-        alert(`Successfully imported ${successCount} out of ${importedUsers.length} users`);
-        userListRef.current?.refresh(); // Refresh the list
-        
-      } catch (error) {
-        console.error('Import error:', error);
-        alert('Failed to parse CSV file. Please check the format.');
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
       }
     };
+  }, []);
 
-    reader.readAsText(file);
-    event.target.value = ''; // Reset file input
-  };
+  // Memoized selection change handler to prevent infinite re-renders
+  const handleSelectionChange = useCallback((selectedUsers: User[]) => {
+    if (selectedUsers.length > 0) {
+      const user = selectedUsers[0];
+      // Use debounced fetch to prevent too many API calls during keyboard navigation
+      debouncedFetchUserDetails(user);
+    } else {
+      setSelectedUser(null);
+    }
+  }, [debouncedFetchUserDetails]);
+
+  // Memoized data loaded handler to prevent infinite re-renders
+  const handleDataLoaded = useCallback((loadedUsers: User[]) => {
+    setUsers(loadedUsers);
+    setLoading(false);
+  }, []);
 
   // Handle URL-based actions
   useEffect(() => {
@@ -321,20 +130,27 @@ const Users: React.FC = () => {
       setSelectedUser(null);
       setEditingUser(null);
     }
-  }, [action, id, users]);
+  }, [action, id, users, fetchDetailedUserData]);
 
-  const handleDeleteUser = async (userId: number) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
+  const handleDeleteUser = async (userId?: number) => {
+    const targetUser = userId ? users.find(u => u.id === userId) : selectedUser;
+    if (!targetUser) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete the user "${targetUser.username}"?\n\nThis action cannot be undone.`
+    );
+    
+    if (!confirmDelete) return;
     
     try {
-      await userApi.delete(userId);
+      await userApi.delete(targetUser.id);
       userListRef.current?.refresh();
-      if (selectedUser?.id === userId) {
+      if (selectedUser?.id === targetUser.id) {
         setSelectedUser(null);
         navigate('/users');
       }
     } catch (error) {
-      console.error('Failed to delete user:', error);
+      alert('Failed to delete user. Please try again.');
     }
   };
 
@@ -350,65 +166,11 @@ const Users: React.FC = () => {
           }
           .users-table-section {
             grid-column: 1;
+            height: 100%;
           }
           .detail-grid-2col {
             grid-column: 2 / 4;
           }
-          .users-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-          }
-          .users-table th {
-            background: var(--neutral-50);
-            padding: 6px 8px;
-            text-align: left;
-            font-weight: 600;
-            color: var(--neutral-700);
-            border-bottom: 1px solid var(--neutral-200);
-            font-size: 11px;
-          }
-          .users-table td {
-            padding: 6px 8px;
-            border-bottom: 1px solid var(--neutral-100);
-            vertical-align: middle;
-            font-size: 12px;
-          }
-          .users-table tr:hover {
-            background: var(--neutral-50);
-          }
-          .users-table tr.selected {
-            background: var(--primary-blue-light);
-            border-left: 3px solid var(--primary-blue);
-          }
-          .users-table tr {
-            cursor: pointer;
-          }
-
-          .user-details h3 {
-            margin: 0 0 12px 0;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--neutral-800);
-          }
-          .detail-group {
-            margin-bottom: 12px;
-          }
-          .detail-label {
-            font-size: 10px;
-            font-weight: 600;
-            color: var(--neutral-500);
-            margin-bottom: 3px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .detail-value {
-            font-size: 12px;
-            color: var(--neutral-800);
-            padding: 6px 0;
-            border-bottom: 1px solid var(--neutral-100);
-          }
-          
           .dropdown {
             position: relative;
             display: inline-block;
@@ -446,6 +208,115 @@ const Users: React.FC = () => {
           .dropdown-item:hover {
             background: var(--neutral-50);
           }
+          
+          /* Fix dropdown-toggle icon sizing */
+          .dropdown-toggle::after {
+            display: none !important;
+          }
+          
+          .dropdown-toggle {
+            position: relative;
+          }
+          
+          /* Delete button styling */
+          .btn-danger {
+            color: #dc2626;
+          }
+          
+          .btn-danger:hover {
+            background-color: #fee2e2;
+            color: #dc2626;
+          }
+          
+          /* Enhanced header icon buttons */
+          .header-stats .btn-icon {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+          }
+          
+          .header-stats .btn-icon svg {
+            width: 18px;
+            height: 18px;
+          }
+          
+          /* Apply same spacing to users table as form container */
+          .users-table-section .user-data-grid {
+            width: 100%;
+            box-sizing: border-box;
+            border: none;
+          }
+          
+          /* Make AG-Grid components respect the container with proper spacing */
+          .users-table-section .ag-grid-wrapper {
+            width: calc(100% - 16px) !important;
+            margin: 8px !important;
+            box-sizing: border-box !important;
+            border: none !important;
+          }
+          
+          .users-table-section .ag-root-wrapper,
+          .users-table-section .ag-root,
+          .users-table-section .ag-body-viewport {
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          
+          /* Override AG-Grid CSS variables to remove any shadow effects */
+          .users-table-section .ag-theme-custom {
+            --ag-wrapper-border-radius: 0;
+            --ag-borders: none;
+            --ag-border-color: transparent;
+            --ag-wrapper-border: none;
+            /* Explicitly disable any shadow variables */
+            --ag-card-shadow: none;
+            --ag-popup-shadow: none;
+            --ag-header-column-separator-color: transparent;
+          }
+          
+          /* Match header styling with subcard headers */
+          .users-table-section .ag-header-cell {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #24292f !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+          }
+          
+          /* Remove any 3D effects and ensure clean borders */
+          .users-table-section .ag-root-wrapper {
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            /* Remove any potential 3D effects */
+            filter: none !important;
+            transform: none !important;
+          }
+          
+          .users-table-section .ag-root,
+          .users-table-section .ag-body-viewport,
+          .users-table-section .ag-grid-wrapper {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            /* Remove any potential 3D effects */
+            filter: none !important;
+            transform: none !important;
+          }
+          
+          /* Remove border radius from all table cells and headers */
+          .users-table-section .ag-cell,
+          .users-table-section .ag-header-cell {
+            border-radius: 0 !important;
+          }
         `}
       </style>
 
@@ -461,7 +332,7 @@ const Users: React.FC = () => {
             title="Add new user"
             disabled={addingNew || !!editingUser}
           >
-            <Plus size={16} />
+            <Plus size={18} />
           </button>
           {selectedUser && !addingNew && !editingUser && (
             <button 
@@ -469,34 +340,19 @@ const Users: React.FC = () => {
               onClick={() => navigate(`/users/edit/${selectedUser.id}`)}
               title="Edit selected user"
             >
-              <Edit3 size={16} />
+              <Edit3 size={18} />
             </button>
           )}
-          <div className="dropdown">
+          {selectedUser && !addingNew && !editingUser && (
             <button 
-              className="btn-icon dropdown-toggle"
-              title="Export options"
-              disabled={addingNew || !!editingUser}
+              className="btn-icon btn-danger"
+              onClick={() => handleDeleteUser()}
+              title="Delete selected user"
             >
-              <Upload size={16} />
+              <Trash2 size={18} />
             </button>
-            <div className="dropdown-menu">
-              <button onClick={handleExportTemplate} className="dropdown-item">
-                Export Template
-              </button>
-              <button onClick={handleExportUsers} className="dropdown-item">
-                Export Current Users
-              </button>
-            </div>
-          </div>
-          <button 
-            className="btn-icon"
-            onClick={handleImportClick}
-            title="Import from CSV"
-            disabled={addingNew || !!editingUser}
-          >
-            <Download size={16} />
-          </button>
+          )}
+
           <Link to="/users" className="stat-pill">
             <UsersIcon size={14} />
             <span>{users.length} Users</span>
@@ -527,42 +383,15 @@ const Users: React.FC = () => {
           <div className="section-header">
             Users ({users.length})
           </div>
-          <div className="compact-content">
-            <UserTableList
-              ref={userListRef}
-              onSelectionChanged={(selectedUsers) => {
-                if (selectedUsers.length > 0) {
-                  const user = selectedUsers[0];
-                  console.log('User selection changed to:', user.username, 'ID:', user.id);
-                  
-                  // Fetch detailed user data when selecting from list
-                  fetchDetailedUserData(user.id).then(detailedUser => {
-                    console.log('Detailed user data loaded for:', detailedUser?.username);
-                    if (detailedUser) {
-                      setSelectedUser(detailedUser);
-                    } else {
-                      // Fallback to list data if detailed fetch fails
-                      setSelectedUser(user);
-                    }
-                  });
-                } else {
-                  console.log('User selection cleared');
-                  setSelectedUser(null);
-                }
-              }}
-              onRowDoubleClicked={(user) => {
+          <UserDataGrid
+            className="user-data-grid"
+            ref={userListRef}
+            onSelectionChanged={handleSelectionChange}
+            onRowDoubleClicked={(user) => {
                 navigate(`/users/edit/${user.id}`);
               }}
-              onDataLoaded={(loadedUsers) => {
-                setUsers(loadedUsers);
-                setLoading(false);
-              }}
-              onEditUser={(user) => {
-                navigate(`/users/edit/${user.id}`);
-              }}
-              onDeleteUser={handleDeleteUser}
+              onDataLoaded={handleDataLoaded}
             />
-          </div>
         </div>
 
         {/* Columns 2-3: User Details/Form Panel */}
@@ -572,6 +401,7 @@ const Users: React.FC = () => {
               <div className="section-header">
                 <span>Create New User</span>
                 <div style={{ display: 'flex', gap: '4px' }}>
+
                   <button 
                     className="btn-icon btn-ghost"
                     onClick={() => navigate('/users')}
@@ -581,22 +411,19 @@ const Users: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="compact-content">
-                <UserSpreadsheetForm
-                  mode="create"
-                  onCancel={() => navigate('/users')}
-                  onSave={async (userData) => {
-                    try {
-                      await userApi.create(userData);
-                      userListRef.current?.refresh();
-                      navigate('/users');
-                    } catch (error) {
-                      console.error('Failed to create user:', error);
-                      alert('Failed to create user. Please try again.');
-                    }
-                  }}
-                />
-              </div>
+              <UserSpreadsheetForm
+                mode="create"
+                onCancel={() => navigate('/users')}
+                onSave={async (userData) => {
+                  try {
+                    await userApi.create(userData);
+                    userListRef.current?.refresh();
+                    navigate('/users');
+                  } catch (error) {
+                    alert('Failed to create user. Please try again.');
+                  }
+                }}
+              />
             </>
           ) : editingUser ? (
             <>
@@ -612,53 +439,46 @@ const Users: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="compact-content">
-                <UserSpreadsheetForm
-                  mode="edit"
-                  user={editingUser}
-                  onCancel={() => navigate('/users')}
-                  onSave={async (userData) => {
-                    try {
-                      await userApi.update(editingUser.id, userData);
-                      userListRef.current?.refresh();
-                      navigate('/users');
-                    } catch (error) {
-                      console.error('Failed to update user:', error);
-                      alert('Failed to update user. Please try again.');
-                    }
-                  }}
-                />
-              </div>
+              <UserSpreadsheetForm
+                mode="edit"
+                user={editingUser}
+                onCancel={() => navigate('/users')}
+                onSave={async (userData) => {
+                  try {
+                    await userApi.update(editingUser.id, userData);
+                    userListRef.current?.refresh();
+                    navigate('/users');
+                  } catch (error) {
+                    alert('Failed to update user. Please try again.');
+                  }
+                }}
+              />
             </>
           ) : selectedUser ? (
             <>
               <div className="section-header">
-                User Details: {selectedUser.username}
+                <span>User Details: {selectedUser.username || 'Unknown'}</span>
               </div>
-              <div className="compact-content">
-                {loadingUserDetails ? (
-                  <div className="loading-state">
-                    <p>Loading user details...</p>
-                  </div>
-                ) : (
-                  <UserSpreadsheetForm
-                    mode="view"
-                    user={selectedUser}
-                    onCancel={() => {}}
-                    onSave={() => {}}
-                  />
-                )}
-              </div>
+              {loadingUserDetails ? (
+                <div className="loading-state">
+                  <p>Loading user details...</p>
+                </div>
+              ) : (
+                <UserSpreadsheetForm
+                  mode="view"
+                  user={selectedUser}
+                  onCancel={() => {}}
+                  onSave={() => {}}
+                />
+              )}
             </>
           ) : loadingUserDetails ? (
             <>
               <div className="section-header">
                 User Details
               </div>
-              <div className="compact-content">
-                <div className="loading-state">
-                  <p>Loading user details...</p>
-                </div>
+              <div className="loading-state">
+                <p>Loading user details...</p>
               </div>
             </>
           ) : (
@@ -676,15 +496,7 @@ const Users: React.FC = () => {
           )}
         </div>
       </div>
-      
-      {/* Hidden file input for CSV import */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileImport}
-        accept=".csv"
-        style={{ display: 'none' }}
-      />
+
     </div>
   );
 };
