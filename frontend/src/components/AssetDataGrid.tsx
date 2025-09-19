@@ -144,7 +144,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
 
   return (
     <div className={`asset-data-grid ${className || ''}`}>
-      <div className="ag-theme-custom ag-grid-wrapper">
+      <div className="ag-theme-alpine ag-grid-wrapper">
         <AgGridReact
           ref={gridRef}
           rowData={assets}
@@ -158,19 +158,19 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
           suppressCellFocus={true}
           suppressRowHoverHighlight={false}
           headerHeight={28}
-          rowHeight={28}
-          domLayout="normal"
+          rowHeight={32}
+          domLayout="autoHeight"
         />
       </div>
 
       <style>{`
         .asset-data-grid {
-          height: 100%;
+          height: auto;
           width: 100%;
-          overflow: hidden;
-          flex: 1;
+          overflow: visible;
           display: flex;
           flex-direction: column;
+          border: none;
         }
         
         .asset-data-grid.loading {
@@ -186,102 +186,143 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
         }
         
         .ag-grid-wrapper {
-          height: 100%;
+          height: auto;
           width: 100%;
-          flex: 1;
           outline: none;
+          background: transparent;
+          border: none;
+          overflow: visible;
         }
         
         .ag-grid-wrapper:focus {
           outline: none;
         }
 
-        /* Custom AG-Grid theme to match OpsConductor design system */
-        .ag-theme-custom {
-          --ag-background-color: #ffffff;
-          --ag-header-background-color: var(--neutral-50);
-          --ag-header-foreground-color: var(--neutral-600);
-          --ag-border-color: var(--neutral-200);
-          --ag-row-hover-color: var(--neutral-50);
+        /* Custom AG-Grid theme using native border controls with high specificity */
+        .asset-data-grid .ag-theme-alpine {
+          --ag-background-color: transparent;
+          --ag-header-background-color: #f6f8fa;
+          --ag-header-foreground-color: #24292f;
+          --ag-border-color: #d0d7de !important;
+          --ag-borders: solid !important;
+          --ag-row-hover-color: #f6f8fa;
           --ag-selected-row-background-color: var(--primary-blue-light);
           --ag-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           --ag-font-size: var(--font-size-sm);
-          --ag-cell-horizontal-padding: 12px;
-          --ag-header-height: 28px;
-          --ag-row-height: 28px;
+          --ag-cell-horizontal-padding: 8px;
+          --ag-header-height: 20px;
+          --ag-row-height: 24px;
         }
 
-        /* Override AG-Grid styles to match OpsConductor design system */
-        .ag-theme-custom .ag-root-wrapper {
-          border: 1px solid var(--neutral-200);
+        /* Table perimeter border using AG-Grid's native border system */
+        .asset-data-grid .ag-theme-alpine .ag-root-wrapper {
+          border: 1px solid var(--ag-border-color) !important;
+          border-radius: 0 !important;
+          overflow: visible !important;
+          background: transparent !important;
         }
 
-        .ag-theme-custom .ag-header {
-          border-bottom: 1px solid var(--neutral-200);
+        /* Header row border using AG-Grid's native border system */
+        .asset-data-grid .ag-theme-alpine .ag-header {
+          border-bottom: 1px solid var(--ag-border-color) !important;
         }
 
-        .ag-theme-custom .ag-header-cell {
-          background-color: var(--neutral-50) !important;
+        /* Header styling using AG-Grid's native system */
+        .asset-data-grid .ag-theme-alpine .ag-header-cell {
+          background: linear-gradient(135deg, #f6f8fa 0%, #e1e7ef 100%) !important;
           font-weight: 600 !important;
-          color: var(--neutral-600) !important;
-          border-right: 1px solid var(--neutral-200) !important;
-          padding: 4px 12px !important;
+          color: #24292f !important;
+          border-right: 1px solid #d0d7de !important;
+          padding: 4px 8px !important;
           vertical-align: middle !important;
-          line-height: 1.3 !important;
-          font-size: 13px !important;
+          line-height: 1.2 !important;
+          font-size: var(--font-size-xs) !important;
+          text-transform: uppercase !important;
+          letter-spacing: 0.5px !important;
+          display: flex !important;
+          align-items: center !important;
         }
 
-        .ag-theme-custom .ag-header-cell:hover {
-          background-color: var(--neutral-100) !important;
+        /* Remove border from last header cell to avoid double border */
+        .asset-data-grid .ag-theme-alpine .ag-header-cell:last-child {
+          border-right: none !important;
+        }
+
+        .asset-data-grid .ag-theme-alpine .ag-header-cell:hover {
+          background-color: #f1f3f4 !important;
           color: var(--primary-blue) !important;
           cursor: pointer !important;
         }
 
-        .ag-theme-custom .ag-cell {
-          border-right: 1px solid var(--neutral-200) !important;
-          border-bottom: 1px solid var(--neutral-200) !important;
-          padding: 4px 12px !important;
+        .asset-data-grid .ag-theme-alpine .ag-cell {
+          padding: 6px 8px !important;
           overflow: hidden !important;
           text-overflow: ellipsis !important;
           white-space: nowrap !important;
           cursor: pointer !important;
           user-select: none !important;
           vertical-align: middle !important;
-          line-height: 1.3 !important;
-          font-size: 13px !important;
+          line-height: 1.4 !important;
+          font-size: var(--font-size-sm) !important;
+          color: #24292f !important;
+          border-right: 1px solid #eaeef2 !important;
         }
 
-        .ag-theme-custom .ag-row:hover .ag-cell {
-          background-color: var(--neutral-50) !important;
+        /* Remove border from last cell in each row to avoid double border */
+        .asset-data-grid .ag-theme-alpine .ag-cell:last-child {
+          border-right: none !important;
         }
 
-        .ag-theme-custom .ag-row-selected .ag-cell {
+        .asset-data-grid .ag-theme-alpine .ag-row:hover .ag-cell {
+          background-color: #f6f8fa !important;
+        }
+
+        .asset-data-grid .ag-theme-alpine .ag-row-selected .ag-cell {
           background-color: var(--primary-blue-light) !important;
         }
 
+        /* Ensure even rows have consistent styling with form */
+        .asset-data-grid .ag-theme-alpine .ag-row:nth-child(even) .ag-cell {
+          background-color: #f9fafb !important;
+        }
+
+        .asset-data-grid .ag-theme-alpine .ag-row:nth-child(even):hover .ag-cell {
+          background-color: #f6f8fa !important;
+        }
+
         /* Remove AG-Grid's default focus outline */
-        .ag-theme-custom .ag-cell:focus,
-        .ag-theme-custom .ag-header-cell:focus {
+        .asset-data-grid .ag-theme-alpine .ag-cell:focus,
+        .asset-data-grid .ag-theme-alpine .ag-header-cell:focus {
           outline: none !important;
         }
 
+        /* Add fainter internal row borders using the same light gray as right panel */
+        .asset-data-grid .ag-theme-alpine .ag-row {
+          border-bottom: 1px solid #eaeef2 !important;
+        }
+
+        /* Remove border from last row to avoid double border with table perimeter */
+        .asset-data-grid .ag-theme-alpine .ag-row:last-child {
+          border-bottom: none !important;
+        }
+
         /* Remove sorting icons to match ReactGrid */
-        .ag-theme-custom .ag-header-cell .ag-header-cell-comp-wrapper {
+        .asset-data-grid .ag-theme-alpine .ag-header-cell .ag-header-cell-comp-wrapper {
           justify-content: flex-start;
         }
 
-        .ag-theme-custom .ag-sort-indicator-container {
+        .asset-data-grid .ag-theme-alpine .ag-sort-indicator-container {
           display: none !important;
         }
 
         /* Ensure no selection checkboxes */
-        .ag-theme-custom .ag-selection-checkbox {
+        .asset-data-grid .ag-theme-alpine .ag-selection-checkbox {
           display: none !important;
         }
 
         /* Match ReactGrid's column proportions exactly */
-        .ag-theme-custom .ag-header-viewport,
-        .ag-theme-custom .ag-body-viewport {
+        .asset-data-grid .ag-theme-alpine .ag-header-viewport,
+        .asset-data-grid .ag-theme-alpine .ag-body-viewport {
           overflow-x: hidden !important;
         }
       `}</style>
