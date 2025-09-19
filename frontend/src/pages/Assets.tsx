@@ -42,9 +42,7 @@ const Assets: React.FC = () => {
 
   // Debounced function to fetch detailed asset data
   const debouncedFetchAssetDetails = useCallback((asset: Asset) => {
-    console.log('Assets.tsx - debouncedFetchAssetDetails called with:', asset);
     // Immediately set the basic asset data to prevent flashing
-    console.log('Assets.tsx - Setting selectedAsset to:', asset);
     setSelectedAsset(asset);
     
     // Clear any existing timeout
@@ -54,21 +52,15 @@ const Assets: React.FC = () => {
 
     // Set a new timeout for detailed data
     debounceTimeoutRef.current = setTimeout(() => {
-      console.log('Assets.tsx - Fetching detailed data for asset ID:', asset.id);
       fetchDetailedAssetData(asset.id).then(detailedAsset => {
         if (detailedAsset) {
-          console.log('Assets.tsx - Got detailed asset data:', detailedAsset);
           // Only update if we're still looking at the same asset
           setSelectedAsset(currentAsset => {
             if (currentAsset && currentAsset.id === detailedAsset.id) {
-              console.log('Assets.tsx - Updating selectedAsset with detailed data');
               return detailedAsset;
             }
-            console.log('Assets.tsx - Not updating selectedAsset (different asset selected)');
             return currentAsset;
           });
-        } else {
-          console.log('Assets.tsx - Failed to fetch detailed asset data');
         }
       });
     }, 300); // 300ms delay
@@ -85,17 +77,11 @@ const Assets: React.FC = () => {
 
   // Memoized selection change handler to prevent infinite re-renders
   const handleSelectionChange = useCallback((selectedAssets: Asset[]) => {
-    console.log('Assets.tsx - handleSelectionChange called with:', selectedAssets);
-    
     if (selectedAssets.length > 0) {
       const asset = selectedAssets[0];
-      console.log('Assets.tsx - Selected asset:', asset);
-      
       // Use debounced fetch to prevent too many API calls during keyboard navigation
-      console.log('Assets.tsx - Calling debouncedFetchAssetDetails with:', asset);
       debouncedFetchAssetDetails(asset);
     } else {
-      console.log('Assets.tsx - No assets selected, clearing selectedAsset');
       setSelectedAsset(null);
     }
   }, [debouncedFetchAssetDetails]);
@@ -936,11 +922,9 @@ const Assets: React.FC = () => {
           
           // Ensure it's an array
           if (!Array.isArray(existingAssetsData)) {
-            console.warn('Existing assets data is not an array:', existingAssetsData);
             existingAssetsData = [];
           }
         } catch (error) {
-          console.warn('Failed to fetch existing assets for duplicate detection:', error);
           existingAssetsData = [];
         }
         
@@ -1007,7 +991,6 @@ const Assets: React.FC = () => {
             await assetApi.create(assetData);
             successCount++;
           } catch (error: any) {
-            console.error('Import error for asset:', assetData.name || assetData.hostname || assetData.ip_address, error);
             
             // Extract detailed error message from API response
             let errorMessage = 'Unknown error';
@@ -1048,7 +1031,6 @@ const Assets: React.FC = () => {
         assetListRef.current?.refresh(); // Refresh the list
         
       } catch (error) {
-        console.error('CSV parsing error:', error);
         alert(`Failed to parse CSV file. Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check the format and try again.`);
       } finally {
         setIsImporting(false);
@@ -1059,8 +1041,6 @@ const Assets: React.FC = () => {
     reader.readAsText(file);
     event.target.value = ''; // Reset file input
   };
-
-
 
   // Handle URL-based actions
   useEffect(() => {
@@ -1079,7 +1059,6 @@ const Assets: React.FC = () => {
             // Fallback to list data if detailed fetch fails
             setEditingAsset(asset);
           }
-
         });
         setSelectedAsset(null);
         setAddingNew(false);
@@ -1149,6 +1128,7 @@ const Assets: React.FC = () => {
           }
           .assets-table-section {
             grid-column: 1;
+            height: 100%;
           }
           .detail-grid-2col {
             grid-column: 2 / 4;
@@ -1290,18 +1270,19 @@ const Assets: React.FC = () => {
             height: 18px;
           }
           
-          /* Apply same padding to assets table as form container */
+          /* Apply same spacing to assets table as form container */
           .assets-table-section .asset-data-grid {
-            padding: 8px;
             width: 100%;
             box-sizing: border-box;
+            border: none;
           }
           
-          /* Make AG-Grid components respect the container padding */
+          /* Make AG-Grid components respect the container with proper spacing */
           .assets-table-section .ag-grid-wrapper {
-            width: 100% !important;
-            margin: 0 !important;
+            width: calc(100% - 16px) !important;
+            margin: 8px !important;
             box-sizing: border-box !important;
+            border: none !important;
           }
           
           .assets-table-section .ag-root-wrapper,
@@ -1313,9 +1294,16 @@ const Assets: React.FC = () => {
             overflow-x: hidden !important;
           }
           
-          /* Ensure the assets table section itself has proper overflow handling */
-          .assets-table-section {
-            overflow: hidden;
+          /* Override AG-Grid CSS variables to remove any shadow effects */
+          .assets-table-section .ag-theme-custom {
+            --ag-wrapper-border-radius: 0;
+            --ag-borders: none;
+            --ag-border-color: transparent;
+            --ag-wrapper-border: none;
+            /* Explicitly disable any shadow variables */
+            --ag-card-shadow: none;
+            --ag-popup-shadow: none;
+            --ag-header-column-separator-color: transparent;
           }
           
           /* Match header styling with subcard headers */
@@ -1327,8 +1315,17 @@ const Assets: React.FC = () => {
             letter-spacing: 0.5px !important;
           }
           
-          /* Remove any gray backgrounds or borders from AG-Grid */
-          .assets-table-section .ag-root-wrapper,
+          /* Remove any 3D effects and ensure clean borders */
+          .assets-table-section .ag-root-wrapper {
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            /* Remove any potential 3D effects */
+            filter: none !important;
+            transform: none !important;
+          }
+          
           .assets-table-section .ag-root,
           .assets-table-section .ag-body-viewport,
           .assets-table-section .ag-grid-wrapper {
@@ -1336,6 +1333,9 @@ const Assets: React.FC = () => {
             border: none !important;
             box-shadow: none !important;
             border-radius: 0 !important;
+            /* Remove any potential 3D effects */
+            filter: none !important;
+            transform: none !important;
           }
           
           /* Remove border radius from all table cells and headers */

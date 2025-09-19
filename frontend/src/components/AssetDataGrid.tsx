@@ -1,6 +1,6 @@
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useRef, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { ColDef, GridReadyEvent, RowClickedEvent, RowDoubleClickedEvent, SortChangedEvent } from 'ag-grid-community';
+import { ColDef, GridReadyEvent, RowClickedEvent, RowDoubleClickedEvent } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 
@@ -21,8 +21,6 @@ export interface AssetDataGridRef {
 const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, ref) => {
   const { onSelectionChanged, onRowDoubleClicked, onDataLoaded, className } = props;
   
-  console.log('AssetDataGrid rendered with props:', { onSelectionChanged: !!onSelectionChanged, onRowDoubleClicked: !!onRowDoubleClicked, onDataLoaded: !!onDataLoaded });
-  
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const hasLoadedRef = useRef(false);
@@ -33,11 +31,9 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
     try {
       setLoading(true);
       const response = await assetApi.list();
-      console.log('Assets loaded:', response);
       
       // Handle API response structure: {success: true, data: {assets: [...], total: 6}}
       const assetsData = response.data?.assets || response.assets || [];
-      console.log('Assets data:', assetsData);
       
       // Ensure we have an array
       const assetsList = Array.isArray(assetsData) ? assetsData : [];
@@ -49,7 +45,6 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
       
       hasLoadedRef.current = true;
     } catch (error) {
-      console.error('Error loading assets:', error);
       setAssets([]);
     } finally {
       setLoading(false);
@@ -210,8 +205,6 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
           --ag-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           --ag-font-size: var(--font-size-sm);
           --ag-cell-horizontal-padding: 8px;
-          --ag-header-height: 20px;
-          --ag-row-height: 24px;
         }
 
         /* Table perimeter border using AG-Grid's native border system */
