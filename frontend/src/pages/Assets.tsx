@@ -5,7 +5,7 @@ import { Plus, X, Upload, Download, Users, Target, Settings, Play, MessageSquare
 import { assetApi } from '../services/api';
 import AssetDataGrid, { AssetDataGridRef } from '../components/AssetDataGrid';
 import AssetSpreadsheetForm from '../components/AssetSpreadsheetForm';
-import { Asset } from '../types/asset';
+import { Asset, AssetCreate } from '../types/asset';
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -169,6 +169,7 @@ const Assets: React.FC = () => {
     { field: 'ftp_type', label: 'FTP Type' },
     { field: 'secondary_username', label: 'Secondary Username' },
     { field: 'secondary_password', label: 'Secondary Password' },
+    { field: 'secondary_credential_type', label: 'Secondary Credential Type' },
     
     // Additional Information
     { field: 'notes', label: 'Notes' }
@@ -187,64 +188,228 @@ const Assets: React.FC = () => {
   const handleExportTemplate = () => {
     const headers = csvFields.map(field => field.label);
     
-    // Example row with sample data
-    const exampleRow = csvFields.map(field => {
-      switch (field.field) {
-        case 'name': return 'Example Web Server';
-        case 'hostname': return 'webserver01.company.com';
-        case 'ip_address': return '192.168.1.100';
-        case 'description': return 'Production web server hosting main application';
-        case 'device_type': return 'server';
-        case 'tags': return 'production, web-server, critical';
-        case 'physical_address': return '123 Main St, Data Center A, City, State 12345';
-        case 'data_center': return 'DC-East-01';
-        case 'building': return 'Building A';
-        case 'room': return 'Server Room 101';
-        case 'rack_position': return 'Rack 15, U24-U26';
-        case 'rack_location': return 'Rack 42, Row 3, Position 15U';
-        case 'gps_coordinates': return '40.7128, -74.0060';
-        case 'hardware_make': return 'Dell';
-        case 'hardware_model': return 'PowerEdge R740';
-        case 'serial_number': return 'ABC123XYZ789';
-        case 'os_type': return 'linux';
-        case 'os_version': return 'Ubuntu 22.04 LTS';
-        case 'status': return 'active';
-        case 'environment': return 'production';
-        case 'criticality': return 'high';
-        case 'owner': return 'IT Operations Team';
-        case 'support_contact': return 'support@company.com';
-        case 'contract_number': return 'SUPP-2024-001';
-        case 'service_type': return 'ssh';
-        case 'port': return '22';
-        case 'is_secure': return 'true';
-        case 'credential_type': return 'username_password';
-        case 'username': return 'admin';
-        case 'password': return 'secure_password_123';
-        case 'private_key': return '';
-        case 'public_key': return '';
-        case 'api_key': return '';
-        case 'bearer_token': return '';
-        case 'certificate': return '';
-        case 'passphrase': return '';
-        case 'domain': return '';
-        case 'database_type': return '';
-        case 'database_name': return '';
-        case 'secondary_service_type': return 'none';
-        case 'secondary_port': return '';
-        case 'ftp_type': return '';
-        case 'secondary_username': return '';
-        case 'secondary_password': return '';
-        case 'notes': return 'Production server - handle with care';
-        default: return '';
-      }
-    });
+    // Multiple example rows for different service/credential combinations
+    const exampleRows = [
+      // Example 1: SSH Server with Username/Password
+      csvFields.map(field => {
+        switch (field.field) {
+          case 'name': return 'Linux Web Server';
+          case 'hostname': return 'webserver01.company.com';
+          case 'ip_address': return '192.168.1.100';
+          case 'description': return 'Production web server hosting main application';
+          case 'device_type': return 'server';
+          case 'tags': return 'production, web-server, critical';
+          case 'physical_address': return '123 Main St, Data Center A, City, State 12345';
+          case 'data_center': return 'DC-East-01';
+          case 'building': return 'Building A';
+          case 'room': return 'Server Room 101';
+          case 'rack_position': return 'Rack 15, U24-U26';
+          case 'rack_location': return 'Rack 42, Row 3, Position 15U';
+          case 'gps_coordinates': return '40.7128, -74.0060';
+          case 'hardware_make': return 'Dell';
+          case 'hardware_model': return 'PowerEdge R740';
+          case 'serial_number': return 'ABC123XYZ789';
+          case 'os_type': return 'linux';
+          case 'os_version': return 'Ubuntu 22.04 LTS';
+          case 'status': return 'active';
+          case 'environment': return 'production';
+          case 'criticality': return 'high';
+          case 'owner': return 'IT Operations Team';
+          case 'support_contact': return 'support@company.com';
+          case 'contract_number': return 'SUPP-2024-001';
+          case 'service_type': return 'ssh';
+          case 'port': return '22';
+          case 'is_secure': return 'true';
+          case 'credential_type': return 'username_password';
+          case 'username': return 'admin';
+          case 'password': return 'secure_password_123';
+          case 'private_key': return '';
+          case 'public_key': return '';
+          case 'api_key': return '';
+          case 'bearer_token': return '';
+          case 'certificate': return '';
+          case 'passphrase': return '';
+          case 'domain': return '';
+          case 'database_type': return '';
+          case 'database_name': return '';
+          case 'secondary_service_type': return 'none';
+          case 'secondary_port': return '';
+          case 'ftp_type': return '';
+          case 'secondary_username': return '';
+          case 'secondary_password': return '';
+          case 'secondary_credential_type': return '';
+          case 'notes': return 'Production server - handle with care';
+          default: return '';
+        }
+      }),
+      
+      // Example 2: SSH Server with SSH Key
+      csvFields.map(field => {
+        switch (field.field) {
+          case 'name': return 'Development Server';
+          case 'hostname': return 'devserver01.company.com';
+          case 'ip_address': return '192.168.1.101';
+          case 'description': return 'Development environment server';
+          case 'device_type': return 'server';
+          case 'tags': return 'development, testing';
+          case 'os_type': return 'linux';
+          case 'os_version': return 'CentOS 8';
+          case 'status': return 'active';
+          case 'environment': return 'development';
+          case 'criticality': return 'medium';
+          case 'service_type': return 'ssh';
+          case 'port': return '22';
+          case 'is_secure': return 'true';
+          case 'credential_type': return 'ssh_key';
+          case 'username': return 'devuser';
+          case 'password': return '';
+          case 'private_key': return '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAFwAAAAdzc2gtcnNh\n[... rest of private key ...]\n-----END OPENSSH PRIVATE KEY-----';
+          case 'public_key': return 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... devuser@company.com';
+          case 'api_key': return '';
+          case 'bearer_token': return '';
+          case 'certificate': return '';
+          case 'passphrase': return 'key_passphrase_if_needed';
+          case 'domain': return '';
+          case 'database_type': return '';
+          case 'database_name': return '';
+          case 'secondary_service_type': return 'none';
+          case 'secondary_port': return '';
+          case 'ftp_type': return '';
+          case 'secondary_username': return '';
+          case 'secondary_password': return '';
+          case 'secondary_credential_type': return '';
+          case 'notes': return 'Development server with SSH key authentication';
+          default: return '';
+        }
+      }),
+      
+      // Example 3: Database Server
+      csvFields.map(field => {
+        switch (field.field) {
+          case 'name': return 'MySQL Database Server';
+          case 'hostname': return 'db01.company.com';
+          case 'ip_address': return '192.168.1.102';
+          case 'description': return 'Primary MySQL database server';
+          case 'device_type': return 'database';
+          case 'tags': return 'production, database, mysql';
+          case 'os_type': return 'linux';
+          case 'os_version': return 'Ubuntu 22.04 LTS';
+          case 'status': return 'active';
+          case 'environment': return 'production';
+          case 'criticality': return 'critical';
+          case 'service_type': return 'database';
+          case 'port': return '3306';
+          case 'is_secure': return 'true';
+          case 'credential_type': return 'username_password';
+          case 'username': return 'dbadmin';
+          case 'password': return 'db_secure_password_456';
+          case 'private_key': return '';
+          case 'public_key': return '';
+          case 'api_key': return '';
+          case 'bearer_token': return '';
+          case 'certificate': return '';
+          case 'passphrase': return '';
+          case 'domain': return '';
+          case 'database_type': return 'mysql';
+          case 'database_name': return 'production_db';
+          case 'secondary_service_type': return 'none';
+          case 'secondary_port': return '';
+          case 'ftp_type': return '';
+          case 'secondary_username': return '';
+          case 'secondary_password': return '';
+          case 'secondary_credential_type': return '';
+          case 'notes': return 'Primary production database - critical system';
+          default: return '';
+        }
+      }),
+      
+      // Example 4: API Server with Bearer Token
+      csvFields.map(field => {
+        switch (field.field) {
+          case 'name': return 'REST API Server';
+          case 'hostname': return 'api.company.com';
+          case 'ip_address': return '192.168.1.103';
+          case 'description': return 'REST API service endpoint';
+          case 'device_type': return 'application-server';
+          case 'tags': return 'production, api, rest';
+          case 'os_type': return 'linux';
+          case 'os_version': return 'Ubuntu 22.04 LTS';
+          case 'status': return 'active';
+          case 'environment': return 'production';
+          case 'criticality': return 'high';
+          case 'service_type': return 'https';
+          case 'port': return '443';
+          case 'is_secure': return 'true';
+          case 'credential_type': return 'bearer_token';
+          case 'username': return '';
+          case 'password': return '';
+          case 'private_key': return '';
+          case 'public_key': return '';
+          case 'api_key': return '';
+          case 'bearer_token': return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+          case 'certificate': return '';
+          case 'passphrase': return '';
+          case 'domain': return '';
+          case 'database_type': return '';
+          case 'database_name': return '';
+          case 'secondary_service_type': return 'none';
+          case 'secondary_port': return '';
+          case 'ftp_type': return '';
+          case 'secondary_username': return '';
+          case 'secondary_password': return '';
+          case 'secondary_credential_type': return '';
+          case 'notes': return 'API server with JWT bearer token authentication';
+          default: return '';
+        }
+      }),
+      
+      // Example 5: Windows Server with WinRM
+      csvFields.map(field => {
+        switch (field.field) {
+          case 'name': return 'Windows Domain Controller';
+          case 'hostname': return 'dc01.company.local';
+          case 'ip_address': return '192.168.1.104';
+          case 'description': return 'Primary Windows domain controller';
+          case 'device_type': return 'server';
+          case 'tags': return 'production, windows, domain-controller';
+          case 'os_type': return 'windows';
+          case 'os_version': return 'Windows Server 2022';
+          case 'status': return 'active';
+          case 'environment': return 'production';
+          case 'criticality': return 'critical';
+          case 'service_type': return 'winrm';
+          case 'port': return '5986';
+          case 'is_secure': return 'true';
+          case 'credential_type': return 'username_password';
+          case 'username': return 'Administrator';
+          case 'password': return 'Windows_Admin_Pass_789';
+          case 'private_key': return '';
+          case 'public_key': return '';
+          case 'api_key': return '';
+          case 'bearer_token': return '';
+          case 'certificate': return '';
+          case 'passphrase': return '';
+          case 'domain': return 'COMPANY';
+          case 'database_type': return '';
+          case 'database_name': return '';
+          case 'secondary_service_type': return 'none';
+          case 'secondary_port': return '';
+          case 'ftp_type': return '';
+          case 'secondary_username': return '';
+          case 'secondary_password': return '';
+          case 'secondary_credential_type': return '';
+          case 'notes': return 'Windows domain controller - critical infrastructure';
+          default: return '';
+        }
+      })
+    ];
     
     // Comments row explaining valid values
     const commentsRow = csvFields.map(field => {
       switch (field.field) {
-        case 'name': return 'REQUIRED - Descriptive name for the asset';
-        case 'hostname': return 'REQUIRED - Fully qualified domain name or hostname';
-        case 'ip_address': return 'Optional - IPv4 or IPv6 address';
+        case 'name': return 'Optional - Descriptive name for the asset';
+        case 'hostname': return 'REQUIRED* - Fully qualified domain name or hostname (*either hostname or IP address must be provided)';
+        case 'ip_address': return 'REQUIRED* - IPv4 or IPv6 address (*either IP address or hostname must be provided)';
         case 'description': return 'Optional - Brief description of the asset';
         case 'device_type': return 'Valid: server, workstation, router, switch, firewall, database, web-server, application-server, storage, other';
         case 'tags': return 'Optional - Comma-separated values, e.g: production, web-server, critical';
@@ -286,27 +451,78 @@ const Assets: React.FC = () => {
         case 'ftp_type': return 'Valid: ftp, ftps, sftp (only when secondary_service_type=ftp_sftp)';
         case 'secondary_username': return 'Optional - Username for secondary service';
         case 'secondary_password': return 'Optional - Password for secondary service (will be encrypted)';
+        case 'secondary_credential_type': return 'Optional - username_password, ssh_key, api_key, bearer_token, certificate';
         case 'notes': return 'Optional - Additional notes about the asset';
         default: return 'Optional field';
       }
     });
     
-    // Build CSV content with headers, example, and comments
+    // Helper function to escape CSV values
+    const escapeCSVValue = (value: string) => {
+      if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    };
+
+    // Build comprehensive CSV content with headers, multiple examples, and validation rules
     const csvLines = [
       headers.join(','),
-      '# EXAMPLE ROW (delete this line and add your data below):',
-      '#' + exampleRow.map(value => {
-        // Escape commas and quotes in CSV
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(','),
       '',
-      '# FIELD VALIDATION RULES AND EXAMPLES:',
+      '# ============================================================================',
+      '# OPSCONDUCTOR ASSET IMPORT TEMPLATE',
+      '# ============================================================================',
+      '# This template contains comprehensive examples for different asset types',
+      '# and service/credential combinations. Delete all comment lines (starting with #)',
+      '# and replace with your actual asset data.',
+      '#',
+      '# REQUIRED FIELDS:',
+      '# - Service Type: Primary communication service (ssh, winrm, http, etc.)',
+      '# - Port: Port number for the primary service',
+      '# - Either IP Address OR Hostname (or both) must be provided',
+      '#',
+      '# IMPORTANT: All credential fields (passwords, keys, tokens) will be encrypted',
+      '# automatically when imported into the system.',
+      '# ============================================================================',
+      '',
+      '# EXAMPLE 1: Linux SSH Server with Username/Password Authentication',
+      '#' + exampleRows[0].map(escapeCSVValue).join(','),
+      '',
+      '# EXAMPLE 2: Linux SSH Server with SSH Key Authentication',
+      '#' + exampleRows[1].map(escapeCSVValue).join(','),
+      '',
+      '# EXAMPLE 3: Database Server (MySQL)',
+      '#' + exampleRows[2].map(escapeCSVValue).join(','),
+      '',
+      '# EXAMPLE 4: API Server with Bearer Token Authentication',
+      '#' + exampleRows[3].map(escapeCSVValue).join(','),
+      '',
+      '# EXAMPLE 5: Windows Server with WinRM',
+      '#' + exampleRows[4].map(escapeCSVValue).join(','),
+      '',
+      '# ============================================================================',
+      '# FIELD VALIDATION RULES AND REQUIREMENTS:',
+      '# ============================================================================',
       '#' + commentsRow.map(comment => `"${comment}"`).join(','),
       '',
-      '# DELETE ALL LINES STARTING WITH # AND ADD YOUR ASSET DATA BELOW:'
+      '# ============================================================================',
+      '# VALID VALUES FOR ENUM FIELDS:',
+      '# ============================================================================',
+      '# device_type: server, workstation, router, switch, firewall, database, web-server, application-server, storage, other',
+      '# os_type: linux, windows, macos, unix, other',
+      '# status: active, inactive, maintenance, decommissioned',
+      '# environment: production, staging, development, testing, qa',
+      '# criticality: low, medium, high, critical',
+      '# service_type: ssh, winrm, http, https, telnet, database, ftp, sftp, snmp, rdp, vnc, other',
+      '# credential_type: username_password, ssh_key, api_key, bearer_token, certificate',
+      '# database_type: mysql, postgresql, mssql, oracle, mongodb, redis',
+      '# secondary_service_type: none, telnet, ftp_sftp',
+      '# ftp_type: ftp, ftps, sftp',
+      '# is_secure: true, false',
+      '',
+      '# ============================================================================',
+      '# DELETE ALL LINES STARTING WITH # AND ADD YOUR ASSET DATA BELOW:',
+      '# ============================================================================'
     ];
     
     const csvContent = csvLines.join('\n');
@@ -356,6 +572,42 @@ const Assets: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  // Helper function to parse CSV line properly handling quoted fields
+  const parseCSVLine = (line: string): string[] => {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    let i = 0;
+    
+    while (i < line.length) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i += 2;
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+          i++;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // Field separator
+        result.push(current.trim());
+        current = '';
+        i++;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim());
+    return result;
+  };
+
   // Import CSV
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -376,13 +628,21 @@ const Assets: React.FC = () => {
           return;
         }
 
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        // Parse CSV headers properly
+        const headers = parseCSVLine(lines[0]);
         const expectedHeaders = csvFields.map(f => f.label);
         
-        // Validate headers
-        const missingHeaders = expectedHeaders.filter(h => !headers.includes(h));
-        if (missingHeaders.length > 0) {
-          alert(`Missing required headers: ${missingHeaders.join(', ')}`);
+        // Validate headers (allow partial headers for flexibility)
+        const missingRequiredHeaders = ['Service Type', 'Port'].filter(h => !headers.includes(h));
+        const hasIpOrHostname = headers.includes('IP Address') || headers.includes('Hostname');
+        
+        if (missingRequiredHeaders.length > 0) {
+          alert(`Missing required headers: ${missingRequiredHeaders.join(', ')}`);
+          return;
+        }
+        
+        if (!hasIpOrHostname) {
+          alert('Missing required headers: Must have either "IP Address" or "Hostname" (or both)');
           return;
         }
 
@@ -397,7 +657,7 @@ const Assets: React.FC = () => {
             continue;
           }
           
-          const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          const values = parseCSVLine(line);
           const assetData: any = {};
 
           headers.forEach((header, index) => {
@@ -412,22 +672,26 @@ const Assets: React.FC = () => {
                 assetData[fieldDef.field] = value ? parseInt(value) : null;
               } else if (fieldDef.field === 'is_secure') {
                 assetData[fieldDef.field] = value.toLowerCase() === 'true';
-              } else {
+              } else if (value !== '') {
+                // Only set non-empty values to avoid overriding defaults
                 assetData[fieldDef.field] = value;
               }
             }
           });
 
-          // Validate required fields (based on backend AssetCreate model)
-          if (!assetData.name || assetData.name.trim() === '') {
-            errors.push(`Row ${i + 1}: Asset Name is required`);
-            continue;
-          }
 
-          if (!assetData.hostname || assetData.hostname.trim() === '') {
-            errors.push(`Row ${i + 1}: Hostname is required`);
+
+          // Validate required fields (based on backend AssetCreate model)
+          // Either IP Address or Hostname must be present (backend requires hostname field)
+          const hasIpAddress = assetData.ip_address && assetData.ip_address.trim() !== '';
+          const hasHostname = assetData.hostname && assetData.hostname.trim() !== '';
+          
+          if (!hasIpAddress && !hasHostname) {
+            errors.push(`Row ${i + 1}: Either IP Address or Hostname (or both) must be provided`);
             continue;
           }
+          
+          // Note: Backend requires hostname field, so we'll use IP as hostname fallback during data cleaning
 
           if (!assetData.service_type || assetData.service_type.trim() === '') {
             errors.push(`Row ${i + 1}: Service Type is required`);
@@ -436,6 +700,72 @@ const Assets: React.FC = () => {
 
           if (!assetData.port || isNaN(parseInt(assetData.port))) {
             errors.push(`Row ${i + 1}: Port is required and must be a valid number`);
+            continue;
+          }
+
+          // Validate enum fields
+          const validDeviceTypes = ['server', 'workstation', 'router', 'switch', 'firewall', 'database', 'web-server', 'application-server', 'storage', 'other'];
+          if (assetData.device_type && !validDeviceTypes.includes(assetData.device_type)) {
+            errors.push(`Row ${i + 1}: Invalid device_type '${assetData.device_type}'. Valid values: ${validDeviceTypes.join(', ')}`);
+            continue;
+          }
+
+          const validOsTypes = ['linux', 'windows', 'macos', 'unix', 'other'];
+          if (assetData.os_type && !validOsTypes.includes(assetData.os_type)) {
+            errors.push(`Row ${i + 1}: Invalid os_type '${assetData.os_type}'. Valid values: ${validOsTypes.join(', ')}`);
+            continue;
+          }
+
+          const validStatuses = ['active', 'inactive', 'maintenance', 'decommissioned'];
+          if (assetData.status && !validStatuses.includes(assetData.status)) {
+            errors.push(`Row ${i + 1}: Invalid status '${assetData.status}'. Valid values: ${validStatuses.join(', ')}`);
+            continue;
+          }
+
+          const validEnvironments = ['production', 'staging', 'development', 'testing', 'qa'];
+          if (assetData.environment && !validEnvironments.includes(assetData.environment)) {
+            errors.push(`Row ${i + 1}: Invalid environment '${assetData.environment}'. Valid values: ${validEnvironments.join(', ')}`);
+            continue;
+          }
+
+          const validCriticalities = ['low', 'medium', 'high', 'critical'];
+          if (assetData.criticality && !validCriticalities.includes(assetData.criticality)) {
+            errors.push(`Row ${i + 1}: Invalid criticality '${assetData.criticality}'. Valid values: ${validCriticalities.join(', ')}`);
+            continue;
+          }
+
+          const validServiceTypes = ['ssh', 'winrm', 'http', 'https', 'telnet', 'database', 'ftp', 'sftp', 'snmp', 'rdp', 'vnc', 'other'];
+          if (!validServiceTypes.includes(assetData.service_type)) {
+            errors.push(`Row ${i + 1}: Invalid service_type '${assetData.service_type}'. Valid values: ${validServiceTypes.join(', ')}`);
+            continue;
+          }
+
+          const validCredentialTypes = ['username_password', 'ssh_key', 'api_key', 'bearer_token', 'certificate'];
+          if (assetData.credential_type && !validCredentialTypes.includes(assetData.credential_type)) {
+            errors.push(`Row ${i + 1}: Invalid credential_type '${assetData.credential_type}'. Valid values: ${validCredentialTypes.join(', ')}`);
+            continue;
+          }
+
+          const validDatabaseTypes = ['mysql', 'postgresql', 'mssql', 'oracle', 'mongodb', 'redis'];
+          if (assetData.database_type && !validDatabaseTypes.includes(assetData.database_type)) {
+            errors.push(`Row ${i + 1}: Invalid database_type '${assetData.database_type}'. Valid values: ${validDatabaseTypes.join(', ')}`);
+            continue;
+          }
+
+          const validSecondaryServiceTypes = ['none', 'telnet', 'ftp_sftp'];
+          if (assetData.secondary_service_type && !validSecondaryServiceTypes.includes(assetData.secondary_service_type)) {
+            errors.push(`Row ${i + 1}: Invalid secondary_service_type '${assetData.secondary_service_type}'. Valid values: ${validSecondaryServiceTypes.join(', ')}`);
+            continue;
+          }
+
+          const validFtpTypes = ['ftp', 'ftps', 'sftp'];
+          if (assetData.ftp_type && !validFtpTypes.includes(assetData.ftp_type)) {
+            errors.push(`Row ${i + 1}: Invalid ftp_type '${assetData.ftp_type}'. Valid values: ${validFtpTypes.join(', ')}`);
+            continue;
+          }
+
+          if (assetData.secondary_credential_type && !validCredentialTypes.includes(assetData.secondary_credential_type)) {
+            errors.push(`Row ${i + 1}: Invalid secondary_credential_type '${assetData.secondary_credential_type}'. Valid values: ${validCredentialTypes.join(', ')}`);
             continue;
           }
 
@@ -493,7 +823,98 @@ const Assets: React.FC = () => {
             }
           }
 
-          importedAssets.push(assetData);
+          // Clean up the asset data and ensure it matches AssetCreate interface
+          const cleanedAssetData: AssetCreate = {
+            // Only include fields that are defined in AssetCreate interface
+            ...(assetData.name && { name: assetData.name }),
+            // Ensure hostname is always provided - use IP address as fallback
+            hostname: assetData.hostname || assetData.ip_address || '',
+            ...(assetData.ip_address && { ip_address: assetData.ip_address }),
+            ...(assetData.description && { description: assetData.description }),
+            ...(assetData.tags && Array.isArray(assetData.tags) && { tags: assetData.tags }),
+            
+            // Device/Hardware Information
+            ...(assetData.device_type && { device_type: assetData.device_type }),
+            ...(assetData.hardware_make && { hardware_make: assetData.hardware_make }),
+            ...(assetData.hardware_model && { hardware_model: assetData.hardware_model }),
+            ...(assetData.serial_number && { serial_number: assetData.serial_number }),
+            
+            // System Information
+            ...(assetData.os_type && { os_type: assetData.os_type }),
+            ...(assetData.os_version && { os_version: assetData.os_version }),
+            
+            // Location Information
+            ...(assetData.physical_address && { physical_address: assetData.physical_address }),
+            ...(assetData.data_center && { data_center: assetData.data_center }),
+            ...(assetData.building && { building: assetData.building }),
+            ...(assetData.room && { room: assetData.room }),
+            ...(assetData.rack_position && { rack_position: assetData.rack_position }),
+            ...(assetData.rack_location && { rack_location: assetData.rack_location }),
+            ...(assetData.gps_coordinates && { gps_coordinates: assetData.gps_coordinates }),
+            
+            // Status & Management
+            ...(assetData.status && { status: assetData.status }),
+            ...(assetData.environment && { environment: assetData.environment }),
+            ...(assetData.criticality && { criticality: assetData.criticality }),
+            ...(assetData.owner && { owner: assetData.owner }),
+            ...(assetData.support_contact && { support_contact: assetData.support_contact }),
+            ...(assetData.contract_number && { contract_number: assetData.contract_number }),
+            
+            // Primary Communication Service (required)
+            service_type: assetData.service_type,
+            port: typeof assetData.port === 'string' ? parseInt(assetData.port, 10) : assetData.port,
+            is_secure: assetData.is_secure !== undefined ? assetData.is_secure : false,
+            
+            // Primary Service Credentials - Auto-detect credential type if not specified
+            ...(() => {
+              let credentialType = assetData.credential_type;
+              
+              // Auto-detect credential type based on provided credentials
+              if (!credentialType) {
+                if (assetData.private_key) {
+                  credentialType = 'ssh_key';
+                } else if (assetData.api_key) {
+                  credentialType = 'api_key';
+                } else if (assetData.bearer_token) {
+                  credentialType = 'bearer_token';
+                } else if (assetData.certificate) {
+                  credentialType = 'certificate';
+                } else if (assetData.username && assetData.password) {
+                  credentialType = 'username_password';
+                }
+              }
+              
+              return {
+                ...(credentialType && { credential_type: credentialType }),
+                ...(assetData.username && { username: assetData.username }),
+                ...(assetData.password && { password: assetData.password }),
+                ...(assetData.private_key && { private_key: assetData.private_key }),
+                ...(assetData.public_key && { public_key: assetData.public_key }),
+                ...(assetData.api_key && { api_key: assetData.api_key }),
+                ...(assetData.bearer_token && { bearer_token: assetData.bearer_token }),
+                ...(assetData.certificate && { certificate: assetData.certificate }),
+                ...(assetData.passphrase && { passphrase: assetData.passphrase }),
+                ...(assetData.domain && { domain: assetData.domain }),
+              };
+            })(),
+            
+            // Database-specific fields
+            ...(assetData.database_type && { database_type: assetData.database_type }),
+            ...(assetData.database_name && { database_name: assetData.database_name }),
+            
+            // Secondary Communication
+            ...(assetData.secondary_service_type && { secondary_service_type: assetData.secondary_service_type }),
+            ...(assetData.secondary_port && { secondary_port: typeof assetData.secondary_port === 'string' ? parseInt(assetData.secondary_port, 10) : assetData.secondary_port }),
+            ...(assetData.ftp_type && { ftp_type: assetData.ftp_type }),
+            ...(assetData.secondary_username && { secondary_username: assetData.secondary_username }),
+            ...(assetData.secondary_password && { secondary_password: assetData.secondary_password }),
+            ...(assetData.secondary_credential_type && { secondary_credential_type: assetData.secondary_credential_type }),
+            
+            // Additional Information
+            ...(assetData.notes && { notes: assetData.notes })
+          };
+          
+          importedAssets.push(cleanedAssetData);
         }
 
         if (errors.length > 0) {
@@ -501,22 +922,130 @@ const Assets: React.FC = () => {
           return;
         }
 
-        // Import assets
-        let successCount = 0;
-        for (const assetData of importedAssets) {
-          try {
-            await assetApi.create(assetData);
-            successCount++;
-          } catch (error) {
-            // Import failed for this asset, continue with others
+        // Check for potential duplicates before importing
+        const duplicateWarnings = [];
+        let existingAssetsData = [];
+        
+        try {
+          const existingAssets = await assetApi.list(0, 1000); // Get existing assets
+          existingAssetsData = existingAssets.data || existingAssets.assets || existingAssets || [];
+          
+          // Ensure it's an array
+          if (!Array.isArray(existingAssetsData)) {
+            console.warn('Existing assets data is not an array:', existingAssetsData);
+            existingAssetsData = [];
+          }
+        } catch (error) {
+          console.warn('Failed to fetch existing assets for duplicate detection:', error);
+          existingAssetsData = [];
+        }
+        
+        for (let i = 0; i < importedAssets.length; i++) {
+          const assetData = importedAssets[i];
+          const potentialDuplicates = existingAssetsData.filter((existing: any) => {
+            // Check for duplicates based on name, hostname, or IP address
+            return (
+              (assetData.name && existing.name === assetData.name) ||
+              (assetData.hostname && existing.hostname === assetData.hostname) ||
+              (assetData.ip_address && existing.ip_address === assetData.ip_address)
+            );
+          });
+          
+          if (potentialDuplicates.length > 0) {
+            const assetIdentifier = assetData.name || assetData.hostname || assetData.ip_address;
+            duplicateWarnings.push({
+              index: i,
+              asset: assetData,
+              identifier: assetIdentifier,
+              existing: potentialDuplicates
+            });
+          }
+        }
+        
+        // Show duplicate warnings if any found
+        if (duplicateWarnings.length > 0) {
+          const duplicateMessage = duplicateWarnings.map(dup => 
+            `• ${dup.identifier} (matches ${dup.existing.length} existing asset${dup.existing.length > 1 ? 's' : ''})`
+          ).join('\n');
+          
+          const userChoice = window.confirm(
+            `Found ${duplicateWarnings.length} potential duplicate(s):\n\n${duplicateMessage}\n\n` +
+            `Click OK to import anyway (may create duplicates)\n` +
+            `Click Cancel to skip duplicate assets`
+          );
+          
+          if (!userChoice) {
+            // Remove duplicates from import list
+            const indicesToRemove = duplicateWarnings.map(dup => dup.index).sort((a, b) => b - a);
+            indicesToRemove.forEach(index => {
+              importedAssets.splice(index, 1);
+            });
+            
+            if (importedAssets.length === 0) {
+              setImportStatus('All assets were identified as potential duplicates and skipped.');
+              setIsImporting(false);
+              return;
+            }
+            
+            setImportStatus(`Skipping ${duplicateWarnings.length} potential duplicate(s). Importing ${importedAssets.length} new assets...`);
+          } else {
+            setImportStatus(`Importing ${importedAssets.length} assets (including ${duplicateWarnings.length} potential duplicates)...`);
           }
         }
 
-        alert(`Successfully imported ${successCount} out of ${importedAssets.length} assets`);
+        // Import assets
+        let successCount = 0;
+        const importErrors = [];
+        
+        for (let i = 0; i < importedAssets.length; i++) {
+          const assetData = importedAssets[i];
+          try {
+            await assetApi.create(assetData);
+            successCount++;
+          } catch (error: any) {
+            console.error('Import error for asset:', assetData.name || assetData.hostname || assetData.ip_address, error);
+            
+            // Extract detailed error message from API response
+            let errorMessage = 'Unknown error';
+            if (error.response?.data) {
+              const errorData = error.response.data;
+              if (errorData.detail) {
+                // FastAPI validation error format
+                if (Array.isArray(errorData.detail)) {
+                  errorMessage = errorData.detail.map((err: any) => 
+                    `${err.loc?.join('.')} - ${err.msg}`
+                  ).join('; ');
+                } else {
+                  errorMessage = errorData.detail;
+                }
+              } else if (errorData.message) {
+                errorMessage = errorData.message;
+              } else if (typeof errorData === 'string') {
+                errorMessage = errorData;
+              } else {
+                errorMessage = JSON.stringify(errorData);
+              }
+            } else if (error.message) {
+              errorMessage = error.message;
+            }
+            
+            const assetIdentifier = assetData.name || assetData.hostname || assetData.ip_address || 'Unknown asset';
+            importErrors.push(`Asset "${assetIdentifier}": ${errorMessage}`);
+          }
+        }
+
+        // Show detailed results
+        let resultMessage = `Successfully imported ${successCount} out of ${importedAssets.length} assets`;
+        if (importErrors.length > 0) {
+          resultMessage += `\n\nImport errors:\n${importErrors.join('\n')}`;
+        }
+        
+        alert(resultMessage);
         assetListRef.current?.refresh(); // Refresh the list
         
       } catch (error) {
-        alert('Failed to parse CSV file. Please check the format.');
+        console.error('CSV parsing error:', error);
+        alert(`Failed to parse CSV file. Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check the format and try again.`);
       }
     };
 
@@ -989,7 +1518,30 @@ const Assets: React.FC = () => {
           ) : selectedAsset ? (
             <>
               <div className="section-header">
-                Asset Details: {selectedAsset.ip_address || selectedAsset.hostname || 'Unknown'}
+                <span>Asset Details: {selectedAsset.name || selectedAsset.ip_address || selectedAsset.hostname || 'Unknown'}</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button 
+                    className="btn-icon btn-ghost"
+                    onClick={() => navigate(`/assets/edit/${selectedAsset.id}`)}
+                    title="Edit Asset"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  <button 
+                    className="btn-icon btn-ghost"
+                    onClick={() => handleTestConnection(selectedAsset.id)}
+                    title="Test Connection"
+                  >
+                    <Play size={16} />
+                  </button>
+                  <button 
+                    className="btn-icon btn-ghost btn-danger"
+                    onClick={() => handleDeleteAsset(selectedAsset.id)}
+                    title="Delete Asset"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
               {loadingAssetDetails ? (
                 <div className="loading-state">

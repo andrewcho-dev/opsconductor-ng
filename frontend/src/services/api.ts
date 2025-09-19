@@ -12,6 +12,7 @@ import {
   CommunicationTestRequest, CommunicationTestResponse,
   SlackSettings, TeamsSettings, DiscordSettings, WebhookSettings
 } from '../types';
+import { AssetCreate } from '../types/asset';
 
 console.log('🔥 API SERVICE LOADED AT', new Date().toISOString());
 
@@ -191,7 +192,7 @@ export const assetApi = {
     return response.data;
   },
 
-  create: async (assetData: any): Promise<any> => {
+  create: async (assetData: AssetCreate): Promise<any> => {
     const response = await api.post('/api/v1/assets', assetData);
     return response.data;
   },
