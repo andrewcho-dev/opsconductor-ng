@@ -124,14 +124,6 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Users size={14} /></span>
                     User Management
                   </Link>
-                  <Link 
-                    to="/profile" 
-                    className={`nav-submenu-item ${location.pathname === '/profile' ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Users size={14} /></span>
-                    My Profile
-                  </Link>
                   {hasPermission(user, PERMISSIONS.ROLES_READ) && (
                     <Link 
                       to="/settings/roles" 

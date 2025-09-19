@@ -5,7 +5,6 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import UserProfile from './pages/UserProfile';
 import AIChatPage from './pages/AIChat';
 
 
@@ -56,7 +55,6 @@ const App: React.FC = () => {
                     <Route path="/users" element={<Users />} />
                     <Route path="/users/:action" element={<Users />} />
                     <Route path="/users/:action/:id" element={<Users />} />
-                    <Route path="/profile" element={<UserProfile />} />
 
                     <Route path="/assets" element={<Assets />} />
                     <Route path="/assets/:action" element={<Assets />} />
