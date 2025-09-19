@@ -916,19 +916,23 @@ const formStyles = `
   .form-container {
     flex: 1;
     overflow-y: auto;
-    padding: 0;
+    padding: 8px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
   }
   
   .form-column {
     display: flex;
     flex-direction: column;
+    gap: 8px;
   }
   
   .form-section {
-    margin-bottom: 8px;
+    margin: 0;
     border: 1px solid #d0d7de;
     overflow: hidden;
   }

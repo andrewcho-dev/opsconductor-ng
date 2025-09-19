@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Plus, Server, Monitor, HardDrive, Wifi, WifiOff, Eye, Edit3, Trash2, X, Check, Users, Target, Settings, Play, MessageSquare, Upload, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Plus, X, Upload, Download, Users, Target, Settings, Play, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import { assetApi } from '../services/api';
 import AssetDataGrid, { AssetDataGridRef } from '../components/AssetDataGrid';
 import AssetSpreadsheetForm from '../components/AssetSpreadsheetForm';
 import { Asset } from '../types/asset';
-
-
 
 const Assets: React.FC = () => {
   const navigate = useNavigate();
@@ -27,18 +25,13 @@ const Assets: React.FC = () => {
   const fetchDetailedAssetData = useCallback(async (assetId: number): Promise<Asset | null> => {
     try {
       setLoadingAssetDetails(true);
-      console.log('Fetching detailed asset data for ID:', assetId);
       const response = await assetApi.get(assetId);
-      console.log('Raw API response:', response);
       
       // The API returns {success: true, data: {...}}, so we need response.data
       const assetData = response.data || response;
-      console.log('Extracted asset data:', assetData);
-      console.log('Asset credential_type:', assetData.credential_type);
       
       return assetData;
     } catch (error) {
-      console.error('Failed to fetch detailed asset data:', error);
       return null;
     } finally {
       setLoadingAssetDetails(false);
@@ -57,9 +50,7 @@ const Assets: React.FC = () => {
 
     // Set a new timeout for detailed data
     debounceTimeoutRef.current = setTimeout(() => {
-      console.log('Debounced fetch for asset:', asset.name, 'ID:', asset.id);
       fetchDetailedAssetData(asset.id).then(detailedAsset => {
-        console.log('Detailed asset data loaded for:', detailedAsset?.name);
         if (detailedAsset) {
           // Only update if we're still looking at the same asset
           setSelectedAsset(currentAsset => {
@@ -86,7 +77,6 @@ const Assets: React.FC = () => {
   const handleSelectionChange = useCallback((selectedAssets: Asset[]) => {
     if (selectedAssets.length > 0) {
       const asset = selectedAssets[0];
-      console.log('Asset selection changed to:', asset.name, 'ID:', asset.id);
       
       // If we're currently editing an asset, handle the transition
       if (editingAsset) {
@@ -112,7 +102,6 @@ const Assets: React.FC = () => {
       // Use debounced fetch to prevent too many API calls during keyboard navigation
       debouncedFetchAssetDetails(asset);
     } else {
-      console.log('Asset selection cleared');
       setSelectedAsset(null);
     }
   }, [editingAsset, debouncedFetchAssetDetails, navigate]);
@@ -519,7 +508,7 @@ const Assets: React.FC = () => {
             await assetApi.create(assetData);
             successCount++;
           } catch (error) {
-            console.error('Failed to import asset:', error);
+            // Import failed for this asset, continue with others
           }
         }
 
@@ -527,7 +516,6 @@ const Assets: React.FC = () => {
         assetListRef.current?.refresh(); // Refresh the list
         
       } catch (error) {
-        console.error('Import error:', error);
         alert('Failed to parse CSV file. Please check the format.');
       }
     };
@@ -535,6 +523,8 @@ const Assets: React.FC = () => {
     reader.readAsText(file);
     event.target.value = ''; // Reset file input
   };
+
+
 
   // Handle URL-based actions
   useEffect(() => {
@@ -579,20 +569,25 @@ const Assets: React.FC = () => {
     }
   }, [action, id, assets]);
 
-
-
-  const handleDeleteAsset = async (assetId: number) => {
-    if (!window.confirm('Are you sure you want to delete this asset?')) return;
+  const handleDeleteAsset = async (assetId?: number) => {
+    const targetAsset = assetId ? assets.find(a => a.id === assetId) : selectedAsset;
+    if (!targetAsset) return;
+    
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete the asset "${targetAsset.name}"?\n\nThis action cannot be undone.`
+    );
+    
+    if (!confirmDelete) return;
     
     try {
-      await assetApi.delete(assetId);
+      await assetApi.delete(targetAsset.id);
       assetListRef.current?.refresh();
-      if (selectedAsset?.id === assetId) {
+      if (selectedAsset?.id === targetAsset.id) {
         setSelectedAsset(null);
         navigate('/assets');
       }
     } catch (error) {
-      console.error('Failed to delete asset:', error);
+      alert('Failed to delete asset. Please try again.');
     }
   };
 
@@ -601,7 +596,6 @@ const Assets: React.FC = () => {
       const result = await assetApi.test(assetId);
       alert(result.success ? 'Connection successful!' : `Connection failed: ${result.error}`);
     } catch (error) {
-      console.error('Connection test failed:', error);
       alert('Connection test failed');
     }
   };
@@ -714,6 +708,55 @@ const Assets: React.FC = () => {
           .dropdown-item:hover {
             background: var(--neutral-50);
           }
+          
+          /* Fix dropdown-toggle icon sizing */
+          .dropdown-toggle::after {
+            display: none !important;
+          }
+          
+          .dropdown-toggle {
+            position: relative;
+          }
+          
+          /* Delete button styling */
+          .btn-danger {
+            color: #dc2626;
+          }
+          
+          .btn-danger:hover {
+            background-color: #fee2e2;
+            color: #dc2626;
+          }
+          
+          /* Enhanced header icon buttons */
+          .header-stats .btn-icon {
+            width: 32px;
+            height: 32px;
+            padding: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+          }
+          
+          .header-stats .btn-icon svg {
+            width: 18px;
+            height: 18px;
+          }
+          
+          /* Apply same padding to assets table as form container */
+          .assets-table-section .asset-data-grid {
+            padding: 8px;
+          }
+          
+          /* Match header styling with subcard headers */
+          .assets-table-section .rg-header-cell {
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            color: #24292f !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+          }
         `}
       </style>
 
@@ -729,7 +772,7 @@ const Assets: React.FC = () => {
             title="Add new asset"
             disabled={addingNew || !!editingAsset}
           >
-            <Plus size={16} />
+            <Plus size={18} />
           </button>
           {selectedAsset && !addingNew && !editingAsset && (
             <button 
@@ -737,7 +780,16 @@ const Assets: React.FC = () => {
               onClick={() => navigate(`/assets/edit/${selectedAsset.id}`)}
               title="Edit selected asset"
             >
-              <Edit3 size={16} />
+              <Edit3 size={18} />
+            </button>
+          )}
+          {selectedAsset && !addingNew && !editingAsset && (
+            <button 
+              className="btn-icon btn-danger"
+              onClick={() => handleDeleteAsset()}
+              title="Delete selected asset"
+            >
+              <Trash2 size={18} />
             </button>
           )}
           <div className="dropdown">
@@ -746,7 +798,7 @@ const Assets: React.FC = () => {
               title="Export options"
               disabled={addingNew || !!editingAsset}
             >
-              <Upload size={16} />
+              <Upload size={18} />
             </button>
             <div className="dropdown-menu">
               <button onClick={handleExportTemplate} className="dropdown-item">
@@ -763,7 +815,7 @@ const Assets: React.FC = () => {
             title="Import from CSV"
             disabled={addingNew || !!editingAsset}
           >
-            <Download size={16} />
+            <Download size={18} />
           </button>
           <Link to="/users" className="stat-pill">
             <Users size={14} />
@@ -795,11 +847,11 @@ const Assets: React.FC = () => {
           <div className="section-header">
             Assets ({assets.length})
           </div>
-          <div className="compact-content">
-            <AssetDataGrid
-              ref={assetListRef}
-              onSelectionChanged={handleSelectionChange}
-              onRowDoubleClicked={(asset) => {
+          <AssetDataGrid
+            className="asset-data-grid"
+            ref={assetListRef}
+            onSelectionChanged={handleSelectionChange}
+            onRowDoubleClicked={(asset) => {
                 // If we're currently editing an asset, handle the transition
                 if (editingAsset) {
                   // If editing the same asset, do nothing
@@ -824,7 +876,6 @@ const Assets: React.FC = () => {
                 setLoading(false);
               }}
             />
-          </div>
         </div>
 
         {/* Columns 2-3: Asset Details/Form Panel */}
@@ -844,22 +895,19 @@ const Assets: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="compact-content">
-                <AssetSpreadsheetForm
-                  mode="create"
-                  onCancel={() => navigate('/assets')}
-                  onSave={async (assetData) => {
-                    try {
-                      await assetApi.create(assetData);
-                      assetListRef.current?.refresh();
-                      navigate('/assets');
-                    } catch (error) {
-                      console.error('Failed to create asset:', error);
-                      alert('Failed to create asset. Please try again.');
-                    }
-                  }}
-                />
-              </div>
+              <AssetSpreadsheetForm
+                mode="create"
+                onCancel={() => navigate('/assets')}
+                onSave={async (assetData) => {
+                  try {
+                    await assetApi.create(assetData);
+                    assetListRef.current?.refresh();
+                    navigate('/assets');
+                  } catch (error) {
+                    alert('Failed to create asset. Please try again.');
+                  }
+                }}
+              />
             </>
           ) : editingAsset ? (
             <>
@@ -875,53 +923,46 @@ const Assets: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div className="compact-content">
-                <AssetSpreadsheetForm
-                  mode="edit"
-                  asset={editingAsset}
-                  onCancel={() => navigate('/assets')}
-                  onSave={async (assetData) => {
-                    try {
-                      await assetApi.update(editingAsset.id, assetData);
-                      assetListRef.current?.refresh();
-                      navigate('/assets');
-                    } catch (error) {
-                      console.error('Failed to update asset:', error);
-                      alert('Failed to update asset. Please try again.');
-                    }
-                  }}
-                />
-              </div>
+              <AssetSpreadsheetForm
+                mode="edit"
+                asset={editingAsset}
+                onCancel={() => navigate('/assets')}
+                onSave={async (assetData) => {
+                  try {
+                    await assetApi.update(editingAsset.id, assetData);
+                    assetListRef.current?.refresh();
+                    navigate('/assets');
+                  } catch (error) {
+                    alert('Failed to update asset. Please try again.');
+                  }
+                }}
+              />
             </>
           ) : selectedAsset ? (
             <>
               <div className="section-header">
                 Asset Details: {selectedAsset.name}
               </div>
-              <div className="compact-content">
-                {loadingAssetDetails ? (
-                  <div className="loading-state">
-                    <p>Loading asset details...</p>
-                  </div>
-                ) : (
-                  <AssetSpreadsheetForm
-                    mode="view"
-                    asset={selectedAsset}
-                    onCancel={() => {}}
-                    onSave={() => {}}
-                  />
-                )}
-              </div>
+              {loadingAssetDetails ? (
+                <div className="loading-state">
+                  <p>Loading asset details...</p>
+                </div>
+              ) : (
+                <AssetSpreadsheetForm
+                  mode="view"
+                  asset={selectedAsset}
+                  onCancel={() => {}}
+                  onSave={() => {}}
+                />
+              )}
             </>
           ) : loadingAssetDetails ? (
             <>
               <div className="section-header">
                 Asset Details
               </div>
-              <div className="compact-content">
-                <div className="loading-state">
-                  <p>Loading asset details...</p>
-                </div>
+              <div className="loading-state">
+                <p>Loading asset details...</p>
               </div>
             </>
           ) : (
