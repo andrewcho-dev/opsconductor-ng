@@ -17,6 +17,8 @@ const Assets: React.FC = () => {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string>('');
   const assetListRef = useRef<AssetDataGridRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,7 +42,9 @@ const Assets: React.FC = () => {
 
   // Debounced function to fetch detailed asset data
   const debouncedFetchAssetDetails = useCallback((asset: Asset) => {
+    console.log('Assets.tsx - debouncedFetchAssetDetails called with:', asset);
     // Immediately set the basic asset data to prevent flashing
+    console.log('Assets.tsx - Setting selectedAsset to:', asset);
     setSelectedAsset(asset);
     
     // Clear any existing timeout
@@ -50,15 +54,21 @@ const Assets: React.FC = () => {
 
     // Set a new timeout for detailed data
     debounceTimeoutRef.current = setTimeout(() => {
+      console.log('Assets.tsx - Fetching detailed data for asset ID:', asset.id);
       fetchDetailedAssetData(asset.id).then(detailedAsset => {
         if (detailedAsset) {
+          console.log('Assets.tsx - Got detailed asset data:', detailedAsset);
           // Only update if we're still looking at the same asset
           setSelectedAsset(currentAsset => {
             if (currentAsset && currentAsset.id === detailedAsset.id) {
+              console.log('Assets.tsx - Updating selectedAsset with detailed data');
               return detailedAsset;
             }
+            console.log('Assets.tsx - Not updating selectedAsset (different asset selected)');
             return currentAsset;
           });
+        } else {
+          console.log('Assets.tsx - Failed to fetch detailed asset data');
         }
       });
     }, 300); // 300ms delay
@@ -75,36 +85,20 @@ const Assets: React.FC = () => {
 
   // Memoized selection change handler to prevent infinite re-renders
   const handleSelectionChange = useCallback((selectedAssets: Asset[]) => {
+    console.log('Assets.tsx - handleSelectionChange called with:', selectedAssets);
+    
     if (selectedAssets.length > 0) {
       const asset = selectedAssets[0];
-      
-      // If we're currently editing an asset, handle the transition
-      if (editingAsset) {
-        // If selecting the same asset we're editing, do nothing
-        if (editingAsset.id === asset.id) {
-          return;
-        }
-        
-        // Ask user if they want to save changes before switching
-        const shouldSwitch = window.confirm(
-          'You have unsaved changes. Do you want to discard them and switch to the selected asset?'
-        );
-        
-        if (!shouldSwitch) {
-          return; // Stay in edit mode
-        }
-        
-        // User chose to discard changes, exit edit mode
-        setEditingAsset(null);
-        navigate('/assets');
-      }
+      console.log('Assets.tsx - Selected asset:', asset);
       
       // Use debounced fetch to prevent too many API calls during keyboard navigation
+      console.log('Assets.tsx - Calling debouncedFetchAssetDetails with:', asset);
       debouncedFetchAssetDetails(asset);
     } else {
+      console.log('Assets.tsx - No assets selected, clearing selectedAsset');
       setSelectedAsset(null);
     }
-  }, [editingAsset, debouncedFetchAssetDetails, navigate]);
+  }, [debouncedFetchAssetDetails]);
 
   // CSV field definitions in import/export order (ALL fields supported by backend)
   const csvFields = [
@@ -620,11 +614,15 @@ const Assets: React.FC = () => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        setIsImporting(true);
+        setImportStatus('Processing CSV file...');
         const csv = e.target?.result as string;
         const lines = csv.split('\n').filter(line => line.trim());
         
         if (lines.length < 2) {
           alert('CSV file must contain at least a header row and one data row');
+          setIsImporting(false);
+          setImportStatus('');
           return;
         }
 
@@ -638,16 +636,20 @@ const Assets: React.FC = () => {
         
         if (missingRequiredHeaders.length > 0) {
           alert(`Missing required headers: ${missingRequiredHeaders.join(', ')}`);
+          setIsImporting(false);
+          setImportStatus('');
           return;
         }
         
         if (!hasIpOrHostname) {
           alert('Missing required headers: Must have either "IP Address" or "Hostname" (or both)');
+          setIsImporting(false);
+          setImportStatus('');
           return;
         }
 
-        const importedAssets = [];
-        const errors = [];
+        const importedAssets: AssetCreate[] = [];
+        const errors: string[] = [];
 
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
@@ -698,7 +700,7 @@ const Assets: React.FC = () => {
             continue;
           }
 
-          if (!assetData.port || isNaN(parseInt(assetData.port))) {
+          if (!assetData.port || isNaN(parseInt(String(assetData.port)))) {
             errors.push(`Row ${i + 1}: Port is required and must be a valid number`);
             continue;
           }
@@ -919,6 +921,8 @@ const Assets: React.FC = () => {
 
         if (errors.length > 0) {
           alert(`Import errors:\n${errors.join('\n')}`);
+          setIsImporting(false);
+          setImportStatus('');
           return;
         }
 
@@ -1046,6 +1050,9 @@ const Assets: React.FC = () => {
       } catch (error) {
         console.error('CSV parsing error:', error);
         alert(`Failed to parse CSV file. Error: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check the format and try again.`);
+      } finally {
+        setIsImporting(false);
+        setImportStatus('');
       }
     };
 
@@ -1072,6 +1079,7 @@ const Assets: React.FC = () => {
             // Fallback to list data if detailed fetch fails
             setEditingAsset(asset);
           }
+
         });
         setSelectedAsset(null);
         setAddingNew(false);
@@ -1165,15 +1173,24 @@ const Assets: React.FC = () => {
             vertical-align: middle;
             font-size: 12px;
           }
-          .assets-table tr:hover {
-            background: var(--neutral-50);
-          }
-          .assets-table tr.selected {
-            background: var(--primary-blue-light);
-            border-left: 3px solid var(--primary-blue);
-          }
           .assets-table tr {
             cursor: pointer;
+            transition: background-color 0.15s ease;
+            background: transparent;
+          }
+          
+          .assets-table tr:hover:not(.selected) {
+            background: var(--neutral-50);
+          }
+          
+          .assets-table tr.selected {
+            background: var(--primary-blue-light) !important;
+            border-left: 3px solid var(--primary-blue);
+          }
+          
+          /* Prevent flickering during selection changes */
+          .assets-table tr:not(.selected) {
+            background: transparent !important;
           }
 
           .asset-details h3 {
@@ -1280,16 +1297,16 @@ const Assets: React.FC = () => {
             box-sizing: border-box;
           }
           
-          /* Make ReactGrid components respect the container padding */
-          .assets-table-section .reactgrid-wrapper {
+          /* Make AG-Grid components respect the container padding */
+          .assets-table-section .ag-grid-wrapper {
             width: 100% !important;
             margin: 0 !important;
             box-sizing: border-box !important;
           }
           
-          .assets-table-section .reactgrid,
-          .assets-table-section .rg-viewport,
-          .assets-table-section .rg-content {
+          .assets-table-section .ag-root-wrapper,
+          .assets-table-section .ag-root,
+          .assets-table-section .ag-body-viewport {
             width: 100% !important;
             max-width: 100% !important;
             box-sizing: border-box !important;
@@ -1302,7 +1319,7 @@ const Assets: React.FC = () => {
           }
           
           /* Match header styling with subcard headers */
-          .assets-table-section .rg-header-cell {
+          .assets-table-section .ag-header-cell {
             font-size: 11px !important;
             font-weight: 600 !important;
             color: #24292f !important;
@@ -1310,28 +1327,20 @@ const Assets: React.FC = () => {
             letter-spacing: 0.5px !important;
           }
           
-          /* Remove any gray backgrounds or borders from ReactGrid */
-          .assets-table-section .reactgrid,
-          .assets-table-section .rg-viewport,
-          .assets-table-section .rg-content,
-          .assets-table-section .reactgrid-wrapper,
-          .assets-table-section .rg-grid {
+          /* Remove any gray backgrounds or borders from AG-Grid */
+          .assets-table-section .ag-root-wrapper,
+          .assets-table-section .ag-root,
+          .assets-table-section .ag-body-viewport,
+          .assets-table-section .ag-grid-wrapper {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
             border-radius: 0 !important;
           }
           
-          /* Ensure the main ReactGrid component has no background */
-          .assets-table-section .rg {
-            background: transparent !important;
-            border: none !important;
-            border-radius: 0 !important;
-          }
-          
           /* Remove border radius from all table cells and headers */
-          .assets-table-section .rg-cell,
-          .assets-table-section .rg-header-cell {
+          .assets-table-section .ag-cell,
+          .assets-table-section .ag-header-cell {
             border-radius: 0 !important;
           }
         `}
@@ -1390,10 +1399,15 @@ const Assets: React.FC = () => {
             className="btn-icon"
             onClick={handleImportClick}
             title="Import from CSV"
-            disabled={addingNew || !!editingAsset}
+            disabled={addingNew || !!editingAsset || isImporting}
           >
             <Download size={18} />
           </button>
+          {isImporting && (
+            <div className="import-status" style={{ fontSize: '12px', color: 'var(--primary-blue)', marginLeft: '8px' }}>
+              {importStatus}
+            </div>
+          )}
           <Link to="/users" className="stat-pill">
             <Users size={14} />
             <span>Users</span>
@@ -1429,23 +1443,6 @@ const Assets: React.FC = () => {
             ref={assetListRef}
             onSelectionChanged={handleSelectionChange}
             onRowDoubleClicked={(asset) => {
-                // If we're currently editing an asset, handle the transition
-                if (editingAsset) {
-                  // If editing the same asset, do nothing
-                  if (editingAsset.id === asset.id) {
-                    return;
-                  }
-                  
-                  // Ask user if they want to save changes before switching
-                  const shouldSwitch = window.confirm(
-                    'You have unsaved changes. Do you want to discard them and switch to editing the selected asset?'
-                  );
-                  
-                  if (!shouldSwitch) {
-                    return; // Stay in current edit mode
-                  }
-                }
-                
                 navigate(`/assets/edit/${asset.id}`);
               }}
               onDataLoaded={(loadedAssets) => {
@@ -1518,30 +1515,7 @@ const Assets: React.FC = () => {
           ) : selectedAsset ? (
             <>
               <div className="section-header">
-                <span>Asset Details: {selectedAsset.name || selectedAsset.ip_address || selectedAsset.hostname || 'Unknown'}</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button 
-                    className="btn-icon btn-ghost"
-                    onClick={() => navigate(`/assets/edit/${selectedAsset.id}`)}
-                    title="Edit Asset"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button 
-                    className="btn-icon btn-ghost"
-                    onClick={() => handleTestConnection(selectedAsset.id)}
-                    title="Test Connection"
-                  >
-                    <Play size={16} />
-                  </button>
-                  <button 
-                    className="btn-icon btn-ghost btn-danger"
-                    onClick={() => handleDeleteAsset(selectedAsset.id)}
-                    title="Delete Asset"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                <span>Asset Details: {selectedAsset.ip_address || selectedAsset.hostname || 'Unknown'}</span>
               </div>
               {loadingAssetDetails ? (
                 <div className="loading-state">
