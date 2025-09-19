@@ -193,7 +193,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     { 
       field: 'description', 
       label: 'Description', 
-      type: 'textarea', 
+      type: 'text', 
       section: 'Basic Asset Information',
       placeholder: 'Brief description of this asset...'
     },
@@ -216,7 +216,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     { 
       field: 'physical_address', 
       label: 'Physical Address', 
-      type: 'textarea', 
+      type: 'text', 
       section: 'Location Information',
       placeholder: '123 Main St, City, State, ZIP'
     },
@@ -428,7 +428,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
     // ========== SECONDARY COMMUNICATION ==========
     { 
       field: 'secondary_service_type', 
-      label: 'Secondary Service Type', 
+      label: 'Secondary Service', 
       type: 'dropdown', 
       options: ['none', 'ftp', 'sftp', 'telnet', 'wmi', 'rdp', 'vnc'], 
       section: 'Secondary Communication'
@@ -719,35 +719,35 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         const getOptionLabel = (option: string) => {
           if (fieldDef.field === 'credential_type' || fieldDef.field === 'secondary_credential_type') {
             switch (option) {
-              case 'username_password': return 'Username & Password';
-              case 'ssh_key': return 'SSH Key';
-              case 'api_key': return 'API Key';
-              case 'bearer_token': return 'Bearer Token';
+              case 'username_password': return 'username & password';
+              case 'ssh_key': return 'ssh key';
+              case 'api_key': return 'api key';
+              case 'bearer_token': return 'bearer token';
               default: return option;
             }
           }
           if (fieldDef.field === 'service_type') {
             switch (option) {
-              case 'ssh': return 'SSH';
-              case 'winrm': return 'WinRM';
-              case 'api': return 'API (HTTP/HTTPS)';
-              case 'database': return 'Database';
+              case 'ssh': return 'ssh';
+              case 'winrm': return 'winrm';
+              case 'api': return 'api (http/https)';
+              case 'database': return 'database';
               default: return option;
             }
           }
           if (fieldDef.field === 'secondary_service_type') {
             switch (option) {
-              case 'none': return 'None';
-              case 'ftp': return 'FTP';
-              case 'sftp': return 'SFTP';
-              case 'telnet': return 'Telnet';
-              case 'wmi': return 'WMI';
-              case 'rdp': return 'RDP';
-              case 'vnc': return 'VNC';
+              case 'none': return 'none';
+              case 'ftp': return 'ftp';
+              case 'sftp': return 'sftp';
+              case 'telnet': return 'telnet';
+              case 'wmi': return 'wmi';
+              case 'rdp': return 'rdp';
+              case 'vnc': return 'vnc';
               default: return option;
             }
           }
-          return option.charAt(0).toUpperCase() + option.slice(1).replace(/[-_]/g, ' ');
+          return option;
         };
 
         // Get dynamic options for credential fields
@@ -946,7 +946,7 @@ const formStyles = `
   
   .section-header h3 {
     margin: 0;
-    font-size: 11px;
+    font-size: var(--font-size-xs);
     font-weight: 600;
     color: #24292f;
     text-transform: uppercase;
@@ -959,7 +959,7 @@ const formStyles = `
   
   .field-row {
     display: grid;
-    grid-template-columns: 120px 1fr;
+    grid-template-columns: 160px 1fr;
     border-bottom: 1px solid #eaeef2;
     min-height: 24px;
   }
@@ -991,7 +991,7 @@ const formStyles = `
   .field-label {
     font-weight: 500;
     color: #24292f;
-    font-size: 10px;
+    font-size: var(--font-size-xs);
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
@@ -1003,7 +1003,7 @@ const formStyles = `
   .required-asterisk {
     color: #cf222e;
     margin-left: 2px;
-    font-size: 10px;
+    font-size: var(--font-size-xs);
   }
   
   .field-value-cell {
@@ -1021,17 +1021,33 @@ const formStyles = `
     border: none;
     border-radius: 0;
     padding: 0;
-    font-size: 12px;
+    font-size: var(--font-size-sm);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: transparent;
     transition: all 0.1s ease;
     line-height: 1.4;
     color: #24292f;
   }
+
+  /* Specific styling for select elements to remove browser defaults */
+  .field-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    padding-left: 0;
+    padding-right: 16px;
+    margin: 0;
+    text-indent: 0;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0px center;
+    background-size: 12px;
+  }
   
   .field-textarea {
     resize: vertical;
     min-height: 36px;
-    font-family: inherit;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   
   .field-input:focus,
