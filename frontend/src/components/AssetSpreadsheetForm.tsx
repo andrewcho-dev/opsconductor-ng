@@ -1041,6 +1041,47 @@ const formStyles = `
     background-color: #f6f8fa;
   }
   
+  /* Subtle placeholder styling */
+  .field-input::placeholder,
+  .field-textarea::placeholder {
+    color: #d0d7de !important;
+    opacity: 1;
+    font-style: italic;
+  }
+  
+  .field-input::-webkit-input-placeholder,
+  .field-textarea::-webkit-input-placeholder {
+    color: #d0d7de !important;
+    opacity: 1;
+    font-style: italic;
+  }
+  
+  .field-input::-moz-placeholder,
+  .field-textarea::-moz-placeholder {
+    color: #d0d7de !important;
+    opacity: 1;
+    font-style: italic;
+  }
+  
+  /* Hide placeholder when field is focused or has content */
+  .field-input:focus::placeholder,
+  .field-textarea:focus::placeholder {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  
+  .field-input:focus::-webkit-input-placeholder,
+  .field-textarea:focus::-webkit-input-placeholder {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  
+  .field-input:focus::-moz-placeholder,
+  .field-textarea:focus::-moz-placeholder {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  
   .field-input[readonly],
   .field-textarea[readonly] {
     background-color: transparent;
