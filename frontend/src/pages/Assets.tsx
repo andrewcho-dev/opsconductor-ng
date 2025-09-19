@@ -747,6 +747,29 @@ const Assets: React.FC = () => {
           /* Apply same padding to assets table as form container */
           .assets-table-section .asset-data-grid {
             padding: 8px;
+            width: 100%;
+            box-sizing: border-box;
+          }
+          
+          /* Make ReactGrid components respect the container padding */
+          .assets-table-section .reactgrid-wrapper {
+            width: 100% !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
+          }
+          
+          .assets-table-section .reactgrid,
+          .assets-table-section .rg-viewport,
+          .assets-table-section .rg-content {
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          
+          /* Ensure the assets table section itself has proper overflow handling */
+          .assets-table-section {
+            overflow: hidden;
           }
           
           /* Match header styling with subcard headers */
@@ -767,12 +790,20 @@ const Assets: React.FC = () => {
             background: transparent !important;
             border: none !important;
             box-shadow: none !important;
+            border-radius: 0 !important;
           }
           
           /* Ensure the main ReactGrid component has no background */
           .assets-table-section .rg {
             background: transparent !important;
             border: none !important;
+            border-radius: 0 !important;
+          }
+          
+          /* Remove border radius from all table cells and headers */
+          .assets-table-section .rg-cell,
+          .assets-table-section .rg-header-cell {
+            border-radius: 0 !important;
           }
         `}
       </style>
@@ -958,7 +989,7 @@ const Assets: React.FC = () => {
           ) : selectedAsset ? (
             <>
               <div className="section-header">
-                Asset Details: {selectedAsset.name}
+                Asset Details: {selectedAsset.ip_address || selectedAsset.hostname || 'Unknown'}
               </div>
               {loadingAssetDetails ? (
                 <div className="loading-state">

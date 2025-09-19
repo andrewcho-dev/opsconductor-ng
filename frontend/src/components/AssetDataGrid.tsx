@@ -309,10 +309,10 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
 
   // Convert assets to ReactGrid format
   const getColumns = (): Column[] => [
-    { columnId: 'hostname', width: 180 },
-    { columnId: 'ip_address', width: 120 },
-    { columnId: 'device_type', width: 100 },
-    { columnId: 'tags', width: 150 }
+    { columnId: 'hostname', width: 200 },
+    { columnId: 'ip_address', width: 140 },
+    { columnId: 'device_type', width: 120 },
+    { columnId: 'tags', width: 200 }
   ];
 
   const getRows = (): Row[] => {
@@ -568,7 +568,7 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
       
       <style>{`
         .asset-data-grid {
-          width: auto;
+          width: 100%;
         }
         
         .loading {
@@ -665,19 +665,19 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
         
         /* Flexible column widths */
         .reactgrid .rg-cell:nth-child(1) {
-          width: 25%;
+          width: 30%;
         }
         
         .reactgrid .rg-cell:nth-child(2) {
-          width: 20%;
+          width: 21%;
         }
         
         .reactgrid .rg-cell:nth-child(3) {
-          width: 15%;
+          width: 18%;
         }
         
         .reactgrid .rg-cell:nth-child(4) {
-          width: 40%;
+          width: 31%;
         }
       `}</style>
     </div>
