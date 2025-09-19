@@ -182,6 +182,9 @@ class AssetSummary(BaseModel):
     description: Optional[str]
     tags: List[str]
     
+    # Device type for grid display
+    device_type: Optional[str]
+    
     # Primary service info
     service_type: str
     port: int
@@ -495,7 +498,7 @@ class ConsolidatedAssetService(BaseService):
                     # Get assets
                     query = f"""
                         SELECT id, name, hostname, ip_address, os_type, os_version, description, tags,
-                               service_type, port, is_secure, credential_type, username, password_encrypted,
+                               device_type, service_type, port, is_secure, credential_type, username, password_encrypted,
                                private_key_encrypted, api_key_encrypted, bearer_token_encrypted,
                                certificate_encrypted, additional_services, is_active, connection_status,
                                last_tested_at, created_at, updated_at
@@ -541,6 +544,7 @@ class ConsolidatedAssetService(BaseService):
                             os_version=asset['os_version'],
                             description=asset['description'],
                             tags=tags,
+                            device_type=asset['device_type'],
                             service_type=asset['service_type'],
                             port=asset['port'],
                             is_secure=asset['is_secure'],

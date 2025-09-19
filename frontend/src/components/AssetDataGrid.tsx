@@ -1,6 +1,7 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useRef } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useRef, useMemo } from 'react';
 import { ReactGrid, Column, Row, Cell } from '@silevis/reactgrid';
 import '@silevis/reactgrid/styles.css';
+
 import { assetApi } from '../services/api';
 import { Asset } from '../types/asset';
 
@@ -8,32 +9,50 @@ interface AssetDataGridProps {
   onSelectionChanged?: (selectedAssets: Asset[]) => void;
   onRowDoubleClicked?: (asset: Asset) => void;
   onDataLoaded?: (assets: Asset[]) => void;
-  onEditAsset?: (asset: Asset) => void;
-  onDeleteAsset?: (assetId: number) => void;
-  onTestConnection?: (assetId: number) => void;
 }
 
 export interface AssetDataGridRef {
   refresh: () => void;
 }
 
-const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({ 
-  onSelectionChanged, 
-  onRowDoubleClicked,
-  onDataLoaded,
-  onEditAsset,
-  onDeleteAsset,
-  onTestConnection
-}, ref) => {
+const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, ref) => {
+  const { onSelectionChanged, onRowDoubleClicked, onDataLoaded } = props;
+  
+  console.log('AssetDataGrid: Component rendering');
+  
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
-  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
-  const [dropdownPosition, setDropdownPosition] = useState<{x: number, y: number} | null>(null);
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
+
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const hasLoadedRef = useRef(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Sort assets based on current sort field and direction
+  const sortedAssets = useMemo(() => {
+    if (!sortField) return assets;
+
+    return [...assets].sort((a, b) => {
+      let aValue = '';
+      let bValue = '';
+
+      if (sortField === 'ip_address') {
+        aValue = a.ip_address || '';
+        bValue = b.ip_address || '';
+      } else if (sortField === 'hostname') {
+        aValue = a.hostname || '';
+        bValue = b.hostname || '';
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue.localeCompare(bValue);
+      } else {
+        return bValue.localeCompare(aValue);
+      }
+    });
+  }, [assets, sortField, sortDirection]);
 
   // Load assets
   const loadAssets = useCallback(async () => {
@@ -53,28 +72,13 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onDataLoaded]);
 
   useEffect(() => {
     if (!hasLoadedRef.current) {
       loadAssets();
     }
-  }, []);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setOpenDropdown(null);
-        setDropdownPosition(null);
-      }
-    };
-
-    if (openDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [openDropdown]);
+  }, [loadAssets]);
 
   // Update row selection styling
   useEffect(() => {
@@ -103,43 +107,227 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     refresh: loadAssets
   }));
 
-  // Handle dropdown toggle
-  const handleDropdownToggle = (assetId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
+  // Auto-focus the grid when component first mounts and has data
+  useEffect(() => {
+    if (assets.length > 0 && !focusedRowId) {
+      console.log('AssetDataGrid: Auto-focusing grid on first load');
+      
+      // Wait for ReactGrid to be fully rendered
+      const autoFocus = () => {
+        const gridContainer = gridRef.current;
+        if (gridContainer) {
+          // Focus the grid container to enable keyboard navigation
+          gridContainer.focus();
+          console.log('AssetDataGrid: Grid container focused');
+          
+          // Set the first asset as focused
+          const firstAsset = sortedAssets[0];
+          if (firstAsset) {
+            const firstAssetId = firstAsset.id.toString();
+            console.log('AssetDataGrid: Auto-selecting first asset:', firstAsset.name, 'ID:', firstAssetId);
+            setFocusedRowId(firstAssetId);
+          }
+        } else {
+          console.log('AssetDataGrid: Grid container not ready for auto-focus, retrying...');
+          setTimeout(autoFocus, 100);
+        }
+      };
+      
+      // Delay to ensure ReactGrid is fully rendered
+      setTimeout(autoFocus, 500);
+    }
+  }, [assets, focusedRowId, sortedAssets]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    console.log('AssetDataGrid: Setting up keyboard event listener');
     
-    if (openDropdown === assetId) {
-      setOpenDropdown(null);
-      setDropdownPosition(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      console.log('AssetDataGrid: ANY KEY PRESSED:', event.key);
+      
+      // Only handle arrow keys
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+        return;
+      }
+      
+      // Only handle arrow keys when not in an input field
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        console.log('AssetDataGrid: Ignoring key - focus is in input field');
+        return;
+      }
+      
+      console.log('AssetDataGrid: Processing arrow key:', event.key);
+      
+      const currentIndex = focusedRowId ? sortedAssets.findIndex(asset => asset.id.toString() === focusedRowId) : 0;
+      console.log('AssetDataGrid: Current focusedRowId:', focusedRowId, 'currentIndex:', currentIndex);
+      let newIndex = currentIndex;
+
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          newIndex = Math.min(currentIndex + 1, sortedAssets.length - 1);
+          console.log('AssetDataGrid: ArrowDown - newIndex:', newIndex);
+          break;
+        case 'ArrowUp':
+          event.preventDefault();
+          newIndex = Math.max(currentIndex - 1, 0);
+          console.log('AssetDataGrid: ArrowUp - newIndex:', newIndex);
+          break;
+        case 'Home':
+          event.preventDefault();
+          newIndex = 0;
+          console.log('AssetDataGrid: Home - newIndex:', newIndex);
+          break;
+        case 'End':
+          event.preventDefault();
+          newIndex = sortedAssets.length - 1;
+          console.log('AssetDataGrid: End - newIndex:', newIndex);
+          break;
+        default:
+          console.log('AssetDataGrid: Ignoring key:', event.key);
+          return;
+      }
+
+      if (newIndex >= 0 && newIndex < sortedAssets.length) {
+        const newFocusedRowId = sortedAssets[newIndex].id.toString();
+        console.log('AssetDataGrid: Keyboard navigation - setting focusedRowId from', focusedRowId, 'to:', newFocusedRowId, 'for asset:', sortedAssets[newIndex].name);
+        setFocusedRowId(newFocusedRowId);
+      } else {
+        console.log('AssetDataGrid: Invalid newIndex:', newIndex, 'sortedAssets.length:', sortedAssets.length);
+      }
+    };
+
+    const gridContainer = gridRef.current;
+    if (gridContainer) {
+      gridContainer.addEventListener('keydown', handleKeyDown);
+      console.log('AssetDataGrid: Keyboard event listener added to grid container');
+      
+      return () => {
+        console.log('AssetDataGrid: Removing keyboard event listener from grid container');
+        gridContainer.removeEventListener('keydown', handleKeyDown);
+      };
     } else {
-      const rect = (event.target as HTMLElement).getBoundingClientRect();
-      setDropdownPosition({
-        x: rect.right - 120, // Align dropdown to the right of button
-        y: rect.bottom + 5
-      });
-      setOpenDropdown(assetId);
+      console.log('AssetDataGrid: Grid container not found, cannot add keyboard listener');
     }
-  };
+  }, [focusedRowId, sortedAssets]);
 
-  // Handle dropdown actions
-  const handleDropdownAction = (action: string, assetId: number) => {
-    const asset = assets.find(a => a.id === assetId);
-    if (!asset) return;
+  // Update focused row styling and trigger selection change
+  useEffect(() => {
+    // Update focused row styling
+    const updateFocusedRow = () => {
+      console.log('AssetDataGrid: Updating focused row styling for focusedRowId:', focusedRowId);
+      
+      // Wait for ReactGrid to be fully rendered
+      const waitForGrid = () => {
+        const allCells = document.querySelectorAll('.rg-cell');
+        const dataCells = document.querySelectorAll('.rg-cell:not(.rg-header-cell)');
+        
+        console.log('AssetDataGrid: Found', allCells.length, 'total cells,', dataCells.length, 'data cells');
+        
+        if (allCells.length === 0) {
+          console.log('AssetDataGrid: Grid not ready, retrying in 100ms...');
+          setTimeout(waitForGrid, 100);
+          return;
+        }
+        
+        // ReactGrid doesn't use row elements - it uses cell-based layout
+        // We need to highlight cells by their row position instead
+        console.log('AssetDataGrid: ReactGrid uses cell-based layout, no row elements found');
+        
+        // Remove previous focused classes from all cells
+        const previousFocusedCells = document.querySelectorAll('.rg-cell.focused-row-cell');
+        console.log('AssetDataGrid: Removing focused-row-cell class from', previousFocusedCells.length, 'cells');
+        previousFocusedCells.forEach(cell => {
+          cell.classList.remove('focused-row-cell');
+        });
+        
+        // Continue with the rest of the highlighting logic
+        highlightFocusedRow();
+      };
+      
+      const highlightFocusedRow = () => {
+        if (!focusedRowId) return;
+        
+        // Find the row index for the focused asset
+        const rowIndex = sortedAssets.findIndex(asset => asset.id.toString() === focusedRowId);
+        if (rowIndex < 0) {
+          console.log('AssetDataGrid: Could not find asset with focusedRowId:', focusedRowId);
+          return;
+        }
+        
+        console.log('AssetDataGrid: Highlighting row index:', rowIndex, 'for asset ID:', focusedRowId);
+        
+        // ReactGrid uses CSS Grid layout - cells are positioned by grid-row and grid-column
+        // We need to find all cells in the same row (same grid-row value)
+        const allCells = document.querySelectorAll('.rg-cell:not(.rg-header-cell)');
+        const cellsInRow: Element[] = [];
+        
+        // Calculate expected grid-row value (header is row 1, data starts at row 2)
+        const expectedGridRow = rowIndex + 2;
+        
+        allCells.forEach(cell => {
+          const computedStyle = window.getComputedStyle(cell);
+          const gridRow = computedStyle.gridRow || computedStyle.gridRowStart;
+          
+          // Check if this cell is in our target row
+          if (gridRow === expectedGridRow.toString() || 
+              gridRow === `${expectedGridRow} / ${expectedGridRow + 1}` ||
+              gridRow === `${expectedGridRow} / auto`) {
+            cellsInRow.push(cell);
+          }
+        });
+        
+        if (cellsInRow.length === 0) {
+          // Fallback: try to find cells by their position in the DOM
+          // Assuming 4 columns (hostname, ip_address, device_type, tags), each row has 4 cells
+          const columnsCount = 4;
+          const startIndex = rowIndex * columnsCount;
+          const endIndex = startIndex + columnsCount;
+          
+          console.log('AssetDataGrid: Fallback - looking for cells at indices', startIndex, 'to', endIndex - 1);
+          
+          for (let i = startIndex; i < endIndex && i < allCells.length; i++) {
+            cellsInRow.push(allCells[i]);
+          }
+        }
+        
+        console.log('AssetDataGrid: Found', cellsInRow.length, 'cells in row', rowIndex);
+        
+        // Highlight all cells in the row
+        cellsInRow.forEach(cell => {
+          cell.classList.add('focused-row-cell');
+        });
+      };
+      
+      // Start waiting for grid to be ready
+      waitForGrid();
+    };
 
-    setOpenDropdown(null);
-    setDropdownPosition(null);
+    // Longer delay to ensure ReactGrid has fully rendered
+    const timer = setTimeout(updateFocusedRow, 300); // Much longer delay
 
-    switch (action) {
-      case 'edit':
-        onEditAsset?.(asset);
-        break;
-      case 'test':
-        onTestConnection?.(assetId);
-        break;
-      case 'delete':
-        onDeleteAsset?.(assetId);
-        break;
+    // Trigger selection change for focused row
+    if (focusedRowId) {
+      const focusedAsset = sortedAssets.find(asset => asset.id.toString() === focusedRowId);
+      if (focusedAsset) {
+        console.log('AssetDataGrid: Triggering selection change for:', focusedAsset.name, 'ID:', focusedAsset.id);
+        onSelectionChanged?.([focusedAsset]);
+      } else {
+        console.log('AssetDataGrid: Could not find asset with focusedRowId:', focusedRowId);
+      }
+    } else {
+      console.log('AssetDataGrid: No focusedRowId set');
     }
-  };
+
+    return () => clearTimeout(timer);
+  }, [focusedRowId, sortedAssets, onSelectionChanged]);
+
+  // Set initial focus when assets load
+  useEffect(() => {
+    if (sortedAssets.length > 0 && !focusedRowId) {
+      setFocusedRowId(sortedAssets[0].id.toString());
+    }
+  }, [sortedAssets, focusedRowId]);
 
   // Handle sorting
   const handleSort = (field: string) => {
@@ -151,77 +339,42 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     }
   };
 
-  // Sort assets
-  const sortedAssets = React.useMemo(() => {
-    if (!sortField) return assets;
-
-    return [...assets].sort((a, b) => {
-      let aValue = '';
-      let bValue = '';
-
-      if (sortField === 'ip_address') {
-        aValue = a.ip_address || '';
-        bValue = b.ip_address || '';
-      } else if (sortField === 'hostname') {
-        aValue = a.hostname || '';
-        bValue = b.hostname || '';
-      }
-
-      if (sortDirection === 'asc') {
-        return aValue.localeCompare(bValue);
-      } else {
-        return bValue.localeCompare(aValue);
-      }
-    });
-  }, [assets, sortField, sortDirection]);
-
   // Convert assets to ReactGrid format
   const getColumns = (): Column[] => [
-    { columnId: 'name', width: 200 },
     { columnId: 'hostname', width: 180 },
     { columnId: 'ip_address', width: 120 },
-    { columnId: 'os_type', width: 100 },
-    { columnId: 'status', width: 100 },
-    { columnId: 'tags', width: 150 },
-    { columnId: 'actions', width: 80 }
+    { columnId: 'device_type', width: 100 },
+    { columnId: 'tags', width: 150 }
   ];
 
   const getRows = (): Row[] => {
     const getSortIndicator = (field: string) => {
-      if (sortField !== field) return '';
+      if (sortField !== field) return ' ⇅';
       return sortDirection === 'asc' ? ' ↑' : ' ↓';
     };
 
     const headerRow: Row = {
       rowId: 'header',
       cells: [
-        { type: 'header', text: 'Name' },
         { type: 'header', text: `Hostname${getSortIndicator('hostname')}` },
         { type: 'header', text: `IP Address${getSortIndicator('ip_address')}` },
-        { type: 'header', text: 'OS Type' },
-        { type: 'header', text: 'Status' },
-        { type: 'header', text: 'Tags' },
-        { type: 'header', text: 'Actions' }
+        { type: 'header', text: 'Device Type' },
+        { type: 'header', text: 'Tags' }
       ]
     };
 
     const dataRows: Row[] = sortedAssets.map((asset) => ({
       rowId: asset.id.toString(),
       cells: [
-        { type: 'text', text: asset.name },
         { type: 'text', text: asset.hostname },
         { type: 'text', text: asset.ip_address || '-' },
-        { type: 'text', text: asset.os_type },
-        { type: 'text', text: asset.status || 'unknown' },
-        { type: 'text', text: asset.tags.join(', ') },
-        { type: 'text', text: '⋮' }
+        { type: 'text', text: asset.device_type || '-' },
+        { type: 'text', text: asset.tags.join(', ') }
       ]
     }));
 
     return [headerRow, ...dataRows];
   };
-
-
 
   // Handle row selection
   const handleSelectionChange = (selectedRowIds: string[]) => {
@@ -249,13 +402,11 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
       return;
     }
     
-    // Don't interfere with action button clicks
+    // Get column info for potential special handling
     const target = event.target as HTMLElement;
     const cell = target.closest('.rg-cell');
     const columnIndex = Array.from(cell?.parentElement?.children || []).indexOf(cell as Element);
     const columnId = getColumns()[columnIndex]?.columnId || '';
-    
-    if (columnId === 'actions') return;
     
     // Handle selection
     let newSelection: string[];
@@ -270,17 +421,16 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
     }
     
     setSelectedRowIds(newSelection);
+    setFocusedRowId(rowId); // Also update focused row when clicking
     const selectedAssets = sortedAssets.filter(asset => 
       newSelection.includes(asset.id.toString())
     );
     onSelectionChanged?.(selectedAssets);
   };
 
-  // Handle cell click (for action buttons)
+  // Handle cell click (for double-click detection)
   const handleCellClick = (rowId: string, columnId: string, event: React.MouseEvent) => {
-    if (columnId === 'actions') {
-      handleDropdownToggle(rowId, event);
-    } else if (event.detail === 2) { // Double click
+    if (event.detail === 2) { // Double click
       const asset = assets.find(a => a.id.toString() === rowId);
       if (asset) {
         onRowDoubleClicked?.(asset);
@@ -299,85 +449,152 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
   return (
     <div className="asset-data-grid">
       <div 
+        ref={gridRef}
         className="reactgrid-wrapper"
+        tabIndex={0}
+        style={{ outline: 'none !important', border: 'none !important' }}
+        onFocus={(e) => {
+          // Immediately blur to prevent the blue outline, but keep keyboard events working
+          e.target.style.outline = 'none';
+          e.target.style.border = 'none';
+        }}
         onClick={(e) => {
+          console.log('AssetDataGrid: Grid container clicked');
           const target = e.target as HTMLElement;
           const cell = target.closest('.rg-cell');
+          
           if (cell) {
-            const rowElement = cell.closest('.rg-row');
-            const columnIndex = Array.from(cell.parentElement?.children || []).indexOf(cell);
-            const rowId = rowElement?.getAttribute('data-row-id') || '';
-            const columnId = getColumns()[columnIndex]?.columnId || '';
+            const rowIndex = parseInt(cell.getAttribute('data-cell-rowidx') || '0');
+            const columnIndex = parseInt(cell.getAttribute('data-cell-colidx') || '0');
+            const rows = getRows();
+            const columns = getColumns();
             
-            if (columnId === 'actions') {
-              handleCellClick(rowId, columnId, e);
-            } else {
+            const rowId = rows[rowIndex]?.rowId || '';
+            const columnId = columns[columnIndex]?.columnId || '';
+            
+            // Handle header clicks for sorting
+            if (rowId === 'header' && (columnId === 'hostname' || columnId === 'ip_address')) {
+              handleSort(columnId);
+            }
+            // Handle regular row clicks
+            else if (rowId !== 'header') {
               handleRowClick(rowId, e);
             }
           }
         }}
-        onDoubleClick={(e) => {
-          const target = e.target as HTMLElement;
-          const cell = target.closest('.rg-cell');
-          if (cell) {
-            const rowElement = cell.closest('.rg-row');
-            const rowId = rowElement?.getAttribute('data-row-id') || '';
-            const asset = sortedAssets.find(a => a.id.toString() === rowId);
-            if (asset) {
-              onRowDoubleClicked?.(asset);
-            }
-          }
-        }}
       >
-        <ReactGrid
-          rows={getRows()}
+        <ReactGrid 
+          rows={getRows()} 
           columns={getColumns()}
+          enableRangeSelection={false}
+          enableRowSelection={false}
+          enableFillHandle={false}
+          enableColumnSelection={false}
+          onCellsChanged={() => {}} // Disable all cell changes
+          onFocusLocationChanged={(location) => {
+            console.log('AssetDataGrid: Focus location changed:', location);
+            if (location && location.rowId !== 'header') {
+              const rowId = location.rowId.toString();
+              console.log('AssetDataGrid: Setting focusedRowId to:', rowId);
+              setFocusedRowId(rowId);
+              
+              // Trigger selection change
+              const asset = sortedAssets.find(a => a.id.toString() === rowId);
+              if (asset) {
+                console.log('AssetDataGrid: Triggering selection change for:', asset.name);
+                onSelectionChanged?.([asset]);
+              }
+              
+              // Try immediate row highlighting based on currently focused cell
+              setTimeout(() => {
+                const focusedCell = document.querySelector('.rg-cell-focus, .rg-cell:focus');
+                if (focusedCell) {
+                  console.log('AssetDataGrid: Found focused cell, trying to highlight its row using cell-based approach');
+                  
+                  // Remove previous highlights
+                  document.querySelectorAll('.rg-cell.focused-row-cell').forEach(cell => {
+                    cell.classList.remove('focused-row-cell');
+                  });
+                  
+                  // Get the focused cell's grid position
+                  const computedStyle = window.getComputedStyle(focusedCell);
+                  const gridRow = computedStyle.gridRow || computedStyle.gridRowStart;
+                  
+                  if (gridRow) {
+                    console.log('AssetDataGrid: Focused cell is in grid row:', gridRow);
+                    
+                    // Find all cells in the same row
+                    const allCells = document.querySelectorAll('.rg-cell:not(.rg-header-cell)');
+                    const cellsInSameRow: Element[] = [];
+                    
+                    allCells.forEach(cell => {
+                      const cellStyle = window.getComputedStyle(cell);
+                      const cellGridRow = cellStyle.gridRow || cellStyle.gridRowStart;
+                      
+                      if (cellGridRow === gridRow) {
+                        cellsInSameRow.push(cell);
+                      }
+                    });
+                    
+                    console.log('AssetDataGrid: Found', cellsInSameRow.length, 'cells in same row');
+                    
+                    // Highlight all cells in the row
+                    cellsInSameRow.forEach(cell => {
+                      cell.classList.add('focused-row-cell');
+                    });
+                  } else {
+                    console.log('AssetDataGrid: Could not determine grid row for focused cell');
+                  }
+                } else {
+                  console.log('AssetDataGrid: Could not find focused cell');
+                  
+                  // Alternative approach - try to find any cell with focus-related classes
+                  const alternativeCells = document.querySelectorAll('.rg-cell.rg-cell-focus, .rg-cell[tabindex="0"]');
+                  console.log('AssetDataGrid: Found', alternativeCells.length, 'alternative focused cells');
+                  
+                  if (alternativeCells.length > 0) {
+                    const cell = alternativeCells[0];
+                    console.log('AssetDataGrid: Using alternative cell for row highlighting');
+                    
+                    // Get the alternative cell's grid position
+                    const computedStyle = window.getComputedStyle(cell);
+                    const gridRow = computedStyle.gridRow || computedStyle.gridRowStart;
+                    
+                    if (gridRow) {
+                      console.log('AssetDataGrid: Alternative cell is in grid row:', gridRow);
+                      
+                      // Find all cells in the same row
+                      const allCells = document.querySelectorAll('.rg-cell:not(.rg-header-cell)');
+                      const cellsInSameRow: Element[] = [];
+                      
+                      allCells.forEach(cell => {
+                        const cellStyle = window.getComputedStyle(cell);
+                        const cellGridRow = cellStyle.gridRow || cellStyle.gridRowStart;
+                        
+                        if (cellGridRow === gridRow) {
+                          cellsInSameRow.push(cell);
+                        }
+                      });
+                      
+                      console.log('AssetDataGrid: Found', cellsInSameRow.length, 'cells in same row (alternative)');
+                      
+                      // Highlight all cells in the row
+                      cellsInSameRow.forEach(cell => {
+                        cell.classList.add('focused-row-cell');
+                      });
+                    }
+                  }
+                }
+              }, 100); // Increased delay to ensure DOM is ready
+            }
+          }}
         />
       </div>
 
-      {/* Custom dropdown menu */}
-      {openDropdown && dropdownPosition && (
-        <div
-          ref={dropdownRef}
-          className="action-dropdown"
-          style={{
-            position: 'fixed',
-            left: dropdownPosition.x,
-            top: dropdownPosition.y,
-            zIndex: 1000
-          }}
-        >
-          <button
-            className="dropdown-item"
-            onClick={() => handleDropdownAction('edit', parseInt(openDropdown))}
-          >
-            <span className="dropdown-icon">✏️</span>
-            Edit Asset
-          </button>
-          <button
-            className="dropdown-item"
-            onClick={() => handleDropdownAction('test', parseInt(openDropdown))}
-          >
-            <span className="dropdown-icon">🔗</span>
-            Test Connection
-          </button>
-          <button
-            className="dropdown-item delete"
-            onClick={() => handleDropdownAction('delete', parseInt(openDropdown))}
-          >
-            <span className="dropdown-icon">🗑️</span>
-            Delete Asset
-          </button>
-        </div>
-      )}
       
       <style>{`
         .asset-data-grid {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          position: relative;
+          width: auto;
         }
         
         .loading {
@@ -393,38 +610,54 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
         }
         
         .reactgrid-wrapper {
-          flex: 1;
-          overflow: auto;
+          width: 100%;
+          outline: none; /* Remove focus outline */
+        }
+        
+        .reactgrid-wrapper:focus {
+          outline: 2px solid #0d6efd;
+          outline-offset: 2px;
         }
         
         /* ReactGrid custom styling */
         .reactgrid {
           border: 1px solid #dee2e6;
           border-radius: 6px;
-          overflow: hidden;
         }
         
         .reactgrid .rg-cell {
           border-right: 1px solid #dee2e6;
           border-bottom: 1px solid #dee2e6;
+          padding: 8px 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         
-        .reactgrid .rg-header-cell {
-          background-color: #f8f9fa;
+        /* Header cell styling */
+        .reactgrid .rg-cell.rg-header-cell {
+          background-color: #f8f9fa !important;
           font-weight: 600;
           color: #495057;
         }
-
-        /* Make hostname and IP address headers clickable */
-        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(2),
-        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(3) {
+        
+        .reactgrid .rg-cell.rg-header-cell:nth-child(1):hover,
+        .reactgrid .rg-cell.rg-header-cell:nth-child(2):hover {
+          background-color: #e9ecef !important;
+          color: #0d6efd;
           cursor: pointer;
-          user-select: none;
+        }
+        
+        .reactgrid .rg-row[data-row-id="header"] {
+          background-color: #f8f9fa;
+          font-weight: 600;
         }
 
-        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(2):hover,
-        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(3):hover {
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(1):hover,
+        .reactgrid .rg-row[data-row-id="header"] .rg-cell:nth-child(2):hover {
           background-color: #e9ecef;
+          color: #0d6efd;
+          cursor: pointer;
         }
         
         .reactgrid .rg-cell.rg-cell-focus {
@@ -448,54 +681,41 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>(({
           background-color: inherit;
         }
         
-        /* Action column styling */
-        .reactgrid .rg-cell:last-child {
-          text-align: center;
-          cursor: pointer;
-          user-select: none;
+        /* Custom row focus styling (for keyboard navigation) */
+        .reactgrid .rg-row.focused-row {
+          background-color: #f0f8ff !important;
+          border-left: 3px solid #0d6efd;
         }
         
-        .reactgrid .rg-cell:last-child:hover {
-          background-color: #f8f9fa;
+        .reactgrid .rg-row.focused-row:hover {
+          background-color: #e6f3ff !important;
         }
         
-        /* Custom dropdown styling */
-        .action-dropdown {
-          background: white;
-          border: 1px solid #dee2e6;
-          border-radius: 6px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          min-width: 160px;
-          overflow: hidden;
+        .reactgrid .rg-row.focused-row .rg-cell {
+          background-color: inherit;
         }
         
-        .dropdown-item {
-          width: 100%;
-          padding: 8px 12px;
-          border: none;
-          background: none;
-          text-align: left;
-          cursor: pointer;
-          font-size: 14px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          transition: background-color 0.2s ease;
+        /* When a row is both selected and focused, prioritize selection styling */
+        .reactgrid .rg-row.selected-row.focused-row {
+          background-color: #e3f2fd !important;
+          border-left: 3px solid #0d6efd;
         }
         
-        .dropdown-item:hover {
-          background-color: #f8f9fa;
+        /* Flexible column widths */
+        .reactgrid .rg-cell:nth-child(1) {
+          width: 25%;
         }
         
-        .dropdown-item.delete:hover {
-          background-color: #f8d7da;
-          color: #721c24;
+        .reactgrid .rg-cell:nth-child(2) {
+          width: 20%;
         }
         
-        .dropdown-icon {
-          font-size: 12px;
-          width: 16px;
-          text-align: center;
+        .reactgrid .rg-cell:nth-child(3) {
+          width: 15%;
+        }
+        
+        .reactgrid .rg-cell:nth-child(4) {
+          width: 40%;
         }
       `}</style>
     </div>

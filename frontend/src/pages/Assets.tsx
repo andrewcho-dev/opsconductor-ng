@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, Server, Monitor, HardDrive, Wifi, WifiOff, Eye, Edit3, Trash2, X, Check, Users, Target, Settings, Play, MessageSquare, Upload, Download } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { assetApi } from '../services/api';
-import AssetTableList, { AssetTableListRef } from '../components/AssetTableList';
+import AssetDataGrid, { AssetDataGridRef } from '../components/AssetDataGrid';
 import AssetSpreadsheetForm from '../components/AssetSpreadsheetForm';
 import { Asset } from '../types/asset';
 
@@ -19,11 +19,12 @@ const Assets: React.FC = () => {
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
-  const assetListRef = useRef<AssetTableListRef>(null);
+  const assetListRef = useRef<AssetDataGridRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch detailed asset data (includes credential information)
-  const fetchDetailedAssetData = async (assetId: number): Promise<Asset | null> => {
+  const fetchDetailedAssetData = useCallback(async (assetId: number): Promise<Asset | null> => {
     try {
       setLoadingAssetDetails(true);
       console.log('Fetching detailed asset data for ID:', assetId);
@@ -42,7 +43,79 @@ const Assets: React.FC = () => {
     } finally {
       setLoadingAssetDetails(false);
     }
-  };
+  }, []);
+
+  // Debounced function to fetch detailed asset data
+  const debouncedFetchAssetDetails = useCallback((asset: Asset) => {
+    // Immediately set the basic asset data to prevent flashing
+    setSelectedAsset(asset);
+    
+    // Clear any existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Set a new timeout for detailed data
+    debounceTimeoutRef.current = setTimeout(() => {
+      console.log('Debounced fetch for asset:', asset.name, 'ID:', asset.id);
+      fetchDetailedAssetData(asset.id).then(detailedAsset => {
+        console.log('Detailed asset data loaded for:', detailedAsset?.name);
+        if (detailedAsset) {
+          // Only update if we're still looking at the same asset
+          setSelectedAsset(currentAsset => {
+            if (currentAsset && currentAsset.id === detailedAsset.id) {
+              return detailedAsset;
+            }
+            return currentAsset;
+          });
+        }
+      });
+    }, 300); // 300ms delay
+  }, [fetchDetailedAssetData]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Memoized selection change handler to prevent infinite re-renders
+  const handleSelectionChange = useCallback((selectedAssets: Asset[]) => {
+    if (selectedAssets.length > 0) {
+      const asset = selectedAssets[0];
+      console.log('Asset selection changed to:', asset.name, 'ID:', asset.id);
+      
+      // If we're currently editing an asset, handle the transition
+      if (editingAsset) {
+        // If selecting the same asset we're editing, do nothing
+        if (editingAsset.id === asset.id) {
+          return;
+        }
+        
+        // Ask user if they want to save changes before switching
+        const shouldSwitch = window.confirm(
+          'You have unsaved changes. Do you want to discard them and switch to the selected asset?'
+        );
+        
+        if (!shouldSwitch) {
+          return; // Stay in edit mode
+        }
+        
+        // User chose to discard changes, exit edit mode
+        setEditingAsset(null);
+        navigate('/assets');
+      }
+      
+      // Use debounced fetch to prevent too many API calls during keyboard navigation
+      debouncedFetchAssetDetails(asset);
+    } else {
+      console.log('Asset selection cleared');
+      setSelectedAsset(null);
+    }
+  }, [editingAsset, debouncedFetchAssetDetails, navigate]);
 
   // CSV field definitions in import/export order (ALL fields supported by backend)
   const csvFields = [
@@ -723,39 +796,33 @@ const Assets: React.FC = () => {
             Assets ({assets.length})
           </div>
           <div className="compact-content">
-            <AssetTableList
+            <AssetDataGrid
               ref={assetListRef}
-              onSelectionChanged={(selectedAssets) => {
-                if (selectedAssets.length > 0) {
-                  const asset = selectedAssets[0];
-                  console.log('Asset selection changed to:', asset.name, 'ID:', asset.id);
-                  
-                  // Fetch detailed asset data when selecting from list
-                  fetchDetailedAssetData(asset.id).then(detailedAsset => {
-                    console.log('Detailed asset data loaded for:', detailedAsset?.name);
-                    if (detailedAsset) {
-                      setSelectedAsset(detailedAsset);
-                    } else {
-                      // Fallback to list data if detailed fetch fails
-                      setSelectedAsset(asset);
-                    }
-                  });
-                } else {
-                  console.log('Asset selection cleared');
-                  setSelectedAsset(null);
-                }
-              }}
+              onSelectionChanged={handleSelectionChange}
               onRowDoubleClicked={(asset) => {
+                // If we're currently editing an asset, handle the transition
+                if (editingAsset) {
+                  // If editing the same asset, do nothing
+                  if (editingAsset.id === asset.id) {
+                    return;
+                  }
+                  
+                  // Ask user if they want to save changes before switching
+                  const shouldSwitch = window.confirm(
+                    'You have unsaved changes. Do you want to discard them and switch to editing the selected asset?'
+                  );
+                  
+                  if (!shouldSwitch) {
+                    return; // Stay in current edit mode
+                  }
+                }
+                
                 navigate(`/assets/edit/${asset.id}`);
               }}
               onDataLoaded={(loadedAssets) => {
                 setAssets(loadedAssets);
                 setLoading(false);
               }}
-              onEditAsset={(asset) => {
-                navigate(`/assets/edit/${asset.id}`);
-              }}
-              onDeleteAsset={handleDeleteAsset}
             />
           </div>
         </div>

@@ -107,14 +107,43 @@ const Navbar: React.FC = () => {
                 AI Assistant
               </Link>
 
-              <Link 
-                to="/user-management" 
-                className={`nav-menu-item ${isActive('/user-management') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Users size={16} /></span>
-                Users
-              </Link>
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><Users size={16} /></span>
+                  Users
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/users" 
+                    className={`nav-submenu-item ${location.pathname === '/users' || location.pathname.startsWith('/users/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Users size={14} /></span>
+                    User Management
+                  </Link>
+                  <Link 
+                    to="/profile" 
+                    className={`nav-submenu-item ${location.pathname === '/profile' ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Users size={14} /></span>
+                    My Profile
+                  </Link>
+                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
+                    <Link 
+                      to="/settings/roles" 
+                      className={`nav-submenu-item ${location.pathname === '/settings/roles' ? 'active' : ''}`} 
+                      onClick={closeMenu}
+                    >
+                      <span className="nav-icon"><Settings size={14} /></span>
+                      Role Management
+                    </Link>
+                  )}
+                </div>
+              </div>
 
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
@@ -206,17 +235,6 @@ const Navbar: React.FC = () => {
                     System Settings
                     {!hasPermission(user, PERMISSIONS.SMTP_CONFIG) && <span className="admin-badge">Admin</span>}
                   </Link>
-
-                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
-                    <Link 
-                      to="/settings/roles" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/roles' ? 'active' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Users size={14} /></span>
-                      Role Management
-                    </Link>
-                  )}
                 </div>
               </div>
               <button onClick={handleLogout} className="nav-menu-item logout">

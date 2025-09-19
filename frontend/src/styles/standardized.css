@@ -1562,3 +1562,100 @@ body {
   border-color: var(--success-green) !important;
   background-color: var(--success-green-light) !important;
 }
+
+/* ReactGrid Row Highlighting */
+.reactgrid-wrapper {
+  outline: none !important; /* Remove focus outline from container */
+  border: none !important;
+}
+
+.reactgrid-wrapper:focus {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* COMPLETELY DISABLE ReactGrid's cell selection and focus - NUCLEAR OPTION */
+.rg-cell,
+.rg-cell.rg-cell-focus,
+.rg-cell.rg-cell-focus:focus,
+.rg-cell:focus,
+.rg-cell.rg-cell-selected,
+.rg-cell.rg-cell-highlighted,
+.rg-cell[tabindex],
+.rg-cell[tabindex]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: 1px solid #e2e8f0 !important; /* Use normal border */
+  background-color: white !important;
+  background: white !important;
+}
+
+/* Disable ALL ReactGrid selection and focus visuals */
+.rg-selection-range,
+.rg-fill-handle,
+.rg-cell-selection,
+.rg-cell-focus-border,
+.rg-cell-editor,
+.rg-cell-highlight {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Override ReactGrid's blue cell highlighting */
+.reactgrid .rg-cell.rg-cell-focus,
+.reactgrid .rg-cell:focus {
+  background-color: transparent !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Allow normal interactions but override the blue highlighting */
+
+/* Row-level highlighting for focused/selected rows - Multiple selectors for different row types */
+.rg-row.focused-row .rg-cell,
+tr.focused-row .rg-cell,
+[role="row"].focused-row .rg-cell,
+.reactgrid-row.focused-row .rg-cell,
+.focused-row .rg-cell,
+.rg-cell.focused-row-cell {
+  background-color: #dbeafe !important; /* Light blue background */
+  border-color: #93c5fd !important; /* Blue border */
+}
+
+/* Make sure our row highlighting overrides ReactGrid's cell highlighting */
+.rg-row.focused-row .rg-cell.rg-cell-focus,
+tr.focused-row .rg-cell.rg-cell-focus,
+[role="row"].focused-row .rg-cell.rg-cell-focus,
+.reactgrid-row.focused-row .rg-cell.rg-cell-focus,
+.focused-row .rg-cell.rg-cell-focus,
+.rg-cell.focused-row-cell.rg-cell-focus {
+  background-color: #dbeafe !important; /* Light blue background */
+  border-color: #93c5fd !important; /* Blue border */
+}
+
+/* Hover effect for entire rows (except header) */
+.rg-row:not([data-row-id="header"]):hover .rg-cell {
+  background-color: var(--neutral-100) !important;
+  cursor: pointer;
+}
+
+/* Header row styling - keep normal appearance */
+.rg-row[data-row-id="header"] .rg-cell {
+  background-color: var(--neutral-50) !important;
+  font-weight: 600;
+  border-bottom: 2px solid var(--neutral-200) !important;
+}
+
+/* Header row hover - different style for sorting */
+.rg-row[data-row-id="header"]:hover .rg-cell {
+  background-color: var(--neutral-100) !important;
+  cursor: pointer;
+}
+
+/* Don't apply focus highlighting to header row */
+.rg-row[data-row-id="header"].focused-row .rg-cell {
+  background-color: var(--neutral-50) !important;
+  border-color: inherit !important;
+}

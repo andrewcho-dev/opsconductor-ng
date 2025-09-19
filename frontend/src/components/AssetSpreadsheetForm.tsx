@@ -130,17 +130,8 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
   // Detect existing credentials when asset data is loaded
   React.useEffect(() => {
     if (asset && (mode === 'edit' || mode === 'view')) {
-      console.log('AssetSpreadsheetForm - Raw asset prop passed to component:', JSON.stringify(asset, null, 2));
       const credentialType = asset.credential_type;
       const secondaryCredentialType = (asset as any).secondary_credential_type;
-      
-      console.log('AssetSpreadsheetForm - Asset data:', asset);
-      console.log('AssetSpreadsheetForm - All asset keys:', Object.keys(asset));
-      console.log('AssetSpreadsheetForm - Credential type:', credentialType);
-      console.log('AssetSpreadsheetForm - Secondary credential type:', secondaryCredentialType);
-      console.log('AssetSpreadsheetForm - Service type:', asset.service_type);
-      console.log('AssetSpreadsheetForm - Username:', asset.username);
-      console.log('AssetSpreadsheetForm - Has credentials flag:', asset.has_credentials);
       
       // Detect existing credentials based on credential_type being set
       const existingCreds: any = {};
@@ -166,7 +157,6 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
         existingCreds.secondary_password = true;
       }
       
-      console.log('AssetSpreadsheetForm - Setting hasExistingCredentials to:', existingCreds);
       setHasExistingCredentials(existingCreds);
     }
   }, [asset, mode]);
