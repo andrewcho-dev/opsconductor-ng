@@ -757,6 +757,23 @@ const Assets: React.FC = () => {
             text-transform: uppercase !important;
             letter-spacing: 0.5px !important;
           }
+          
+          /* Remove any gray backgrounds or borders from ReactGrid */
+          .assets-table-section .reactgrid,
+          .assets-table-section .rg-viewport,
+          .assets-table-section .rg-content,
+          .assets-table-section .reactgrid-wrapper,
+          .assets-table-section .rg-grid {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          
+          /* Ensure the main ReactGrid component has no background */
+          .assets-table-section .rg {
+            background: transparent !important;
+            border: none !important;
+          }
         `}
       </style>
 
