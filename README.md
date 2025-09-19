@@ -1,78 +1,58 @@
-# 🤖 OpsConductor - Intelligent Infrastructure Automation Platform
+# OpsConductor NG - Intelligent Infrastructure Automation Platform
 
-**Next-Generation IT Operations with AI Microservices Architecture**
+**Production-Ready IT Operations with AI-Powered Microservices Architecture**
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/opsconductor/opsconductor-ng)
-[![AI Architecture](https://img.shields.io/badge/AI-Microservices-blue.svg)](AI_DOCUMENTATION.md)
+[![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue.svg)](#architecture)
+[![AI Powered](https://img.shields.io/badge/AI-Powered-purple.svg)](#ai-capabilities)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## 🚀 What is OpsConductor?
-
-OpsConductor is an **intelligent infrastructure automation platform** that transforms complex IT operations into simple natural language conversations. Built with a modern **AI microservices architecture**, it provides powerful automation, monitoring, and predictive analytics capabilities.
-
-### 🎯 Key Features
-
-- 🧠 **AI-Powered Interface** - Natural language commands for all operations
-- 🔧 **Multi-Protocol Automation** - SNMP, SSH, SMTP, VAPIX, and more
-- 📊 **Real-Time Monitoring** - Comprehensive infrastructure visibility
-- 🤖 **Intelligent Workflows** - AI-generated automation scripts
-- 🔮 **Predictive Analytics** - Proactive issue detection and prevention
-- 🛡️ **Security-First** - Enterprise-grade security and compliance
-
----
-
-## ⚡ Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- 8GB+ RAM (for AI services)
-- Git
-- **Optional:** NVIDIA GPU + drivers for AI acceleration
-  - [Standard GPU Setup Guide](GPU_SETUP.md)
-  - [GPU in VMs with vfio-pci](docs/GPU_VFIO_PCI_VM_FIX.md) - For virtualized environments
+## 🚀 Quick Start
 
 ### One-Command Deployment
 ```bash
-# Clone and deploy
 git clone <repository-url>
 cd opsconductor-ng
-docker-compose up -d
-
-# For GPU acceleration (optional)
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-
-# Access the platform
-# Web Interface: http://localhost:3100
-# API Gateway: http://localhost:3000
-# AI Chat: http://localhost:3005/ai/chat
+./deploy.sh
 ```
 
-### GPU Acceleration (Optional)
-For enhanced AI performance, see the [GPU Setup Guide](GPU_SETUP.md):
-```bash
-# Validate GPU setup
-./scripts/validate_gpu_setup.sh
+**Access the platform:**
+- **Web Interface**: http://localhost:3100
+- **Default Login**: admin / admin123
 
-# Check AI services GPU status
-python3 scripts/check_gpu_status.py
-```
-
-### Default Credentials
-- **Username:** admin
-- **Password:** admin123
+### Prerequisites
+- Docker & Docker Compose
+- 8GB+ RAM recommended
+- **Optional**: NVIDIA GPU for enhanced AI performance
 
 ---
 
-## 🏗️ Architecture Overview
+## 🎯 What is OpsConductor?
 
-### System Architecture
+OpsConductor NG is a **production-ready, microservices-based IT operations automation platform** that transforms complex infrastructure management into simple natural language conversations. Built with modern AI capabilities, it provides comprehensive automation, monitoring, and intelligent workflow generation.
+
+### Key Features
+
+- 🧠 **AI-Powered Interface** - Natural language commands for all operations
+- 🏗️ **Microservices Architecture** - Scalable, maintainable service design
+- 🔧 **Multi-Protocol Automation** - SSH, RDP, SNMP, HTTP, PowerShell, and more
+- 📊 **Real-Time Monitoring** - Comprehensive infrastructure visibility
+- 🤖 **Intelligent Workflows** - AI-generated automation scripts
+- 🛡️ **Enterprise Security** - RBAC, audit logging, encrypted credentials
+- 📈 **Scalable Design** - Horizontal scaling with load balancing
+
+---
+
+## 🏗️ Architecture
+
+### System Overview
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Web Frontend  │◄──►│   API Gateway   │◄──►│ AI Orchestrator │
-│   (React/TS)    │    │   (FastAPI)     │    │   (FastAPI)     │
-│   Port 3100     │    │   Port 3000     │    │   Port 3005     │
+│   Web Frontend  │◄──►│   API Gateway   │◄──►│ AI Command      │
+│   (React/TS)    │    │   (FastAPI)     │    │ Service         │
+│   Port 3100     │    │   Port 3000     │    │ Port 3005       │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                       │
                                 ▼                       ▼
@@ -81,122 +61,102 @@ python3 scripts/check_gpu_status.py
 │  Service        │    │  (Targets)      │    │  Service        │
 │  Port 3001      │    │  Port 3002      │    │  Port 3003      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │                       │
+                                ▼                       ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Communication   │    │  Vector Service │    │   LLM Service   │
+│ Service         │    │  (ChromaDB)     │    │   (Ollama)      │
+│ Port 3004       │    │  Port 3007      │    │  Port 3008      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### AI Microservices Architecture
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  AI Orchestrator│◄──►│   NLP Service   │    │  Vector Service │    │   LLM Service   │
-│   (Port 3005)   │    │   (Port 3006)   │    │   (Port 3007)   │    │   (Port 3008)   │
-│                 │    │                 │    │                 │    │                 │
-│ • Coordination  │    │ • Intent Class. │    │ • Knowledge     │    │ • Text Gen.     │
-│ • Routing       │    │ • Entity Extract│    │ • Vector Search │    │ • Chat Interface│
-│ • Integration   │    │ • NLP Processing│    │ • ChromaDB      │    │ • Ollama        │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-```
+### Core Services
 
----
+#### Infrastructure Services
+- **PostgreSQL** (Port 5432) - Primary database with 4 schemas
+- **Redis** (Port 6379) - Caching, sessions, and task queues
+- **ChromaDB** (Port 8000) - Vector database for AI knowledge
+- **Nginx** (Port 80/443) - Reverse proxy and SSL termination
 
-## 💬 Natural Language Interface
+#### Application Services
+- **API Gateway** (Port 3000) - Central routing, authentication, rate limiting
+- **Identity Service** (Port 3001) - User management, RBAC, JWT authentication
+- **Asset Service** (Port 3002) - Infrastructure targets with embedded credentials
+- **Automation Service** (Port 3003) - Job execution with Celery workers
+- **Communication Service** (Port 3004) - Notifications, audit logging
 
-Transform complex operations into simple conversations:
-
-### System Management
-```bash
-"Check CPU usage on all Linux servers"
-"Restart nginx service on web servers"
-"Update stationcontroller on CIS servers"
-"Show disk space alerts from last 24 hours"
-```
-
-### Automation Creation
-```bash
-"Create a PowerShell script to restart IIS"
-"Schedule weekly disk cleanup on Windows servers"
-"Monitor network switches via SNMP every 5 minutes"
-"Generate a backup script for database servers"
-```
-
-### Monitoring & Analytics
-```bash
-"What's the system health status?"
-"Show me performance trends for the last week"
-"Any anomalies detected recently?"
-"Predict maintenance needs for next month"
-```
+#### AI Services
+- **AI Command Service** (Port 3005) - Main AI interface with intent classification
+- **Vector Service** (Port 3007) - Knowledge storage and semantic search
+- **LLM Service** (Port 3008) - Large language model interface
+- **AI Orchestrator** (Port 3010) - AI workflow coordination
+- **Ollama Server** (Port 11434) - Local LLM model serving
 
 ---
 
 ## 🧠 AI Capabilities
 
 ### Natural Language Processing
-- **Intent Classification** - Understands user intentions with 95%+ accuracy
-- **Entity Extraction** - Identifies targets, operations, and parameters
-- **Context Awareness** - Maintains conversation context and history
-- **Multi-Language Support** - Supports technical and natural language
+Transform complex operations into simple conversations:
 
-### Knowledge Management
-- **Vector Database** - Semantic search through documentation and procedures
-- **Learning System** - Continuously improves from user interactions
-- **Pattern Recognition** - Identifies common operations and optimizations
-- **Best Practices** - Suggests industry-standard approaches
-
-### Intelligent Automation
-- **Script Generation** - Creates production-ready PowerShell, Bash, Python scripts
-- **Workflow Orchestration** - Manages complex multi-step operations
-- **Error Handling** - Robust error detection and recovery mechanisms
-- **Protocol Integration** - Seamless multi-protocol operations
-
----
-
-## 🔧 Core Services
-
-### Infrastructure Services
-- **PostgreSQL** (Port 5432) - Primary database
-- **Redis** (Port 6379) - Caching and session management
-- **ChromaDB** (Port 8000) - Vector database for AI knowledge
-- **Nginx** (Port 80/443) - Reverse proxy and load balancer
-
-### Application Services
-- **API Gateway** (Port 3000) - Central API routing and authentication
-- **Identity Service** (Port 3001) - User management and authentication
-- **Asset Service** (Port 3002) - Infrastructure target management
-- **Automation Service** (Port 3003) - Job execution and scheduling
-- **Communication Service** (Port 3004) - Notifications and messaging
-
-### AI Services
-- **AI Orchestrator** (Port 3005) - Main AI interface and coordination
-- **NLP Service** (Port 3006) - Natural language processing
-- **Vector Service** (Port 3007) - Knowledge storage and retrieval
-- **LLM Service** (Port 3008) - Large language model interface
-- **Ollama Server** (Port 11434) - Local LLM model serving
-
----
-
-## 🚀 Deployment Options
-
-### Docker Compose (Recommended)
 ```bash
-# Full deployment
-docker-compose up -d
-
-# AI services only
-docker-compose up -d ai-orchestrator vector-service llm-service
-
-# Development mode with hot reload
-docker-compose -f docker-compose.dev.yml up
+\"Check CPU usage on all Linux servers\"
+\"Restart nginx service on web servers\"
+\"Show disk space alerts from last 24 hours\"
+\"Create a PowerShell script to restart IIS\"
+\"Schedule weekly disk cleanup on Windows servers\"
 ```
 
-### Individual Service Deployment
+### Intelligent Features
+- **Intent Classification** - Understands user intentions with high accuracy
+- **Entity Extraction** - Identifies targets, operations, and parameters
+- **Context Awareness** - Maintains conversation history
+- **Script Generation** - Creates production-ready automation scripts
+- **Learning System** - Continuously improves from interactions
+- **Predictive Analytics** - Proactive issue detection
+
+---
+
+## 🗄️ Database Architecture
+
+### Four-Schema Design
+- **identity** - Users, roles, permissions, sessions (5 tables)
+- **assets** - Consolidated targets with embedded credentials (8 tables)
+- **automation** - Jobs, executions, schedules, workflows (6 tables)
+- **communication** - Notifications, templates, audit logs (4 tables)
+
+### Key Features
+- **Enhanced Targets** - New architecture with embedded credentials
+- **Hierarchical Groups** - 3-level target organization
+- **Service Definitions** - 31+ predefined service types
+- **Comprehensive RBAC** - 5 roles with granular permissions
+- **Audit Logging** - Complete system operation tracking
+
+---
+
+## 🚀 Deployment
+
+### Automated Deployment
 ```bash
-# Build specific services
-docker-compose build ai-orchestrator
+# Complete system setup
+./build.sh      # Build all services
+./deploy.sh     # Deploy and initialize database
+./verify-setup.sh  # Verify deployment
 
-# Scale services
-docker-compose up -d --scale automation-worker=3
+# GPU acceleration (optional)
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
 
-# Update specific service
-docker-compose up -d --no-deps ai-orchestrator
+### Manual Deployment
+```bash
+# Standard deployment
+docker-compose up -d
+
+# Scale workers
+docker-compose up -d --scale automation-worker-1=3
+
+# Individual service updates
+docker-compose up -d --no-deps <service-name>
 ```
 
 ### Health Monitoring
@@ -204,15 +164,32 @@ docker-compose up -d --no-deps ai-orchestrator
 # Check all services
 docker-compose ps
 
-# Test AI services
-python test_ai_microservices.py
-
 # Individual health checks
-curl http://localhost:3005/health  # AI Orchestrator
-curl http://localhost:3006/health  # NLP Service
-curl http://localhost:3007/health  # Vector Service
-curl http://localhost:3008/health  # LLM Service
+curl http://localhost:3000/health  # API Gateway
+curl http://localhost:3005/health  # AI Command Service
+curl http://localhost:5555         # Celery Flower Dashboard
 ```
+
+---
+
+## 🔒 Security
+
+### Authentication & Authorization
+- **JWT-based Authentication** - Secure token-based access
+- **Role-based Access Control** - 5 predefined roles (admin, manager, operator, developer, viewer)
+- **Session Management** - Refresh tokens and session tracking
+- **Multi-factor Authentication** - Enhanced security options
+
+### Data Protection
+- **Fernet Encryption** - Sensitive credential encryption
+- **TLS/SSL Support** - Encrypted communication
+- **Input Validation** - Comprehensive data sanitization
+- **Audit Logging** - Complete operation tracking
+
+### Default Credentials
+- **Username**: admin
+- **Password**: admin123
+- **Change immediately** after first login
 
 ---
 
@@ -228,26 +205,17 @@ GET  /api/v1/ai/capabilities      - Get AI system capabilities
 
 ### Core Operations
 ```
-GET  /api/v1/targets              - List infrastructure targets
-POST /api/v1/targets              - Create new target
+GET  /api/v1/assets               - List infrastructure targets
+POST /api/v1/assets               - Create new target
 POST /api/v1/jobs                 - Create automation job
 POST /api/v1/jobs/{id}/execute    - Execute job
 GET  /api/v1/executions           - List job executions
 ```
 
-### Authentication
-```
-POST /api/v1/auth/login           - User authentication
-POST /api/v1/auth/refresh         - Refresh JWT token
-GET  /api/v1/auth/profile         - Get user profile
-```
-
 ### Interactive Documentation
 - **API Gateway**: http://localhost:3000/docs
-- **AI Orchestrator**: http://localhost:3005/docs
-- **NLP Service**: http://localhost:3006/docs
-- **Vector Service**: http://localhost:3007/docs
-- **LLM Service**: http://localhost:3008/docs
+- **AI Command Service**: http://localhost:3005/docs
+- **All Services**: Available at `<service-url>/docs`
 
 ---
 
@@ -255,80 +223,23 @@ GET  /api/v1/auth/profile         - Get user profile
 
 ### Automated Testing
 ```bash
-# Comprehensive AI test suite
+# AI system tests
 python test_ai_microservices.py
 
 # Service-specific tests
-pytest tests/test_ai_services.py
-pytest tests/test_vector_service.py
-pytest tests/test_llm_service.py
+pytest tests/
 
 # Integration tests
-pytest tests/integration/
+python test_frontend_integration.py
 ```
 
 ### Manual Testing
 ```bash
 # Test AI chat
-curl -X POST http://localhost:3005/ai/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "restart nginx on web servers", "user_id": 1}'
-
-# Test NLP parsing
-curl -X POST http://localhost:3006/nlp/parse \
-  -H "Content-Type: application/json" \
-  -d '{"text": "update stationcontroller on CIS servers"}'
-
-# Test vector search
-curl -X POST http://localhost:3007/vector/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "nginx restart procedure", "limit": 3}'
+curl -X POST http://localhost:3005/ai/chat \\
+  -H \"Content-Type: application/json\" \\
+  -d '{\"message\": \"restart nginx on web servers\", \"user_id\": 1}'
 ```
-
----
-
-## 🔒 Security
-
-### Authentication & Authorization
-- **JWT-based Authentication** - Secure token-based access
-- **Role-based Access Control** - Granular permission system
-- **Multi-factor Authentication** - Enhanced security options
-- **API Key Management** - Service-to-service authentication
-
-### Data Protection
-- **Encryption at Rest** - Fernet encryption for sensitive data
-- **TLS/SSL Support** - Encrypted communication
-- **Input Validation** - Comprehensive data sanitization
-- **Audit Logging** - Complete operation tracking
-
-### Security Monitoring
-- **Automated Threat Detection** - AI-powered security analysis
-- **Failed Login Monitoring** - Brute force attack detection
-- **Privilege Escalation Alerts** - Unauthorized access attempts
-- **Security Event Correlation** - Pattern-based threat identification
-
----
-
-## 📈 Performance & Monitoring
-
-### Performance Metrics
-- **Response Time** - < 3 seconds for AI queries
-- **Throughput** - 100+ concurrent operations
-- **Availability** - 99.9% uptime target
-- **AI Accuracy** - 95%+ intent detection accuracy
-
-### Monitoring & Observability
-- **Health Checks** - Comprehensive service monitoring
-- **Metrics Collection** - Prometheus-compatible metrics
-- **Log Aggregation** - Centralized logging
-- **Distributed Tracing** - Request flow tracking
-- **Alerting** - Proactive issue notification
-
-### Resource Requirements
-- **Minimum**: 4GB RAM, 2 CPU cores, 20GB storage
-- **Recommended**: 8GB RAM, 4 CPU cores, 50GB storage
-- **Production**: 16GB RAM, 8 CPU cores, 100GB storage
-- **GPU**: Optional NVIDIA GPU for enhanced AI performance
 
 ---
 
@@ -336,58 +247,51 @@ curl -X POST http://localhost:3007/vector/search \
 
 ### Development Setup
 ```bash
-# Clone repository
-git clone <repository-url>
-cd opsconductor-ng
-
-# Development environment
+# Development environment with hot reload
 docker-compose -f docker-compose.dev.yml up
 
 # Install development dependencies
 pip install -r requirements-dev.txt
-
-# Run tests
-pytest tests/
 ```
 
 ### Code Structure
 ```
 opsconductor-ng/
-├── ai-orchestrator/     # AI coordination service
-├── ai-command/          # Main AI service with Ollama
-├── vector-service/      # Knowledge storage and retrieval
-├── llm-service/         # Large language model interface
-├── api-gateway/         # Central API routing
-├── identity-service/    # User management
-├── asset-service/       # Infrastructure targets
-├── automation-service/  # Job execution
-├── communication-service/ # Notifications
-├── frontend/            # React web interface
-├── shared/              # Common utilities
-├── database/            # Database schemas
-└── docs/                # Documentation
+├── ai-command/              # Main AI service with Ollama integration
+├── ai-orchestrator/         # AI workflow coordination
+├── vector-service/          # Knowledge storage and retrieval
+├── llm-service/             # Large language model interface
+├── api-gateway/             # Central API routing
+├── identity-service/        # User management
+├── asset-service/           # Infrastructure targets
+├── automation-service/      # Job execution
+├── communication-service/   # Notifications
+├── frontend/                # React TypeScript web interface
+├── database/                # Complete schema and migrations
+├── shared/                  # Common utilities
+└── scripts/                 # Deployment and utility scripts
 ```
-
-### Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
 
 ---
 
-## 📚 Documentation
+## 📈 Performance & Monitoring
 
-### Available Documentation
-- **[AI System Documentation](AI_DOCUMENTATION.md)** - Comprehensive AI architecture guide
-- **[Repository Overview](REPO.md)** - Detailed repository structure and components
-- **[Scripting Standards](docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md)** - Development standards
-- **[Volume Mount System](VOLUME_MOUNT_SYSTEM.md)** - Docker volume configuration
-- **[Communication Settings](COMMUNICATION_SETTINGS_IMPLEMENTATION.md)** - Notification setup
+### Performance Metrics
+- **Response Time**: < 3 seconds for AI queries
+- **Throughput**: 100+ concurrent operations
+- **Availability**: 99.9% uptime target
+- **AI Accuracy**: 95%+ intent detection accuracy
 
-### API Documentation
-Interactive API documentation is available for all services at their respective `/docs` endpoints.
+### Resource Requirements
+- **Minimum**: 4GB RAM, 2 CPU cores, 20GB storage
+- **Recommended**: 8GB RAM, 4 CPU cores, 50GB storage
+- **Production**: 16GB RAM, 8 CPU cores, 100GB storage
+- **GPU**: Optional NVIDIA GPU for enhanced AI performance
+
+### Monitoring Tools
+- **Celery Flower**: http://localhost:5555 (admin/admin123)
+- **Health Checks**: All services provide `/health` endpoints
+- **Audit Logs**: Complete operation tracking in database
 
 ---
 
@@ -395,7 +299,7 @@ Interactive API documentation is available for all services at their respective 
 
 ### Common Issues
 
-#### Service Startup Issues
+#### Service Startup
 ```bash
 # Check service logs
 docker-compose logs <service-name>
@@ -407,55 +311,49 @@ docker-compose restart <service-name>
 docker-compose up -d --build <service-name>
 ```
 
+#### Database Issues
+```bash
+# Check database connection
+docker-compose exec postgres psql -U postgres -d opsconductor -c \"SELECT 1;\"
+
+# Reset database (WARNING: Data loss)
+docker-compose down -v
+docker-compose up -d postgres
+```
+
 #### AI Service Issues
 ```bash
 # Test AI service health
 curl http://localhost:3005/health
 
-# Check AI service communication
-python test_ai_microservices.py
-
-# Verify model availability
+# Check Ollama models
 curl http://localhost:11434/api/tags
+
+# Verify ChromaDB
+curl http://localhost:8000/api/v1/heartbeat
 ```
-
-#### Database Issues
-```bash
-# Check database connection
-docker-compose exec postgres psql -U postgres -d opsconductor -c "SELECT 1;"
-
-# Reset database
-docker-compose down -v
-docker-compose up -d postgres
-```
-
-### Performance Issues
-1. **High Memory Usage**: Increase Docker memory limits
-2. **Slow AI Responses**: Check Ollama model size and GPU availability
-3. **Database Slow**: Optimize queries and add indexes
-4. **Network Issues**: Verify service connectivity and DNS resolution
 
 ---
 
 ## 🎯 Use Cases
 
 ### IT Operations Teams
-- **Infrastructure Monitoring** - Real-time system health and performance
-- **Automated Remediation** - Self-healing infrastructure capabilities
-- **Incident Response** - Rapid problem identification and resolution
+- **Infrastructure Monitoring** - Real-time system health
+- **Automated Remediation** - Self-healing capabilities
+- **Incident Response** - Rapid problem resolution
 - **Capacity Planning** - Predictive resource management
 
 ### DevOps Engineers
-- **CI/CD Integration** - Automated deployment and testing workflows
-- **Configuration Management** - Consistent infrastructure configuration
-- **Security Compliance** - Automated security scanning and remediation
-- **Performance Optimization** - Continuous performance monitoring and tuning
+- **CI/CD Integration** - Automated workflows
+- **Configuration Management** - Consistent infrastructure
+- **Security Compliance** - Automated scanning
+- **Performance Optimization** - Continuous monitoring
 
 ### System Administrators
-- **Daily Operations** - Streamlined routine maintenance tasks
-- **Emergency Response** - Quick access to critical system information
-- **Documentation** - Automated procedure documentation and knowledge sharing
-- **Training** - Interactive learning through natural language interface
+- **Daily Operations** - Streamlined maintenance
+- **Emergency Response** - Quick system access
+- **Documentation** - Automated procedure tracking
+- **Training** - Interactive learning interface
 
 ---
 
@@ -481,17 +379,11 @@ docker-compose up -d postgres
 
 ---
 
-## 📞 Support
+## 📚 Additional Documentation
 
-### Community Support
-- **GitHub Issues** - Bug reports and feature requests
-- **Documentation** - Comprehensive guides and API reference
-- **Examples** - Sample configurations and use cases
-
-### Enterprise Support
-- **Professional Services** - Implementation and customization
-- **Training** - Team training and certification
-- **SLA Support** - 24/7 support with guaranteed response times
+- **[Volume Mount System](VOLUME_MOUNT_SYSTEM.md)** - Docker volume configuration
+- **[GPU Setup Guide](GPU_SETUP.md)** - GPU acceleration setup
+- **[Scripting Standards](docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md)** - Development standards
 
 ---
 
@@ -503,14 +395,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **OpenAI** - For advancing the field of AI and natural language processing
-- **Ollama** - For providing local LLM serving capabilities
+- **OpenAI** - For advancing AI and natural language processing
+- **Ollama** - For local LLM serving capabilities
 - **ChromaDB** - For vector database technology
 - **FastAPI** - For modern Python web framework
 - **React** - For powerful frontend development
 
 ---
 
-**OpsConductor - Transforming IT Operations with Intelligent Automation**
+**OpsConductor NG - Transforming IT Operations with Intelligent Automation**
 
 *Built with ❤️ for the IT operations community*

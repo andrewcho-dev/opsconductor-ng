@@ -6,18 +6,19 @@ OpsConductor features a modern **AI microservices architecture** that provides i
 
 ## 🏗️ AI Architecture
 
-### Microservices Design
+### Current Production Architecture
 
 The AI system is built using a distributed microservices architecture for optimal scalability, maintainability, and performance:
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  AI Orchestrator│◄──►│   NLP Service   │    │  Vector Service │    │   LLM Service   │
-│   (Port 3005)   │    │   (Port 3006)   │    │   (Port 3007)   │    │   (Port 3008)   │
+│  AI Command     │◄──►│ AI Orchestrator │    │  Vector Service │    │   LLM Service   │
+│   (Port 3005)   │    │   (Port 3010)   │    │   (Port 3007)   │    │   (Port 3008)   │
 │                 │    │                 │    │                 │    │                 │
-│ • Coordination  │    │ • Intent Class. │    │ • Knowledge     │    │ • Text Gen.     │
-│ • Routing       │    │ • Entity Extract│    │ • Vector Search │    │ • Chat Interface│
-│ • Integration   │    │ • NLP Processing│    │ • ChromaDB      │    │ • Ollama        │
+│ • Intent Class. │    │ • Coordination  │    │ • Knowledge     │    │ • Text Gen.     │
+│ • Entity Extract│    │ • Routing       │    │ • Vector Search │    │ • Chat Interface│
+│ • NLP Processing│    │ • Integration   │    │ • ChromaDB      │    │ • Ollama        │
+│ • Job Creation  │    │ • Workflows     │    │ • Embeddings    │    │ • Multi-Models  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │                       │
          └───────────────────────┼───────────────────────┼───────────────────────┘
@@ -28,22 +29,45 @@ The AI system is built using a distributed microservices architecture for optima
                     │                 │    │                 │
                     │ • LLM Models    │    │ • Vector Store  │
                     │ • GPU Support   │    │ • Embeddings    │
+                    │ • Local Serving │    │ • Semantic Search│
                     └─────────────────┘    └─────────────────┘
 ```
 
 ## 🧠 AI Services
 
-### 1. AI Orchestrator Service (Port 3005)
-**Primary AI interface and coordination hub**
+### 1. AI Command Service (Port 3005)
+**Main AI interface with integrated NLP and intent classification**
 
-**Purpose**: Main entry point for all AI requests, coordinates between specialized AI services
+**Purpose**: Primary AI service that handles natural language processing, intent classification, and job creation
 
 **Key Features**:
-- Unified AI API interface
-- Request routing and coordination  
-- Response aggregation
-- Protocol management for different AI workflows
-- Integration with asset and automation services
+- Integrated natural language processing (nlp_processor.py)
+- Intent classification and entity extraction
+- Direct integration with all core services
+- Machine learning and predictive analytics
+- Workflow generation from natural language
+- Learning engine with continuous improvement
+- Schema introspection for dynamic queries
+
+**Core Components**:
+```
+ai-command/
+├── ai_engine.py                 # Main AI orchestrator (601 lines)
+├── nlp_processor.py             # Natural language processing
+├── learning_engine.py           # Machine learning engine
+├── predictive_analytics.py      # Predictive analytics
+├── vector_store.py              # Vector embeddings storage
+├── workflow_generator.py        # Workflow generation
+├── schema_introspector.py       # Database schema analysis
+├── query_handlers/              # Modular query handlers
+│   ├── automation_queries.py    # Automation-related queries
+│   ├── infrastructure_queries.py # Infrastructure queries
+│   ├── communication_queries.py # Communication queries
+│   └── dynamic_schema_queries.py # Dynamic schema queries
+├── asset_client.py              # Asset service integration
+├── automation_client.py         # Automation service integration
+└── communication_client.py      # Communication service integration
+```
 
 **Core Endpoints**:
 ```
@@ -51,49 +75,66 @@ POST /ai/chat              - Natural language chat interface
 POST /ai/create-job        - Create automation jobs from natural language
 POST /ai/analyze           - Analyze text and generate insights
 GET  /ai/capabilities      - Get AI system capabilities
-GET  /health               - Service health check
-```
-
-### 2. NLP Service (Port 3006)
-**Natural Language Processing and Understanding**
-
-**Purpose**: Parse and understand natural language requests with high accuracy
-
-**Key Features**:
-- Intent classification (restart, update, check, stop, start)
-- Entity extraction (operations, targets, groups, OS types)
-- Command parsing and normalization
-- Confidence scoring and validation
-- Multi-language support
-
-**Core Endpoints**:
-```
-POST /nlp/parse            - Parse natural language text
-POST /nlp/classify         - Classify intent and extract entities
-GET  /nlp/capabilities     - Get NLP processing capabilities
+POST /ai/learn             - Store learning patterns
 GET  /health               - Service health check
 ```
 
 **Example Usage**:
 ```json
-// Request
+// Chat Request
 {
-  "text": "restart nginx on web servers"
+  "message": "restart nginx on web servers",
+  "user_id": 1,
+  "context": {}
 }
 
 // Response
 {
-  "operation": "restart",
-  "target_process": "nginx",
-  "target_group": "web servers",
-  "target_os": "linux",
+  "response": "I'll restart nginx on your web servers. Let me create a job for that.",
+  "intent": "service_management",
   "confidence": 0.95,
-  "intent": "service_management"
+  "actions": [
+    {
+      "type": "job_creation",
+      "target_group": "web servers",
+      "operation": "restart",
+      "service": "nginx"
+    }
+  ]
 }
 ```
 
+### 2. AI Orchestrator Service (Port 3010)
+**AI workflow coordination and management**
+
+**Purpose**: Coordinates complex AI workflows and manages multi-service AI operations
+
+**Key Features**:
+- AI workflow coordination
+- Multi-service AI request routing
+- Response aggregation and formatting
+- Protocol management for AI workflows
+- Knowledge management integration
+
+**Core Components**:
+```
+ai-orchestrator/
+├── orchestrator.py              # Core orchestration logic
+├── protocol_manager.py          # AI workflow protocols
+├── workflow_generator.py        # Workflow generation
+└── knowledge_manager.py         # Knowledge management
+```
+
+**Core Endpoints**:
+```
+POST /orchestrate          - Orchestrate complex AI workflows
+POST /workflow/generate    - Generate workflows from requirements
+GET  /protocols            - List available AI protocols
+GET  /health               - Service health check
+```
+
 ### 3. Vector Service (Port 3007)
-**Knowledge Storage and Retrieval**
+**Knowledge Storage and Retrieval using ChromaDB**
 
 **Purpose**: Store and retrieve AI knowledge using vector embeddings for semantic search
 
@@ -103,7 +144,7 @@ GET  /health               - Service health check
 - Semantic search and similarity matching
 - Pattern storage and retrieval
 - Learning from successful operations
-- Metadata filtering and categorization
+- GPU-accelerated embeddings
 
 **Core Endpoints**:
 ```
@@ -121,28 +162,34 @@ GET  /health               - Service health check
 {
   "content": "To restart nginx service, use 'sudo systemctl restart nginx' on Linux systems",
   "category": "system_administration",
-  "title": "Nginx Restart Procedure"
+  "title": "Nginx Restart Procedure",
+  "metadata": {
+    "os_type": "linux",
+    "service": "nginx",
+    "operation": "restart"
+  }
 }
 
 // Search Knowledge
 {
   "query": "how to restart nginx",
-  "limit": 3
+  "limit": 3,
+  "filter": {"os_type": "linux"}
 }
 ```
 
 ### 4. LLM Service (Port 3008)
-**Large Language Model Interface**
+**Large Language Model Interface with Ollama**
 
 **Purpose**: Text generation and reasoning using large language models
 
 **Key Features**:
 - Ollama integration for local LLM serving
-- Multiple model support (Llama2, CodeLlama, etc.)
+- Multiple model support (Llama2, CodeLlama, Mistral, etc.)
 - Context-aware text generation
 - Summarization and analysis
 - Code generation and explanation
-- Conversational AI capabilities
+- GPU acceleration support
 
 **Core Endpoints**:
 ```
@@ -151,6 +198,7 @@ POST /llm/generate         - Generate text
 POST /llm/summarize        - Summarize text
 POST /llm/analyze          - Analyze text content
 GET  /llm/models           - List available models
+POST /llm/pull             - Pull new models
 GET  /health               - Service health check
 ```
 
@@ -160,14 +208,16 @@ GET  /health               - Service health check
 {
   "message": "Explain how to troubleshoot network connectivity issues",
   "system_prompt": "You are OpsConductor AI, an IT operations assistant.",
-  "model": "llama2"
+  "model": "llama2:latest",
+  "temperature": 0.7
 }
 
 // Response
 {
-  "response": "To troubleshoot network connectivity issues, follow these steps...",
-  "confidence": 0.92,
-  "model_used": "llama2"
+  "response": "To troubleshoot network connectivity issues, follow these systematic steps:\n\n1. Check physical connections...",
+  "model_used": "llama2:latest",
+  "tokens_used": 245,
+  "response_time": 2.3
 }
 ```
 
@@ -175,328 +225,215 @@ GET  /health               - Service health check
 
 ### Natural Language Chat Request
 ```
-User Input → API Gateway → AI Orchestrator → NLP Service (parse intent)
-                                          → Vector Service (search context)
-                                          → LLM Service (generate response)
-                                          → Response to User
+User Input → API Gateway → AI Command Service → NLP Processor (parse intent)
+                                             → Vector Store (search context)
+                                             → LLM Service (generate response)
+                                             → Learning Engine (store patterns)
+                                             → Response to User
 ```
 
 ### Automation Job Creation
 ```
-User Request → API Gateway → AI Orchestrator → NLP Service (parse intent)
-                                           → Vector Service (find patterns)
-                                           → Workflow Generator (create workflow)
-                                           → Automation Service (execute)
+User Request → API Gateway → AI Command Service → Intent Classification
+                                               → Asset Service (get targets)
+                                               → Workflow Generator (create workflow)
+                                               → Automation Service (execute job)
+                                               → Communication Service (notify)
+```
+
+### Complex AI Workflow
+```
+User Request → API Gateway → AI Orchestrator → AI Command Service
+                                           → Vector Service (knowledge)
+                                           → LLM Service (reasoning)
+                                           → Multiple Core Services
+                                           → Aggregated Response
 ```
 
 ## 🚀 Deployment
 
 ### Docker Compose Configuration
 
+The AI services are deployed as part of the main docker-compose.yml:
+
 ```yaml
-services:
-  ai-orchestrator:
-    build: ./ai-orchestrator
-    ports: ["3005:3000"]
-    environment:
-      VECTOR_SERVICE_URL: http://vector-service:3000
-      LLM_SERVICE_URL: http://llm-service:3000
-      ASSET_SERVICE_URL: http://asset-service:3002
-      AUTOMATION_SERVICE_URL: http://automation-service:3003
+# AI Infrastructure
+chromadb:
+  image: chromadb/chroma:0.6.1
+  ports: ["8000:8000"]
+  volumes: [chromadb_data:/chroma/chroma]
 
-  vector-service:
-    build: ./vector-service
-    ports: ["3007:3000"]
-    environment:
-      CHROMADB_URL: http://chromadb:8000
+ollama:
+  image: ollama/ollama:0.11.11
+  ports: ["11434:11434"]
+  volumes: [ollama_models:/root/.ollama]
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
 
-  llm-service:
-    build: ./llm-service
-    ports: ["3008:3000"]
-    environment:
-      OLLAMA_HOST: http://ollama:11434
+# AI Services
+ai-command:
+  build: ./ai-command
+  ports: ["3005:3005"]
+  environment:
+    CHROMADB_URL: http://chromadb:8000
+    OLLAMA_HOST: http://ollama:11434
+  depends_on: [chromadb, ollama]
 
-  ollama:
-    image: ollama/ollama:latest
-    ports: ["11434:11434"]
-    volumes: ["ollama_models:/root/.ollama"]
+vector-service:
+  build: ./vector-service
+  ports: ["3007:3000"]
+  environment:
+    CHROMADB_URL: http://chromadb:8000
+  depends_on: [chromadb]
 
-  chromadb:
-    image: chromadb/chroma:0.5.0
-    ports: ["8000:8000"]
-    volumes: ["chromadb_data:/chroma/chroma"]
+llm-service:
+  build: ./llm-service
+  ports: ["3008:3000"]
+  environment:
+    OLLAMA_HOST: http://ollama:11434
+  depends_on: [ollama]
+
+ai-orchestrator:
+  build: ./ai-orchestrator
+  ports: ["3010:3000"]
+  depends_on: [vector-service, llm-service]
 ```
 
-### Quick Start Commands
+### GPU Acceleration
+
+For enhanced AI performance, GPU acceleration is available:
 
 ```bash
-# Build and start all AI services
-docker-compose build ai-orchestrator vector-service llm-service
-docker-compose up -d ai-orchestrator vector-service llm-service ollama chromadb
+# Deploy with GPU support
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
-# Test the system
-python test_ai_microservices.py
-
-# Test chat functionality
-curl -X POST http://localhost:3005/ai/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "restart nginx on web servers", "user_id": 1}'
+# Verify GPU access
+docker exec opsconductor-ai-command nvidia-smi
 ```
 
 ## 🧪 Testing
 
-### Automated Testing
-
-The system includes a comprehensive test suite (`test_ai_microservices.py`) that validates:
-
-- **Service Health**: All microservices are running and responsive
-- **AI Processing**: Intent classification and entity extraction accuracy
-- **Vector Operations**: Knowledge storage and semantic search
-- **LLM Generation**: Text generation and chat functionality
-- **Integration**: End-to-end AI pipeline functionality
+### AI System Testing
 
 ```bash
-# Run comprehensive test suite
+# Comprehensive AI system test
 python test_ai_microservices.py
 
-# Test individual services
-curl http://localhost:3005/health  # AI Orchestrator
-curl http://localhost:3006/health  # NLP Service
-curl http://localhost:3007/health  # Vector Service
-curl http://localhost:3008/health  # LLM Service
+# Specific AI functionality tests
+python test_ai_system_v2.py
+python test_knowledge_storage.py
+python test_tag_awareness.py
 ```
 
-### Manual Testing Examples
+### Manual Testing
 
 ```bash
-# Test NLP parsing
-curl -X POST http://localhost:3006/nlp/parse \
+# Test AI chat interface
+curl -X POST http://localhost:3005/ai/chat \
   -H "Content-Type: application/json" \
-  -d '{"text": "update stationcontroller on CIS servers"}'
+  -d '{"message": "restart nginx on web servers", "user_id": 1}'
 
 # Test vector search
 curl -X POST http://localhost:3007/vector/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "nginx restart procedure", "limit": 3}'
+  -d '{"query": "nginx restart", "limit": 3}'
 
-# Test LLM chat
+# Test LLM generation
 curl -X POST http://localhost:3008/llm/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "How do I check disk space on Linux?", "model": "llama2"}'
-
-# Test full orchestration
-curl -X POST http://localhost:3005/ai/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "check system health on all servers", "user_id": 1}'
+  -d '{"message": "Explain Docker containers", "model": "llama2:latest"}'
 ```
+
+## 📊 AI Performance Metrics
+
+### Response Times
+- **Intent Classification**: < 500ms
+- **Vector Search**: < 1 second
+- **LLM Generation**: 2-5 seconds (depending on model and length)
+- **End-to-End Chat**: < 10 seconds
+
+### Accuracy Metrics
+- **Intent Classification**: 95%+ accuracy
+- **Entity Extraction**: 90%+ accuracy
+- **Job Creation Success**: 85%+ success rate
+- **User Satisfaction**: Based on feedback learning
+
+### Resource Usage
+- **CPU**: 2-4 cores per AI service
+- **Memory**: 4-8GB per AI service
+- **GPU**: Optional, significantly improves performance
+- **Storage**: 10-50GB for models and knowledge base
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-#### AI Orchestrator
 ```bash
-VECTOR_SERVICE_URL=http://vector-service:3000
-LLM_SERVICE_URL=http://llm-service:3000
+# AI Command Service
+CHROMADB_URL=http://chromadb:8000
+OLLAMA_HOST=http://ollama:11434
 ASSET_SERVICE_URL=http://asset-service:3002
 AUTOMATION_SERVICE_URL=http://automation-service:3003
-REDIS_URL=redis://redis:6379/5
-```
 
-#### Vector Service
-```bash
+# Vector Service
 CHROMADB_URL=http://chromadb:8000
-REDIS_URL=redis://redis:6379/7
-```
+CUDA_VISIBLE_DEVICES=all
 
-#### LLM Service
-```bash
+# LLM Service
 OLLAMA_HOST=http://ollama:11434
-DEFAULT_LLM_MODEL=llama2
-REDIS_URL=redis://redis:6379/8
+DEFAULT_LLM_MODEL=llama2:latest
+CUDA_VISIBLE_DEVICES=all
+
+# AI Orchestrator
+VECTOR_SERVICE_URL=http://vector-service:3000
+LLM_SERVICE_URL=http://llm-service:3000
 ```
 
 ### Model Management
 
 ```bash
+# Pull new models
+curl -X POST http://localhost:3008/llm/pull \
+  -H "Content-Type: application/json" \
+  -d '{"model": "codellama:latest"}'
+
 # List available models
-curl http://localhost:11434/api/tags
+curl http://localhost:3008/llm/models
 
-# Pull a new model
-curl -X POST http://localhost:11434/api/pull \
-  -H "Content-Type: application/json" \
-  -d '{"name": "codellama"}'
-
-# Remove a model
-curl -X DELETE http://localhost:11434/api/delete \
-  -H "Content-Type: application/json" \
-  -d '{"name": "unused-model"}'
+# Set default model
+export DEFAULT_LLM_MODEL=codellama:latest
 ```
 
-## 📊 Performance & Monitoring
+## 🔮 AI Roadmap
 
-### Performance Metrics
-- **Response Time**: < 3 seconds for most AI queries
-- **NLP Accuracy**: 95%+ intent detection accuracy
-- **Throughput**: 100+ concurrent AI requests
-- **Availability**: 99.9% uptime target
+### Current Capabilities (Production Ready)
+- ✅ Natural language intent classification
+- ✅ Entity extraction and command parsing
+- ✅ Vector-based knowledge storage and retrieval
+- ✅ Local LLM serving with GPU acceleration
+- ✅ Automated job creation from natural language
+- ✅ Learning engine with pattern storage
+- ✅ Multi-service AI workflow orchestration
 
-### Health Monitoring
-```bash
-# Check all service health
-for port in 3005 3006 3007 3008; do
-  echo "Checking port $port:"
-  curl -s http://localhost:$port/health | jq '.status'
-done
+### Planned Enhancements
+- **Multi-Model Support**: Support for multiple LLM providers (OpenAI, Anthropic, etc.)
+- **Advanced RAG**: Retrieval-Augmented Generation with improved context
+- **Fine-Tuning**: Custom model fine-tuning for IT operations
+- **Voice Interface**: Speech-to-text and text-to-speech capabilities
+- **Predictive Analytics**: Advanced anomaly detection and forecasting
+- **Auto-Documentation**: Automatic procedure documentation generation
 
-# Monitor resource usage
-docker stats ai-orchestrator vector-service llm-service
-```
-
-### Logging
-Each service provides structured logging with correlation IDs for request tracing:
-
-```bash
-# View service logs
-docker-compose logs -f ai-orchestrator
-docker-compose logs -f ai-command
-docker-compose logs -f vector-service
-docker-compose logs -f llm-service
-```
-
-## 🔒 Security
-
-### Authentication
-- JWT token validation for all AI endpoints
-- User context passed between services via headers
-- Rate limiting to prevent abuse
-
-### Data Protection
-- No sensitive data stored in vector database
-- Encrypted communication between services
-- Input validation and sanitization
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-#### Service Communication Failures
-```bash
-# Check network connectivity
-docker-compose exec ai-orchestrator ping vector-service
-docker-compose exec ai-orchestrator ping vector-service
-docker-compose exec ai-orchestrator ping llm-service
-
-# Verify service URLs
-docker-compose exec ai-orchestrator env | grep SERVICE_URL
-```
-
-#### Ollama Model Issues
-```bash
-# Check Ollama status
-curl http://localhost:11434/api/tags
-
-# Pull required model
-curl -X POST http://localhost:11434/api/pull \
-  -H "Content-Type: application/json" \
-  -d '{"name": "llama2"}'
-```
-
-#### ChromaDB Connection Issues
-```bash
-# Check ChromaDB health
-curl http://localhost:8000/api/v1/heartbeat
-
-# Check vector service logs
-docker-compose logs vector-service
-```
-
-#### Memory/Resource Issues
-```bash
-# Check resource usage
-docker stats
-
-# Check for OOM errors
-docker-compose logs | grep -i "memory\|oom"
-```
-
-### Performance Optimization
-
-1. **Resource Allocation**: Adjust Docker memory limits based on usage
-2. **Model Selection**: Use smaller models for faster responses
-3. **Caching**: Enable Redis caching for frequent requests
-4. **Concurrent Limits**: Tune max concurrent requests per service
-
-## 🔮 Future Enhancements
-
-### Planned Features
-1. **Advanced Learning**: Enhanced pattern recognition and learning capabilities
-2. **Multi-Model Support**: Support for multiple LLM providers (OpenAI, Anthropic)
-3. **Caching Layer**: Redis-based response caching for improved performance
-4. **API Versioning**: Versioned APIs for backward compatibility
-5. **Enhanced Security**: Advanced authentication and authorization
-6. **Observability**: Advanced monitoring, metrics, and alerting
-
-### Extensibility
-- Plugin architecture for new AI capabilities
-- Custom NLP processors for domain-specific language
-- Additional vector stores (Pinecone, Weaviate)
-- External LLM provider integration
-
-## 📚 API Reference
-
-### Complete API Documentation
-
-Detailed interactive API documentation is available at:
-- **AI Orchestrator**: http://localhost:3005/docs
-- **NLP Service**: http://localhost:3006/docs
-- **Vector Service**: http://localhost:3007/docs
-- **LLM Service**: http://localhost:3008/docs
-
-### Key API Patterns
-
-#### Error Responses
-All services return consistent error responses:
-```json
-{
-  "error": "Error description",
-  "details": "Additional error details",
-  "service": "service-name",
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-#### Success Responses
-Standard success response format:
-```json
-{
-  "success": true,
-  "data": { /* response data */ },
-  "service": "service-name",
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-## 🎯 Best Practices
-
-### Development
-1. **Service Independence**: Each service should be independently deployable
-2. **Error Handling**: Implement comprehensive error handling and graceful degradation
-3. **Testing**: Write tests for all AI functionality and integration points
-4. **Documentation**: Keep API documentation up to date
-
-### Operations
-1. **Monitoring**: Monitor all services for health and performance
-2. **Scaling**: Scale services independently based on load
-3. **Updates**: Deploy updates to individual services without affecting others
-4. **Backup**: Regular backup of vector database and model data
-
-### Security
-1. **Authentication**: Always validate user tokens
-2. **Input Validation**: Sanitize all user inputs
-3. **Rate Limiting**: Implement rate limiting to prevent abuse
-4. **Audit Logging**: Log all AI operations for security auditing
+### Research Areas
+- **Federated Learning**: Distributed learning across multiple deployments
+- **Explainable AI**: Better transparency in AI decision-making
+- **Multi-Agent Systems**: Collaborative AI agents for complex tasks
+- **Edge AI**: Lightweight AI models for edge deployments
 
 ---
 
-**The OpsConductor AI system provides a powerful, scalable, and maintainable foundation for intelligent infrastructure automation through its modern microservices architecture.**
+**The OpsConductor AI system represents a production-ready implementation of intelligent IT operations automation, combining the power of modern LLMs with practical infrastructure management needs.**
