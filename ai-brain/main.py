@@ -123,11 +123,13 @@ class ExecuteJobResponse(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     user_id: Optional[int] = None
+    conversation_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
     intent: str  # "question", "job_creation", "unknown"
     confidence: float
+    conversation_id: Optional[str] = None
     job_id: Optional[str] = None
     execution_id: Optional[str] = None
     automation_job_id: Optional[int] = None
@@ -204,15 +206,39 @@ async def get_system_capabilities():
 async def chat_endpoint(request: ChatRequest):
     """Enhanced chat interface with complete AI engine"""
     try:
-        logger.info("Processing chat request", message=request.message)
+        logger.info("Processing chat request", message=request.message, conversation_id=request.conversation_id)
         user_id = str(request.user_id) if request.user_id else "system"
-        response = await ai_engine.process_message(request.message, user_id)
+        
+        # Pass conversation_id to maintain context
+        user_context = {
+            "user_id": user_id,
+            "conversation_id": request.conversation_id
+        }
+        response = await ai_engine.process_query(request.message, user_context)
+        
+        # Extract conversation_id from response
+        conversation_id = None
+        if isinstance(response.get("conversation"), dict):
+            conversation_id = response["conversation"].get("id")
+        elif hasattr(response.get("conversation"), "id"):
+            conversation_id = response["conversation"].id
+        
+        # Extract intent properly
+        intent_value = response.get("intent", "unknown")
+        if isinstance(intent_value, dict):
+            intent_value = intent_value.get("type", "unknown")
+        
+        # Extract confidence properly
+        confidence_value = response.get("confidence", 0.8)
+        if isinstance(response.get("intent"), dict):
+            confidence_value = response["intent"].get("confidence", 0.8)
         
         # Convert to expected ChatResponse format
         return ChatResponse(
             response=response.get("response", ""),
-            intent=response.get("intent", "unknown"),
-            confidence=0.8,  # Default confidence
+            intent=intent_value,
+            confidence=confidence_value,
+            conversation_id=conversation_id,
             job_id=response.get("data", {}).get("job_id"),
             execution_id=response.get("data", {}).get("execution_id"),
             automation_job_id=response.get("data", {}).get("automation_job_id"),

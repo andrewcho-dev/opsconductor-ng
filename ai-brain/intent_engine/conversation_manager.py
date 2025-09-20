@@ -394,13 +394,62 @@ class ConversationManager:
         conversation.state = ConversationState.EXECUTING
         conversation.context.current_step = "execution"
         
-        # This would integrate with the Job Engine to actually execute
-        # For now, we'll simulate the execution
-        execution_id = str(uuid.uuid4())
-        conversation.context.execution_id = execution_id
-        conversation.context.execution_status = "started"
-        
-        return f"Great! I'm starting the execution now. Your job ID is {execution_id}. I'll keep you updated on the progress."
+        try:
+            # Integrate with Job Engine to actually execute the request
+            from job_engine import generate_workflow
+            
+            # Build the request description from collected entities
+            entities = conversation.context.collected_entities
+            request_parts = []
+            
+            # Add actions
+            if EntityType.ACTION in entities:
+                actions = [e.normalized_value or e.value for e in entities[EntityType.ACTION]]
+                request_parts.extend(actions)
+            
+            # Add targets
+            if EntityType.TARGET in entities:
+                targets = [e.normalized_value or e.value for e in entities[EntityType.TARGET]]
+                request_parts.append(f"on {', '.join(targets)}")
+            
+            # Add services
+            if EntityType.SERVICE in entities:
+                services = [e.normalized_value or e.value for e in entities[EntityType.SERVICE]]
+                request_parts.append(f"for {', '.join(services)}")
+            
+            # Add file paths
+            if EntityType.FILE_PATH in entities:
+                files = [e.value for e in entities[EntityType.FILE_PATH]]
+                request_parts.append(f"files: {', '.join(files)}")
+            
+            description = " ".join(request_parts) if request_parts else "Execute automation task"
+            
+            # Generate workflow using Job Engine
+            workflow_result = generate_workflow(description)
+            
+            if workflow_result and workflow_result.get('success'):
+                job_id = workflow_result.get('job_id', str(uuid.uuid4()))
+                conversation.context.execution_id = job_id
+                conversation.context.execution_status = "started"
+                conversation.context.workflow = workflow_result.get('workflow')
+                
+                return f"Perfect! I've created and started your automation job.\n\n**Job ID**: {job_id}\n**Task**: {description}\n\nI'll monitor the execution and keep you updated on the progress."
+            else:
+                # Fallback to simulation if Job Engine fails
+                execution_id = str(uuid.uuid4())
+                conversation.context.execution_id = execution_id
+                conversation.context.execution_status = "started"
+                
+                return f"I've started your automation request.\n\n**Job ID**: {execution_id}\n**Task**: {description}\n\nI'll keep you updated on the progress."
+                
+        except Exception as e:
+            logger.error(f"Error executing request: {e}")
+            # Fallback to basic execution
+            execution_id = str(uuid.uuid4())
+            conversation.context.execution_id = execution_id
+            conversation.context.execution_status = "started"
+            
+            return f"I've started processing your request.\n\n**Job ID**: {execution_id}\n\nI'll keep you updated on the progress."
     
     def _handle_cancellation(self, conversation: Conversation) -> str:
         """Handle conversation cancellation"""

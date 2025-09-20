@@ -205,10 +205,13 @@ class AIBrainEngine:
                 return {
                     'response': result['conversation']['response'],
                     'intent': result['intent'],
+                    'confidence': result['intent'].get('confidence', 0.8) if isinstance(result['intent'], dict) else 0.8,
+                    'conversation': result['conversation'],
                     'conversation_id': result['conversation']['id'],
                     'conversation_state': result['conversation']['state'],
                     'context_analysis': result['context_analysis'],
                     'classification': result['classification'],
+                    'success': result['success'],
                     'metadata': {
                         'engine': 'intent_engine',
                         'timestamp': datetime.now().isoformat(),
