@@ -50,7 +50,10 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      AI_SERVICE_URL: http://ai-brain:3005
+      AI_SERVICE_URL: http://ai-command:3005
+      AI_OVERVIEW_SERVICE_URL: http://ai-orchestrator:3000
+      VECTOR_SERVICE_URL: http://vector-service:3000
+      LLM_SERVICE_URL: http://llm-service:3000
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -246,9 +249,118 @@ services:
 
   # AI Microservices
 
+  vector-service:
+    build: ./vector-service
+    container_name: opsconductor-vector
+    ports:
+      - "3007:3000"
+    environment:
+      REDIS_URL: redis://redis:6379/7
+      CHROMADB_URL: http://chromadb:8000
+      CUDA_VISIBLE_DEVICES: all
+      NVIDIA_VISIBLE_DEVICES: all
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./vector-service/main.py:/app/main.py
+      - ./vector-service/vector_store.py:/app/vector_store.py
+      - ./shared:/app/shared
+      - vector_data:/app/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
+    restart: unless-stopped
 
+  llm-service:
+    build: ./llm-service
+    container_name: opsconductor-llm
+    ports:
+      - "3008:3000"
+    environment:
+      REDIS_URL: redis://redis:6379/8
+      OLLAMA_HOST: http://ollama:11434
+      DEFAULT_LLM_MODEL: llama2:latest
+      CUDA_VISIBLE_DEVICES: all
+      NVIDIA_VISIBLE_DEVICES: all
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./llm-service/main.py:/app/main.py
+      - ./llm-service/llm_engine.py:/app/llm_engine.py
+      - ./shared:/app/shared
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
+    restart: unless-stopped
 
-
+  ai-orchestrator:
+    build: ./ai-orchestrator
+    container_name: opsconductor-ai-orchestrator
+    ports:
+      - "3010:3000"
+    environment:
+      VECTOR_SERVICE_URL: http://vector-service:3000
+      LLM_SERVICE_URL: http://llm-service:3000
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      REDIS_URL: redis://redis:6379/5
+    depends_on:
+      redis:
+        condition: service_healthy
+      vector-service:
+        condition: service_healthy
+      llm-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./ai-orchestrator/main.py:/app/main.py
+      - ./ai-orchestrator/orchestrator.py:/app/orchestrator.py
+      - ./ai-orchestrator/protocol_manager.py:/app/protocol_manager.py
+      - ./ai-orchestrator/workflow_generator.py:/app/workflow_generator.py
+      - ./ai-orchestrator/knowledge_manager.py:/app/knowledge_manager.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
+    restart: unless-stopped
 
   # Ollama LLM Server
   ollama:
@@ -271,37 +383,23 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
 
-  # AI Brain Service - Unified Intelligent AI System
-  ai-brain:
-    build: ./ai-brain
-    container_name: opsconductor-ai-brain
+  # AI Command Service - Core Intent Classification and Command Execution
+  ai-command:
+    build: ./ai-command
+    container_name: opsconductor-ai-command
     ports:
       - "3005:3005"
     environment:
-      # Core database and service connections
       ASSET_SERVICE_URL: http://asset-service:3002
       AUTOMATION_SERVICE_URL: http://automation-service:3003
-      COMMUNICATION_SERVICE_URL: http://communication-service:3004
       REDIS_URL: redis://redis:6379/9
+      CHROMADB_URL: http://chromadb:8000
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
-      
-      # AI infrastructure
-      CHROMADB_URL: http://chromadb:8000
       OLLAMA_HOST: http://ollama:11434
-      
-      # New AI Brain configuration
-      SYSTEM_MODEL_ENABLED: true
-      KNOWLEDGE_GRAPH_ENABLED: true
-      JOB_CREATION_ENGINE_ENABLED: true
-      INTENT_ENGINE_ENABLED: true
-      
-      # Legacy support during transition
-      LEGACY_MODE_ENABLED: true
-      
     depends_on:
       redis:
         condition: service_healthy
@@ -319,29 +417,45 @@ services:
       # Persist ChromaDB data
       - ai-chromadb-data:/app/chromadb_data
       
-      # Core files
-      - ./ai-brain/main.py:/app/main.py
-      - ./ai-brain/brain_engine.py:/app/brain_engine.py
+      # Core AI Service Files - TRACKED FOR EXCEPTIONS & DEBUGGING
+      - ./ai-command/main.py:/app/main.py                                    # Main FastAPI app entry point
+      - ./ai-command/ai_engine.py:/app/ai_engine.py                          # Modular AI orchestrator (601 lines)
       
-      # New AI modules
-      - ./ai-brain/system_model:/app/system_model
-      - ./ai-brain/knowledge_engine:/app/knowledge_engine
-      - ./ai-brain/intent_engine:/app/intent_engine
-      - ./ai-brain/job_engine:/app/job_engine
-      - ./ai-brain/integrations:/app/integrations
+      # Service Clients - TRACKED FOR EXTERNAL API FAILURES  
+      - ./ai-command/asset_client.py:/app/asset_client.py                     # Asset service integration
+      - ./ai-command/automation_client.py:/app/automation_client.py           # Automation service integration
+      - ./ai-command/communication_client.py:/app/communication_client.py     # Communication service integration
       
-      # Legacy support
-      - ./ai-brain/legacy:/app/legacy
+      # Core AI Components - TRACKED FOR ML/NLP FAILURES
+      - ./ai-command/nlp_processor.py:/app/nlp_processor.py                   # Natural language processing
+      - ./ai-command/vector_store.py:/app/vector_store.py                     # Vector embeddings storage
+      - ./ai-command/learning_engine.py:/app/learning_engine.py               # Machine learning engine
+      - ./ai-command/predictive_analytics.py:/app/predictive_analytics.py     # Predictive analytics
+      - ./ai-command/learning_api.py:/app/learning_api.py                     # Learning API endpoints
       
-      # Shared libraries
-      - ./shared:/app/shared
+      # Infrastructure Components - TRACKED FOR CONNECTIVITY ISSUES
+      - ./ai-command/protocol_manager.py:/app/protocol_manager.py             # Protocol management
+      - ./ai-command/workflow_generator.py:/app/workflow_generator.py         # Workflow generation
+      - ./ai-command/schema_introspector.py:/app/schema_introspector.py       # Database schema analysis
       
+      # Modular Query Handlers - TRACKED FOR INTENT CLASSIFICATION FAILURES
+      - ./ai-command/query_handlers/__init__.py:/app/query_handlers/__init__.py
+      - ./ai-command/query_handlers/base_handler.py:/app/query_handlers/base_handler.py
+      - ./ai-command/query_handlers/automation_queries.py:/app/query_handlers/automation_queries.py
+      - ./ai-command/query_handlers/infrastructure_queries.py:/app/query_handlers/infrastructure_queries.py
+      - ./ai-command/query_handlers/communication_queries.py:/app/query_handlers/communication_queries.py
+      - ./ai-command/query_handlers/dynamic_schema_queries.py:/app/query_handlers/dynamic_schema_queries.py
+      
+      # System Capabilities - TRACKED FOR AI SELF-AWARENESS
+      - ./ai-command/system_capabilities.py:/app/system_capabilities.py       # System capabilities and self-awareness
+      
+      # Shared Libraries - TRACKED FOR CROSS-SERVICE ISSUES
+      - ./shared:/app/shared                                                  # Shared utilities and middleware
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: 30s
-      timeout: 30s
-      retries: 10
-      start_period: 2000s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   # Background Workers

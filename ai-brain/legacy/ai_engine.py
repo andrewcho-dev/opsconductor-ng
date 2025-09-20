@@ -68,11 +68,18 @@ except ImportError:
     ProtocolResult = None
 
 # Import modular query handlers
-from query_handlers import (
-    InfrastructureQueryHandler,
-    AutomationQueryHandler,
-    CommunicationQueryHandler
-)
+try:
+    from query_handlers import (
+        InfrastructureQueryHandler,
+        AutomationQueryHandler,
+        CommunicationQueryHandler
+    )
+    QUERY_HANDLERS_AVAILABLE = True
+except ImportError:
+    QUERY_HANDLERS_AVAILABLE = False
+    InfrastructureQueryHandler = None
+    AutomationQueryHandler = None
+    CommunicationQueryHandler = None
 
 # Import service clients
 try:
@@ -281,11 +288,15 @@ class OpsConductorAI:
             }
             
             # Initialize handlers
-            self.query_handlers = {
-                'infrastructure': InfrastructureQueryHandler(shared_context),
-                'automation': AutomationQueryHandler(shared_context),
-                'communication': CommunicationQueryHandler(shared_context)
-            }
+            self.query_handlers = {}
+            if QUERY_HANDLERS_AVAILABLE:
+                self.query_handlers = {
+                    'infrastructure': InfrastructureQueryHandler(shared_context),
+                    'automation': AutomationQueryHandler(shared_context),
+                    'communication': CommunicationQueryHandler(shared_context)
+                }
+            else:
+                logger.warning("Query handlers not available, using fallback mode")
             
             # Initialize each handler
             for name, handler in self.query_handlers.items():

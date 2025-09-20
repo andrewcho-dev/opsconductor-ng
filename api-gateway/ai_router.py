@@ -198,31 +198,22 @@ class AIRouter:
     
     def _initialize_endpoints(self):
         """Initialize AI service endpoints"""
-        # Main AI Command service
-        ai_command = ServiceEndpoint(
-            name="ai_command",
-            url="http://ai-command:3005",
+        # Main AI Brain service (unified AI service)
+        ai_brain = ServiceEndpoint(
+            name="ai_brain",
+            url="http://ai-brain:3005",
             service_type=AIServiceType.GENERAL
-        )
-        
-        # AI Orchestrator
-        ai_orchestrator = ServiceEndpoint(
-            name="ai_orchestrator",
-            url="http://ai-orchestrator:3000",
-            service_type=AIServiceType.AUTOMATION
         )
         
         # Initialize load balancers
         for service_type in AIServiceType:
             self.load_balancers[service_type] = LoadBalancer()
         
-        # Add endpoints to load balancers
-        self.load_balancers[AIServiceType.GENERAL].add_endpoint(ai_command)
-        self.load_balancers[AIServiceType.AUTOMATION].add_endpoint(ai_orchestrator)
-        
-        # AI Command can handle multiple types
-        self.load_balancers[AIServiceType.INFRASTRUCTURE].add_endpoint(ai_command)
-        self.load_balancers[AIServiceType.ANALYTICS].add_endpoint(ai_command)
+        # Add AI Brain to all service types (it handles everything now)
+        self.load_balancers[AIServiceType.GENERAL].add_endpoint(ai_brain)
+        self.load_balancers[AIServiceType.AUTOMATION].add_endpoint(ai_brain)
+        self.load_balancers[AIServiceType.INFRASTRUCTURE].add_endpoint(ai_brain)
+        self.load_balancers[AIServiceType.ANALYTICS].add_endpoint(ai_brain)
     
     async def route_request(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Route AI request to appropriate service"""
@@ -317,10 +308,10 @@ class AIRouter:
     ) -> Dict[str, Any]:
         """Make request to AI service"""
         try:
-            # Prepare request - use correct endpoint path for ai-command service
-            if "ai-command" in endpoint.url:
+            # Prepare request - use correct endpoint path for ai-brain service
+            if "ai-brain" in endpoint.url:
                 url = f"{endpoint.url}/ai/chat"
-                # Transform request for ai-command service (expects 'message' not 'query')
+                # Transform request for ai-brain service (expects 'message' not 'query')
                 if "query" in request_data and "message" not in request_data:
                     request_data["message"] = request_data.pop("query")
             else:
