@@ -10,6 +10,7 @@ interface ChatMessage {
   executionId?: string;
   confidence?: number;
   status?: 'pending' | 'success' | 'error';
+  conversationId?: string;
 }
 
 interface ChatResponse {
@@ -17,6 +18,7 @@ interface ChatResponse {
   response: string;
   intent?: string;
   confidence?: number;
+  conversation_id?: string;
   job_id?: string;
   execution_id?: string;
   automation_job_id?: number;
@@ -105,13 +107,21 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     setChatError(null);
 
     try {
+      // Get the last AI message to extract conversation_id if available
+      const lastAiMessage = chatMessages.slice().reverse().find(msg => msg.type === 'ai');
+      const conversationId = lastAiMessage?.conversationId;
+      
       const response = await fetch('/api/v1/ai/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         },
-        body: JSON.stringify({ query: userMessage.content })  // Changed from 'message' to 'query'
+        body: JSON.stringify({ 
+          message: userMessage.content,
+          user_id: 1, // TODO: Get from auth context
+          conversation_id: conversationId
+        })
       });
 
       if (!response.ok) {
@@ -129,7 +139,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       let aiContent = data.response;
       if (data._routing) {
         const cached = data._routing.cached ? ' (cached)' : '';
-        const responseTime = data._routing.response_time.toFixed(2);
+        const responseTime = data._routing.response_time ? data._routing.response_time.toFixed(2) : '0.00';
         aiContent += `\n\n[Processed by ${data._routing.service} in ${responseTime}s${cached}]`;
       }
       
@@ -141,6 +151,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
         confidence: data.confidence,
         jobId: data.job_id,
         executionId: data.execution_id,
+        conversationId: data.conversation_id,
         status: data.execution_started ? 'pending' : undefined
       };
 

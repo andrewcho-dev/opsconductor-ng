@@ -201,13 +201,16 @@ const AIChatPage: React.FC = () => {
 
   // Handle first message to set chat title
   const handleFirstMessage = (message: string) => {
-    if (activeChatId) {
-      const currentSession = chatSessions.find(s => s.id === activeChatId);
-      if (currentSession && currentSession.title === 'New Chat') {
-        const newTitle = generateChatTitle(message);
-        updateChatSession(activeChatId, newTitle, message);
+    // Use setTimeout to defer the state update and avoid setState during render
+    setTimeout(() => {
+      if (activeChatId) {
+        const currentSession = chatSessions.find(s => s.id === activeChatId);
+        if (currentSession && currentSession.title === 'New Chat') {
+          const newTitle = generateChatTitle(message);
+          updateChatSession(activeChatId, newTitle, message);
+        }
       }
-    }
+    }, 0);
   };
 
   const handleClearChat = () => {
