@@ -179,17 +179,25 @@ def process_user_input(user_input: str, user_id: str = "default", conversation_i
         Dictionary with processed results including intent, entities, conversation, and analysis
     """
     try:
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"DEBUG: process_user_input called with user_id='{user_id}', conversation_id='{conversation_id}', input='{user_input}'")
+        
         # Step 1: Parse intent and entities using NLU
         intent = nlu_engine.parse_intent(user_input)
+        logger.info(f"DEBUG: Parsed intent: {intent.type.value}, confidence: {intent.confidence}")
         
         # Step 2: Handle conversation flow
         if conversation_id:
             # Continue existing conversation
+            logger.info(f"DEBUG: Continuing existing conversation {conversation_id}")
             conversation, response = conversation_manager.continue_conversation(
                 conversation_id, user_input, intent
             )
         else:
             # Start new conversation
+            logger.info(f"DEBUG: Starting new conversation for user {user_id}")
             conversation, response = conversation_manager.start_conversation(
                 user_id, user_input, intent
             )
@@ -204,7 +212,7 @@ def process_user_input(user_input: str, user_id: str = "default", conversation_i
             user_input, intent.entities, conversation.context.__dict__ if conversation else {}
         )
         
-        return {
+        result = {
             'success': True,
             'intent': {
                 'type': intent.type.value,
@@ -240,6 +248,9 @@ def process_user_input(user_input: str, user_id: str = "default", conversation_i
                 ]
             }
         }
+        
+        logger.info(f"DEBUG: Returning result with conversation_id: {result['conversation']['id']}, state: {result['conversation']['state']}")
+        return result
         
     except Exception as e:
         return {

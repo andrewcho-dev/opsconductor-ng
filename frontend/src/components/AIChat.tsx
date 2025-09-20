@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check } from 'lucide-react';
+import { aiApi } from '../services/api';
 
 interface ChatMessage {
   id: string;
@@ -43,6 +44,7 @@ interface AIChatProps {
 
 export interface AIChatRef {
   clearChat: () => void;
+  clearChatHistory: () => void;
 }
 
 const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstMessage, activeChatId }, ref) => {
@@ -75,6 +77,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Remove auto-scroll entirely - let users scroll manually
@@ -82,6 +85,21 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   useEffect(() => {
     saveChatHistory(chatMessages);
   }, [chatMessages]);
+
+  // Reset conversation ID and reload chat history when switching chats
+  useEffect(() => {
+    // Reload chat history from localStorage when activeChatId changes
+    const newHistory = loadChatHistory();
+    setChatMessages(newHistory);
+    
+    // Find the most recent conversation ID from the loaded messages
+    const lastAiMessage = newHistory.slice().reverse().find(msg => msg.type === 'ai' && msg.conversationId);
+    if (lastAiMessage?.conversationId) {
+      setCurrentConversationId(lastAiMessage.conversationId);
+    } else {
+      setCurrentConversationId(null);
+    }
+  }, [activeChatId]);
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,24 +129,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       const lastAiMessage = chatMessages.slice().reverse().find(msg => msg.type === 'ai');
       const conversationId = lastAiMessage?.conversationId;
       
-      const response = await fetch('/api/v1/ai/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        },
-        body: JSON.stringify({ 
-          message: userMessage.content,
-          user_id: 1, // TODO: Get from auth context
-          conversation_id: conversationId
-        })
+      const data = await aiApi.chat({
+        message: userMessage.content,
+        user_id: 1, // TODO: Get from auth context
+        conversation_id: conversationId
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ChatResponse = await response.json();
       
       // Check if there's an error in the response
       if (data.error) {
@@ -139,8 +144,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       let aiContent = data.response;
       if (data._routing) {
         const cached = data._routing.cached ? ' (cached)' : '';
-        const responseTime = data._routing.response_time ? data._routing.response_time.toFixed(2) : '0.00';
-        aiContent += `\n\n[Processed by ${data._routing.service} in ${responseTime}s${cached}]`;
+        const responseTime = (data._routing.response_time && typeof data._routing.response_time === 'number') 
+          ? data._routing.response_time.toFixed(2) 
+          : '0.00';
+        const service = data._routing.service || 'ai_brain';
+        aiContent += `\n\n[Processed by ${service} in ${responseTime}s${cached}]`;
       }
       
       const aiMessage: ChatMessage = {
@@ -156,6 +164,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       };
 
       setChatMessages(prev => [...prev, aiMessage]);
+      
+      // Update current conversation ID
+      if (data.conversation_id) {
+        setCurrentConversationId(data.conversation_id);
+      }
 
       // If execution started, add a system message
       if (data.execution_started && data.automation_job_id) {
@@ -188,12 +201,27 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
 
   const clearChatHistory = () => {
     setChatMessages([]);
+    setCurrentConversationId(null);
     localStorage.removeItem(CHAT_HISTORY_KEY);
     onClearChat?.();
   };
 
+  const reloadChatHistory = () => {
+    const newHistory = loadChatHistory();
+    setChatMessages(newHistory);
+    
+    // Find the most recent conversation ID from the loaded messages
+    const lastAiMessage = newHistory.slice().reverse().find(msg => msg.type === 'ai' && msg.conversationId);
+    if (lastAiMessage?.conversationId) {
+      setCurrentConversationId(lastAiMessage.conversationId);
+    } else {
+      setCurrentConversationId(null);
+    }
+  };
+
   useImperativeHandle(ref, () => ({
-    clearChat: clearChatHistory
+    clearChat: reloadChatHistory,
+    clearChatHistory: clearChatHistory
   }));
 
   const getMessageIcon = (message: ChatMessage) => {
@@ -373,12 +401,20 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             justify-content: center;
           }
           .chat-input-area {
-            padding: 32px 0;
+            padding: 32px 0 16px 0;
             background: white;
             border-top: 2px solid var(--neutral-300);
             display: grid;
             grid-template-columns: 2fr 8fr 2fr;
             box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+          }
+          .conversation-id-display {
+            grid-column: 2;
+            text-align: center;
+            font-size: 11px;
+            color: var(--neutral-500);
+            margin-top: 8px;
+            font-family: monospace;
           }
           .chat-input-wrapper {
             grid-column: 2;
@@ -561,6 +597,9 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             {isChatLoading ? <Loader size={16} className="loading-spinner" /> : <Send size={16} />}
           </button>
         </form>
+        <div className="conversation-id-display">
+          {currentConversationId ? `Conversation: ${currentConversationId}` : 'No conversation ID yet'}
+        </div>
       </div>
     </div>
   );

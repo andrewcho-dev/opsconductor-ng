@@ -323,7 +323,10 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
         if isinstance(workflow_definition, str):
             workflow_definition = json.loads(workflow_definition)
         
+        # Handle both 'steps' and 'nodes' formats for backward compatibility
         steps = workflow_definition.get('steps', [])
+        if not steps:
+            steps = workflow_definition.get('nodes', [])
         total_steps = len(steps)
         
         results = []
@@ -336,6 +339,8 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 step_name = step.get('name', f'Step {i+1}')
                 library_name = step.get('library')
                 function_name = step.get('function')
+                command = step.get('command')
+                step_type = step.get('type', 'execute')
                 
                 print(f"Executing step {step_id}: {step_name}")
                 
@@ -389,7 +394,7 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                                     if step_ref in step_outputs:
                                         step_inputs[input_name] = step_outputs[step_ref].get(output_key)
                 
-                # Execute the step function
+                # Execute the step function or command
                 if library_name and function_name:
                     # Import the library (handle hyphen to underscore conversion)
                     library_import_name = library_name.replace('-', '_')
@@ -419,13 +424,118 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                             asyncio.run(update_step_execution_status(step_exec_id, 'completed', result))
                         except Exception as e:
                             print(f"Warning: Failed to update step execution status: {e}")
+                elif command and step_type == 'execute':
+                    # Execute shell command
+                    import subprocess
+                    import time
+                    
+                    start_time = time.time()
+                    try:
+                        print(f"Executing command: {command}")
+                        result = subprocess.run(
+                            command,
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=step.get('timeout', 300)  # Default 5 minute timeout
+                        )
+                        
+                        execution_time = time.time() - start_time
+                        
+                        if result.returncode == 0:
+                            output = {
+                                'stdout': result.stdout,
+                                'stderr': result.stderr,
+                                'return_code': result.returncode,
+                                'execution_time': execution_time,
+                                'command': command
+                            }
+                            
+                            # Store outputs for next steps
+                            step_outputs[step_id] = output
+                            
+                            step_result = {
+                                'step_id': step_id,
+                                'step_name': step_name,
+                                'status': 'completed',
+                                'output': output,
+                                'inputs': step_inputs
+                            }
+                            
+                            print(f"Command completed successfully in {execution_time:.2f}s")
+                        else:
+                            error_output = {
+                                'stdout': result.stdout,
+                                'stderr': result.stderr,
+                                'return_code': result.returncode,
+                                'execution_time': execution_time,
+                                'command': command,
+                                'error': f"Command failed with return code {result.returncode}"
+                            }
+                            
+                            step_result = {
+                                'step_id': step_id,
+                                'step_name': step_name,
+                                'status': 'failed',
+                                'output': error_output,
+                                'inputs': step_inputs
+                            }
+                            
+                            print(f"Command failed with return code {result.returncode}")
+                            
+                    except subprocess.TimeoutExpired:
+                        execution_time = time.time() - start_time
+                        error_output = {
+                            'error': f"Command timed out after {step.get('timeout', 300)} seconds",
+                            'execution_time': execution_time,
+                            'command': command
+                        }
+                        
+                        step_result = {
+                            'step_id': step_id,
+                            'step_name': step_name,
+                            'status': 'failed',
+                            'output': error_output,
+                            'inputs': step_inputs
+                        }
+                        
+                        print(f"Command timed out after {step.get('timeout', 300)} seconds")
+                        
+                    except Exception as e:
+                        execution_time = time.time() - start_time
+                        error_output = {
+                            'error': str(e),
+                            'execution_time': execution_time,
+                            'command': command
+                        }
+                        
+                        step_result = {
+                            'step_id': step_id,
+                            'step_name': step_name,
+                            'status': 'failed',
+                            'output': error_output,
+                            'inputs': step_inputs
+                        }
+                        
+                        print(f"Command execution failed: {e}")
+                    
+                    # Update step execution status in database
+                    if step_exec_id:
+                        try:
+                            asyncio.run(update_step_execution_status(
+                                step_exec_id, 
+                                step_result['status'], 
+                                step_result['output']
+                            ))
+                        except Exception as e:
+                            print(f"Warning: Failed to update step execution status: {e}")
                 else:
-                    # Fallback for steps without library/function
+                    # Fallback for steps without library/function/command
                     step_result = {
                         'step_id': step_id,
                         'step_name': step_name,
                         'status': 'completed',
-                        'output': f'Step {step_name} completed (no function specified)',
+                        'output': f'Step {step_name} completed (no function or command specified)',
                         'inputs': step_inputs
                     }
                     

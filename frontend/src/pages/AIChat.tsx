@@ -48,12 +48,14 @@ const AIChatPage: React.FC = () => {
             lastMessage: new Date(session.lastMessage)
           }));
           setChatSessions(sessions);
+          console.log('Loaded chat sessions:', sessions); // Debug log
           
           // Set active chat to the most recent one
           if (sessions.length > 0) {
             const mostRecent = sessions.sort((a: ChatSession, b: ChatSession) => 
               b.lastMessage.getTime() - a.lastMessage.getTime()
             )[0];
+            console.log('Setting active chat to:', mostRecent.id); // Debug log
             setActiveChatId(mostRecent.id);
           }
         }
@@ -64,6 +66,11 @@ const AIChatPage: React.FC = () => {
 
     loadChatSessions();
   }, []);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Debug - activeChatId:', activeChatId, 'chatSessions.length:', chatSessions.length);
+  }, [activeChatId, chatSessions]);
 
   // Create initial chat if none exist
   useEffect(() => {
@@ -156,6 +163,15 @@ const AIChatPage: React.FC = () => {
 
   // Create a new chat session
   const createNewChat = () => {
+    // Save current chat history before creating new chat
+    if (activeChatId) {
+      const currentHistory = localStorage.getItem('opsconductor_ai_chat_history');
+      if (currentHistory) {
+        const currentChatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
+        localStorage.setItem(currentChatHistoryKey, currentHistory);
+      }
+    }
+    
     const newChat: ChatSession = {
       id: `chat_${Date.now()}`,
       title: 'New Chat',
@@ -169,14 +185,41 @@ const AIChatPage: React.FC = () => {
     setActiveChatId(newChat.id);
     saveChatSessions(updatedSessions);
     
-    // Clear the current chat
+    // Clear the main chat history for the new chat
+    localStorage.removeItem('opsconductor_ai_chat_history');
+    
+    // Force the AIChat component to reload (which will now load empty history)
     aiChatRef.current?.clearChat();
   };
 
   // Switch to a different chat session
   const switchToChat = (chatId: string) => {
+    if (chatId === activeChatId) return; // Don't switch to the same chat
+    
+    // Save current chat history before switching
+    if (activeChatId) {
+      const currentHistory = localStorage.getItem('opsconductor_ai_chat_history');
+      if (currentHistory) {
+        const currentChatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
+        localStorage.setItem(currentChatHistoryKey, currentHistory);
+      }
+    }
+    
     setActiveChatId(chatId);
-    // The AIChat component will need to be updated to load the specific chat history
+    // Load the specific chat history for this session
+    const chatHistoryKey = `opsconductor_ai_chat_history_${chatId}`;
+    const existingHistory = localStorage.getItem(chatHistoryKey);
+    
+    if (existingHistory) {
+      // Set the chat history for this specific session
+      localStorage.setItem('opsconductor_ai_chat_history', existingHistory);
+    } else {
+      // Clear chat history if no history exists for this session
+      localStorage.removeItem('opsconductor_ai_chat_history');
+    }
+    
+    // Force the AIChat component to reload its history
+    aiChatRef.current?.clearChat();
   };
 
   // Update chat session when messages change
@@ -214,7 +257,48 @@ const AIChatPage: React.FC = () => {
   };
 
   const handleClearChat = () => {
-    aiChatRef.current?.clearChat();
+    aiChatRef.current?.clearChatHistory();
+    // Also clear the session-specific history
+    if (activeChatId) {
+      const chatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
+      localStorage.removeItem(chatHistoryKey);
+    }
+  };
+
+  // Delete the currently active conversation
+  const deleteActiveConversation = () => {
+    if (!activeChatId || chatSessions.length <= 1) return; // Don't delete if it's the only chat
+    
+    // Remove the chat session
+    const updatedSessions = chatSessions.filter(session => session.id !== activeChatId);
+    setChatSessions(updatedSessions);
+    saveChatSessions(updatedSessions);
+    
+    // Remove the chat history
+    const chatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
+    localStorage.removeItem(chatHistoryKey);
+    
+    // Switch to the most recent remaining chat
+    if (updatedSessions.length > 0) {
+      const mostRecent = updatedSessions.sort((a, b) => 
+        b.lastMessage.getTime() - a.lastMessage.getTime()
+      )[0];
+      switchToChat(mostRecent.id);
+    } else {
+      // Create a new chat if no chats remain
+      createNewChat();
+    }
+  };
+
+  // Save chat history for the current session
+  const handleChatHistoryChange = () => {
+    if (activeChatId) {
+      const currentHistory = localStorage.getItem('opsconductor_ai_chat_history');
+      if (currentHistory) {
+        const chatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
+        localStorage.setItem(chatHistoryKey, currentHistory);
+      }
+    }
   };
 
   const startEditingChat = (chatId: string, currentTitle: string, e: React.MouseEvent) => {
@@ -290,11 +374,22 @@ const AIChatPage: React.FC = () => {
             padding-bottom: 8px;
             border-bottom: 1px solid var(--neutral-200);
           }
+          .header-left {
+            display: flex;
+            align-items: center;
+          }
           .header-left h1 {
             font-size: 18px;
             font-weight: 600;
             margin: 0;
             color: var(--neutral-800);
+          }
+          .delete-conversation-btn {
+            color: var(--danger-red) !important;
+          }
+          .delete-conversation-btn:hover {
+            background: var(--danger-red-light) !important;
+            color: var(--danger-red) !important;
           }
           .header-stats {
             display: flex;
@@ -504,6 +599,14 @@ const AIChatPage: React.FC = () => {
           <h1>AI Assistant</h1>
         </div>
         <div className="header-stats">
+          <button
+            onClick={deleteActiveConversation}
+            className="btn-icon btn-danger"
+            title="Delete current conversation"
+            disabled={!activeChatId || chatSessions.length <= 1}
+          >
+            <Trash2 size={18} />
+          </button>
           <Link to="/users" className="stat-pill">
             <Users size={14} />
             <span>{stats.users} Users</span>
@@ -602,15 +705,6 @@ const AIChatPage: React.FC = () => {
         <div className="chat-main">
           <div className="section-header">
             <span>AI Assistant</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                onClick={handleClearChat}
-                className="btn-icon"
-                title="Clear chat history"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
           </div>
           <div className="compact-content" style={{ padding: '8px' }}>
             <AIChat 

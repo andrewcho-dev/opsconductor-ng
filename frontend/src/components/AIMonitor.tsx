@@ -11,6 +11,7 @@ import {
   Clock,
   Server
 } from 'lucide-react';
+import { aiApi } from '../services/api';
 
 interface AIServiceStatus {
   status: string;
@@ -55,18 +56,7 @@ const AIMonitor: React.FC = () => {
 
   const fetchHealth = async () => {
     try {
-      const response = await fetch('/api/v1/ai/health', {
-        headers: {
-          'Content-Type': 'application/json'
-          // Removed Authorization header to test if auth is the issue
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await aiApi.health();
       console.log('AI Health data received:', data);
       setHealth(data);
       setError(null);
@@ -77,18 +67,7 @@ const AIMonitor: React.FC = () => {
 
   const fetchDashboard = async () => {
     try {
-      const response = await fetch('/api/v1/ai/monitoring/dashboard', {
-        headers: {
-          'Content-Type': 'application/json'
-          // Removed Authorization header to test if auth is the issue
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await aiApi.monitoringDashboard();
       setDashboard(data);
     } catch (err: any) {
       console.error('Dashboard fetch error:', err);
@@ -98,18 +77,7 @@ const AIMonitor: React.FC = () => {
   const resetCircuitBreaker = async (serviceName: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/ai/circuit-breaker/reset/${serviceName}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          'x-user-role': 'admin' // Add role header
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to reset circuit breaker`);
-      }
-
+      await aiApi.resetCircuitBreaker(serviceName);
       // Refresh health status
       await fetchHealth();
     } catch (err: any) {

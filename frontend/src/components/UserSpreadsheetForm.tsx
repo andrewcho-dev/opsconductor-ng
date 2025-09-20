@@ -203,11 +203,10 @@ const UserSpreadsheetForm: React.FC<UserSpreadsheetFormProps> = ({ user, onSave,
         console.log('Fetching roles...');
         const response = await rolesApi.list();
         console.log('Roles API response:', response);
-        if (response.data.success) {
-          const rolesData = response.data.data || [];
-          console.log('Setting roles:', rolesData);
-          setRoles(rolesData);
-        }
+        // The rolesApi.list() already returns a RoleListResponse with data property containing roles
+        const rolesData = response.data || [];
+        console.log('Setting roles:', rolesData);
+        setRoles(rolesData);
       } catch (error) {
         console.error('Failed to fetch roles:', error);
         // Fallback to default roles if API fails

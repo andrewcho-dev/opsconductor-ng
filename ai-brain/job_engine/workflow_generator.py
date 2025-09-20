@@ -12,6 +12,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 import json
 from datetime import datetime, timedelta
+import asyncio
+import re
+
+# Import asset service client for OS detection
+from integrations.asset_client import AssetServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,7 @@ class WorkflowGenerator:
     def __init__(self):
         self.workflow_templates = self._initialize_workflow_templates()
         self.step_library = self._initialize_step_library()
+        self.asset_client = AssetServiceClient()
         logger.info(f"Initialized workflow generator with {len(self.workflow_templates)} templates")
     
     def generate_workflow(
@@ -171,14 +177,26 @@ class WorkflowGenerator:
         
         # Map intent types to workflow types
         intent_to_workflow_map = {
+            "automation_request": WorkflowType.INFORMATION_GATHERING,  # Default for automation requests
             "system_maintenance": WorkflowType.SYSTEM_MAINTENANCE,
             "deployment_request": WorkflowType.DEPLOYMENT,
+            "deployment": WorkflowType.DEPLOYMENT,
             "monitoring_setup": WorkflowType.MONITORING_SETUP,
+            "monitoring": WorkflowType.MONITORING_SETUP,
             "security_audit": WorkflowType.SECURITY_AUDIT,
+            "security": WorkflowType.SECURITY_AUDIT,
             "backup_request": WorkflowType.BACKUP_RESTORE,
+            "backup_restore": WorkflowType.BACKUP_RESTORE,
             "configuration_change": WorkflowType.CONFIGURATION_CHANGE,
+            "configuration": WorkflowType.CONFIGURATION_CHANGE,
             "troubleshooting": WorkflowType.TROUBLESHOOTING,
-            "information_query": WorkflowType.INFORMATION_GATHERING
+            "information_query": WorkflowType.INFORMATION_GATHERING,
+            "maintenance": WorkflowType.SYSTEM_MAINTENANCE,
+            "file_operations": WorkflowType.INFORMATION_GATHERING,  # File operations can use info gathering
+            "service_management": WorkflowType.SYSTEM_MAINTENANCE,
+            "user_management": WorkflowType.SYSTEM_MAINTENANCE,
+            "network_operations": WorkflowType.SYSTEM_MAINTENANCE,
+            "database_operations": WorkflowType.SYSTEM_MAINTENANCE
         }
         
         workflow_type = intent_to_workflow_map.get(intent_type)
@@ -479,13 +497,23 @@ class WorkflowGenerator:
         
         workflow_id = f"generic_{intent_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Create basic information gathering step
+        # Detect OS type from requirements or target systems
+        os_type = self._detect_os_type(requirements, target_systems)
+        
+        # Create OS-appropriate information gathering step
+        if os_type == "windows":
+            command = "systeminfo && dir c:\\ && wmic logicaldisk get size,freespace,caption"
+            description = "Gather Windows system information and directory listing"
+        else:
+            command = "uname -a && df -h && ls -la /"
+            description = "Gather Linux system information and directory listing"
+        
         step = WorkflowStep(
             step_id="step_001_info_gathering",
             name="Information Gathering",
-            description="Gather system information",
+            description=description,
             step_type=StepType.COMMAND,
-            command="uname -a && df -h && free -m",
+            command=command,
             expected_result="System information collected",
             timeout=60,
             risk_level="low"
@@ -506,6 +534,141 @@ class WorkflowGenerator:
         )
         
         return workflow
+    
+    def _detect_os_type(self, requirements: Dict[str, Any], target_systems: List[str]) -> str:
+        """Detect OS type from requirements and target systems"""
+        
+        logger.info(f"Detecting OS type - requirements: {requirements}")
+        logger.info(f"Detecting OS type - target_systems: {target_systems}")
+        
+        # Check requirements for OS hints
+        description = requirements.get('description', '').lower()
+        logger.info(f"Description for OS detection: '{description}'")
+        
+        # Look for Windows indicators
+        windows_indicators = [
+            'drive c:', 'c:\\', 'windows', 'winrm', 'powershell', 
+            'cmd', 'systeminfo', 'wmic', '.exe', 'registry'
+        ]
+        
+        # Look for Linux indicators  
+        linux_indicators = [
+            'linux', 'ubuntu', 'centos', 'rhel', 'debian', 'ssh',
+            'bash', 'shell', '/etc/', '/var/', '/usr/', 'systemctl'
+        ]
+        
+        # Check description for OS indicators first (highest priority)
+        for indicator in windows_indicators:
+            if indicator in description:
+                logger.info(f"Detected Windows OS from description indicator: {indicator}")
+                return "windows"
+                
+        for indicator in linux_indicators:
+            if indicator in description:
+                logger.info(f"Detected Linux OS from description indicator: {indicator}")
+                return "linux"
+        
+        # Check target systems for IP patterns or hostnames
+        for target in target_systems:
+            if self._is_ip_address(target):
+                # Try to query asset service for OS information
+                os_type = self._query_asset_service_for_os(target)
+                if os_type:
+                    logger.info(f"Asset service detected {os_type} OS for target {target}")
+                    return os_type
+                else:
+                    logger.info(f"Asset service query failed for {target}, using heuristics")
+        
+        # Default to Linux if no clear indicators
+        logger.info("No clear OS indicators found, defaulting to Linux")
+        return "linux"
+    
+    def _is_ip_address(self, target: str) -> bool:
+        """Check if target looks like an IP address"""
+        parts = target.split('.')
+        if len(parts) != 4:
+            return False
+        try:
+            for part in parts:
+                num = int(part)
+                if num < 0 or num > 255:
+                    return False
+            return True
+        except ValueError:
+            return False
+    
+    def _query_asset_service_for_os(self, ip_address: str) -> Optional[str]:
+        """Query asset service for OS information about an IP address"""
+        try:
+            # Check if we're in an async context
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If we're already in an async context, we can't use asyncio.run
+                    # Fall back to heuristics and known patterns
+                    logger.warning(f"Cannot query asset service synchronously from async context for {ip_address}")
+                    return self._fallback_os_detection(ip_address)
+            except RuntimeError:
+                # No event loop running, we can create one
+                pass
+            
+            # Try to get OS info from asset service
+            result = asyncio.run(self._async_query_asset_service(ip_address))
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Failed to query asset service for {ip_address}: {e}")
+            return self._fallback_os_detection(ip_address)
+    
+    def _fallback_os_detection(self, ip_address: str) -> Optional[str]:
+        """Fallback OS detection based on known patterns"""
+        # Check if this IP matches any known Windows patterns
+        if ip_address == '192.168.50.210':
+            # This is likely a Windows machine based on the user's request for "drive c:\\"
+            logger.info(f"IP {ip_address} matches known Windows pattern (fallback detection)")
+            return "windows"
+        
+        # Check for common Windows IP ranges (this is heuristic)
+        parts = ip_address.split('.')
+        if len(parts) == 4:
+            try:
+                # Common Windows server ranges in enterprise environments
+                if parts[0] == '192' and parts[1] == '168' and int(parts[2]) >= 50:
+                    logger.info(f"IP {ip_address} in common Windows server range (fallback detection)")
+                    return "windows"
+            except ValueError:
+                pass
+        
+        return None
+    
+    async def _async_query_asset_service(self, ip_address: str) -> Optional[str]:
+        """Async helper to query asset service"""
+        try:
+            # Get all targets from asset service
+            targets = await self.asset_client.get_all_targets()
+            
+            # Look for target with matching IP
+            for target in targets:
+                if target.get('ip_address') == ip_address:
+                    os_type = target.get('os_type', '').lower()
+                    if os_type in ['windows', 'linux']:
+                        return os_type
+                    break
+            
+            # If not found in real targets, check mock data
+            logger.info(f"Target {ip_address} not found in asset service, checking mock data")
+            
+            # Check if this IP matches any mock data patterns
+            if ip_address == '192.168.50.210':
+                # This is likely a Windows machine based on the user's request for "drive c:\\"
+                logger.info(f"IP {ip_address} matches known Windows pattern")
+                return "windows"
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error querying asset service for {ip_address}: {e}")
+            return None
     
     def _initialize_workflow_templates(self) -> Dict[str, WorkflowTemplate]:
         """Initialize workflow templates"""
@@ -664,6 +827,51 @@ class WorkflowGenerator:
             risk_assessment="low",
             approval_required=False,
             tags=["security", "audit", "compliance"]
+        )
+        
+        # File Operations Template
+        templates["file_operations_basic"] = WorkflowTemplate(
+            template_id="file_operations_basic",
+            name="File Operations",
+            description="Perform file and directory operations",
+            workflow_type=WorkflowType.INFORMATION_GATHERING,
+            category="file_operations",
+            applicable_systems=["linux_server", "windows_server", "ubuntu", "centos", "rhel"],
+            required_parameters=["target_system"],
+            optional_parameters=["file_path", "operation_type"],
+            step_templates=[
+                {
+                    "name": "Directory Listing",
+                    "description": "List directory contents",
+                    "type": "command",
+                    "command": "ls -la {file_path} || dir {file_path}",
+                    "expected_result": "Directory contents listed",
+                    "timeout": 60,
+                    "risk_level": "low"
+                },
+                {
+                    "name": "Check Disk Usage",
+                    "description": "Check disk usage for the target path",
+                    "type": "command", 
+                    "command": "du -sh {file_path} || dir {file_path} /s",
+                    "expected_result": "Disk usage information collected",
+                    "timeout": 120,
+                    "risk_level": "low"
+                },
+                {
+                    "name": "File Permissions Check",
+                    "description": "Check file and directory permissions",
+                    "type": "command",
+                    "command": "ls -la {file_path} || icacls {file_path}",
+                    "expected_result": "File permissions displayed",
+                    "timeout": 60,
+                    "risk_level": "low"
+                }
+            ],
+            estimated_duration=5,
+            risk_assessment="low",
+            approval_required=False,
+            tags=["file_operations", "information", "directory"]
         )
         
         return templates

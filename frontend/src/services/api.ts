@@ -642,6 +642,74 @@ export const communicationApi = {
   }
 };
 
+// AI Chat API
+export const aiApi = {
+  chat: async (request: {
+    message: string;
+    user_id?: number;
+    conversation_id?: string;
+  }): Promise<{
+    response: string;
+    intent: string;
+    confidence: number;
+    conversation_id?: string;
+    job_id?: string;
+    execution_id?: string;
+    automation_job_id?: number;
+    workflow?: any;
+    execution_started: boolean;
+    _routing?: {
+      service: string;
+      service_type: string;
+      response_time: number;
+      cached: boolean;
+    };
+    error?: string;
+  }> => {
+    const response = await api.post('/api/v1/ai/chat', request);
+    return response.data;
+  },
+
+  health: async (): Promise<{
+    status: string;
+    services: Record<string, any>;
+    timestamp: string;
+  }> => {
+    const response = await api.get('/api/v1/ai/health');
+    return response.data;
+  },
+
+  monitoringDashboard: async (): Promise<{
+    current: {
+      services: Record<string, any>;
+      overall_health: string;
+    };
+    history: any[];
+    analysis: {
+      overall_health: string;
+      alerts: Array<{
+        severity: string;
+        service: string;
+        message: string;
+      }>;
+      recommendations: string[];
+    };
+    statistics: Record<string, any>;
+  }> => {
+    const response = await api.get('/api/v1/ai/monitoring/dashboard');
+    return response.data;
+  },
+
+  resetCircuitBreaker: async (serviceName: string): Promise<void> => {
+    await api.post(`/api/v1/ai/circuit-breaker/reset/${serviceName}`);
+  },
+
+  getKnowledgeStats: async (): Promise<any> => {
+    const response = await api.get('/api/v1/ai/knowledge-stats');
+    return response.data;
+  }
+};
+
 // Automation Service API
 export const automationApi = {
   testConnection: async (connectionData: {

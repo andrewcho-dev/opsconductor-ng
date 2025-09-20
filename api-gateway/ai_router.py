@@ -220,16 +220,20 @@ class AIRouter:
         start_time = time.time()
         
         try:
-            # Extract query and determine service type
-            query = request_data.get("query", "")
+            # Extract query and determine service type (handle both 'query' and 'message' fields)
+            query = request_data.get("query") or request_data.get("message", "")
             service_type = self._determine_service_type(query)
             
-            # Check cache
-            cache_key = self._generate_cache_key(request_data)
-            cached_response = await self._get_cached_response(cache_key)
-            if cached_response:
-                self.metrics[service_type]["cache_hits"] += 1
-                return cached_response
+            # Check cache (skip caching for conversational messages and automation requests)
+            query_lower = query.lower()
+            is_automation_request = any(word in query_lower for word in ["create", "execute", "job", "automation", "workflow"])
+            should_use_cache = not request_data.get("conversation_id") and not is_automation_request
+            if should_use_cache:
+                cache_key = self._generate_cache_key(request_data)
+                cached_response = await self._get_cached_response(cache_key)
+                if cached_response:
+                    self.metrics[service_type]["cache_hits"] += 1
+                    return cached_response
             
             # Get endpoint
             load_balancer = self.load_balancers.get(service_type)
@@ -260,8 +264,9 @@ class AIRouter:
             if not success:
                 self.metrics[service_type]["failures"] += 1
             
-            # Cache successful responses
-            if success:
+            # Cache successful responses (skip caching for conversational messages and automation requests)
+            if success and should_use_cache:
+                cache_key = self._generate_cache_key(request_data)
                 await self._cache_response(cache_key, response)
             
             # Add routing metadata
@@ -283,6 +288,9 @@ class AIRouter:
     
     def _determine_service_type(self, query: str) -> AIServiceType:
         """Determine which service type should handle the query"""
+        if not query:
+            return AIServiceType.GENERAL
+            
         query_lower = query.lower()
         
         # Check for specific patterns
@@ -355,10 +363,12 @@ class AIRouter:
     
     def _generate_cache_key(self, request_data: Dict[str, Any]) -> str:
         """Generate cache key for request"""
-        # Use query and key parameters for cache key
+        # Use query/message, user_id, conversation_id, and context_id for cache key
+        # Include conversation_id to prevent caching issues with conversation state
         key_parts = [
-            request_data.get("query", ""),
+            request_data.get("query", request_data.get("message", "")),
             str(request_data.get("user_id", "anonymous")),
+            str(request_data.get("conversation_id", "")),
             str(request_data.get("context_id", ""))
         ]
         

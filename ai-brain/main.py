@@ -216,12 +216,13 @@ async def chat_endpoint(request: ChatRequest):
         }
         response = await ai_engine.process_query(request.message, user_context)
         
-        # Extract conversation_id from response
-        conversation_id = None
-        if isinstance(response.get("conversation"), dict):
-            conversation_id = response["conversation"].get("id")
-        elif hasattr(response.get("conversation"), "id"):
-            conversation_id = response["conversation"].id
+        # Extract conversation_id from response - ALWAYS use the one from request if provided
+        conversation_id = request.conversation_id
+        if not conversation_id:
+            if isinstance(response.get("conversation"), dict):
+                conversation_id = response["conversation"].get("id")
+            elif hasattr(response.get("conversation"), "id"):
+                conversation_id = response["conversation"].id
         
         # Extract intent properly
         intent_value = response.get("intent", "unknown")
@@ -233,17 +234,51 @@ async def chat_endpoint(request: ChatRequest):
         if isinstance(response.get("intent"), dict):
             confidence_value = response["intent"].get("confidence", 0.8)
         
+        # Extract job execution information from conversation context
+        job_id = None
+        execution_id = None
+        automation_job_id = None
+        workflow = None
+        execution_started = False
+        
+        # Check if we have conversation context with execution info
+        conversation = response.get("conversation")
+        if conversation and isinstance(conversation, dict):
+            context = conversation.get("context")
+            if context:
+                execution_id = context.get("execution_id")
+                execution_status = context.get("execution_status")
+                generated_workflow = context.get("generated_workflow")
+                
+                # Check if execution actually started
+                if execution_status in ["started", "executing"]:
+                    execution_started = True
+                    job_id = execution_id  # Use execution_id as job_id for now
+                    
+                    # Try to extract automation job ID if available
+                    if generated_workflow and isinstance(generated_workflow, dict):
+                        automation_job_id = generated_workflow.get("automation_job_id")
+                        workflow = generated_workflow
+        
+        # Fallback to legacy data structure
+        if not execution_started and response.get("data"):
+            job_id = response.get("data", {}).get("job_id")
+            execution_id = response.get("data", {}).get("execution_id")
+            automation_job_id = response.get("data", {}).get("automation_job_id")
+            workflow = response.get("data", {}).get("workflow")
+            execution_started = response.get("success", False)
+        
         # Convert to expected ChatResponse format
         return ChatResponse(
             response=response.get("response", ""),
             intent=intent_value,
             confidence=confidence_value,
             conversation_id=conversation_id,
-            job_id=response.get("data", {}).get("job_id"),
-            execution_id=response.get("data", {}).get("execution_id"),
-            automation_job_id=response.get("data", {}).get("automation_job_id"),
-            workflow=response.get("data", {}).get("workflow"),
-            execution_started=response.get("success", False)
+            job_id=job_id,
+            execution_id=execution_id,
+            automation_job_id=automation_job_id,
+            workflow=workflow,
+            execution_started=execution_started
         )
     except Exception as e:
         logger.error("Chat request failed", error=str(e))
