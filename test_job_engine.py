@@ -25,16 +25,14 @@ def test_job_engine():
     
     # Test job creation endpoint
     test_request = {
-        "natural_language": "Deploy the web application to production servers and restart nginx",
-        "context": {
-            "user_id": "test_user",
-            "environment": "production"
-        }
+        "description": "Deploy the web application to production servers and restart nginx",
+        "user_id": 1,
+        "priority": "high"
     }
     
     try:
         print("\n🚀 Testing Job Engine with natural language request...")
-        print(f"Request: {test_request['natural_language']}")
+        print(f"Request: {test_request['description']}")
         
         response = requests.post(
             f"{base_url}/ai/create-job",

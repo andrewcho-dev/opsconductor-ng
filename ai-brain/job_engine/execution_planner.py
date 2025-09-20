@@ -111,6 +111,25 @@ class ExecutionPlan:
     created_at: datetime = field(default_factory=datetime.now)
     created_by: str = "ai_brain"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ExecutionPlan to dictionary for JSON serialization"""
+        return {
+            "plan_id": self.plan_id,
+            "workflow_id": self.workflow_id,
+            "target_systems": self.target_systems,
+            "execution_strategy": self.execution_strategy.__dict__ if hasattr(self.execution_strategy, '__dict__') else str(self.execution_strategy),
+            "execution_schedule": self.execution_schedule.__dict__ if hasattr(self.execution_schedule, '__dict__') else str(self.execution_schedule),
+            "resource_requirements": self.resource_requirements,
+            "risk_assessment": self.risk_assessment,
+            "approval_requirements": self.approval_requirements,
+            "monitoring_plan": self.monitoring_plan,
+            "rollback_plan": self.rollback_plan,
+            "status": self.status.value if isinstance(self.status, ExecutionStatus) else str(self.status),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_by": self.created_by,
+            "metadata": self.metadata
+        }
 
 class ExecutionPlanner:
     """Plans execution strategies for optimized workflows"""

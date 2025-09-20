@@ -71,6 +71,25 @@ class ResolvedTarget:
     capabilities: List[str] = field(default_factory=list)
     risk_level: str = "medium"
     requires_approval: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert ResolvedTarget to dictionary for JSON serialization"""
+        return {
+            "target_id": self.target_id,
+            "hostname": self.hostname,
+            "ip_address": self.ip_address,
+            "platform": self.platform.value if isinstance(self.platform, TargetPlatform) else str(self.platform),
+            "target_type": self.target_type.value if isinstance(self.target_type, TargetType) else str(self.target_type),
+            "credentials": self.credentials.__dict__ if self.credentials else None,
+            "connection_status": self.connection_status.value if isinstance(self.connection_status, ConnectionStatus) else str(self.connection_status),
+            "last_tested": self.last_tested.isoformat() if self.last_tested else None,
+            "metadata": self.metadata,
+            "tags": self.tags,
+            "groups": self.groups,
+            "capabilities": self.capabilities,
+            "risk_level": self.risk_level,
+            "requires_approval": self.requires_approval
+        }
 
 @dataclass
 class TargetGroup:

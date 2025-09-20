@@ -274,6 +274,45 @@ class AIBrainEngine:
             logger.error(f"Error getting system capabilities: {e}")
             return {"error": str(e)}
     
+    async def process_message(self, message: str, user_id: str = "default") -> Dict[str, Any]:
+        """
+        Process a user message through the AI Brain Engine.
+        
+        Args:
+            message: The user's message
+            user_id: User identifier
+            
+        Returns:
+            Dict containing the AI response and metadata
+        """
+        try:
+            logger.info(f"Processing message from user {user_id}: {message[:50]}...")
+            
+            # Use the process_query method with user context
+            user_context = {"user_id": user_id}
+            result = await self.process_query(message, user_context)
+            
+            # Convert to expected format for chat interface
+            return {
+                "response": result.get("response", "I'm processing your request..."),
+                "intent": result.get("intent", "unknown"),
+                "success": result.get("metadata", {}).get("success", True),
+                "data": {
+                    "conversation_id": result.get("conversation_id"),
+                    "context_analysis": result.get("context_analysis"),
+                    "classification": result.get("classification")
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            return {
+                "response": f"I encountered an error processing your message: {str(e)}",
+                "intent": "error",
+                "success": False,
+                "data": {}
+            }
+
     async def create_job_from_natural_language(self, description: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Create an executable job from natural language description using the Job Engine.
@@ -484,3 +523,72 @@ class AIBrainEngine:
             },
             "timestamp": datetime.utcnow().isoformat()
         }
+    
+    async def process_message(self, message: str, user_id: str = "system") -> Dict[str, Any]:
+        """
+        Process a chat message through the AI Brain Engine.
+        
+        Args:
+            message: The user's message
+            user_id: User identifier
+            
+        Returns:
+            Dict containing the response and any generated data
+        """
+        try:
+            logger.info(f"Processing message from user {user_id}: {message}")
+            
+            # Use the existing process_query method as the core processing engine
+            result = await self.process_query(message, {"user_id": user_id})
+            
+            # Handle different result structures from different engines
+            if isinstance(result, dict):
+                # Extract response text
+                response_text = ""
+                if "response" in result:
+                    response_text = result["response"]
+                elif "conversation" in result and isinstance(result["conversation"], dict):
+                    response_text = result["conversation"].get("response", "")
+                else:
+                    response_text = "I've processed your request."
+                
+                # Extract intent
+                intent = "unknown"
+                if "intent" in result:
+                    if isinstance(result["intent"], dict):
+                        intent = result["intent"].get("type", "unknown")
+                    else:
+                        intent = str(result["intent"])
+                
+                # Determine success
+                success = result.get("success", True)
+                if "metadata" in result:
+                    success = result["metadata"].get("success", success)
+                
+                return {
+                    "response": response_text,
+                    "intent": intent,
+                    "success": success,
+                    "data": {
+                        "conversation_id": result.get("conversation_id"),
+                        "classification": result.get("classification"),
+                        "context_analysis": result.get("context_analysis")
+                    }
+                }
+            else:
+                # Handle unexpected result format
+                return {
+                    "response": str(result) if result else "I processed your request.",
+                    "intent": "unknown",
+                    "success": True,
+                    "data": {}
+                }
+                
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            return {
+                "response": f"I apologize, but I encountered an error: {str(e)}",
+                "intent": "error",
+                "success": False,
+                "data": {}
+            }

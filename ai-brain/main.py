@@ -90,6 +90,10 @@ class JobResponse(BaseModel):
     message: str
     confidence: float
     parsed_request: Dict[str, Any]
+    # Phase 7 Integration Fields
+    targets: Optional[List[Dict[str, Any]]] = []
+    execution_plan: Optional[Dict[str, Any]] = {}
+    optimizations: Optional[List[Dict[str, Any]]] = []
 
 class TextAnalysisRequest(BaseModel):
     text: str
@@ -349,48 +353,195 @@ async def create_job(request: JobRequest):
             else:
                 logger.warning(f"No targets found for group '{parsed_request.target_group}'")
         
-        # Step 3: Generate workflow
-        # Convert parsed_request to the format expected by workflow_generator
-        intent_type = _map_operation_to_intent(parsed_request.operation)
-        requirements = {
-            "operation": parsed_request.operation,
-            "target_process": parsed_request.target_process,
-            "target_service": parsed_request.target_service,
-            "target_group": parsed_request.target_group,
-            "target_os": parsed_request.target_os,
-            "description": request.description
-        }
+        # Step 3: Phase 7 Integration - Use AI Brain Engine for complete workflow processing
+        resolved_targets = []
+        execution_plan = {}
+        optimizations = []
         
-        workflow = workflow_generator.generate_workflow(intent_type, requirements, target_groups)
-        
-        # Convert GeneratedWorkflow to dict format for compatibility
-        workflow_dict = {
-            "id": workflow.workflow_id,
-            "name": workflow.name,
-            "description": workflow.description,
-            "type": workflow.workflow_type.value,
-            "steps": [
-                {
-                    "id": step.step_id,
-                    "name": step.name,
-                    "description": step.description,
-                    "type": step.step_type.value,
-                    "command": step.command,
-                    "script": step.script,
-                    "parameters": step.parameters,
-                    "timeout": step.timeout,
-                    "retry_count": step.retry_count,
-                    "risk_level": step.risk_level,
-                    "requires_approval": step.requires_approval
+        if hasattr(ai_engine, 'job_creation_enabled') and ai_engine.job_creation_enabled:
+            # Use AI Brain Engine with Phase 7 modules
+            ai_response = await ai_engine.process_query(request.description, {
+                "operation_type": "job_creation",
+                "parsed_request": {
+                    "operation": parsed_request.operation,
+                    "target_process": parsed_request.target_process,
+                    "target_service": parsed_request.target_service,
+                    "target_group": parsed_request.target_group,
+                    "target_os": parsed_request.target_os
                 }
-                for step in workflow.steps
-            ],
-            "execution_mode": workflow.execution_mode.value,
-            "estimated_duration": workflow.estimated_duration,
-            "risk_level": workflow.risk_level,
-            "requires_approval": workflow.requires_approval,
-            "target_systems": workflow.target_systems
-        }
+            })
+            
+            # Extract Phase 7 results from AI response
+            workflow_dict = ai_response.get("workflow", {})
+            resolved_targets = ai_response.get("targets", [])
+            execution_plan = ai_response.get("execution_plan", {})
+            optimizations = ai_response.get("optimizations", [])
+            
+            # If AI Brain didn't generate complete workflow, fall back to direct workflow generation
+            if not workflow_dict.get("steps"):
+                logger.info("AI Brain didn't generate complete workflow, using Phase 7 modules directly")
+                
+                # Convert parsed_request to the format expected by workflow_generator
+                intent_type = _map_operation_to_intent(parsed_request.operation)
+                requirements = {
+                    "operation": parsed_request.operation,
+                    "target_process": parsed_request.target_process,
+                    "target_service": parsed_request.target_service,
+                    "target_group": parsed_request.target_group,
+                    "target_os": parsed_request.target_os,
+                    "description": request.description
+                }
+                
+                # Phase 7 Module Integration
+                # Step 3a: Target Resolution
+                if hasattr(ai_engine, 'resolve_targets'):
+                    try:
+                        target_resolution_result = ai_engine.resolve_targets(
+                            target_groups + [parsed_request.target_group] if parsed_request.target_group else target_groups,
+                            {"context": requirements}
+                        )
+                        raw_targets = target_resolution_result.resolved_targets if hasattr(target_resolution_result, 'resolved_targets') else []
+                        # Convert ResolvedTarget objects to dictionaries
+                        resolved_targets = []
+                        for target in raw_targets:
+                            if hasattr(target, 'to_dict'):
+                                resolved_targets.append(target.to_dict())
+                            elif hasattr(target, '__dict__'):
+                                resolved_targets.append(target.__dict__)
+                            else:
+                                resolved_targets.append(str(target))
+                        logger.info(f"Target Resolver: Resolved {len(resolved_targets)} targets")
+                    except Exception as e:
+                        logger.warning(f"Target resolution failed: {e}")
+                        resolved_targets = []
+                
+                # Step 3b: Workflow Generation
+                workflow = ai_engine.generate_workflow(intent_type, requirements, target_groups)
+                
+                # Step 3c: Step Optimization
+                optimized_workflow_obj = None
+                if hasattr(ai_engine, 'optimize_workflow_steps'):
+                    try:
+                        # Pass workflow.steps (list) instead of workflow object
+                        optimized_workflow_obj = ai_engine.optimize_workflow_steps(workflow.steps, None, {
+                            "targets": resolved_targets,
+                            "requirements": requirements
+                        })
+                        
+                        # Extract optimizations from the OptimizedWorkflow object
+                        if hasattr(optimized_workflow_obj, 'optimization_metrics'):
+                            raw_optimizations = [optimized_workflow_obj.optimization_metrics]
+                        else:
+                            raw_optimizations = []
+                            
+                        # Convert optimization objects to dictionaries
+                        optimizations = []
+                        for opt in raw_optimizations:
+                            if hasattr(opt, 'to_dict'):
+                                optimizations.append(opt.to_dict())
+                            elif hasattr(opt, '__dict__'):
+                                optimizations.append(opt.__dict__)
+                            else:
+                                optimizations.append(str(opt))
+                        logger.info(f"Step Optimizer: Applied {len(optimizations)} optimizations")
+                    except Exception as e:
+                        logger.warning(f"Step optimization failed: {e}")
+                        optimizations = []
+                        optimized_workflow_obj = None
+                
+                # Step 3d: Execution Planning
+                logger.info(f"Checking execution planner: has_method={hasattr(ai_engine, 'create_execution_plan')}, optimized_obj={optimized_workflow_obj is not None}")
+                if hasattr(ai_engine, 'create_execution_plan') and optimized_workflow_obj:
+                    try:
+                        logger.info("Calling execution planner...")
+                        # Pass both original workflow and optimized workflow object (not dict)
+                        execution_plan_result = ai_engine.create_execution_plan(
+                            workflow, 
+                            optimized_workflow_obj,  # Pass the actual OptimizedWorkflow object
+                            {
+                                "targets": resolved_targets,
+                                "requirements": requirements
+                            }
+                        )
+                        execution_plan = execution_plan_result.to_dict() if hasattr(execution_plan_result, 'to_dict') else execution_plan_result.__dict__
+                        logger.info(f"Execution Planner: Created plan with strategy '{execution_plan.get('strategy', 'unknown')}'")
+                    except Exception as e:
+                        logger.warning(f"Execution planning failed: {e}")
+                        execution_plan = {}
+                else:
+                    logger.warning(f"Execution planner not called: has_method={hasattr(ai_engine, 'create_execution_plan')}, optimized_obj={optimized_workflow_obj is not None}")
+                
+                # Convert GeneratedWorkflow to dict format for compatibility
+                workflow_dict = {
+                    "id": workflow.workflow_id,
+                    "name": workflow.name,
+                    "description": workflow.description,
+                    "type": workflow.workflow_type.value,
+                    "steps": [
+                        {
+                            "id": step.step_id,
+                            "name": step.name,
+                            "description": step.description,
+                            "type": step.step_type.value,
+                            "command": step.command,
+                            "script": step.script,
+                            "parameters": step.parameters,
+                            "timeout": step.timeout,
+                            "retry_count": step.retry_count,
+                            "risk_level": step.risk_level,
+                            "requires_approval": step.requires_approval
+                        }
+                        for step in workflow.steps
+                    ],
+                    "execution_mode": workflow.execution_mode.value,
+                    "estimated_duration": workflow.estimated_duration,
+                    "risk_level": workflow.risk_level,
+                    "requires_approval": workflow.requires_approval,
+                    "target_systems": workflow.target_systems
+                }
+        else:
+            # Fallback to basic workflow generation
+            logger.warning("AI Brain job creation not enabled, using basic workflow generation")
+            intent_type = _map_operation_to_intent(parsed_request.operation)
+            requirements = {
+                "operation": parsed_request.operation,
+                "target_process": parsed_request.target_process,
+                "target_service": parsed_request.target_service,
+                "target_group": parsed_request.target_group,
+                "target_os": parsed_request.target_os,
+                "description": request.description
+            }
+            
+            workflow = workflow_generator.generate_workflow(intent_type, requirements, target_groups)
+            
+            # Convert GeneratedWorkflow to dict format for compatibility
+            workflow_dict = {
+                "id": workflow.workflow_id,
+                "name": workflow.name,
+                "description": workflow.description,
+                "type": workflow.workflow_type.value,
+                "steps": [
+                    {
+                        "id": step.step_id,
+                        "name": step.name,
+                        "description": step.description,
+                        "type": step.step_type.value,
+                        "command": step.command,
+                        "script": step.script,
+                        "parameters": step.parameters,
+                        "timeout": step.timeout,
+                        "retry_count": step.retry_count,
+                        "risk_level": step.risk_level,
+                        "requires_approval": step.requires_approval
+                    }
+                    for step in workflow.steps
+                ],
+                "execution_mode": workflow.execution_mode.value,
+                "estimated_duration": workflow.estimated_duration,
+                "risk_level": workflow.risk_level,
+                "requires_approval": workflow.requires_approval,
+                "target_systems": workflow.target_systems
+            }
         
         logger.info("Generated workflow", workflow_id=workflow_dict['id'], steps=len(workflow_dict['steps']))
         
@@ -414,7 +565,11 @@ async def create_job(request: JobRequest):
                 "target_group": parsed_request.target_group,
                 "target_os": parsed_request.target_os,
                 "raw_text": parsed_request.raw_text
-            }
+            },
+            # Phase 7 Integration Results
+            targets=resolved_targets,
+            execution_plan=execution_plan,
+            optimizations=optimizations
         )
         
     except Exception as e:

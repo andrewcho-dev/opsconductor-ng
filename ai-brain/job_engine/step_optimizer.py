@@ -41,6 +41,18 @@ class OptimizationMetrics:
     risk_score: float
     cost_reduction: float
     optimization_types: List[OptimizationType]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert OptimizationMetrics to dictionary for JSON serialization"""
+        return {
+            "original_duration": self.original_duration,
+            "optimized_duration": self.optimized_duration,
+            "parallelization_factor": self.parallelization_factor,
+            "resource_efficiency": self.resource_efficiency,
+            "risk_score": self.risk_score,
+            "cost_reduction": self.cost_reduction,
+            "optimization_types": [ot.value for ot in self.optimization_types]
+        }
 
 @dataclass
 class ExecutionGroup:
