@@ -163,6 +163,30 @@ async def service_info():
         "automation_integration": True
     }
 
+@app.get("/ai/system-capabilities")
+async def get_system_capabilities():
+    """Get comprehensive system capabilities and self-awareness information"""
+    try:
+        if hasattr(ai_engine, 'system_capabilities') and ai_engine.system_capabilities:
+            overview = ai_engine.system_capabilities.get_system_overview()
+            capabilities_summary = ai_engine.system_capabilities.get_capabilities_summary()
+            
+            return {
+                "status": "success",
+                "system_overview": overview,
+                "capabilities_summary": capabilities_summary,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        else:
+            return {
+                "status": "unavailable",
+                "message": "System capabilities not initialized",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        logger.error("Failed to get system capabilities", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get system capabilities: {str(e)}")
+
 @app.post("/ai/chat")
 async def chat_endpoint(request: ChatRequest):
     """Enhanced chat interface with complete AI engine"""

@@ -86,6 +86,14 @@ except ImportError:
     AutomationServiceClient = None
     CommunicationServiceClient = None
 
+# Import system capabilities
+try:
+    from system_capabilities import system_capabilities
+    SYSTEM_CAPABILITIES_AVAILABLE = True
+except ImportError:
+    SYSTEM_CAPABILITIES_AVAILABLE = False
+    system_capabilities = None
+
 logger = logging.getLogger(__name__)
 
 class OpsConductorAI:
@@ -114,6 +122,9 @@ class OpsConductorAI:
         
         # System state
         self.initialized = False
+        
+        # System capabilities
+        self.system_capabilities = None
         
     async def initialize(self):
         """Initialize all AI components and handlers"""
@@ -234,6 +245,17 @@ class OpsConductorAI:
             
             # Initialize query handlers
             await self._initialize_query_handlers()
+            
+            # Initialize system capabilities
+            if SYSTEM_CAPABILITIES_AVAILABLE:
+                try:
+                    self.system_capabilities = system_capabilities
+                    await self.system_capabilities.initialize()
+                    logger.info("System capabilities initialized")
+                except Exception as e:
+                    logger.warning(f"System capabilities initialization failed: {e}")
+            else:
+                logger.warning("System capabilities not available")
             
             self.initialized = True
             logger.info("AI Engine initialization completed successfully")
@@ -360,6 +382,12 @@ class OpsConductorAI:
                 "manage_templates", "manage_channels", "email_operations"
             ]
             
+            # Self-awareness and system intents
+            system_intents = [
+                "system_capabilities", "system_status", "what_can_you_do", "help_general",
+                "system_overview", "protocol_info", "component_info", "can_perform_operation"
+            ]
+            
             # Route to appropriate handler
             if intent_action in infrastructure_intents:
                 handler = self.query_handlers.get('infrastructure')
@@ -375,6 +403,9 @@ class OpsConductorAI:
                 handler = self.query_handlers.get('communication')
                 if handler:
                     return await handler.handle_query(intent_action, message, context)
+            
+            elif intent_action in system_intents:
+                return await self._handle_system_query(message, context, intent_action)
             
             # Handle general queries and other intents
             return await self._handle_general_query(message, context, intent_action)
@@ -425,6 +456,11 @@ class OpsConductorAI:
                 "send_notification": "User wants to send notifications, alerts, or messages",
                 "query_notification_history": "User wants to see notification history or logs",
                 "query_schema_info": "User wants to see database schema, tables, or data structure information",
+                "system_capabilities": "User wants to know what the AI system can do, its capabilities, or features",
+                "system_status": "User wants to check system health, component status, or overall system state",
+                "protocol_info": "User wants information about supported protocols (SSH, SNMP, HTTP, etc.)",
+                "component_info": "User wants details about system components or services",
+                "can_perform_operation": "User is asking if the system can perform a specific operation",
                 "provide_greeting": "User is greeting or saying hello",
                 "request_help": "User is asking for general help or assistance"
             }
@@ -508,13 +544,33 @@ class OpsConductorAI:
    🔸 Triggers: "database schema", "show tables", "table structure", "schema info", "database structure"
    🔸 Examples: "show database schema", "list all tables", "what's the table structure"
 
+🤖 **system_capabilities** - User wants to know what the AI system can do, its capabilities, or features
+   🔸 Triggers: "what can you do", "capabilities", "features", "what are you capable of", "system overview", "what do you support"
+   🔸 Examples: "what can you do", "show me your capabilities", "what features do you have", "system overview"
+
+🔍 **system_status** - User wants to check system health, component status, or overall system state
+   🔸 Triggers: "system status", "health check", "component status", "system health", "are services running"
+   🔸 Examples: "what's the system status", "check system health", "are all services running", "component status"
+
+🔧 **protocol_info** - User wants information about supported protocols (SSH, SNMP, HTTP, etc.)
+   🔸 Triggers: "protocol", "SSH", "SNMP", "HTTP", "PowerShell", "supported protocols", "what protocols"
+   🔸 Examples: "tell me about SSH protocol", "what protocols do you support", "SNMP capabilities", "PowerShell support"
+
+🏗️ **component_info** - User wants details about system components or services
+   🔸 Triggers: "component", "service", "asset service", "automation service", "identity service", "component details"
+   🔸 Examples: "tell me about the asset service", "component details", "what services are available", "automation service info"
+
+❓ **can_perform_operation** - User is asking if the system can perform a specific operation
+   🔸 Triggers: "can you", "are you able", "do you support", "can I", "is it possible", "are you capable of"
+   🔸 Examples: "can you restart services", "are you able to monitor servers", "do you support email notifications"
+
 👋 **provide_greeting** - User is greeting or being polite
    🔸 Triggers: "hello", "hi", "hey", "good morning", "thanks", "thank you"
    🔸 Examples: "hello", "hi there", "good morning", "thanks for your help"
 
 ❓ **request_help** - User needs general help or assistance
-   🔸 Triggers: "help", "what can you do", "assistance", "how does this work", "capabilities"
-   🔸 Examples: "help", "what can you do for me", "I need assistance", "how does this system work"
+   🔸 Triggers: "help", "assistance", "how does this work", "guide me"
+   🔸 Examples: "help", "I need assistance", "how does this system work", "guide me through this"
 
 🎯 **CLASSIFICATION RULES** (CRITICAL - Follow these exactly):
 
@@ -673,8 +729,58 @@ class OpsConductorAI:
                     "method": "enhanced_fallback_pattern_matching"
                 }
             
-            # 8. General help requests
-            help_patterns = ["help", "what can you do", "assistance", "how does this work", "capabilities"]
+            # 8. System capabilities
+            capability_patterns = ["what can you do", "capabilities", "features", "what are you capable of", "system overview", "what do you support"]
+            if any(pattern in message_lower for pattern in capability_patterns):
+                return {
+                    "intent": "system_capabilities",
+                    "confidence": 0.90,
+                    "reasoning": "System capabilities request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 9. System status
+            status_patterns = ["system status", "health check", "component status", "system health", "are services running", "service status"]
+            if any(pattern in message_lower for pattern in status_patterns):
+                return {
+                    "intent": "system_status",
+                    "confidence": 0.90,
+                    "reasoning": "System status request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 10. Protocol information
+            protocol_patterns = ["protocol", "ssh", "snmp", "http", "powershell", "supported protocols", "what protocols"]
+            if any(pattern in message_lower for pattern in protocol_patterns):
+                return {
+                    "intent": "protocol_info",
+                    "confidence": 0.85,
+                    "reasoning": "Protocol information request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 11. Component information
+            component_patterns = ["component", "service", "asset service", "automation service", "identity service", "component details"]
+            if any(pattern in message_lower for pattern in component_patterns):
+                return {
+                    "intent": "component_info",
+                    "confidence": 0.85,
+                    "reasoning": "Component information request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 12. Can perform operation
+            capability_check_patterns = ["can you", "are you able", "do you support", "can i", "is it possible", "are you capable of"]
+            if any(pattern in message_lower for pattern in capability_check_patterns):
+                return {
+                    "intent": "can_perform_operation",
+                    "confidence": 0.85,
+                    "reasoning": "Capability check request detected",
+                    "method": "enhanced_fallback_pattern_matching"
+                }
+            
+            # 13. General help requests
+            help_patterns = ["help", "assistance", "how does this work", "guide me"]
             if any(pattern in message_lower for pattern in help_patterns):
                 return {
                     "intent": "request_help",
@@ -1336,6 +1442,281 @@ try {
             "success": True,
             "script_generated": True
         }
+    
+    async def _handle_system_query(self, message: str, context: List[Dict], intent_action: str) -> Dict[str, Any]:
+        """Handle system capabilities and self-awareness queries"""
+        try:
+            if not self.system_capabilities:
+                return {
+                    "response": "❌ **System capabilities not available**\n\nSystem self-awareness is currently unavailable.",
+                    "intent": intent_action,
+                    "success": False
+                }
+            
+            message_lower = message.lower()
+            
+            # System overview and capabilities
+            if intent_action in ["system_capabilities", "what_can_you_do", "help_general", "system_overview"]:
+                if any(word in message_lower for word in ["overview", "summary", "what can you do", "capabilities", "help"]):
+                    capabilities_summary = self.system_capabilities.get_capabilities_summary()
+                    return {
+                        "response": capabilities_summary,
+                        "intent": intent_action,
+                        "success": True,
+                        "data": {
+                            "system_overview": self.system_capabilities.get_system_overview()
+                        }
+                    }
+            
+            # System status
+            elif intent_action == "system_status":
+                await self.system_capabilities.refresh_system_status()
+                overview = self.system_capabilities.get_system_overview()
+                
+                response_parts = [
+                    f"🔍 **System Status Report**",
+                    f"",
+                    f"**Overall Status:** {overview['system_status'].upper()}",
+                    f"**Components:** {overview['healthy_components']}/{overview['total_components']} healthy",
+                    f"**Last Updated:** {overview['last_updated']}",
+                    f"",
+                    f"**Service Status:**"
+                ]
+                
+                for name, component in overview['components'].items():
+                    if component['type'] == 'service':
+                        status_emoji = "✅" if component['status'] == "healthy" else "❌"
+                        response_parts.append(f"- {status_emoji} **{component['name']}** (Port {component['port']})")
+                
+                return {
+                    "response": "\n".join(response_parts),
+                    "intent": intent_action,
+                    "success": True,
+                    "data": overview
+                }
+            
+            # Protocol information
+            elif intent_action == "protocol_info":
+                # Extract protocol name from message
+                protocol_name = None
+                for protocol in self.system_capabilities.protocols.keys():
+                    if protocol.lower() in message_lower:
+                        protocol_name = protocol
+                        break
+                
+                if protocol_name:
+                    protocol_details = self.system_capabilities.get_protocol_details(protocol_name)
+                    if protocol_details:
+                        response_parts = [
+                            f"🔧 **{protocol_name} Protocol Details**",
+                            f"",
+                            f"**Description:** {protocol_details['description']}",
+                            f"**Default Port:** {protocol_details['port']}",
+                            f"**Platforms:** {', '.join(protocol_details['platforms'])}",
+                            f"",
+                            f"**Supported Operations:**"
+                        ]
+                        
+                        for op in protocol_details['supported_operations']:
+                            response_parts.append(f"- {op.replace('_', ' ').title()}")
+                        
+                        if 'authentication_methods' in protocol_details:
+                            response_parts.extend([
+                                f"",
+                                f"**Authentication Methods:**"
+                            ])
+                            for auth in protocol_details['authentication_methods']:
+                                response_parts.append(f"- {auth.replace('_', ' ').title()}")
+                        
+                        return {
+                            "response": "\n".join(response_parts),
+                            "intent": intent_action,
+                            "success": True,
+                            "data": protocol_details
+                        }
+                else:
+                    # List all protocols
+                    response_parts = [
+                        f"🔧 **Supported Protocols**",
+                        f"",
+                        f"I support the following protocols for automation and monitoring:"
+                    ]
+                    
+                    for protocol, details in self.system_capabilities.protocols.items():
+                        response_parts.append(f"- **{protocol}**: {details['description']}")
+                    
+                    response_parts.extend([
+                        f"",
+                        f"💡 **Tip:** Ask about a specific protocol for detailed information.",
+                        f"Example: \"Tell me about SSH protocol\""
+                    ])
+                    
+                    return {
+                        "response": "\n".join(response_parts),
+                        "intent": intent_action,
+                        "success": True,
+                        "data": {"protocols": list(self.system_capabilities.protocols.keys())}
+                    }
+            
+            # Component information
+            elif intent_action == "component_info":
+                # Extract component name from message
+                component_name = None
+                for name in self.system_capabilities.components.keys():
+                    if name.lower() in message_lower or name.replace('-', ' ').lower() in message_lower:
+                        component_name = name
+                        break
+                
+                if component_name:
+                    component_details = self.system_capabilities.get_component_details(component_name)
+                    if component_details:
+                        response_parts = [
+                            f"🏗️ **{component_details['name']} Details**",
+                            f"",
+                            f"**Type:** {component_details['type'].title()}",
+                            f"**Description:** {component_details['description']}",
+                            f"**Port:** {component_details['port']}",
+                            f"**Status:** {component_details['status'].upper()}",
+                        ]
+                        
+                        if component_details.get('capabilities'):
+                            response_parts.extend([
+                                f"",
+                                f"**Capabilities:**"
+                            ])
+                            for cap in component_details['capabilities']:
+                                response_parts.append(f"- **{cap['name']}**: {cap['description']}")
+                        
+                        if component_details.get('dependencies'):
+                            response_parts.extend([
+                                f"",
+                                f"**Dependencies:** {', '.join(component_details['dependencies'])}"
+                            ])
+                        
+                        return {
+                            "response": "\n".join(response_parts),
+                            "intent": intent_action,
+                            "success": True,
+                            "data": component_details
+                        }
+                else:
+                    # List all components
+                    overview = self.system_capabilities.get_system_overview()
+                    response_parts = [
+                        f"🏗️ **System Components**",
+                        f"",
+                        f"**Services:**"
+                    ]
+                    
+                    service_components = {name: comp for name, comp in overview['components'].items() if comp['type'] == 'service'}
+                    for name, comp in service_components.items():
+                        status_emoji = "✅" if comp['status'] == "healthy" else "❌"
+                        response_parts.append(f"- {status_emoji} **{comp['name']}** (Port {comp['port']})")
+                    
+                    response_parts.extend([
+                        f"",
+                        f"**Infrastructure:**"
+                    ])
+                    
+                    infra_components = {name: comp for name, comp in overview['components'].items() if comp['type'] != 'service'}
+                    for name, comp in infra_components.items():
+                        status_emoji = "✅" if comp['status'] == "healthy" else "❌"
+                        response_parts.append(f"- {status_emoji} **{comp['name']}** ({comp['type'].title()})")
+                    
+                    response_parts.extend([
+                        f"",
+                        f"💡 **Tip:** Ask about a specific component for detailed information.",
+                        f"Example: \"Tell me about the asset service\""
+                    ])
+                    
+                    return {
+                        "response": "\n".join(response_parts),
+                        "intent": intent_action,
+                        "success": True,
+                        "data": {"components": list(overview['components'].keys())}
+                    }
+            
+            # Can perform operation check
+            elif intent_action == "can_perform_operation":
+                # Extract operation from message
+                operation_keywords = ["can you", "are you able", "do you support", "can i", "is it possible"]
+                operation = message_lower
+                
+                for keyword in operation_keywords:
+                    if keyword in operation:
+                        operation = operation.split(keyword, 1)[1].strip()
+                        break
+                
+                # Remove question marks and clean up
+                operation = operation.replace("?", "").strip()
+                
+                if operation:
+                    capability_check = self.system_capabilities.can_perform_operation(operation)
+                    
+                    if capability_check['can_perform']:
+                        response_parts = [
+                            f"✅ **Yes, I can help with: {operation}**",
+                            f""
+                        ]
+                        
+                        if capability_check['matching_capabilities']:
+                            response_parts.append(f"**Available through these services:**")
+                            for cap in capability_check['matching_capabilities']:
+                                status_emoji = "✅" if cap['status'] == "healthy" else "❌"
+                                response_parts.append(f"- {status_emoji} **{cap['component']}**: {cap['description']}")
+                        
+                        if capability_check['matching_protocols']:
+                            response_parts.extend([f"", f"**Supported protocols:**"])
+                            for proto in capability_check['matching_protocols']:
+                                response_parts.append(f"- **{proto['protocol']}**: {proto['description']}")
+                        
+                        if capability_check['matching_tools']:
+                            response_parts.extend([f"", f"**Available tools:**"])
+                            for tool in capability_check['matching_tools']:
+                                response_parts.append(f"- **{tool['tool'].replace('_', ' ').title()}**: {tool['description']}")
+                        
+                        if capability_check['recommendations']:
+                            response_parts.extend([f"", f"**Recommendations:**"])
+                            for rec in capability_check['recommendations']:
+                                response_parts.append(f"- {rec}")
+                        
+                        return {
+                            "response": "\n".join(response_parts),
+                            "intent": intent_action,
+                            "success": True,
+                            "data": capability_check
+                        }
+                    else:
+                        return {
+                            "response": f"❌ **I cannot directly perform: {operation}**\n\nThis operation is not currently supported by the available system components and protocols.\n\n💡 **Tip:** Try asking \"What can you do?\" to see my full capabilities.",
+                            "intent": intent_action,
+                            "success": False,
+                            "data": capability_check
+                        }
+                else:
+                    return {
+                        "response": f"❓ **Please specify what operation you'd like me to check**\n\nExample: \"Can you restart services on Windows servers?\"",
+                        "intent": intent_action,
+                        "success": False
+                    }
+            
+            # Default system help
+            else:
+                capabilities_summary = self.system_capabilities.get_capabilities_summary()
+                return {
+                    "response": f"ℹ️ **System Information**\n\n{capabilities_summary}\n\n💡 **Ask me:**\n- \"What's the system status?\"\n- \"Tell me about SSH protocol\"\n- \"Can you restart services?\"\n- \"Show me the asset service details\"",
+                    "intent": intent_action,
+                    "success": True
+                }
+                
+        except Exception as e:
+            logger.error(f"System query handling failed: {e}")
+            return {
+                "response": f"❌ **System Query Error**: {str(e)}",
+                "intent": intent_action,
+                "success": False,
+                "error": str(e)
+            }
 
 # Global AI instance
 ai_engine = OpsConductorAI()
