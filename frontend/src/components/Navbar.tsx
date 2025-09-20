@@ -126,8 +126,8 @@ const Navbar: React.FC = () => {
                   </Link>
                   {hasPermission(user, PERMISSIONS.ROLES_READ) && (
                     <Link 
-                      to="/settings/roles" 
-                      className={`nav-submenu-item ${location.pathname === '/settings/roles' ? 'active' : ''}`} 
+                      to="/roles" 
+                      className={`nav-submenu-item ${location.pathname === '/roles' || location.pathname.startsWith('/roles/') ? 'active' : ''}`} 
                       onClick={closeMenu}
                     >
                       <span className="nav-icon"><Settings size={14} /></span>

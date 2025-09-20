@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import {
   User, UserCreate, UserUpdate, UserListResponse,
+  Role, RoleCreate, RoleUpdate, RoleListResponse,
   Credential, CredentialCreate, CredentialListResponse, CredentialDecrypted,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
@@ -165,7 +166,44 @@ export const userApi = {
 
 // Roles API
 export const rolesApi = {
-  list: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string}>}>> => {
+  list: async (skip = 0, limit = 100): Promise<RoleListResponse> => {
+    const response: AxiosResponse<{success: boolean, data: Role[]}> = await api.get('/api/v1/roles', {
+      params: { skip, limit }
+    });
+    // Transform the backend response to match the expected RoleListResponse format
+    return {
+      data: response.data.data,
+      meta: {
+        total_items: response.data.data.length,
+        skip: skip,
+        limit: limit,
+        has_more: false
+      },
+      total: response.data.data.length
+    };
+  },
+
+  get: async (id: number): Promise<Role> => {
+    const response: AxiosResponse<{success: boolean, data: Role}> = await api.get(`/api/v1/roles/${id}`);
+    return response.data.data; // Extract the actual role data from the wrapped response
+  },
+
+  create: async (roleData: RoleCreate): Promise<Role> => {
+    const response: AxiosResponse<{success: boolean, data: Role}> = await api.post('/api/v1/roles', roleData);
+    return response.data.data; // Extract the actual role data from the wrapped response
+  },
+
+  update: async (id: number, roleData: RoleUpdate): Promise<Role> => {
+    const response: AxiosResponse<{success: boolean, data: Role}> = await api.put(`/api/v1/roles/${id}`, roleData);
+    return response.data.data; // Extract the actual role data from the wrapped response
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/roles/${id}`);
+  },
+
+  // Legacy methods for backward compatibility
+  listSimple: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string}>}>> => {
     return api.get('/api/v1/available-roles');
   },
 

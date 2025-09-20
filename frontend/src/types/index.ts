@@ -342,5 +342,41 @@ export interface CommunicationTestResponse {
   details?: string;
 }
 
+// Role Types
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
+  permissions: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoleCreate {
+  name: string;
+  description: string;
+  permissions: string[];
+  is_active?: boolean;
+}
+
+export interface RoleUpdate {
+  name?: string;
+  description?: string;
+  permissions?: string[];
+  is_active?: boolean;
+}
+
+export interface RoleListResponse {
+  data: Role[];
+  meta: {
+    total_items: number;
+    skip: number;
+    limit: number;
+    has_more: boolean;
+  };
+  total: number; // For backward compatibility
+}
+
 
 

@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
+import Roles from './pages/Roles';
 import AIChatPage from './pages/AIChat';
 
 
@@ -55,6 +56,10 @@ const App: React.FC = () => {
                     <Route path="/users" element={<Users />} />
                     <Route path="/users/:action" element={<Users />} />
                     <Route path="/users/:action/:id" element={<Users />} />
+
+                    <Route path="/roles" element={<Roles />} />
+                    <Route path="/roles/:action" element={<Roles />} />
+                    <Route path="/roles/:action/:id" element={<Roles />} />
 
                     <Route path="/assets" element={<Assets />} />
                     <Route path="/assets/:action" element={<Assets />} />
