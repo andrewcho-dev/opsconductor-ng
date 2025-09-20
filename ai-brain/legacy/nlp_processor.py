@@ -55,6 +55,18 @@ class SimpleNLPProcessor:
                 r'\b(check|verify|test|status)\b',
                 r'\bcheck.*status\b',
                 r'\bverify.*running\b'
+            ],
+            'get': [
+                r'\b(get|fetch|retrieve|obtain)\b',
+                r'\bget.*file\b',
+                r'\bget.*listing\b',
+                r'\bfetch.*data\b'
+            ],
+            'list': [
+                r'\b(list|show|display|enumerate)\b',
+                r'\blist.*file\b',
+                r'\bshow.*file\b',
+                r'\bfile.*listing\b'
             ]
         }
         

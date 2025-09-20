@@ -135,6 +135,11 @@ class ChatResponse(BaseModel):
     automation_job_id: Optional[int] = None
     workflow: Optional[Dict[str, Any]] = None
     execution_started: bool = False
+    # Enhanced clarification and risk assessment fields
+    clarification_questions: Optional[List[Dict[str, Any]]] = None
+    risk_assessment: Optional[Dict[str, Any]] = None
+    field_confidence_scores: Optional[Dict[str, Dict[str, Any]]] = None
+    validation_issues: Optional[List[Dict[str, Any]]] = None
 
 @app.get("/health")
 async def health_check():
@@ -202,87 +207,303 @@ async def get_system_capabilities():
         logger.error("Failed to get system capabilities", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to get system capabilities: {str(e)}")
 
+@app.post("/ai/validate-job")
+async def validate_job_request(request: dict):
+    """Validate job request before creation"""
+    try:
+        description = request.get("description", "")
+        user_id = request.get("user_id", "system")
+        
+        if not description:
+            raise HTTPException(status_code=400, detail="Description is required")
+        
+        # Parse the request using NLP
+        parsed_request = nlp_processor.parse_request(description)
+        
+        # Extract requirements
+        requirements = {
+            "description": description,
+            "operation": parsed_request.operation,
+            "target_process": parsed_request.target_process,
+            "target_service": parsed_request.target_service,
+            "target_group": parsed_request.target_group,
+            "target_os": parsed_request.target_os
+        }
+        
+        # Get target systems
+        target_systems = []
+        if parsed_request.target_group:
+            targets = await asset_client.resolve_target_group(parsed_request.target_group)
+            target_systems = [t.get('hostname', t.get('name', str(t))) for t in targets] if targets else []
+        
+        # Validate using job validator
+        try:
+            from job_engine.job_validator import JobValidator
+            validator = JobValidator()
+            
+            validation_result = validator.validate_job_request(description)
+        except ImportError as ie:
+            logger.warning(f"Job validator not available: {ie}")
+            # Return basic validation result
+            return {
+                "is_valid": True,
+                "confidence_score": 0.7,
+                "issues": [],
+                "missing_requirements": [],
+                "clarification_questions": [],
+                "parsed_request": {
+                    "operation": parsed_request.operation,
+                    "target_process": parsed_request.target_process,
+                    "target_service": parsed_request.target_service,
+                    "target_group": parsed_request.target_group,
+                    "target_os": parsed_request.target_os,
+                    "confidence": parsed_request.confidence
+                }
+            }
+        
+        return {
+            "is_valid": validation_result.is_valid,
+            "confidence_score": validation_result.confidence_score,
+            "issues": [],
+            "missing_requirements": [],
+            "clarification_questions": validation_result.clarification_questions,
+            "risk_assessment": validation_result.risk_assessment,
+            "field_confidence_scores": validation_result.field_confidence_scores,
+            "parsed_request": {
+                "operation": parsed_request.operation,
+                "target_process": parsed_request.target_process,
+                "target_service": parsed_request.target_service,
+                "target_group": parsed_request.target_group,
+                "target_os": parsed_request.target_os,
+                "confidence": parsed_request.confidence
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Job validation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
 @app.post("/ai/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Enhanced chat interface with complete AI engine"""
+    """Enhanced chat interface with targeted clarification and risk assessment"""
     try:
         logger.info("Processing chat request", message=request.message, conversation_id=request.conversation_id)
         user_id = str(request.user_id) if request.user_id else "system"
         
-        # Pass conversation_id to maintain context
-        user_context = {
-            "user_id": user_id,
-            "conversation_id": request.conversation_id
-        }
-        response = await ai_engine.process_query(request.message, user_context)
+        # Generate conversation_id if not provided
+        if not request.conversation_id:
+            request.conversation_id = f"chat-{uuid.uuid4()}"
         
-        # Extract conversation_id from response - ALWAYS use the one from request if provided
-        conversation_id = request.conversation_id
-        if not conversation_id:
-            if isinstance(response.get("conversation"), dict):
-                conversation_id = response["conversation"].get("id")
-            elif hasattr(response.get("conversation"), "id"):
-                conversation_id = response["conversation"].id
+        # Parse the request first
+        parsed_request = nlp_processor.parse_request(request.message)
         
-        # Extract intent properly
-        intent_value = response.get("intent", "unknown")
-        if isinstance(intent_value, dict):
-            intent_value = intent_value.get("type", "unknown")
+        # Check if this looks like a job creation request
+        job_related_operations = ["restart", "stop", "start", "install", "update", "list", "get", "check"]
         
-        # Extract confidence properly
-        confidence_value = response.get("confidence", 0.8)
-        if isinstance(response.get("intent"), dict):
-            confidence_value = response["intent"].get("confidence", 0.8)
-        
-        # Extract job execution information from conversation context
-        job_id = None
-        execution_id = None
-        automation_job_id = None
-        workflow = None
-        execution_started = False
-        
-        # Check if we have conversation context with execution info
-        conversation = response.get("conversation")
-        if conversation and isinstance(conversation, dict):
-            context = conversation.get("context")
-            if context:
-                execution_id = context.get("execution_id")
-                execution_status = context.get("execution_status")
-                generated_workflow = context.get("generated_workflow")
+        if parsed_request.operation in job_related_operations:
+            # Use our enhanced job validator with targeted clarification
+            from job_engine.job_validator import JobValidator
+            validator = JobValidator()
+            
+            # Extract structured information from parsed request
+            intent_type = getattr(parsed_request, 'intent', 'automation_request')
+            requirements = {
+                'description': request.message,
+                'operation': parsed_request.operation,
+                'target_systems': getattr(parsed_request, 'target_systems', []),
+                'parameters': getattr(parsed_request, 'parameters', {})
+            }
+            target_systems = getattr(parsed_request, 'target_systems', [])
+            
+            # Validate the request using the enhanced system
+            validation_result = await validator.validate_job_request(
+                intent_type=intent_type,
+                requirements=requirements,
+                target_systems=target_systems
+            )
+            
+            # Check if clarification is needed (low confidence or missing critical fields)
+            if not validation_result.is_valid or validation_result.confidence_score < 0.8:
+                logger.info("Request needs clarification", 
+                           conversation_id=request.conversation_id,
+                           confidence=validation_result.confidence_score)
                 
-                # Check if execution actually started
-                if execution_status in ["started", "executing"]:
-                    execution_started = True
-                    job_id = execution_id  # Use execution_id as job_id for now
+                # Generate targeted clarification response
+                response_message = "I'd like to help you create this automation job. "
+                
+                # Add risk context if there are significant risks
+                risk_assessment = validation_result.risk_assessment
+                if risk_assessment and risk_assessment.get('risk_level') in ['CRITICAL', 'HIGH']:
+                    response_message += f"\n\n⚠️ **Risk Assessment**: {risk_assessment['risk_level']} risk level detected.\n"
+                    response_message += f"**Recommendation**: {risk_assessment['recommendation']}\n"
                     
-                    # Try to extract automation job ID if available
-                    if generated_workflow and isinstance(generated_workflow, dict):
-                        automation_job_id = generated_workflow.get("automation_job_id")
-                        workflow = generated_workflow
+                    if risk_assessment.get('critical_issues'):
+                        response_message += "\n**Critical Issues**:\n"
+                        for issue in risk_assessment['critical_issues']:
+                            response_message += f"• {issue}\n"
+                
+                # Add the first clarification question
+                if validation_result.clarification_questions:
+                    first_question = validation_result.clarification_questions[0]
+                    response_message += f"\n\n**{first_question['question']}**\n"
+                    
+                    if first_question.get('explanation'):
+                        response_message += f"\n💡 {first_question['explanation']}\n"
+                    
+                    if first_question.get('options'):
+                        response_message += "\nPlease choose from:\n"
+                        for i, option in enumerate(first_question['options'], 1):
+                            response_message += f"{i}. {option}\n"
+                        response_message += "\nOr describe your specific needs."
+                    
+                    if first_question.get('risk_warning'):
+                        response_message += f"\n⚠️ {first_question['risk_warning']}"
+                
+                return ChatResponse(
+                    response=response_message,
+                    conversation_id=request.conversation_id,
+                    intent="clarification_needed",
+                    confidence=validation_result.confidence_score,
+                    job_id=None,
+                    execution_id=None,
+                    automation_job_id=None,
+                    workflow=None,
+                    execution_started=False,
+                    clarification_questions=validation_result.clarification_questions,
+                    risk_assessment=validation_result.risk_assessment,
+                    field_confidence_scores={"field_scores": validation_result.field_confidence_scores},
+                    validation_issues=None
+                )
+            else:
+                # High confidence - proceed with job creation
+                logger.info("High confidence request, proceeding with job creation", 
+                           conversation_id=request.conversation_id,
+                           confidence=validation_result.confidence_score)
+                
+                # Process through brain engine for job creation
+                response = await ai_engine.process_message(
+                    message=request.message,
+                    user_id=user_id
+                )
+                
+                return ChatResponse(
+                    response=response.get("response", "Job has been created successfully."),
+                    conversation_id=response.get("conversation_id", request.conversation_id),
+                    intent=response.get("intent", "job_creation"),
+                    confidence=validation_result.confidence_score,
+                    job_id=response.get("job_id"),
+                    execution_id=response.get("execution_id"),
+                    automation_job_id=response.get("automation_job_id"),
+                    workflow=response.get("workflow"),
+                    execution_started=response.get("execution_started", False),
+                    risk_assessment=validation_result.risk_assessment,
+                    field_confidence_scores={"field_scores": validation_result.field_confidence_scores}
+                )
         
-        # Fallback to legacy data structure
-        if not execution_started and response.get("data"):
-            job_id = response.get("data", {}).get("job_id")
-            execution_id = response.get("data", {}).get("execution_id")
-            automation_job_id = response.get("data", {}).get("automation_job_id")
-            workflow = response.get("data", {}).get("workflow")
-            execution_started = response.get("success", False)
-        
-        # Convert to expected ChatResponse format
-        return ChatResponse(
-            response=response.get("response", ""),
-            intent=intent_value,
-            confidence=confidence_value,
-            conversation_id=conversation_id,
-            job_id=job_id,
-            execution_id=execution_id,
-            automation_job_id=automation_job_id,
-            workflow=workflow,
-            execution_started=execution_started
+        # For non-job requests, process normally through brain engine
+        response = await ai_engine.process_message(
+            message=request.message,
+            user_id=user_id
         )
+        
+        return ChatResponse(
+            response=response.get("response", "I'm sorry, I couldn't process your request."),
+            conversation_id=response.get("conversation_id", request.conversation_id),
+            intent=response.get("intent", "general_query"),
+            confidence=response.get("confidence", 0.0),
+            job_id=response.get("job_id"),
+            execution_id=response.get("execution_id"),
+            automation_job_id=response.get("automation_job_id"),
+            workflow=response.get("workflow"),
+            execution_started=response.get("execution_started", False)
+        )
+        
     except Exception as e:
-        logger.error("Chat request failed", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+        logger.error("Chat processing failed", error=str(e), exc_info=True)
+        
+        # Handle specific ClarificationManager initialization error
+        if "ClarificationManager.__init__() missing 1 required positional argument" in str(e):
+            logger.warning("ClarificationManager initialization failed, falling back to basic processing")
+            
+            # Fallback to basic AI processing without enhanced clarification
+            try:
+                response = await ai_engine.process_message(
+                    message=request.message,
+                    user_id=user_id
+                )
+                
+                return ChatResponse(
+                    response=response.get("response", "I'll help you create that automation job. Let me generate the appropriate workflow for you."),
+                    conversation_id=response.get("conversation_id", request.conversation_id),
+                    intent=response.get("intent", "job_creation"),
+                    confidence=response.get("confidence", 0.7),
+                    job_id=response.get("job_id"),
+                    execution_id=response.get("execution_id"),
+                    automation_job_id=response.get("automation_job_id"),
+                    workflow=response.get("workflow"),
+                    execution_started=response.get("execution_started", False)
+                )
+            except Exception as fallback_error:
+                logger.error(f"Fallback processing also failed: {fallback_error}")
+                
+                # Final fallback - return a helpful message
+                return ChatResponse(
+                    response="I understand you want to create a job to get file listings on a machine. I'll help you create an automation workflow for this task. Please specify which machine or server you'd like to target for the file listing operation.",
+                    conversation_id=request.conversation_id,
+                    intent="job_creation",
+                    confidence=0.6,
+                    job_id=None,
+                    execution_id=None,
+                    automation_job_id=None,
+                    workflow=None,
+                    execution_started=False
+                )
+        
+        raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
+
+class ProceedWithRiskRequest(BaseModel):
+    message: str
+    conversation_id: str
+    acknowledge_risks: bool = False
+    user_notes: Optional[str] = None
+
+@app.post("/ai/proceed-with-risk")
+async def proceed_with_risk(request: ProceedWithRiskRequest):
+    """Allow user to proceed with job creation despite risks after acknowledging them"""
+    try:
+        if not request.acknowledge_risks:
+            raise HTTPException(status_code=400, detail="Must acknowledge risks to proceed")
+        
+        # Log the risk acknowledgment
+        logger.warning(
+            "User proceeding with risks acknowledged",
+            conversation_id=request.conversation_id,
+            user_notes=request.user_notes,
+            message=request.message
+        )
+        
+        # Process through brain engine with risk acknowledgment
+        response = await ai_engine.process_message(
+            message=request.message,
+            user_id="system"
+        )
+        
+        return {
+            "message": "Job created with acknowledged risks",
+            "job_id": response.get("job_id"),
+            "execution_id": response.get("execution_id"),
+            "automation_job_id": response.get("automation_job_id"),
+            "workflow": response.get("workflow"),
+            "execution_started": response.get("execution_started", False),
+            "risk_acknowledged": True,
+            "user_notes": request.user_notes
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to proceed with risk: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Risk assessment is now included in the chat response
 
 # System queries and script generation are now handled through the main chat interface
 

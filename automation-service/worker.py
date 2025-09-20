@@ -5,10 +5,21 @@ Handles background job execution with enhanced monitoring
 """
 
 import os
+import sys
 import logging
 import subprocess
 from celery import Celery
 from celery.signals import task_prerun, task_postrun, task_failure, task_retry, task_revoked
+
+# Add libraries to path at module level
+sys.path.append('/app/libraries')
+
+# Import libraries at module level
+try:
+    from libraries.windows_powershell import WindowsPowerShellLibrary
+except ImportError as e:
+    print(f"Warning: Could not import WindowsPowerShellLibrary: {e}")
+    WindowsPowerShellLibrary = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -185,22 +196,40 @@ async def update_step_execution_status(step_exec_id, status, output_data=None, e
     conn = await asyncpg.connect(db_url)
     
     try:
+        # Safely serialize output_data
+        output_json = '{}'
+        if output_data:
+            try:
+                output_json = json.dumps(output_data)
+            except (TypeError, ValueError) as json_error:
+                print(f"Warning: Failed to serialize output_data: {json_error}")
+                # Fallback to string representation
+                output_json = json.dumps({"raw_output": str(output_data)})
+        
         if status == 'completed':
             await conn.execute("""
                 UPDATE automation.step_executions 
                 SET status = $1, completed_at = NOW(), output_data = $2
                 WHERE id = $3
-            """, status, json.dumps(output_data) if output_data else '{}', step_exec_id)
+            """, status, output_json, step_exec_id)
         elif status == 'failed':
             await conn.execute("""
                 UPDATE automation.step_executions 
-                SET status = $1, completed_at = NOW(), error_message = $2
-                WHERE id = $3
-            """, status, error_message, step_exec_id)
+                SET status = $1, completed_at = NOW(), error_message = $2, output_data = $3
+                WHERE id = $4
+            """, status, error_message, output_json, step_exec_id)
+        else:
+            # Handle other statuses (running, etc.)
+            await conn.execute("""
+                UPDATE automation.step_executions 
+                SET status = $1
+                WHERE id = $2
+            """, status, step_exec_id)
         
         print(f"Updated step execution {step_exec_id} status to {status}")
     except Exception as e:
         print(f"Failed to update step execution status: {e}")
+        print(f"Debug info - step_exec_id: {step_exec_id}, status: {status}, output_data type: {type(output_data)}")
     finally:
         await conn.close()
 
@@ -350,7 +379,7 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                     try:
                         step_exec_id = asyncio.run(create_step_execution(
                             job_execution_id, step_id, step_name, 
-                            library_name or 'unknown', i + 1
+                            step_type, i + 1
                         ))
                     except Exception as e:
                         print(f"Warning: Failed to create step execution record: {e}")
@@ -425,7 +454,7 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                             asyncio.run(update_step_execution_status(step_exec_id, 'completed', result))
                         except Exception as e:
                             print(f"Warning: Failed to update step execution status: {e}")
-                elif command and step_type == 'execute':
+                elif command and step_type in ['execute', 'command']:
                     # Execute command (local or remote based on target systems)
                     import time
                     
@@ -499,10 +528,20 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                     # Update step execution status in database
                     if step_exec_id:
                         try:
+                            # For command executions, create proper output data
+                            output_data = {
+                                'command': step_result.get('command'),
+                                'returncode': step_result.get('returncode'),
+                                'stdout': step_result.get('stdout'),
+                                'stderr': step_result.get('stderr'),
+                                'execution_time': step_result.get('execution_time'),
+                                'target_system': step_result.get('target_system')
+                            } if step_result['status'] in ['completed', 'failed'] and 'returncode' in step_result else step_result.get('output')
+                            
                             asyncio.run(update_step_execution_status(
                                 step_exec_id, 
                                 step_result['status'], 
-                                step_result['output']
+                                output_data
                             ))
                         except Exception as e:
                             print(f"Warning: Failed to update step execution status: {e}")
@@ -539,7 +578,18 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 # Update step execution status in database
                 if step_exec_id:
                     try:
-                        asyncio.run(update_step_execution_status(step_exec_id, 'failed', error_message=str(step_error)))
+                        # Create output data for failed step
+                        error_output = {
+                            'error': str(step_error),
+                            'step_id': step_id,
+                            'step_name': step_name
+                        }
+                        asyncio.run(update_step_execution_status(
+                            step_exec_id, 
+                            'failed', 
+                            output_data=error_output,
+                            error_message=str(step_error)
+                        ))
                     except Exception as e:
                         print(f"Warning: Failed to update step execution status: {e}")
                 
@@ -657,10 +707,13 @@ def _execute_remote_command(command, target_system):
                         'stderr': 'Encryption key not configured for credential decryption'
                     }
             except Exception as e:
+                print(f"DEBUG: Decryption error details: {type(e).__name__}: {str(e)}")
+                print(f"DEBUG: Encrypted password: {asset.get('password_encrypted')}")
+                print(f"DEBUG: Encryption key type: {type(encryption_key)}")
                 return {
                     'returncode': 1,
                     'stdout': '',
-                    'stderr': f'Failed to decrypt password: {str(e)}'
+                    'stderr': f'Failed to decrypt password: {type(e).__name__}: {str(e)}'
                 }
         
         if not password:
@@ -672,19 +725,24 @@ def _execute_remote_command(command, target_system):
         
         # For Windows systems, use WinRM
         if asset['os_type'] and 'windows' in asset['os_type'].lower():
-            from libraries.windows_powershell import WindowsPowerShell
+            if WindowsPowerShellLibrary is None:
+                return {
+                    'returncode': 1,
+                    'stdout': '',
+                    'stderr': 'WindowsPowerShellLibrary not available - import failed at startup'
+                }
             
-            # Create WinRM connection
-            winrm_config = {
-                'host': target_system,
-                'port': asset.get('port', 5985),
-                'username': asset.get('username', 'administrator'),
-                'password': password,
-                'transport': 'ntlm'
-            }
-            
-            ps = WindowsPowerShell(winrm_config)
-            result = ps.execute_command(command)
+            # Execute PowerShell command via WinRM
+            ps = WindowsPowerShellLibrary()
+            result = ps.execute_powershell(
+                target_host=target_system,
+                username=asset.get('username', 'administrator'),
+                password=password,
+                script=command,
+                timeout=30,
+                use_ssl=False,  # Use HTTP for port 5985
+                port=asset.get('port', 5985)
+            )
             
             return {
                 'returncode': result.get('exit_code', 0),

@@ -18,6 +18,9 @@ import re
 # Import asset service client for OS detection
 from integrations.asset_client import AssetServiceClient
 
+# Import validation engine
+from .job_validator import JobValidator, ValidationResult
+
 logger = logging.getLogger(__name__)
 
 class WorkflowType(Enum):
@@ -117,6 +120,7 @@ class WorkflowGenerator:
         self.workflow_templates = self._initialize_workflow_templates()
         self.step_library = self._initialize_step_library()
         self.asset_client = AssetServiceClient()
+        self.job_validator = JobValidator()
         logger.info(f"Initialized workflow generator with {len(self.workflow_templates)} templates")
     
     def generate_workflow(
@@ -149,6 +153,48 @@ class WorkflowGenerator:
             
             # Generate workflow from template
             workflow = self._generate_from_template(template, requirements, target_systems, context)
+            
+            # VALIDATION STEP: Validate workflow before optimization
+            workflow_steps_dict = [
+                {
+                    'id': step.step_id,
+                    'name': step.name,
+                    'command': step.command,
+                    'script': step.script,
+                    'type': step.step_type.value
+                }
+                for step in workflow.steps
+            ]
+            
+            # Perform comprehensive validation
+            import asyncio
+            validation_result = asyncio.run(self.job_validator.validate_job_request(
+                intent_type, requirements, target_systems, workflow_steps_dict
+            ))
+            
+            # Store validation results in workflow metadata
+            workflow.metadata['validation_result'] = {
+                'is_valid': validation_result.is_valid,
+                'confidence_score': validation_result.confidence_score,
+                'issues': [
+                    {
+                        'type': issue.type.value,
+                        'level': issue.level.value,
+                        'message': issue.message,
+                        'suggestion': issue.suggestion
+                    }
+                    for issue in validation_result.issues
+                ],
+                'missing_requirements': validation_result.missing_requirements
+            }
+            
+            # Log validation results
+            if not validation_result.is_valid:
+                logger.warning(f"Workflow validation failed with {len(validation_result.issues)} issues")
+                for issue in validation_result.issues:
+                    logger.warning(f"Validation {issue.level.value}: {issue.message}")
+            else:
+                logger.info(f"Workflow validation passed with confidence {validation_result.confidence_score:.2f}")
             
             # Optimize workflow steps
             workflow = self._optimize_workflow(workflow)
@@ -502,7 +548,8 @@ class WorkflowGenerator:
         
         # Create OS-appropriate information gathering step
         if os_type == "windows":
-            command = "systeminfo && dir c:\\ && wmic logicaldisk get size,freespace,caption"
+            # Use PowerShell-compatible syntax with semicolons instead of &&
+            command = "systeminfo; dir c:\\; wmic logicaldisk get size,freespace,caption"
             description = "Gather Windows system information and directory listing"
         else:
             command = "uname -a && df -h && ls -la /"

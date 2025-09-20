@@ -150,11 +150,23 @@ class AIBrainEngine:
                     context_analyzer, intent_classifier,
                     process_user_input
                 )
+                from intent_engine.clarification_manager import ClarificationManager
+                
                 self.nlu_engine = nlu_engine
                 self.conversation_manager = conversation_manager
                 self.context_analyzer = context_analyzer
                 self.intent_classifier = intent_classifier
                 self.process_user_input = process_user_input
+                
+                # Debug conversation_manager before passing to ClarificationManager
+                logger.info(f"DEBUG: conversation_manager type: {type(conversation_manager)}")
+                logger.info(f"DEBUG: conversation_manager is None: {conversation_manager is None}")
+                
+                if conversation_manager is None:
+                    logger.error("conversation_manager is None, cannot initialize ClarificationManager")
+                    self.clarification_manager = None
+                else:
+                    self.clarification_manager = ClarificationManager(conversation_manager)
                 logger.info("Intent engine components initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize intent engine: {e}")

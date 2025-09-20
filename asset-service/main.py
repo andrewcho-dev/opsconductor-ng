@@ -281,17 +281,14 @@ class ConsolidatedAssetService(BaseService):
         self.setup_routes()
 
     def _get_encryption_key(self):
-        """Get or generate encryption key for credentials"""
-        key_file = "/app/data/encryption.key"
-        if os.path.exists(key_file):
-            with open(key_file, 'rb') as f:
-                return f.read()
-        else:
-            key = Fernet.generate_key()
-            os.makedirs(os.path.dirname(key_file), exist_ok=True)
-            with open(key_file, 'wb') as f:
-                f.write(key)
-            return key
+        """Get encryption key from environment variable"""
+        env_key = os.environ.get('ENCRYPTION_KEY')
+        if not env_key or env_key == 'your-encryption-key-here':
+            raise ValueError("ENCRYPTION_KEY environment variable must be set and not be the default placeholder")
+        
+        if isinstance(env_key, str):
+            return env_key.encode()
+        return env_key
 
     def _encrypt_field(self, value: str) -> Optional[str]:
         """Encrypt a field value"""
