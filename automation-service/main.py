@@ -17,6 +17,49 @@ from base_service import BaseService
 from celery_monitor import CeleryMonitor
 
 # ============================================================================
+# STATUS CONSTANTS AND UTILITIES
+# ============================================================================
+
+class JobExecutionStatus:
+    """Enhanced job execution status constants"""
+    PENDING = "pending"
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED_SUCCESS = "completed_success"
+    COMPLETED_WITH_ERRORS = "completed_with_errors"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    
+    @classmethod
+    def is_terminal_status(cls, status: str) -> bool:
+        """Check if status indicates job has finished (terminal state)"""
+        return status in [cls.COMPLETED_SUCCESS, cls.COMPLETED_WITH_ERRORS, cls.FAILED, cls.CANCELLED]
+    
+    @classmethod
+    def is_successful_completion(cls, status: str) -> bool:
+        """Check if status indicates successful completion"""
+        return status == cls.COMPLETED_SUCCESS
+    
+    @classmethod
+    def has_errors(cls, status: str) -> bool:
+        """Check if status indicates completion with errors"""
+        return status == cls.COMPLETED_WITH_ERRORS
+    
+    @classmethod
+    def get_status_description(cls, status: str) -> str:
+        """Get human-readable description of status"""
+        descriptions = {
+            cls.PENDING: "Job is queued and waiting to start",
+            cls.QUEUED: "Job is queued for execution",
+            cls.RUNNING: "Job is currently executing",
+            cls.COMPLETED_SUCCESS: "Job completed successfully with all steps successful",
+            cls.COMPLETED_WITH_ERRORS: "Job completed but some steps failed",
+            cls.FAILED: "Job failed to complete due to system error",
+            cls.CANCELLED: "Job was manually cancelled"
+        }
+        return descriptions.get(status, f"Unknown status: {status}")
+
+# ============================================================================
 # MODELS
 # ============================================================================
 
@@ -75,6 +118,27 @@ class JobExecution(BaseModel):
     completed_at: Optional[str] = None
     started_by: Optional[int] = None
     created_at: str
+    
+    # Enhanced status information
+    @property
+    def status_description(self) -> str:
+        """Get human-readable status description"""
+        return JobExecutionStatus.get_status_description(self.status)
+    
+    @property
+    def is_terminal(self) -> bool:
+        """Check if execution has finished"""
+        return JobExecutionStatus.is_terminal_status(self.status)
+    
+    @property
+    def is_successful(self) -> bool:
+        """Check if execution completed successfully"""
+        return JobExecutionStatus.is_successful_completion(self.status)
+    
+    @property
+    def has_errors(self) -> bool:
+        """Check if execution completed with errors"""
+        return JobExecutionStatus.has_errors(self.status)
 
 class ExecutionCreate(BaseModel):
     job_id: int
@@ -609,25 +673,24 @@ class AutomationService(BaseService):
                     
                     self.logger.info(f"Runtime validation passed for job {job_id}: {total_steps} steps, {workflow_depth} depth")
                     
-                    # Create execution record
-                    import uuid
-                    execution_id = str(uuid.uuid4())
-                    
-                    # Store minimal execution record with task_id for tracking
-                    execution_row = await conn.fetchrow("""
-                        INSERT INTO automation.job_executions 
-                        (job_id, execution_id, status, trigger_type, input_data, started_by, created_at)
-                        VALUES ($1, $2, 'queued', 'manual', $3, 1, NOW())
-                        RETURNING id
-                    """, job_id, execution_id, json.dumps(input_data or {}))
-                    
-                    # Queue the job for execution using Celery
+                    # Queue the job for execution using Celery first to get task ID
                     from worker import execute_job
                     task = execute_job.delay(
                         job_id=job_id,
                         workflow_definition=job_row['workflow_definition'],
                         input_data=input_data or {}
                     )
+                    
+                    # Use Celery task ID as execution_id for proper tracking
+                    execution_id = task.id
+                    
+                    # Store execution record with Celery task_id as execution_id
+                    execution_row = await conn.fetchrow("""
+                        INSERT INTO automation.job_executions 
+                        (job_id, execution_id, status, trigger_type, input_data, started_by, created_at)
+                        VALUES ($1, $2, 'queued', 'manual', $3, 1, NOW())
+                        RETURNING id
+                    """, job_id, execution_id, json.dumps(input_data or {}))
                     
                     return {
                         "success": True,
@@ -1295,9 +1358,6 @@ class AutomationService(BaseService):
             """Create a new execution"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    import uuid
-                    execution_id = str(uuid.uuid4())
-                    
                     # Get job details including workflow definition
                     job_row = await conn.fetchrow("""
                         SELECT name, workflow_definition FROM automation.jobs WHERE id = $1
@@ -1309,6 +1369,23 @@ class AutomationService(BaseService):
                             detail="Job not found"
                         )
                     
+                    # Queue the job for execution using Celery first to get task ID
+                    try:
+                        from worker import execute_job
+                        task = execute_job.delay(
+                            job_id=execution_data.job_id,
+                            workflow_definition=job_row['workflow_definition'],
+                            input_data=execution_data.input_data or {}
+                        )
+                        # Use Celery task ID as execution_id for proper synchronization
+                        execution_id = task.id
+                        self.logger.info(f"Queued execution with task ID {execution_id}")
+                    except Exception as task_error:
+                        self.logger.error(f"Failed to queue task: {task_error}")
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to queue task: {str(task_error)}"
+                        )
 
                     row = await conn.fetchrow("""
                         INSERT INTO automation.job_executions (job_id, execution_id, status, trigger_type, 
@@ -1319,24 +1396,6 @@ class AutomationService(BaseService):
                     """, execution_data.job_id, execution_id, execution_data.trigger_type, 
                          json.dumps(execution_data.input_data) if execution_data.input_data else '{}',
                          self._get_current_user_id())
-                    
-                    # Queue the job for execution using Celery
-                    try:
-                        from worker import execute_job
-                        task = execute_job.delay(
-                            job_id=execution_data.job_id,
-                            workflow_definition=job_row['workflow_definition'],
-                            input_data=execution_data.input_data or {}
-                        )
-                        self.logger.info(f"Queued execution {execution_id} with task ID {task.id}")
-                    except Exception as task_error:
-                        self.logger.error(f"Failed to queue task for execution {execution_id}: {task_error}")
-                        # Update execution status to failed
-                        await conn.execute("""
-                            UPDATE automation.job_executions 
-                            SET status = 'failed', error_message = $1 
-                            WHERE execution_id = $2
-                        """, f"Failed to queue task: {str(task_error)}", execution_id)
                     
                     execution = JobExecution(
                         id=row['id'],

@@ -117,14 +117,14 @@ class AssetService(BaseService):
         """Encrypt a credential string"""
         if not credential:
             return None
-        return base64.b64encode(self.cipher_suite.encrypt(credential.encode())).decode()
+        return self.cipher_suite.encrypt(credential.encode()).decode()
     
     def _decrypt_credential(self, encrypted_credential: str) -> str:
         """Decrypt a credential string"""
         if not encrypted_credential:
             return None
         try:
-            return self.cipher_suite.decrypt(base64.b64decode(encrypted_credential.encode())).decode()
+            return self.cipher_suite.decrypt(encrypted_credential.encode()).decode()
         except Exception:
             return None  # Return None if decryption fails
     

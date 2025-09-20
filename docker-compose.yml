@@ -158,6 +158,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:3001
       ASSET_SERVICE_URL: http://asset-service:3002
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
     depends_on:
       postgres:
         condition: service_healthy
@@ -362,6 +363,7 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       HTTP_PROXY: http://nginx:8080
       HTTPS_PROXY: http://nginx:8080
+      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
     depends_on:
       postgres:
         condition: service_healthy
@@ -397,6 +399,7 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       HTTP_PROXY: http://nginx:8080
       HTTPS_PROXY: http://nginx:8080
+      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
     depends_on:
       postgres:
         condition: service_healthy

@@ -6,6 +6,7 @@ Handles background job execution with enhanced monitoring
 
 import os
 import logging
+import subprocess
 from celery import Celery
 from celery.signals import task_prerun, task_postrun, task_failure, task_retry, task_revoked
 
@@ -425,82 +426,58 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                         except Exception as e:
                             print(f"Warning: Failed to update step execution status: {e}")
                 elif command and step_type == 'execute':
-                    # Execute shell command
-                    import subprocess
+                    # Execute command (local or remote based on target systems)
                     import time
                     
                     start_time = time.time()
+                    
+                    # Check if there are target systems specified in workflow definition or step
+                    target_systems = workflow_definition.get('target_systems', [])
+                    step_target_system = step.get('target_system')
+                    
                     try:
-                        print(f"Executing command: {command}")
-                        result = subprocess.run(
-                            command,
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                            timeout=step.get('timeout', 300)  # Default 5 minute timeout
-                        )
-                        
-                        execution_time = time.time() - start_time
-                        
-                        if result.returncode == 0:
-                            output = {
-                                'stdout': result.stdout,
-                                'stderr': result.stderr,
-                                'return_code': result.returncode,
-                                'execution_time': execution_time,
-                                'command': command
-                            }
+                        if target_systems or step_target_system:
+                            # Remote execution on target systems
+                            target_system = step_target_system or target_systems[0]
+                            print(f"Executing command on remote target: {target_system}")
+                            step_result = _execute_remote_command(command, target_system)
                             
-                            # Store outputs for next steps
-                            step_outputs[step_id] = output
+                            # Format the result to match expected structure
+                            execution_time = time.time() - start_time
+                            
+                            # Determine status based on return code
+                            status = 'completed' if step_result['returncode'] == 0 else 'failed'
                             
                             step_result = {
                                 'step_id': step_id,
                                 'step_name': step_name,
-                                'status': 'completed',
-                                'output': output,
-                                'inputs': step_inputs
-                            }
-                            
-                            print(f"Command completed successfully in {execution_time:.2f}s")
-                        else:
-                            error_output = {
-                                'stdout': result.stdout,
-                                'stderr': result.stderr,
-                                'return_code': result.returncode,
-                                'execution_time': execution_time,
+                                'status': status,
                                 'command': command,
-                                'error': f"Command failed with return code {result.returncode}"
+                                'returncode': step_result['returncode'],
+                                'stdout': step_result['stdout'],
+                                'stderr': step_result['stderr'],
+                                'execution_time': execution_time,
+                                'target_system': target_system
                             }
+                        else:
+                            # Local execution (fallback)
+                            print(f"Executing command locally: {command}")
+                            result = _execute_local_command(command)
+                            execution_time = time.time() - start_time
+                            
+                            # Determine status based on return code
+                            status = 'completed' if result['returncode'] == 0 else 'failed'
                             
                             step_result = {
                                 'step_id': step_id,
                                 'step_name': step_name,
-                                'status': 'failed',
-                                'output': error_output,
-                                'inputs': step_inputs
+                                'status': status,
+                                'command': command,
+                                'returncode': result['returncode'],
+                                'stdout': result['stdout'],
+                                'stderr': result['stderr'],
+                                'execution_time': execution_time
                             }
-                            
-                            print(f"Command failed with return code {result.returncode}")
-                            
-                    except subprocess.TimeoutExpired:
-                        execution_time = time.time() - start_time
-                        error_output = {
-                            'error': f"Command timed out after {step.get('timeout', 300)} seconds",
-                            'execution_time': execution_time,
-                            'command': command
-                        }
-                        
-                        step_result = {
-                            'step_id': step_id,
-                            'step_name': step_name,
-                            'status': 'failed',
-                            'output': error_output,
-                            'inputs': step_inputs
-                        }
-                        
-                        print(f"Command timed out after {step.get('timeout', 300)} seconds")
-                        
                     except Exception as e:
                         execution_time = time.time() - start_time
                         error_output = {
@@ -572,11 +549,30 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
             progress = int((i + 1) / total_steps * 100)
             self.update_state(state='PROGRESS', meta={'current': progress, 'total': 100})
         
+        # Determine final job status based on step results
+        failed_steps = [r for r in results if r.get('status') == 'failed']
+        successful_steps = [r for r in results if r.get('status') == 'completed']
+        
+        if failed_steps:
+            final_status = 'completed_with_errors'
+            message = f'Job {job_id} completed with {len(failed_steps)} failed step(s) out of {len(results)} total'
+        elif successful_steps:
+            final_status = 'completed_success'
+            message = f'Job {job_id} completed successfully with all {len(results)} step(s) successful'
+        else:
+            final_status = 'failed'
+            message = f'Job {job_id} failed - no steps completed successfully'
+        
         # Process results based on job type
         final_results = {
-            'status': 'completed',
+            'status': final_status,
             'results': results,
-            'message': f'Job {job_id} completed successfully'
+            'message': message,
+            'step_summary': {
+                'total_steps': len(results),
+                'successful_steps': len(successful_steps),
+                'failed_steps': len(failed_steps)
+            }
         }
         
         # Route results based on job type if job_id is provided
@@ -587,11 +583,11 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 print(f"Warning: Failed to process job results for job {job_id}: {e}")
                 # Don't fail the job if result processing fails
         
-        # Update job execution status to completed
+        # Update job execution status based on step results
         if execution_id:
             try:
-                asyncio.run(update_job_execution_status(job_id, execution_id, 'completed'))
-                print(f"Updated job execution {execution_id} to completed status")
+                asyncio.run(update_job_execution_status(job_id, execution_id, final_status))
+                print(f"Updated job execution {execution_id} to {final_status} status")
             except Exception as e:
                 print(f"Warning: Failed to update job execution completion status: {e}")
         
@@ -613,6 +609,130 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
             meta={'error': str(exc), 'job_id': job_id}
         )
         raise
+
+def _execute_remote_command(command, target_system):
+    """Execute command on remote system using appropriate method"""
+    try:
+        # Get target system details from assets
+        import asyncio
+        import os
+        import base64
+        from cryptography.fernet import Fernet
+        import asyncpg
+        
+        async def get_asset_details():
+            db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
+            conn = await asyncpg.connect(db_url)
+            try:
+                query = "SELECT * FROM assets.assets WHERE ip_address = $1"
+                result = await conn.fetchrow(query, target_system)
+                return result
+            finally:
+                await conn.close()
+        
+        asset = asyncio.run(get_asset_details())
+        if not asset:
+            return {
+                'returncode': 1,
+                'stdout': '',
+                'stderr': f'Target system {target_system} not found in assets database'
+            }
+        
+        # Decrypt password if available
+        password = None
+        if asset.get('password_encrypted'):
+            try:
+                encryption_key = os.environ.get('ENCRYPTION_KEY')
+                print(f"DEBUG: ENCRYPTION_KEY = {encryption_key}")
+                if encryption_key and encryption_key != 'your-encryption-key-here':
+                    if isinstance(encryption_key, str):
+                        encryption_key = encryption_key.encode()
+                    cipher_suite = Fernet(encryption_key)
+                    # The password is already a Fernet token, decrypt directly
+                    password = cipher_suite.decrypt(asset['password_encrypted'].encode()).decode()
+                else:
+                    return {
+                        'returncode': 1,
+                        'stdout': '',
+                        'stderr': 'Encryption key not configured for credential decryption'
+                    }
+            except Exception as e:
+                return {
+                    'returncode': 1,
+                    'stdout': '',
+                    'stderr': f'Failed to decrypt password: {str(e)}'
+                }
+        
+        if not password:
+            return {
+                'returncode': 1,
+                'stdout': '',
+                'stderr': f'No password available for target system {target_system}'
+            }
+        
+        # For Windows systems, use WinRM
+        if asset['os_type'] and 'windows' in asset['os_type'].lower():
+            from libraries.windows_powershell import WindowsPowerShell
+            
+            # Create WinRM connection
+            winrm_config = {
+                'host': target_system,
+                'port': asset.get('port', 5985),
+                'username': asset.get('username', 'administrator'),
+                'password': password,
+                'transport': 'ntlm'
+            }
+            
+            ps = WindowsPowerShell(winrm_config)
+            result = ps.execute_command(command)
+            
+            return {
+                'returncode': result.get('exit_code', 0),
+                'stdout': result.get('stdout', ''),
+                'stderr': result.get('stderr', '')
+            }
+        else:
+            # For Linux systems, use SSH (to be implemented)
+            return {
+                'returncode': 1,
+                'stdout': '',
+                'stderr': f'Remote execution for {asset.get("os_type", "unknown")} systems not yet implemented'
+            }
+            
+    except Exception as e:
+        return {
+            'returncode': 1,
+            'stdout': '',
+            'stderr': f'Remote execution failed: {str(e)}'
+        }
+
+def _execute_local_command(command):
+    """Execute command locally on the worker"""
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        return {
+            'returncode': result.returncode,
+            'stdout': result.stdout,
+            'stderr': result.stderr
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            'returncode': 124,
+            'stdout': '',
+            'stderr': 'Command timed out after 300 seconds'
+        }
+    except Exception as e:
+        return {
+            'returncode': 1,
+            'stdout': '',
+            'stderr': f'Local execution failed: {str(e)}'
+        }
 
 @app.task
 def test_task():
