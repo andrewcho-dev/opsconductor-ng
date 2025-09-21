@@ -20,6 +20,10 @@ from integrations.automation_client import AutomationServiceClient as Automation
 from integrations.communication_client import CommunicationServiceClient as CommunicationClient
 from integrations.vector_client import OpsConductorVectorStore as VectorStore
 from integrations.llm_client import LLMEngine
+from llm_conversation_handler import LLMConversationHandler
+
+# LLM-based job creation engine
+from job_engine.llm_job_creator import LLMJobCreator
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +41,12 @@ class AIBrainEngine:
     
     def __init__(self):
         """Initialize the AI Brain Engine with all components."""
-        self.legacy_mode = os.getenv("LEGACY_MODE_ENABLED", "true").lower() == "true"
+        self.legacy_mode = os.getenv("LEGACY_MODE_ENABLED", "false").lower() == "true"
         self.system_model_enabled = os.getenv("SYSTEM_MODEL_ENABLED", "true").lower() == "true"
         self.knowledge_graph_enabled = os.getenv("KNOWLEDGE_GRAPH_ENABLED", "true").lower() == "true"
         self.job_creation_enabled = os.getenv("JOB_CREATION_ENGINE_ENABLED", "true").lower() == "true"
-        self.intent_engine_enabled = os.getenv("INTENT_ENGINE_ENABLED", "true").lower() == "true"
+        self.intent_engine_enabled = False  # NLM DISABLED - USING PURE LLM
+        self.llm_conversation_enabled = os.getenv("LLM_CONVERSATION_ENABLED", "true").lower() == "true"
         
         # Initialize legacy components for backward compatibility
         if self.legacy_mode:
@@ -59,7 +64,8 @@ class AIBrainEngine:
                    f"System Model: {self.system_model_enabled}, "
                    f"Knowledge Graph: {self.knowledge_graph_enabled}, "
                    f"Job Creation: {self.job_creation_enabled}, "
-                   f"Intent Engine: {self.intent_engine_enabled}")
+                   f"Intent Engine: {self.intent_engine_enabled}, "
+                   f"LLM Conversation: {self.llm_conversation_enabled}")
     
     async def initialize(self) -> bool:
         """
@@ -102,8 +108,18 @@ class AIBrainEngine:
             
             # Initialize LLM engine with configuration
             ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-            default_model = os.getenv("DEFAULT_MODEL", "llama3.2")
+            default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
             self.llm_engine = LLMEngine(ollama_host, default_model)
+            
+            # Initialize LLM conversation handler
+            if self.llm_conversation_enabled:
+                self.llm_conversation_handler = LLMConversationHandler(self.llm_engine)
+                logger.info("LLM conversation handler initialized successfully")
+            
+            # Initialize LLM job creator (replaces NLM intent engine)
+            if self.job_creation_enabled:
+                self.llm_job_creator = LLMJobCreator(self.llm_engine)
+                logger.info("LLM job creator initialized successfully")
             
             logger.info("Integration clients initialized successfully")
         except Exception as e:
@@ -143,59 +159,16 @@ class AIBrainEngine:
                 logger.error(f"Failed to initialize knowledge engine: {e}")
                 self.knowledge_graph_enabled = False
         
-        if self.intent_engine_enabled:
-            try:
-                from intent_engine import (
-                    nlu_engine, conversation_manager,
-                    context_analyzer, intent_classifier,
-                    process_user_input
-                )
-                from intent_engine.clarification_manager import ClarificationManager
-                
-                self.nlu_engine = nlu_engine
-                self.conversation_manager = conversation_manager
-                self.context_analyzer = context_analyzer
-                self.intent_classifier = intent_classifier
-                self.process_user_input = process_user_input
-                
-                # Debug conversation_manager before passing to ClarificationManager
-                logger.info(f"DEBUG: conversation_manager type: {type(conversation_manager)}")
-                logger.info(f"DEBUG: conversation_manager is None: {conversation_manager is None}")
-                
-                if conversation_manager is None:
-                    logger.error("conversation_manager is None, cannot initialize ClarificationManager")
-                    self.clarification_manager = None
-                else:
-                    self.clarification_manager = ClarificationManager(conversation_manager)
-                logger.info("Intent engine components initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize intent engine: {e}")
-                self.intent_engine_enabled = False
+        # NLM Intent Engine REMOVED - Using pure LLM approach
+        logger.info("🚫 NLM Intent Engine permanently disabled - using pure LLM pipeline")
         
         if self.job_creation_enabled:
-            try:
-                from job_engine import (
-                    workflow_generator, target_resolver,
-                    step_optimizer, execution_planner,
-                    generate_workflow, resolve_targets,
-                    optimize_workflow_steps, create_execution_plan
-                )
-                self.workflow_generator = workflow_generator
-                self.target_resolver = target_resolver
-                self.step_optimizer = step_optimizer
-                self.execution_planner = execution_planner
-                self.generate_workflow = generate_workflow
-                self.resolve_targets = resolve_targets
-                self.optimize_workflow_steps = optimize_workflow_steps
-                self.create_execution_plan = create_execution_plan
-                logger.info("Job engine components initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize job engine: {e}")
-                self.job_creation_enabled = False
+            # Old job engine components removed - using LLM-based job creator
+            logger.info("🚀 Job creation using pure LLM pipeline (initialized in integration clients)")
     
     async def process_query(self, query: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Process a user query using the appropriate AI engine.
+        Process a user query using PURE LLM - NO INTENT MATCHING, NO TEMPLATES, NO BULLSHIT!
         
         Args:
             query: The user's natural language query
@@ -205,33 +178,33 @@ class AIBrainEngine:
             Dict containing the AI response and metadata
         """
         try:
-            # Use new Intent Engine if available
-            if self.intent_engine_enabled and hasattr(self, 'process_user_input'):
-                logger.info(f"Processing query via Intent Engine: {query[:50]}...")
+            # Use LLM conversation handler - PURE AI, NO HARDCODED SHIT
+            if self.llm_conversation_enabled and hasattr(self, 'llm_conversation_handler'):
+                logger.info(f"Processing query via PURE LLM: {query[:50]}...")
                 
-                user_id = user_context.get('user_id', 'default') if user_context else 'default'
-                conversation_id = user_context.get('conversation_id') if user_context else None
+                # Handle case where user_context might be passed as string instead of dict
+                if isinstance(user_context, str):
+                    logger.warning(f"user_context passed as string: {user_context}, converting to dict")
+                    user_id = user_context
+                    conversation_id = None
+                elif user_context and isinstance(user_context, dict):
+                    user_id = user_context.get('user_id', 'default')
+                    conversation_id = user_context.get('conversation_id')
+                else:
+                    user_id = 'default'
+                    conversation_id = None
                 
-                result = self.process_user_input(query, user_id, conversation_id)
+                result = await self.llm_conversation_handler.process_message(query, user_id, conversation_id)
                 
                 return {
-                    'response': result['conversation']['response'],
-                    'intent': result['intent'],
-                    'confidence': result['intent'].get('confidence', 0.8) if isinstance(result['intent'], dict) else 0.8,
-                    'conversation': result['conversation'],
-                    'conversation_id': result['conversation']['id'],
-                    'conversation_state': result['conversation']['state'],
-                    'context_analysis': result['context_analysis'],
-                    'classification': result['classification'],
+                    'response': result['response'],
+                    'conversation_id': result['conversation_id'],
+                    'conversation_state': result['conversation_state'],
                     'success': result['success'],
-                    'metadata': {
-                        'engine': 'intent_engine',
-                        'timestamp': datetime.now().isoformat(),
-                        'success': result['success']
-                    }
+                    'metadata': result['metadata']
                 }
             
-            # Fallback to legacy engine for backward compatibility
+            # Fallback to legacy engine ONLY if LLM is not available
             elif self.legacy_mode and hasattr(self, 'legacy_engine'):
                 logger.info(f"Processing query via legacy engine: {query[:50]}...")
                 return await self.legacy_engine.process_query(query, user_context)
@@ -240,7 +213,6 @@ class AIBrainEngine:
                 # Basic fallback response
                 return {
                     'response': "I'm currently initializing my AI capabilities. Please try again in a moment.",
-                    'intent': {'type': 'unknown', 'confidence': 0.0},
                     'metadata': {
                         'engine': 'fallback',
                         'timestamp': datetime.now().isoformat(),
@@ -253,10 +225,12 @@ class AIBrainEngine:
             logger.error(f"Error processing query: {e}")
             return {
                 "response": f"I encountered an error processing your request: {str(e)}",
-                "intent": "error",
-                "confidence": 0.0,
-                "timestamp": datetime.utcnow().isoformat(),
-                "engine": "ai_brain_error"
+                "success": False,
+                "metadata": {
+                    "engine": "ai_brain_error",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "error": str(e)
+                }
             }
     
     async def get_system_capabilities(self) -> Dict[str, Any]:
@@ -330,7 +304,13 @@ class AIBrainEngine:
 
     async def create_job_from_natural_language(self, description: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
-        Create an executable job from natural language description using the Job Engine.
+        Create an executable job from natural language description using pure LLM analysis.
+        
+        This method replaces the old NLM intent engine with a multi-stage LLM pipeline:
+        1. ANALYZE: Understand the request and extract requirements
+        2. PLAN: Generate workflow steps and structure  
+        3. VALIDATE: Check feasibility and safety
+        4. CREATE: Build the final executable job
         
         Args:
             description: Natural language description of the desired job
@@ -340,7 +320,7 @@ class AIBrainEngine:
             Dict containing the created job or error information
         """
         try:
-            logger.info(f"Job creation requested: {description[:50]}...")
+            logger.info(f"🚀 LLM Job creation requested: {description[:50]}...")
             
             if not self.job_creation_enabled:
                 return {
@@ -349,174 +329,34 @@ class AIBrainEngine:
                     "fallback_message": "Please use the legacy automation interface"
                 }
             
-            # Step 1: Process user input through Intent Engine
-            if self.intent_engine_enabled and hasattr(self, 'process_user_input'):
-                user_id = user_context.get('user_id', 'default') if user_context else 'default'
-                conversation_id = user_context.get('conversation_id') if user_context else None
-                
-                intent_result = self.process_user_input(description, user_id, conversation_id)
-                
-                if not intent_result['success']:
-                    return {
-                        "success": False,
-                        "error": "Failed to understand the request",
-                        "details": intent_result
-                    }
-                
-                intent_type = intent_result['intent']['type']
-                requirements = intent_result['context_analysis']['requirements']
-                target_input = intent_result['context_analysis']['entities'].get('targets', [])
-                
+            if not hasattr(self, 'llm_job_creator'):
+                return {
+                    "success": False,
+                    "error": "LLM job creator not initialized",
+                    "fallback_message": "Please restart the AI Brain service"
+                }
+            
+            # Use the new LLM-based job creation pipeline
+            logger.info("🧠 Using pure LLM job creation pipeline (NO NLM)")
+            result = await self.llm_job_creator.create_job_from_natural_language(description, user_context)
+            
+            if result.get("success"):
+                logger.info(f"✅ LLM job created successfully: {result.get('job_id')}")
             else:
-                # Fallback: basic parsing
-                intent_type = "automation_request"
-                requirements = {"description": description}
-                target_input = user_context.get('targets', []) if user_context else []
+                logger.warning(f"❌ LLM job creation failed: {result.get('error')}")
             
-            # Step 2: Resolve target systems
-            target_resolution = self.resolve_targets(target_input, {"test_connections": True})
-            
-            if not target_resolution.resolved_targets:
-                return {
-                    "success": False,
-                    "error": "No valid target systems found",
-                    "details": {
-                        "unresolved_targets": target_resolution.unresolved_targets,
-                        "resolution_errors": target_resolution.resolution_errors
-                    }
-                }
-            
-            target_systems = [t.hostname for t in target_resolution.resolved_targets]
-            
-            # Step 3: Generate workflow
-            workflow = self.generate_workflow(
-                intent_type=intent_type,
-                requirements=requirements,
-                target_systems=target_systems,
-                context=user_context
-            )
-            
-            # Step 4: Optimize workflow
-            optimized_workflow = self.optimize_workflow_steps(
-                workflow.steps,
-                optimization_goals=None,  # Use defaults
-                constraints=user_context.get('constraints') if user_context else None
-            )
-            
-            # Step 5: Create execution plan
-            execution_plan = self.create_execution_plan(
-                workflow=workflow,
-                optimized_workflow=optimized_workflow,
-                execution_preferences=user_context.get('execution_preferences') if user_context else None,
-                constraints=user_context.get('constraints') if user_context else None
-            )
-            
-            # Step 6: Validate execution plan
-            is_valid, validation_errors = self.execution_planner.validate_execution_plan(execution_plan)
-            
-            if not is_valid:
-                return {
-                    "success": False,
-                    "error": "Execution plan validation failed",
-                    "validation_errors": validation_errors,
-                    "workflow": self.workflow_generator.export_workflow(workflow),
-                    "execution_plan": self.execution_planner.export_execution_plan(execution_plan)
-                }
-            
-            # Return complete job creation result
-            return {
-                "success": True,
-                "job_id": workflow.workflow_id,
-                "workflow": self.workflow_generator.export_workflow(workflow),
-                "optimized_workflow": self.step_optimizer.export_optimization(optimized_workflow),
-                "execution_plan": self.execution_planner.export_execution_plan(execution_plan),
-                "target_resolution": {
-                    "resolved_targets": self.target_resolver.export_targets(target_resolution.resolved_targets),
-                    "target_summary": self.target_resolver.get_target_summary(target_resolution.resolved_targets),
-                    "resolution_time": target_resolution.resolution_time
-                },
-                "metadata": {
-                    "created_at": datetime.now().isoformat(),
-                    "intent_type": intent_type,
-                    "requires_approval": execution_plan.requires_approval,
-                    "estimated_duration": execution_plan.execution_schedule.estimated_end_time - execution_plan.execution_schedule.planned_start_time,
-                    "risk_level": workflow.risk_level
-                }
-            }
+            return result
             
         except Exception as e:
-            logger.error(f"Error creating job from natural language: {e}")
+            logger.error(f"Error in LLM job creation: {e}")
             return {
                 "success": False,
                 "error": f"Failed to create job: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }
     
-    async def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get conversation details by ID.
-        
-        Args:
-            conversation_id: Conversation identifier
-            
-        Returns:
-            Dict containing conversation details or None if not found
-        """
-        try:
-            if self.intent_engine_enabled and hasattr(self, 'conversation_manager'):
-                conversation = self.conversation_manager.get_conversation(conversation_id)
-                if conversation:
-                    return self.conversation_manager.export_conversation(conversation_id)
-            return None
-        except Exception as e:
-            logger.error(f"Error getting conversation {conversation_id}: {e}")
-            return None
-    
-    async def get_user_conversations(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        Get all active conversations for a user.
-        
-        Args:
-            user_id: User identifier
-            
-        Returns:
-            List of conversation dictionaries
-        """
-        try:
-            if self.intent_engine_enabled and hasattr(self, 'conversation_manager'):
-                conversations = self.conversation_manager.get_user_conversations(user_id)
-                return [
-                    self.conversation_manager.export_conversation(conv.id)
-                    for conv in conversations
-                ]
-            return []
-        except Exception as e:
-            logger.error(f"Error getting conversations for user {user_id}: {e}")
-            return []
-    
-    async def analyze_context(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Analyze context for a conversation.
-        
-        Args:
-            conversation_id: Conversation identifier
-            
-        Returns:
-            Dict containing context analysis or None if not found
-        """
-        try:
-            if (self.intent_engine_enabled and 
-                hasattr(self, 'conversation_manager') and 
-                hasattr(self, 'context_analyzer')):
-                
-                conversation = self.conversation_manager.get_conversation(conversation_id)
-                if conversation:
-                    analysis = self.context_analyzer.analyze_context(conversation)
-                    return self.context_analyzer.export_analysis(analysis)
-            return None
-        except Exception as e:
-            logger.error(f"Error analyzing context for conversation {conversation_id}: {e}")
-            return None
+    # NLM conversation methods removed - using pure LLM approach
+    # All conversation handling is now done through LLMConversationHandler
     
     def get_health_status(self) -> Dict[str, Any]:
         """
@@ -533,9 +373,12 @@ class AIBrainEngine:
                 "integration_clients": True,  # Assume healthy if initialized
                 "system_model": self.system_model_enabled,
                 "knowledge_engine": self.knowledge_graph_enabled,
-                "intent_engine": self.intent_engine_enabled,
-                "job_creation_engine": self.job_creation_enabled
+                "llm_conversation_handler": self.llm_conversation_enabled and hasattr(self, 'llm_conversation_handler'),
+                "llm_job_creator": self.job_creation_enabled and hasattr(self, 'llm_job_creator'),
+                "nlm_intent_engine": False  # PERMANENTLY DISABLED - USING PURE LLM
             },
+            "architecture": "pure_llm",
+            "nlm_status": "completely_removed",
             "timestamp": datetime.utcnow().isoformat()
         }
     

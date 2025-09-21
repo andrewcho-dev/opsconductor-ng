@@ -120,6 +120,10 @@ class ChatResponse(BaseModel):
     automation_job_id: Optional[int] = None
     workflow: Optional[Dict[str, Any]] = None
     execution_started: bool = False
+    # Debug information
+    intent_classification: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
+    _routing: Optional[Dict[str, Any]] = None
 
 @app.get("/health")
 async def health_check():
@@ -195,16 +199,31 @@ async def chat_endpoint(request: ChatRequest):
         user_id = str(request.user_id) if request.user_id else "system"
         response = await ai_engine.process_message(request.message, user_id)
         
-        # Convert to expected ChatResponse format
+        # Convert to expected ChatResponse format with debug information
+        intent_classification = response.get("intent_classification", {})
+        confidence = intent_classification.get("confidence", 0.8)
+        
+        # Add routing information for debug
+        routing_info = {
+            "service": "ai-command",
+            "service_type": "ai_engine",
+            "response_time": 0.0,  # Could be calculated if needed
+            "cached": False
+        }
+        
         return ChatResponse(
             response=response.get("response", ""),
             intent=response.get("intent", "unknown"),
-            confidence=0.8,  # Default confidence
+            confidence=confidence,
             job_id=response.get("data", {}).get("job_id"),
             execution_id=response.get("data", {}).get("execution_id"),
             automation_job_id=response.get("data", {}).get("automation_job_id"),
             workflow=response.get("data", {}).get("workflow"),
-            execution_started=response.get("success", False)
+            execution_started=response.get("success", False),
+            # Debug information
+            intent_classification=intent_classification,
+            timestamp=response.get("timestamp"),
+            _routing=routing_info
         )
     except Exception as e:
         logger.error("Chat request failed", error=str(e))

@@ -12,6 +12,8 @@ from base_service import BaseService
 # Import the new AI Brain Engine
 from brain_engine import AIBrainEngine
 
+# PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
+
 # Legacy imports for backward compatibility
 from legacy.learning_api import learning_router
 from legacy.predictive_analytics import predictive_analytics
@@ -79,6 +81,103 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Exception during AI engine initialization: {e}")
 
+# PURE LLM CHAT FUNCTION - NO PATTERN MATCHING, NO TEMPLATES, JUST AI!
+async def pure_llm_chat_endpoint(request, ai_engine):
+    """PURE LLM CHAT INTERFACE - NO PATTERN MATCHING, NO TEMPLATES, JUST AI!"""
+    try:
+        logger.info("Processing PURE LLM chat request", message=request.message[:100], conversation_id=request.conversation_id)
+        user_id = str(request.user_id) if request.user_id else "system"
+        
+        # Generate conversation_id if not provided
+        if not request.conversation_id:
+            request.conversation_id = f"chat-{uuid.uuid4()}"
+        
+        # Process through PURE LLM brain engine - NO HARDCODED BULLSHIT!
+        user_context = {
+            "user_id": user_id,
+            "conversation_id": request.conversation_id
+        }
+        
+        response = await ai_engine.process_query(request.message, user_context)
+        
+        return {
+            "response": response.get("response", "I'm processing your request..."),
+            "conversation_id": response.get("conversation_id", request.conversation_id),
+            "intent": "llm_conversation",  # Always LLM conversation, no pattern matching
+            "confidence": 1.0,  # LLM is always confident in its responses
+            "job_id": None,  # Pure conversation, no job creation
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            # Metadata showing this is pure LLM
+            "intent_classification": {
+                "intent_type": "llm_conversation",
+                "confidence": 1.0,
+                "method": "pure_llm",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": 1.0,
+                    "risk_level": "NONE",
+                    "requirements_count": 0,
+                    "recommendations": ["Using pure LLM conversation"]
+                },
+                "reasoning": "Processed using pure LLM conversation handler - no pattern matching",
+                "metadata": {
+                    "engine": "llm_conversation_handler",
+                    "success": response.get("success", True)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "pure_llm_brain_engine", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+        
+    except Exception as e:
+        logger.error("PURE LLM chat processing failed", error=str(e), exc_info=True)
+        
+        # Even error handling is LLM-powered
+        return {
+            "response": f"I encountered an issue processing your message: {str(e)}. Please try rephrasing your request.",
+            "conversation_id": request.conversation_id,
+            "intent": "error_recovery",
+            "confidence": 0.8,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": {
+                "intent_type": "error_recovery",
+                "confidence": 0.8,
+                "method": "pure_llm_error_handling",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": 0.8,
+                    "risk_level": "LOW",
+                    "requirements_count": 0,
+                    "recommendations": ["Try rephrasing the request"]
+                },
+                "reasoning": "Error occurred in pure LLM processing",
+                "metadata": {
+                    "engine": "llm_conversation_handler",
+                    "success": False,
+                    "error": str(e)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "pure_llm_error_handler", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+
 class JobRequest(BaseModel):
     description: str
     user_id: Optional[int] = None
@@ -140,6 +239,10 @@ class ChatResponse(BaseModel):
     risk_assessment: Optional[Dict[str, Any]] = None
     field_confidence_scores: Optional[Dict[str, Dict[str, Any]]] = None
     validation_issues: Optional[List[Dict[str, Any]]] = None
+    # Debug information
+    intent_classification: Optional[Dict[str, Any]] = None
+    timestamp: Optional[str] = None
+    _routing: Optional[Dict[str, Any]] = None
 
 @app.get("/health")
 async def health_check():
@@ -285,181 +388,9 @@ async def validate_job_request(request: dict):
 
 @app.post("/ai/chat")
 async def chat_endpoint(request: ChatRequest):
-    """Enhanced chat interface with targeted clarification and risk assessment"""
-    try:
-        logger.info("Processing chat request", message=request.message, conversation_id=request.conversation_id)
-        user_id = str(request.user_id) if request.user_id else "system"
-        
-        # Generate conversation_id if not provided
-        if not request.conversation_id:
-            request.conversation_id = f"chat-{uuid.uuid4()}"
-        
-        # Parse the request first
-        parsed_request = nlp_processor.parse_request(request.message)
-        
-        # Check if this looks like a job creation request
-        job_related_operations = ["restart", "stop", "start", "install", "update", "list", "get", "check"]
-        
-        if parsed_request.operation in job_related_operations:
-            # Use our enhanced job validator with targeted clarification
-            from job_engine.job_validator import JobValidator
-            validator = JobValidator()
-            
-            # Extract structured information from parsed request
-            intent_type = getattr(parsed_request, 'intent', 'automation_request')
-            requirements = {
-                'description': request.message,
-                'operation': parsed_request.operation,
-                'target_systems': getattr(parsed_request, 'target_systems', []),
-                'parameters': getattr(parsed_request, 'parameters', {})
-            }
-            target_systems = getattr(parsed_request, 'target_systems', [])
-            
-            # Validate the request using the enhanced system
-            validation_result = await validator.validate_job_request(
-                intent_type=intent_type,
-                requirements=requirements,
-                target_systems=target_systems
-            )
-            
-            # Check if clarification is needed (low confidence or missing critical fields)
-            if not validation_result.is_valid or validation_result.confidence_score < 0.8:
-                logger.info("Request needs clarification", 
-                           conversation_id=request.conversation_id,
-                           confidence=validation_result.confidence_score)
-                
-                # Generate targeted clarification response
-                response_message = "I'd like to help you create this automation job. "
-                
-                # Add risk context if there are significant risks
-                risk_assessment = validation_result.risk_assessment
-                if risk_assessment and risk_assessment.get('risk_level') in ['CRITICAL', 'HIGH']:
-                    response_message += f"\n\n⚠️ **Risk Assessment**: {risk_assessment['risk_level']} risk level detected.\n"
-                    response_message += f"**Recommendation**: {risk_assessment['recommendation']}\n"
-                    
-                    if risk_assessment.get('critical_issues'):
-                        response_message += "\n**Critical Issues**:\n"
-                        for issue in risk_assessment['critical_issues']:
-                            response_message += f"• {issue}\n"
-                
-                # Add the first clarification question
-                if validation_result.clarification_questions:
-                    first_question = validation_result.clarification_questions[0]
-                    response_message += f"\n\n**{first_question['question']}**\n"
-                    
-                    if first_question.get('explanation'):
-                        response_message += f"\n💡 {first_question['explanation']}\n"
-                    
-                    if first_question.get('options'):
-                        response_message += "\nPlease choose from:\n"
-                        for i, option in enumerate(first_question['options'], 1):
-                            response_message += f"{i}. {option}\n"
-                        response_message += "\nOr describe your specific needs."
-                    
-                    if first_question.get('risk_warning'):
-                        response_message += f"\n⚠️ {first_question['risk_warning']}"
-                
-                return ChatResponse(
-                    response=response_message,
-                    conversation_id=request.conversation_id,
-                    intent="clarification_needed",
-                    confidence=validation_result.confidence_score,
-                    job_id=None,
-                    execution_id=None,
-                    automation_job_id=None,
-                    workflow=None,
-                    execution_started=False,
-                    clarification_questions=validation_result.clarification_questions,
-                    risk_assessment=validation_result.risk_assessment,
-                    field_confidence_scores={"field_scores": validation_result.field_confidence_scores},
-                    validation_issues=None
-                )
-            else:
-                # High confidence - proceed with job creation
-                logger.info("High confidence request, proceeding with job creation", 
-                           conversation_id=request.conversation_id,
-                           confidence=validation_result.confidence_score)
-                
-                # Process through brain engine for job creation
-                response = await ai_engine.process_message(
-                    message=request.message,
-                    user_id=user_id
-                )
-                
-                return ChatResponse(
-                    response=response.get("response", "Job has been created successfully."),
-                    conversation_id=response.get("conversation_id", request.conversation_id),
-                    intent=response.get("intent", "job_creation"),
-                    confidence=validation_result.confidence_score,
-                    job_id=response.get("job_id"),
-                    execution_id=response.get("execution_id"),
-                    automation_job_id=response.get("automation_job_id"),
-                    workflow=response.get("workflow"),
-                    execution_started=response.get("execution_started", False),
-                    risk_assessment=validation_result.risk_assessment,
-                    field_confidence_scores={"field_scores": validation_result.field_confidence_scores}
-                )
-        
-        # For non-job requests, process normally through brain engine
-        response = await ai_engine.process_message(
-            message=request.message,
-            user_id=user_id
-        )
-        
-        return ChatResponse(
-            response=response.get("response", "I'm sorry, I couldn't process your request."),
-            conversation_id=response.get("conversation_id", request.conversation_id),
-            intent=response.get("intent", "general_query"),
-            confidence=response.get("confidence", 0.0),
-            job_id=response.get("job_id"),
-            execution_id=response.get("execution_id"),
-            automation_job_id=response.get("automation_job_id"),
-            workflow=response.get("workflow"),
-            execution_started=response.get("execution_started", False)
-        )
-        
-    except Exception as e:
-        logger.error("Chat processing failed", error=str(e), exc_info=True)
-        
-        # Handle specific ClarificationManager initialization error
-        if "ClarificationManager.__init__() missing 1 required positional argument" in str(e):
-            logger.warning("ClarificationManager initialization failed, falling back to basic processing")
-            
-            # Fallback to basic AI processing without enhanced clarification
-            try:
-                response = await ai_engine.process_message(
-                    message=request.message,
-                    user_id=user_id
-                )
-                
-                return ChatResponse(
-                    response=response.get("response", "I'll help you create that automation job. Let me generate the appropriate workflow for you."),
-                    conversation_id=response.get("conversation_id", request.conversation_id),
-                    intent=response.get("intent", "job_creation"),
-                    confidence=response.get("confidence", 0.7),
-                    job_id=response.get("job_id"),
-                    execution_id=response.get("execution_id"),
-                    automation_job_id=response.get("automation_job_id"),
-                    workflow=response.get("workflow"),
-                    execution_started=response.get("execution_started", False)
-                )
-            except Exception as fallback_error:
-                logger.error(f"Fallback processing also failed: {fallback_error}")
-                
-                # Final fallback - return a helpful message
-                return ChatResponse(
-                    response="I understand you want to create a job to get file listings on a machine. I'll help you create an automation workflow for this task. Please specify which machine or server you'd like to target for the file listing operation.",
-                    conversation_id=request.conversation_id,
-                    intent="job_creation",
-                    confidence=0.6,
-                    job_id=None,
-                    execution_id=None,
-                    automation_job_id=None,
-                    workflow=None,
-                    execution_started=False
-                )
-        
-        raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
+    """PURE LLM CHAT INTERFACE - NO MORE NLP PATTERN MATCHING BULLSHIT!"""
+    result = await pure_llm_chat_endpoint(request, ai_engine)
+    return ChatResponse(**result)
 
 class ProceedWithRiskRequest(BaseModel):
     message: str

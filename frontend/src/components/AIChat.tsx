@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
-import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check } from 'lucide-react';
+import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check, Bug, Eye, Brain, Target, Zap, Shield, TrendingUp, Activity, AlertTriangle, Info } from 'lucide-react';
 import { aiApi } from '../services/api';
 
 interface ChatMessage {
@@ -12,6 +12,41 @@ interface ChatMessage {
   confidence?: number;
   status?: 'pending' | 'success' | 'error';
   conversationId?: string;
+  debugInfo?: {
+    intent_classification?: {
+      intent_type: string;
+      confidence: number;
+      method: string;
+      alternatives: Array<{
+        intent: string;
+        confidence: number;
+      }>;
+      entities: Array<{
+        value: string;
+        type: string;
+        confidence: number;
+        normalized_value?: string;
+      }>;
+      context_analysis: {
+        confidence_score: number;
+        risk_level: string;
+        requirements_count: number;
+        recommendations: string[];
+      };
+      reasoning: string;
+      metadata: {
+        engine: string;
+        success: boolean;
+      };
+    };
+    routing?: {
+      service: string;
+      service_type: string;
+      response_time: number;
+      cached: boolean;
+    };
+    raw_response?: any;
+  };
 }
 
 interface ChatResponse {
@@ -31,6 +66,33 @@ interface ChatResponse {
     response_time: number;
     cached: boolean;
   };
+  intent_classification?: {
+    intent_type: string;
+    confidence: number;
+    method: string;
+    alternatives: Array<{
+      intent: string;
+      confidence: number;
+    }>;
+    entities: Array<{
+      value: string;
+      type: string;
+      confidence: number;
+      normalized_value?: string;
+    }>;
+    context_analysis: {
+      confidence_score: number;
+      risk_level: string;
+      requirements_count: number;
+      recommendations: string[];
+    };
+    reasoning: string;
+    metadata: {
+      engine: string;
+      success: boolean;
+    };
+  };
+  timestamp?: string;
   error?: string;
 }
 
@@ -78,6 +140,14 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('opsconductor_ai_debug_mode');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Remove auto-scroll entirely - let users scroll manually
@@ -142,7 +212,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       
       // Create AI message with routing info if available
       let aiContent = data.response;
-      if (data._routing) {
+      if (data._routing && !debugMode) {
         const cached = data._routing.cached ? ' (cached)' : '';
         const responseTime = (data._routing.response_time && typeof data._routing.response_time === 'number') 
           ? data._routing.response_time.toFixed(2) 
@@ -160,7 +230,12 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
         jobId: data.job_id,
         executionId: data.execution_id,
         conversationId: data.conversation_id,
-        status: data.execution_started ? 'pending' : undefined
+        status: data.execution_started ? 'pending' : undefined,
+        debugInfo: {
+          intent_classification: data.intent_classification,
+          routing: data._routing,
+          raw_response: data
+        }
       };
 
       setChatMessages(prev => [...prev, aiMessage]);
@@ -219,6 +294,16 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     }
   };
 
+  const toggleDebugMode = () => {
+    const newDebugMode = !debugMode;
+    setDebugMode(newDebugMode);
+    try {
+      localStorage.setItem('opsconductor_ai_debug_mode', newDebugMode.toString());
+    } catch (error) {
+      console.warn('Failed to save debug mode preference:', error);
+    }
+  };
+
   useImperativeHandle(ref, () => ({
     clearChat: reloadChatHistory,
     clearChatHistory: clearChatHistory
@@ -262,6 +347,237 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
+  };
+
+  const renderDebugInfo = (message: ChatMessage) => {
+    if (!debugMode || !message.debugInfo) return null;
+
+    const getConfidenceClass = (confidence?: number) => {
+      if (!confidence) return 'confidence-low';
+      if (confidence >= 0.8) return 'confidence-high';
+      if (confidence >= 0.5) return 'confidence-medium';
+      return 'confidence-low';
+    };
+
+    const getRiskClass = (riskLevel?: string) => {
+      if (!riskLevel) return 'risk-low';
+      const level = riskLevel.toLowerCase();
+      if (level === 'high') return 'risk-high';
+      if (level === 'medium') return 'risk-medium';
+      return 'risk-low';
+    };
+
+    const formatConfidence = (confidence?: number) => {
+      return confidence ? `${(confidence * 100).toFixed(1)}%` : 'N/A';
+    };
+
+    const formatRiskLevel = (riskLevel?: string) => {
+      return riskLevel ? riskLevel.toUpperCase() : 'UNKNOWN';
+    };
+
+    const intent = message.debugInfo.intent_classification;
+    const routing = message.debugInfo.routing;
+
+    return (
+      <div className="debug-info-panel">
+        {/* Header */}
+        <div className="debug-panel-header">
+          <div className="debug-panel-title">
+            <Brain className="debug-section-icon" />
+            AI Debug Information
+          </div>
+          <div className="debug-panel-badge">
+            {intent?.metadata?.engine || 'AI Engine'}
+          </div>
+        </div>
+
+        <div className="debug-sections-grid">
+          {/* Intent Classification Section */}
+          {intent && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Target className="debug-section-icon" />
+                  Intent Classification
+                </div>
+                <span className={`confidence-indicator ${getConfidenceClass(intent.confidence)}`}>
+                  {formatConfidence(intent.confidence)}
+                </span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Intent Type</span>
+                <span className="debug-field-value code">{intent.intent_type || 'Unknown'}</span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Classification Method</span>
+                <span className="debug-field-value">{intent.method || 'Unknown'}</span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Confidence Score</span>
+                <span className="debug-field-value">{formatConfidence(intent.confidence)}</span>
+              </div>
+
+              {/* Confidence Bar */}
+              <div className="confidence-bar">
+                <div 
+                  className={`confidence-fill ${getConfidenceClass(intent.confidence).replace('confidence-', '')}`}
+                  style={{ width: `${(intent.confidence || 0) * 100}%` }}
+                />
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Reasoning</span>
+                <span className="debug-field-value">{intent.reasoning || 'No reasoning provided'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Context Analysis Section */}
+          {intent?.context_analysis && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Shield className="debug-section-icon" />
+                  Context Analysis
+                </div>
+                <span className={`risk-indicator ${getRiskClass(intent.context_analysis.risk_level)}`}>
+                  <AlertTriangle size={14} />
+                  {formatRiskLevel(intent.context_analysis.risk_level)}
+                </span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Context Confidence</span>
+                <span className="debug-field-value">{formatConfidence(intent.context_analysis.confidence_score)}</span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Risk Level</span>
+                <span className="debug-field-value">{formatRiskLevel(intent.context_analysis.risk_level)}</span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Requirements Count</span>
+                <span className="debug-field-value">{intent.context_analysis.requirements_count || 0}</span>
+              </div>
+
+              {/* Recommendations */}
+              {intent.context_analysis.recommendations && intent.context_analysis.recommendations.length > 0 && (
+                <div>
+                  <div className="debug-field-label" style={{ marginTop: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
+                    Recommendations
+                  </div>
+                  <div className="recommendations-list">
+                    {intent.context_analysis.recommendations.map((rec, index) => (
+                      <div key={index} className="recommendation-item">
+                        <AlertTriangle className="recommendation-icon" />
+                        <span className="recommendation-text">{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Alternative Intents Section */}
+          {intent?.alternatives && intent.alternatives.length > 0 && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <TrendingUp className="debug-section-icon" />
+                  Alternative Intents
+                </div>
+              </div>
+
+              <div className="alternatives-list">
+                {intent.alternatives.map((alt, index) => (
+                  <div key={index} className="alternative-item">
+                    <span className="alternative-name">{alt.intent}</span>
+                    <span className="alternative-confidence">{formatConfidence(alt.confidence)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Entities Section */}
+          {intent?.entities && intent.entities.length > 0 && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Zap className="debug-section-icon" />
+                  Extracted Entities
+                </div>
+              </div>
+
+              <div className="entities-list">
+                {intent.entities.map((entity, index) => (
+                  <div key={index} className="entity-item">
+                    <div className="entity-details">
+                      <span className="entity-value">{entity.value}</span>
+                      <span className="entity-type">{entity.type}</span>
+                    </div>
+                    <span className="entity-confidence">{formatConfidence(entity.confidence)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Performance Metrics Section */}
+          {routing && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Activity className="debug-section-icon" />
+                  Performance Metrics
+                </div>
+              </div>
+
+              <div className="performance-metrics">
+                <div className="metric-item">
+                  <div className="metric-value">{routing.response_time?.toFixed(2) || '0.00'}s</div>
+                  <div className="metric-label">Response Time</div>
+                </div>
+                <div className="metric-item">
+                  <div className="metric-value">{routing.cached ? 'YES' : 'NO'}</div>
+                  <div className="metric-label">Cached</div>
+                </div>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Service</span>
+                <span className="debug-field-value code">{routing.service}</span>
+              </div>
+
+              <div className="debug-field">
+                <span className="debug-field-label">Service Type</span>
+                <span className="debug-field-value">{routing.service_type}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Raw Response Section */}
+          {message.debugInfo.raw_response && (
+            <div className="debug-section" style={{ gridColumn: '1 / -1' }}>
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Info className="debug-section-icon" />
+                  Raw Response Data
+                </div>
+              </div>
+              <div className="debug-json">
+                {JSON.stringify(message.debugInfo.raw_response, null, 2)}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const formatMessageContent = (content: string, messageId: string) => {
@@ -524,8 +840,114 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             background: var(--success-green);
             color: white;
           }
+          
+          .debug-toggle-area {
+            padding: 8px 16px;
+            background: var(--neutral-100);
+            border-bottom: 1px solid var(--neutral-200);
+            display: flex;
+            justify-content: flex-end;
+          }
+          
+          .debug-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--neutral-200);
+            border: 1px solid var(--neutral-300);
+            border-radius: 6px;
+            color: var(--neutral-700);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+          }
+          
+          .debug-toggle-btn:hover {
+            background: var(--neutral-300);
+            border-color: var(--neutral-400);
+          }
+          
+          .debug-toggle-btn.active {
+            background: var(--primary-blue);
+            border-color: var(--primary-blue);
+            color: white;
+          }
+          
+          .debug-info-panel {
+            background: var(--neutral-100);
+            border: 1px solid var(--neutral-300);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--neutral-700);
+          }
+          
+          .debug-section {
+            margin-bottom: 12px;
+          }
+          
+          .debug-section:last-child {
+            margin-bottom: 0;
+          }
+          
+          .debug-section-title {
+            font-weight: bold;
+            color: var(--primary-blue);
+            margin-bottom: 4px;
+            font-size: 12px;
+          }
+          
+          .debug-json {
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+            padding: 8px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 200px;
+            overflow-y: auto;
+          }
+          
+          .confidence-indicator {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+          }
+          
+          .confidence-high {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+          }
+          
+          .confidence-medium {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange-dark);
+          }
+          
+          .confidence-low {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
         `}
       </style>
+
+      {/* Debug Mode Toggle */}
+      <div className="debug-toggle-area">
+        <button
+          onClick={toggleDebugMode}
+          className={`debug-toggle-btn ${debugMode ? 'active' : ''}`}
+          title={debugMode ? 'Hide debug information' : 'Show debug information'}
+        >
+          {debugMode ? <Eye size={16} /> : <Bug size={16} />}
+          {debugMode ? 'Normal View' : 'Debug Mode'}
+        </button>
+      </div>
 
       {/* Messages Area */}
       <div className="chat-messages-area">
@@ -559,8 +981,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             ) : (
               // Reverse the order so newest messages appear on top
               [...chatMessages].reverse().map((message) => (
-                <div key={message.id} className={`chat-bubble chat-bubble-${message.type}`}>
-                  {message.type === 'ai' ? formatMessageContent(message.content, message.id) : message.content}
+                <div key={message.id}>
+                  <div className={`chat-bubble chat-bubble-${message.type}`}>
+                    {message.type === 'ai' ? formatMessageContent(message.content, message.id) : message.content}
+                  </div>
+                  {renderDebugInfo(message)}
                 </div>
               ))
             )}

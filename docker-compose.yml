@@ -303,6 +303,13 @@ services:
       # Legacy support during transition
       LEGACY_MODE_ENABLED: true
       
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       redis:
         condition: service_healthy
@@ -323,6 +330,7 @@ services:
       # Core files
       - ./ai-brain/main.py:/app/main.py
       - ./ai-brain/brain_engine.py:/app/brain_engine.py
+      - ./ai-brain/llm_conversation_handler.py:/app/llm_conversation_handler.py
       
       # New AI modules
       - ./ai-brain/system_model:/app/system_model
