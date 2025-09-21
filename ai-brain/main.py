@@ -81,66 +81,40 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Exception during AI engine initialization: {e}")
 
-# PURE LLM CHAT FUNCTION - NO PATTERN MATCHING, NO TEMPLATES, JUST AI!
+# PURE LLM CHAT FUNCTION - INTELLIGENT ROUTING BETWEEN CONVERSATION AND JOB CREATION
 async def pure_llm_chat_endpoint(request, ai_engine):
-    """PURE LLM CHAT INTERFACE - NO PATTERN MATCHING, NO TEMPLATES, JUST AI!"""
+    """
+    PURE LLM CHAT INTERFACE - INTELLIGENT ROUTING
+    
+    This function uses LLM to determine if the user wants to:
+    1. Create a job/automation (routes to LLM job creator)
+    2. Have a conversation (routes to LLM conversation handler)
+    
+    NO PATTERN MATCHING, NO TEMPLATES, JUST INTELLIGENT LLM ROUTING!
+    """
     try:
-        logger.info("Processing PURE LLM chat request", message=request.message[:100], conversation_id=request.conversation_id)
+        logger.info("🧠 Processing PURE LLM chat request", message=request.message[:100], conversation_id=request.conversation_id)
         user_id = str(request.user_id) if request.user_id else "system"
         
         # Generate conversation_id if not provided
         if not request.conversation_id:
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
-        # Process through PURE LLM brain engine - NO HARDCODED BULLSHIT!
-        user_context = {
-            "user_id": user_id,
-            "conversation_id": request.conversation_id
-        }
+        # Step 1: Use LLM to determine intent (job creation vs conversation)
+        intent_analysis = await _analyze_user_intent_with_llm(request.message, ai_engine)
         
-        response = await ai_engine.process_query(request.message, user_context)
-        
-        return {
-            "response": response.get("response", "I'm processing your request..."),
-            "conversation_id": response.get("conversation_id", request.conversation_id),
-            "intent": "llm_conversation",  # Always LLM conversation, no pattern matching
-            "confidence": 1.0,  # LLM is always confident in its responses
-            "job_id": None,  # Pure conversation, no job creation
-            "execution_id": None,
-            "automation_job_id": None,
-            "workflow": None,
-            "execution_started": False,
-            # Metadata showing this is pure LLM
-            "intent_classification": {
-                "intent_type": "llm_conversation",
-                "confidence": 1.0,
-                "method": "pure_llm",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {
-                    "confidence_score": 1.0,
-                    "risk_level": "NONE",
-                    "requirements_count": 0,
-                    "recommendations": ["Using pure LLM conversation"]
-                },
-                "reasoning": "Processed using pure LLM conversation handler - no pattern matching",
-                "metadata": {
-                    "engine": "llm_conversation_handler",
-                    "success": response.get("success", True)
-                }
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "_routing": {
-                "service_type": "pure_llm_brain_engine", 
-                "response_time": 0.0,
-                "cached": False
-            }
-        }
+        # Step 2: Route based on LLM analysis
+        if intent_analysis.get("is_job_request", False):
+            logger.info("🚀 LLM detected job creation request - routing to LLM job creator")
+            return await _handle_job_creation_request(request, ai_engine, intent_analysis)
+        else:
+            logger.info("💬 LLM detected conversation request - routing to LLM conversation handler")
+            return await _handle_conversation_request(request, ai_engine, intent_analysis)
         
     except Exception as e:
-        logger.error("PURE LLM chat processing failed", error=str(e), exc_info=True)
+        logger.error("❌ PURE LLM chat processing failed", error=str(e), exc_info=True)
         
-        # Even error handling is LLM-powered
+        # LLM-powered error handling
         return {
             "response": f"I encountered an issue processing your message: {str(e)}. Please try rephrasing your request.",
             "conversation_id": request.conversation_id,
@@ -165,7 +139,7 @@ async def pure_llm_chat_endpoint(request, ai_engine):
                 },
                 "reasoning": "Error occurred in pure LLM processing",
                 "metadata": {
-                    "engine": "llm_conversation_handler",
+                    "engine": "llm_error_handler",
                     "success": False,
                     "error": str(e)
                 }
@@ -173,6 +147,264 @@ async def pure_llm_chat_endpoint(request, ai_engine):
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
                 "service_type": "pure_llm_error_handler", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+
+async def _analyze_user_intent_with_llm(message: str, ai_engine) -> Dict[str, Any]:
+    """Use LLM to analyze if the user wants to create a job or have a conversation"""
+    try:
+        # Get LLM client from ai_engine
+        if not hasattr(ai_engine, 'llm_client'):
+            return {"is_job_request": False, "confidence": 0.5, "reasoning": "LLM client not available"}
+        
+        analysis_prompt = f"""Analyze this user message and determine if they want to create an automation job or just have a conversation.
+
+User message: "{message}"
+
+Respond with JSON only:
+{{
+    "is_job_request": true/false,
+    "confidence": 0.0-1.0,
+    "reasoning": "brief explanation",
+    "job_type": "automation/deployment/monitoring/maintenance/query" (if job request),
+    "conversation_type": "question/help/general" (if conversation)
+}}
+
+Job request indicators:
+- Words like: create, run, execute, deploy, restart, start, stop, install, configure, backup, monitor, automate
+- Mentions of servers, services, systems, applications
+- Requests for actions to be performed
+
+Conversation indicators:
+- Questions about how things work
+- Requests for information or explanations
+- General help or guidance requests
+- Status inquiries without action requests"""
+
+        llm_response = await ai_engine.llm_client.generate_response(analysis_prompt)
+        
+        # Parse LLM response
+        try:
+            analysis = json.loads(llm_response)
+            return analysis
+        except json.JSONDecodeError:
+            # Fallback analysis based on keywords
+            job_keywords = ["create", "run", "execute", "deploy", "restart", "start", "stop", "install", "configure", "backup", "monitor", "automate"]
+            is_job = any(keyword in message.lower() for keyword in job_keywords)
+            return {
+                "is_job_request": is_job,
+                "confidence": 0.7 if is_job else 0.3,
+                "reasoning": "Fallback keyword analysis",
+                "job_type": "automation" if is_job else None,
+                "conversation_type": "general" if not is_job else None
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Intent analysis failed: {e}")
+        # Conservative fallback - treat as conversation
+        return {
+            "is_job_request": False,
+            "confidence": 0.5,
+            "reasoning": f"Analysis failed: {str(e)}",
+            "conversation_type": "general"
+        }
+
+async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
+    """Handle job creation requests using the LLM job creator"""
+    try:
+        logger.info("🚀 Processing job creation request via LLM job creator")
+        
+        # Use the new LLM job creation method
+        user_context = {
+            "user_id": str(request.user_id) if request.user_id else "system",
+            "conversation_id": request.conversation_id,
+            "intent_analysis": intent_analysis
+        }
+        
+        job_result = await ai_engine.create_job_from_natural_language(request.message, user_context)
+        
+        if job_result.get("success"):
+            return {
+                "response": job_result.get("response", "I've created the automation job for you."),
+                "conversation_id": request.conversation_id,
+                "intent": "job_creation",
+                "confidence": job_result.get("confidence", 0.9),
+                "job_id": job_result.get("job_id"),
+                "execution_id": job_result.get("execution_id"),
+                "automation_job_id": job_result.get("automation_job_id"),
+                "workflow": job_result.get("workflow"),
+                "execution_started": job_result.get("execution_started", False),
+                "intent_classification": {
+                    "intent_type": "job_creation",
+                    "confidence": job_result.get("confidence", 0.9),
+                    "method": "pure_llm_job_creator",
+                    "alternatives": [],
+                    "entities": job_result.get("entities", []),
+                    "context_analysis": job_result.get("analysis", {}),
+                    "reasoning": "Processed using pure LLM job creation pipeline",
+                    "metadata": {
+                        "engine": "llm_job_creator",
+                        "success": True,
+                        "job_type": intent_analysis.get("job_type", "automation")
+                    }
+                },
+                "timestamp": datetime.utcnow().isoformat(),
+                "_routing": {
+                    "service_type": "pure_llm_job_creator", 
+                    "response_time": 0.0,
+                    "cached": False
+                }
+            }
+        else:
+            # Job creation failed, return error
+            return {
+                "response": job_result.get("error", "I couldn't create the job. Please try rephrasing your request."),
+                "conversation_id": request.conversation_id,
+                "intent": "job_creation_failed",
+                "confidence": 0.8,
+                "job_id": None,
+                "execution_id": None,
+                "automation_job_id": None,
+                "workflow": None,
+                "execution_started": False,
+                "intent_classification": {
+                    "intent_type": "job_creation_failed",
+                    "confidence": 0.8,
+                    "method": "pure_llm_job_creator",
+                    "alternatives": [],
+                    "entities": [],
+                    "context_analysis": {"error": job_result.get("error")},
+                    "reasoning": "Job creation failed in LLM pipeline",
+                    "metadata": {
+                        "engine": "llm_job_creator",
+                        "success": False,
+                        "error": job_result.get("error")
+                    }
+                },
+                "timestamp": datetime.utcnow().isoformat(),
+                "_routing": {
+                    "service_type": "pure_llm_job_creator_error", 
+                    "response_time": 0.0,
+                    "cached": False
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Job creation handling failed: {e}")
+        return {
+            "response": f"I encountered an error while trying to create your job: {str(e)}",
+            "conversation_id": request.conversation_id,
+            "intent": "job_creation_error",
+            "confidence": 0.7,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": {
+                "intent_type": "job_creation_error",
+                "confidence": 0.7,
+                "method": "pure_llm_job_creator",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {"error": str(e)},
+                "reasoning": "Exception in job creation handling",
+                "metadata": {
+                    "engine": "llm_job_creator",
+                    "success": False,
+                    "error": str(e)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "pure_llm_job_creator_exception", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+
+async def _handle_conversation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
+    """Handle conversation requests using the LLM conversation handler"""
+    try:
+        logger.info("💬 Processing conversation request via LLM conversation handler")
+        
+        # Use the existing process_query method for conversations
+        user_context = {
+            "user_id": str(request.user_id) if request.user_id else "system",
+            "conversation_id": request.conversation_id,
+            "intent_analysis": intent_analysis
+        }
+        
+        response = await ai_engine.process_query(request.message, user_context)
+        
+        return {
+            "response": response.get("response", "I'm here to help with your questions."),
+            "conversation_id": response.get("conversation_id", request.conversation_id),
+            "intent": "conversation",
+            "confidence": intent_analysis.get("confidence", 0.9),
+            "job_id": None,  # Conversations don't create jobs
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": {
+                "intent_type": "conversation",
+                "confidence": intent_analysis.get("confidence", 0.9),
+                "method": "pure_llm_conversation",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": intent_analysis.get("confidence", 0.9),
+                    "risk_level": "NONE",
+                    "requirements_count": 0,
+                    "recommendations": ["Using pure LLM conversation"]
+                },
+                "reasoning": "Processed using pure LLM conversation handler",
+                "metadata": {
+                    "engine": "llm_conversation_handler",
+                    "success": response.get("success", True),
+                    "conversation_type": intent_analysis.get("conversation_type", "general")
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "pure_llm_conversation_handler", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Conversation handling failed: {e}")
+        return {
+            "response": f"I encountered an issue during our conversation: {str(e)}. Please try again.",
+            "conversation_id": request.conversation_id,
+            "intent": "conversation_error",
+            "confidence": 0.7,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": {
+                "intent_type": "conversation_error",
+                "confidence": 0.7,
+                "method": "pure_llm_conversation",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {"error": str(e)},
+                "reasoning": "Exception in conversation handling",
+                "metadata": {
+                    "engine": "llm_conversation_handler",
+                    "success": False,
+                    "error": str(e)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "pure_llm_conversation_exception", 
                 "response_time": 0.0,
                 "cached": False
             }
@@ -246,44 +478,76 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "ai-service",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    """Health check endpoint with pure LLM architecture status"""
+    try:
+        # Get detailed health status from AI Brain Engine
+        brain_health = ai_engine.get_health_status()
+        
+        return {
+            "status": "healthy",
+            "service": "ai-service",
+            "architecture": "pure_llm",
+            "brain_engine": brain_health,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "degraded",
+            "service": "ai-service",
+            "architecture": "pure_llm",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 @app.get("/info")
 async def service_info():
-    """Service information endpoint"""
+    """Service information endpoint - Pure LLM Architecture"""
     return {
         "service": "ai-service",
-        "version": "2.0.0",
-        "description": "Complete AI-powered automation service with protocol integration",
+        "version": "3.0.0",
+        "architecture": "pure_llm",
+        "description": "Pure LLM-powered automation service - NLM completely eliminated",
         "capabilities": [
-            "Natural language processing",
+            "Pure LLM natural language understanding",
+            "Multi-stage LLM job creation pipeline",
+            "LLM-powered conversation handling",
+            "Intelligent intent routing via LLM",
             "Vector-powered knowledge base",
             "Multi-protocol support (SNMP, SMTP, SSH, VAPIX)",
             "Script generation (PowerShell, Bash, Python)",
-            "Intent recognition and context awareness",
             "Real-time system queries",
             "Continuous learning from interactions"
         ],
+        "llm_features": [
+            "Ollama LLM integration",
+            "Multi-stage job creation (ANALYZE → PLAN → VALIDATE → CREATE)",
+            "Intelligent conversation routing",
+            "Context-aware responses",
+            "Safety validation and risk assessment",
+            "Fallback error handling"
+        ],
         "supported_protocols": [
             "SNMP - Network device monitoring",
-            "SMTP - Email notifications and alerts",
+            "SMTP - Email notifications and alerts", 
             "SSH - Remote command execution",
             "VAPIX - Axis camera integration"
         ],
         "supported_operations": [
+            "Automation job creation", "System maintenance", "Deployment requests",
+            "Configuration changes", "Monitoring setup", "Troubleshooting",
             "Network monitoring", "Email alerts", "Remote execution", 
             "Camera management", "Script generation", "System queries"
         ],
-        "ai_features": [
-            "Ollama LLM integration", "ChromaDB vector storage", 
-            "Semantic search", "Learning system"
-        ],
-        "automation_integration": True
+        "architecture_changes": {
+            "nlm_status": "completely_removed",
+            "intent_engine": "disabled",
+            "job_creation": "pure_llm_pipeline",
+            "conversation": "pure_llm_handler",
+            "routing": "llm_based_intelligent_routing"
+        },
+        "automation_integration": True,
+        "nlm_eliminated": True
     }
 
 @app.get("/ai/system-capabilities")
