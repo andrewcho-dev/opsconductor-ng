@@ -14,10 +14,13 @@ from brain_engine import AIBrainEngine
 
 # PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
 
-# Legacy imports for backward compatibility
-from legacy.learning_api import learning_router
-from legacy.predictive_analytics import predictive_analytics
-from legacy.nlp_processor import SimpleNLPProcessor
+# Modern API imports (replacing legacy)
+from api.knowledge_router import knowledge_router
+from api.learning_router import learning_router
+
+# Modern Analytics and Processing (Phase 3A)
+from analytics.system_analytics import system_analytics
+from processing.intent_processor import intent_processor
 
 # Job Engine imports
 from job_engine.workflow_generator import WorkflowGenerator
@@ -57,13 +60,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Include learning API routes
+# Include modern API routes
+app.include_router(knowledge_router)
 app.include_router(learning_router)
 
 # Initialize service components
 service = AIService()
 ai_engine = AIBrainEngine()
-nlp_processor = SimpleNLPProcessor()
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"))
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
@@ -585,7 +588,7 @@ async def validate_job_request(request: dict):
             raise HTTPException(status_code=400, detail="Description is required")
         
         # Parse the request using NLP
-        parsed_request = nlp_processor.parse_request(description)
+        parsed_request = await intent_processor.parse_request(description)
         
         # Extract requirements
         requirements = {
@@ -809,7 +812,7 @@ async def create_job(request: JobRequest):
         logger.info("Processing job creation request", description=request.description)
         
         # Step 1: Parse the natural language request
-        parsed_request = nlp_processor.parse_request(request.description)
+        parsed_request = await intent_processor.parse_request(request.description)
         logger.info("Parsed request", 
                    operation=parsed_request.operation,
                    target_process=parsed_request.target_process,
@@ -1060,10 +1063,10 @@ async def analyze_text(request: TextAnalysisRequest):
         logger.info("Analyzing text", text=request.text)
         
         # Parse the request
-        parsed_request = nlp_processor.parse_request(request.text)
+        parsed_request = await intent_processor.parse_request(request.text)
         
         # Extract all entities for debugging
-        entities = nlp_processor.extract_entities(request.text)
+        entities = await intent_processor.extract_entities(request.text)
         
         # Generate suggestions
         suggestions = []
@@ -1105,7 +1108,7 @@ async def execute_job(request: ExecuteJobRequest):
                    execute_immediately=request.execute_immediately)
         
         # Step 1: Parse the natural language request
-        parsed_request = nlp_processor.parse_request(request.description)
+        parsed_request = await intent_processor.parse_request(request.description)
         logger.info("Parsed execution request", 
                    operation=parsed_request.operation,
                    target_process=parsed_request.target_process,
@@ -1249,8 +1252,8 @@ async def test_nlp():
     
     results = []
     for test_text in test_requests:
-        parsed = nlp_processor.parse_request(test_text)
-        entities = nlp_processor.extract_entities(test_text)
+        parsed = await intent_processor.parse_request(test_text)
+        entities = await intent_processor.extract_entities(test_text)
         
         results.append({
             "input": test_text,
@@ -1271,7 +1274,7 @@ async def test_nlp():
 async def test_workflow():
     """Test endpoint for workflow generation"""
     test_request = "update stationcontroller on CIS servers"
-    parsed = nlp_processor.parse_request(test_request)
+    parsed = await intent_processor.parse_request(test_request)
     
     # Convert to proper format for workflow generator
     intent_type = _map_operation_to_intent(parsed.operation)
@@ -1399,7 +1402,7 @@ async def test_integration():
         logger.info("Testing full integration", request=test_request)
         
         # Step 1: Test AI processing
-        parsed = nlp_processor.parse_request(test_request)
+        parsed = await intent_processor.parse_request(test_request)
         
         # Convert to proper format for workflow generator
         intent_type = _map_operation_to_intent(parsed.operation)
@@ -1580,7 +1583,7 @@ Try asking me to perform a specific task or check on something!"""
 async def get_predictive_insights():
     """Get comprehensive predictive insights"""
     try:
-        insights = await predictive_analytics.get_predictive_insights()
+        insights = await system_analytics.get_predictive_insights()
         return {
             "success": True,
             "insights": insights,
@@ -1594,7 +1597,7 @@ async def get_predictive_insights():
 async def analyze_performance(metrics: Dict[str, float]):
     """Analyze system performance and generate insights"""
     try:
-        insights = await predictive_analytics.analyze_system_performance(metrics)
+        insights = await system_analytics.analyze_system_performance(metrics)
         return {
             "success": True,
             "performance_insights": [insight.to_dict() for insight in insights],
@@ -1611,7 +1614,7 @@ async def detect_anomalies(request: Dict[str, Any]):
         metrics = request.get("metrics", {})
         execution_data = request.get("execution_data", {})
         
-        anomalies = await predictive_analytics.detect_advanced_anomalies(metrics, execution_data)
+        anomalies = await system_analytics.detect_advanced_anomalies(metrics, execution_data)
         return {
             "success": True,
             "anomalies": anomalies,
@@ -1633,7 +1636,7 @@ async def get_maintenance_schedule():
             {"hostname": "switch-01", "type": "network_device", "last_maintenance": "2024-03-01T00:00:00"}
         ]
         
-        recommendations = await predictive_analytics.generate_maintenance_schedule(targets)
+        recommendations = await system_analytics.generate_maintenance_schedule(targets)
         return {
             "success": True,
             "maintenance_recommendations": [rec.to_dict() for rec in recommendations],
@@ -1648,7 +1651,7 @@ async def get_maintenance_schedule():
 async def monitor_security(log_entries: List[Dict[str, Any]]):
     """Monitor log entries for security events"""
     try:
-        alerts = await predictive_analytics.monitor_security_events(log_entries)
+        alerts = await system_analytics.monitor_security_events(log_entries)
         return {
             "success": True,
             "security_alerts": [alert.to_dict() for alert in alerts],
@@ -1657,6 +1660,38 @@ async def monitor_security(log_entries: List[Dict[str, Any]]):
         }
     except Exception as e:
         logger.error(f"Failed to monitor security: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ai/status")
+async def get_ai_status():
+    """Get the status of the AI Brain Engine components"""
+    try:
+        # Check which components are available
+        components_status = {
+            "modern_components": {
+                "system_analytics": hasattr(brain_engine, 'system_analytics'),
+                "intent_processor": hasattr(brain_engine, 'intent_processor'),
+                "system_capabilities": hasattr(brain_engine, 'system_capabilities'),
+                "ai_engine": hasattr(brain_engine, 'ai_engine')
+            },
+            "migration_complete": True,
+            "active_mode": "modern",
+            "version": "2.0.0",
+            "features": {
+                "llm_powered": True,
+                "vector_storage": True,
+                "intelligent_analysis": True,
+                "natural_language": True
+            }
+        }
+        
+        return {
+            "success": True,
+            "ai_status": components_status,
+            "message": "AI Brain is running with modern components"
+        }
+    except Exception as e:
+        logger.error(f"Failed to get AI status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

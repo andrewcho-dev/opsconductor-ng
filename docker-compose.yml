@@ -301,9 +301,6 @@ services:
       JOB_CREATION_ENGINE_ENABLED: true
       INTENT_ENGINE_ENABLED: true
       
-      # Legacy support during transition
-      LEGACY_MODE_ENABLED: true
-      
     deploy:
       resources:
         reservations:

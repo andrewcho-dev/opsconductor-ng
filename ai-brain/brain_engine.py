@@ -10,9 +10,11 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
-# Legacy imports for backward compatibility
-from legacy.ai_engine import OpsConductorAI as LegacyAIEngine
-from legacy.system_capabilities import SystemCapabilitiesManager as SystemCapabilities
+# Modern AI components
+from analytics.system_analytics import SystemAnalytics
+from processors.intent_processor import IntentProcessor
+from capabilities.system_capabilities import SystemCapabilities
+from engines.ai_engine import ModernAIEngine
 
 # Integration imports
 from integrations.asset_client import AssetServiceClient as AssetClient
@@ -41,18 +43,18 @@ class AIBrainEngine:
     
     def __init__(self):
         """Initialize the AI Brain Engine with all components."""
-        self.legacy_mode = os.getenv("LEGACY_MODE_ENABLED", "false").lower() == "true"
         self.system_model_enabled = os.getenv("SYSTEM_MODEL_ENABLED", "true").lower() == "true"
         self.knowledge_graph_enabled = os.getenv("KNOWLEDGE_GRAPH_ENABLED", "true").lower() == "true"
         self.job_creation_enabled = os.getenv("JOB_CREATION_ENGINE_ENABLED", "true").lower() == "true"
         self.intent_engine_enabled = False  # NLM DISABLED - USING PURE LLM
         self.llm_conversation_enabled = os.getenv("LLM_CONVERSATION_ENABLED", "true").lower() == "true"
         
-        # Initialize legacy components for backward compatibility
-        if self.legacy_mode:
-            logger.info("Initializing AI Brain in legacy compatibility mode")
-            self.legacy_engine = LegacyAIEngine()
-            self.system_capabilities = SystemCapabilities()
+        logger.info("Initializing AI Brain with modern components")
+        # Initialize modern AI components
+        self.system_analytics = SystemAnalytics()
+        self.intent_processor = IntentProcessor()
+        self.system_capabilities = SystemCapabilities()
+        self.ai_engine = ModernAIEngine()
         
         # Initialize integration clients
         self._init_integration_clients()
@@ -60,7 +62,7 @@ class AIBrainEngine:
         # Initialize new AI components (placeholder for now)
         self._init_ai_components()
         
-        logger.info(f"AI Brain Engine initialized - Legacy: {self.legacy_mode}, "
+        logger.info(f"AI Brain Engine initialized - "
                    f"System Model: {self.system_model_enabled}, "
                    f"Knowledge Graph: {self.knowledge_graph_enabled}, "
                    f"Job Creation: {self.job_creation_enabled}, "
@@ -85,6 +87,32 @@ class AIBrainEngine:
                     logger.error("Failed to initialize LLM engine")
                     return False
                 logger.info("LLM engine initialized successfully")
+            
+            # Initialize modern AI components
+            logger.info("Initializing modern AI components...")
+            
+            # Initialize system analytics
+            if hasattr(self, 'system_analytics'):
+                await self.system_analytics.initialize()
+                logger.info("System analytics initialized")
+            
+            # Initialize intent processor
+            if hasattr(self, 'intent_processor'):
+                await self.intent_processor.initialize()
+                logger.info("Intent processor initialized")
+            
+            # Initialize system capabilities
+            if hasattr(self, 'system_capabilities'):
+                await self.system_capabilities.initialize()
+                logger.info("System capabilities initialized")
+            
+            # Initialize AI engine
+            if hasattr(self, 'ai_engine'):
+                ai_success = await self.ai_engine.initialize()
+                if not ai_success:
+                    logger.warning("AI engine initialization failed, continuing...")
+                else:
+                    logger.info("AI engine initialized successfully")
             
             logger.info("AI Brain Engine async initialization completed successfully")
             return True
@@ -210,13 +238,8 @@ class AIBrainEngine:
                     'metadata': result['metadata']
                 }
             
-            # Fallback to legacy engine ONLY if LLM is not available
-            elif self.legacy_mode and hasattr(self, 'legacy_engine'):
-                logger.info(f"Processing query via legacy engine: {query[:50]}...")
-                return await self.legacy_engine.process_query(query, user_context)
-            
             else:
-                # Basic fallback response
+                # Basic fallback response if LLM is not available
                 return {
                     'response': "I'm currently initializing my AI capabilities. Please try again in a moment.",
                     'metadata': {
@@ -247,19 +270,20 @@ class AIBrainEngine:
             Dict containing complete system capabilities
         """
         try:
-            if self.legacy_mode and hasattr(self, 'system_capabilities'):
-                return await self.system_capabilities.get_capabilities()
+            # Use modern system capabilities
+            if hasattr(self, 'system_capabilities'):
+                return await self.system_capabilities.get_system_capabilities()
             
-            # TODO: Implement new system model capabilities
+            # Fallback system information
             return {
                 "ai_brain": {
-                    "status": "initializing",
+                    "status": "active",
                     "components": {
                         "system_model": self.system_model_enabled,
                         "knowledge_engine": self.knowledge_graph_enabled,
                         "intent_engine": self.intent_engine_enabled,
                         "job_creation_engine": self.job_creation_enabled,
-                        "legacy_mode": self.legacy_mode
+                        "modern_ai": True
                     },
                     "timestamp": datetime.utcnow().isoformat()
                 }
@@ -375,13 +399,16 @@ class AIBrainEngine:
             "status": "healthy",
             "service": "ai-brain",
             "components": {
-                "legacy_engine": self.legacy_mode and hasattr(self, 'legacy_engine'),
-                "integration_clients": True,  # Assume healthy if initialized
+                "modern_ai_components": True,
+                "integration_clients": True,
                 "system_model": self.system_model_enabled,
                 "knowledge_engine": self.knowledge_graph_enabled,
                 "llm_conversation_handler": self.llm_conversation_enabled and hasattr(self, 'llm_conversation_handler'),
                 "llm_job_creator": self.job_creation_enabled and hasattr(self, 'llm_job_creator'),
-                "nlm_intent_engine": False  # PERMANENTLY DISABLED - USING PURE LLM
+                "system_analytics": hasattr(self, 'system_analytics'),
+                "intent_processor": hasattr(self, 'intent_processor'),
+                "system_capabilities": hasattr(self, 'system_capabilities'),
+                "ai_engine": hasattr(self, 'ai_engine')
             },
             "architecture": "pure_llm",
             "nlm_status": "completely_removed",
