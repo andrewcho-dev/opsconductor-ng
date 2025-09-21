@@ -21,10 +21,7 @@ class MetricsCollector:
         self.redis_client = redis_client
         self.metrics = defaultdict(lambda: deque(maxlen=100))  # Keep last 100 metrics per service
         self.service_urls = {
-            "ai_command": "http://ai-command:3005",
-            "ai_orchestrator": "http://ai-orchestrator:3000",
-            "vector_service": "http://vector-service:3000",
-            "llm_service": "http://llm-service:3000"
+            "ai_brain": "http://ai-brain:3000"
         }
         self.http_client = httpx.AsyncClient(timeout=10.0)
     

@@ -11,3 +11,14 @@ python-multipart==0.0.6
 cryptography==41.0.7
 aiohttp==3.9.1
 celery==5.3.4
+
+# Connection testing dependencies
+asyncssh==2.14.0  # For SSH/SFTP connections
+aiomysql==0.2.0   # For MySQL connections
+motor==3.3.2      # For MongoDB connections
+aioredis==2.0.1   # For Redis connections
+pywinrm==0.4.3    # For WinRM connections
+pysmb==1.2.9      # For SMB/CIFS connections
+smbprotocol==1.11.0  # Alternative SMB implementation
+pysnmp==4.4.12    # For SNMP connections
+# freerdp-python is optional for RDP connections

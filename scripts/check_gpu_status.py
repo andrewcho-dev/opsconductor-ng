@@ -13,9 +13,7 @@ import time
 
 # AI Services to check
 AI_SERVICES = {
-    "ai-command": "http://localhost:3005",
-    "vector-service": "http://localhost:3007", 
-    "llm-service": "http://localhost:3008"
+    "ai-brain": "http://localhost:3000"
 }
 
 class GPUStatusChecker:

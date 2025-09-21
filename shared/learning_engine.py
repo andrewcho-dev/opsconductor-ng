@@ -405,7 +405,7 @@ class LearningOrchestrator:
     
     def __init__(
         self,
-        vector_service_url: str = "http://vector-service:3000",
+        vector_service_url: str = "http://ai-brain:3000",
         redis_client: Optional[redis.Redis] = None
     ):
         self.vector_client = VectorStoreClient(vector_service_url)

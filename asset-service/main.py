@@ -8,13 +8,13 @@ import sys
 import os
 import json
 import base64
-from cryptography.fernet import Fernet
 from typing import List, Optional, Dict, Any
 from fastapi import Query, HTTPException, status
 from pydantic import BaseModel, Field
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
+from credential_utils import CredentialManager
 
 # ============================================================================
 # MODELS
@@ -276,106 +276,89 @@ class AssetDetail(BaseModel):
 class ConsolidatedAssetService(BaseService):
     def __init__(self):
         super().__init__("asset-service", port=3002)
-        self.encryption_key = self._get_encryption_key()
-        self.fernet = Fernet(self.encryption_key)
+        # Use the shared CredentialManager
+        self.credential_manager = CredentialManager()
         self.setup_routes()
-
-    def _get_encryption_key(self):
-        """Get encryption key from environment variable"""
-        env_key = os.environ.get('ENCRYPTION_KEY')
-        if not env_key or env_key == 'your-encryption-key-here':
-            raise ValueError("ENCRYPTION_KEY environment variable must be set and not be the default placeholder")
+    
+    async def _get_current_user_id(self) -> Optional[int]:
+        """
+        Get current user ID from authentication context
         
-        if isinstance(env_key, str):
-            return env_key.encode()
-        return env_key
-
+        Returns:
+            User ID from auth context or None if not available
+        """
+        try:
+            # Get the request from the context
+            request = self.app.state.request
+            
+            # Check for auth header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                self.logger.warning("No valid authorization header found")
+                return None
+                
+            # Extract token
+            token = auth_header.replace('Bearer ', '')
+            
+            # Get identity service URL from environment or use default
+            identity_service_url = os.environ.get('IDENTITY_SERVICE_URL', 'http://identity-service:3001')
+            
+            # Call identity service to validate token
+            import aiohttp
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{identity_service_url}/api/v1/auth/validate",
+                        json={"token": token},
+                        timeout=5  # 5 second timeout
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            user_id = data.get("user_id")
+                            if user_id:
+                                self.logger.info(f"Authenticated user ID: {user_id}")
+                                return user_id
+                        else:
+                            self.logger.warning(f"Token validation failed: {response.status}")
+            except aiohttp.ClientError as e:
+                self.logger.error(f"Error connecting to identity service: {str(e)}")
+            except asyncio.TimeoutError:
+                self.logger.error("Timeout connecting to identity service")
+            
+            # If we reach here, validation failed
+            # For development/testing, return a default user ID
+            if os.environ.get('ENVIRONMENT') == 'development':
+                self.logger.warning("Using default admin user ID in development mode")
+                return 1  # Default to admin user in development
+            
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting current user: {str(e)}")
+            return None
+    
+    # Use the shared credential manager methods
     def _encrypt_field(self, value: str) -> Optional[str]:
         """Encrypt a field value"""
-        if not value:
-            return None
-        return self.fernet.encrypt(value.encode()).decode()
+        return self.credential_manager.encrypt_field(value)
 
     def _decrypt_field(self, encrypted_value: str) -> Optional[str]:
         """Decrypt a field value"""
-        if not encrypted_value:
-            return None
-        try:
-            return self.fernet.decrypt(encrypted_value.encode()).decode()
-        except:
-            return None
+        return self.credential_manager.decrypt_field(encrypted_value)
 
     def _encrypt_additional_services(self, services: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Encrypt credential fields in additional services"""
-        encrypted_services = []
-        for service in services:
-            encrypted_service = service.copy()
-            
-            # Encrypt credential fields
-            if service.get('password'):
-                encrypted_service['password_encrypted'] = self._encrypt_field(service['password'])
-                del encrypted_service['password']
-            
-            if service.get('private_key'):
-                encrypted_service['private_key_encrypted'] = self._encrypt_field(service['private_key'])
-                del encrypted_service['private_key']
-            
-            if service.get('api_key'):
-                encrypted_service['api_key_encrypted'] = self._encrypt_field(service['api_key'])
-                del encrypted_service['api_key']
-            
-            if service.get('bearer_token'):
-                encrypted_service['bearer_token_encrypted'] = self._encrypt_field(service['bearer_token'])
-                del encrypted_service['bearer_token']
-            
-            if service.get('certificate'):
-                encrypted_service['certificate_encrypted'] = self._encrypt_field(service['certificate'])
-                del encrypted_service['certificate']
-            
-            if service.get('passphrase'):
-                encrypted_service['passphrase_encrypted'] = self._encrypt_field(service['passphrase'])
-                del encrypted_service['passphrase']
-            
-            encrypted_services.append(encrypted_service)
-        
-        return encrypted_services
+        return self.credential_manager.encrypt_additional_services(services)
 
     def _decrypt_additional_services(self, services: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Decrypt credential fields in additional services for display"""
-        decrypted_services = []
-        for service in services:
-            decrypted_service = service.copy()
-            
-            # Decrypt and replace encrypted fields (for display only)
-            if service.get('password_encrypted'):
-                decrypted_service['password'] = self._decrypt_field(service['password_encrypted'])
-                # Keep encrypted version for storage
-            
-            if service.get('private_key_encrypted'):
-                decrypted_service['private_key'] = self._decrypt_field(service['private_key_encrypted'])
-            
-            if service.get('api_key_encrypted'):
-                decrypted_service['api_key'] = self._decrypt_field(service['api_key_encrypted'])
-            
-            if service.get('bearer_token_encrypted'):
-                decrypted_service['bearer_token'] = self._decrypt_field(service['bearer_token_encrypted'])
-            
-            if service.get('certificate_encrypted'):
-                decrypted_service['certificate'] = self._decrypt_field(service['certificate_encrypted'])
-            
-            if service.get('passphrase_encrypted'):
-                decrypted_service['passphrase'] = self._decrypt_field(service['passphrase_encrypted'])
-            
-            decrypted_services.append(decrypted_service)
-        
-        return decrypted_services
+        return self.credential_manager.decrypt_additional_services(services)
 
     def setup_routes(self):
         # ============================================================================
         # METADATA ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/metadata")
+        @self.app.get("/api/v1/metadata")
         async def get_metadata():
             """Get metadata for dropdowns and form options"""
             return {
@@ -448,7 +431,7 @@ class ConsolidatedAssetService(BaseService):
         # ASSET ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/assets")
+        @self.app.get("/api/v1/assets")
         async def list_assets(
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000),
@@ -570,7 +553,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to list assets"
                 )
 
-        @self.app.post("/assets")
+        @self.app.post("/api/v1/assets")
         async def create_asset(asset_data: AssetCreate):
             """Create a new asset"""
             try:
@@ -669,7 +652,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to create asset"
                 )
 
-        @self.app.get("/assets/{asset_id}")
+        @self.app.get("/api/v1/assets/{asset_id}")
         async def get_asset(asset_id: int):
             """Get asset by ID with decrypted credentials for display"""
             try:
@@ -769,7 +752,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to get asset"
                 )
 
-        @self.app.put("/assets/{asset_id}")
+        @self.app.put("/api/v1/assets/{asset_id}")
         async def update_asset(asset_id: int, asset_data: AssetUpdate):
             """Update an asset"""
             try:
@@ -883,7 +866,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to update asset"
                 )
 
-        @self.app.delete("/assets/{asset_id}")
+        @self.app.delete("/api/v1/assets/{asset_id}")
         async def delete_asset(asset_id: int):
             """Delete an asset"""
             try:
@@ -902,7 +885,1091 @@ class ConsolidatedAssetService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete asset"
                 )
+        
+        @self.app.post("/api/v1/assets/{asset_id}/test")
+        async def test_asset_connection(asset_id: int):
+            """
+            Test connection to an asset
+            
+            Attempts to connect to the asset using the appropriate protocol
+            based on the service type. Updates the connection status in the database.
+            """
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get asset details
+                    asset = await conn.fetchrow("""
+                        SELECT id, name, hostname, ip_address, service_type, port, 
+                               is_secure, credential_type, username, password_encrypted,
+                               private_key_encrypted, api_key_encrypted, bearer_token_encrypted,
+                               certificate_encrypted, passphrase_encrypted, domain,
+                               database_type, database_name
+                        FROM assets.assets
+                        WHERE id = $1
+                    """, asset_id)
+                    
+                    if not asset:
+                        raise HTTPException(status_code=404, detail="Asset not found")
+                    
+                    # Decrypt credentials if needed
+                    password = None
+                    private_key = None
+                    api_key = None
+                    bearer_token = None
+                    certificate = None
+                    passphrase = None
+                    
+                    if asset['password_encrypted']:
+                        password = self._decrypt_field(asset['password_encrypted'])
+                    
+                    if asset['private_key_encrypted']:
+                        private_key = self._decrypt_field(asset['private_key_encrypted'])
+                    
+                    if asset['api_key_encrypted']:
+                        api_key = self._decrypt_field(asset['api_key_encrypted'])
+                    
+                    if asset['bearer_token_encrypted']:
+                        bearer_token = self._decrypt_field(asset['bearer_token_encrypted'])
+                    
+                    if asset['certificate_encrypted']:
+                        certificate = self._decrypt_field(asset['certificate_encrypted'])
+                    
+                    if asset['passphrase_encrypted']:
+                        passphrase = self._decrypt_field(asset['passphrase_encrypted'])
+                    
+                    # Test connection based on service type
+                    connection_status = "failed"
+                    error_message = None
+                    
+                    try:
+                        # Get connection parameters
+                        hostname = asset['hostname']
+                        ip_address = asset['ip_address']
+                        port = asset['port']
+                        service_type = asset['service_type']
+                        username = asset['username']
+                        domain = asset['domain']
+                        is_secure = asset['is_secure']
+                        database_type = asset['database_type']
+                        database_name = asset['database_name']
+                        
+                        # Use hostname if available, otherwise IP address
+                        host = hostname or ip_address
+                        if not host:
+                            raise ValueError("No hostname or IP address specified")
+                        
+                        # Test connection based on service type
+                        if service_type in ['http', 'https', 'http_alt', 'https_alt']:
+                            # Test HTTP/HTTPS connection
+                            connection_status = await self._test_http_connection(
+                                host, port, is_secure, username, password, api_key, bearer_token
+                            )
+                        elif service_type in ['ssh', 'sftp']:
+                            # Test SSH/SFTP connection
+                            connection_status = await self._test_ssh_connection(
+                                host, port, username, password, private_key, passphrase
+                            )
+                        elif service_type in ['mysql', 'postgresql', 'sql_server', 'oracle', 'mongodb', 'redis']:
+                            # Test database connection
+                            connection_status = await self._test_database_connection(
+                                host, port, service_type, database_name, username, password
+                            )
+                        elif service_type in ['ftp', 'ftps']:
+                            # Test FTP connection
+                            connection_status = await self._test_ftp_connection(
+                                host, port, is_secure, username, password
+                            )
+                        elif service_type in ['smtp', 'smtps', 'smtp_submission']:
+                            # Test SMTP connection
+                            connection_status = await self._test_smtp_connection(
+                                host, port, is_secure, username, password
+                            )
+                        elif service_type in ['winrm', 'winrm_https']:
+                            # Test WinRM connection
+                            connection_status = await self._test_winrm_connection(
+                                host, port, is_secure, username, password, domain
+                            )
+                        elif service_type == 'rdp':
+                            # Test RDP connection
+                            connection_status = await self._test_rdp_connection(
+                                host, port, username, password, domain
+                            )
+                        elif service_type == 'smb':
+                            # Test SMB/CIFS connection
+                            connection_status = await self._test_smb_connection(
+                                host, port, username, password, domain
+                            )
+                        elif service_type == 'snmp':
+                            # Test SNMP connection
+                            connection_status = await self._test_snmp_connection(
+                                host, port, username, password
+                            )
+                        else:
+                            # For other service types, use a basic port check
+                            connection_status = await self._test_basic_connection(host, port)
+                    
+                    except Exception as conn_error:
+                        self.logger.error(f"Connection test error: {str(conn_error)}")
+                        error_message = str(conn_error)
+                        connection_status = "failed"
+                    
+                    # Update the connection status
+                    await conn.execute("""
+                        UPDATE assets.assets
+                        SET connection_status = $2,
+                            last_tested_at = CURRENT_TIMESTAMP
+                        WHERE id = $1
+                    """, asset_id, connection_status)
+                    
+                    response = {
+                        "success": connection_status == "connected",
+                        "message": "Connection test successful" if connection_status == "connected" else "Connection test failed",
+                        "data": {
+                            "connection_status": connection_status,
+                            "last_tested_at": datetime.now().isoformat()
+                        }
+                    }
+                    
+                    if error_message:
+                        response["data"]["error"] = error_message
+                    
+                    return response
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to test asset connection", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to test asset connection"
+                )
 
+
+
+    # Connection testing methods
+    async def _test_basic_connection(self, host: str, port: int) -> str:
+        """
+        Test basic TCP connection to a host and port
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import socket
+        import asyncio
+        
+        try:
+            # Create a socket connection to test if port is open
+            reader, writer = await asyncio.open_connection(host, port)
+            writer.close()
+            await writer.wait_closed()
+            return "connected"
+        except (socket.error, asyncio.TimeoutError, ConnectionRefusedError) as e:
+            self.logger.error(f"Basic connection test failed: {str(e)}")
+            return "failed"
+    
+    async def _test_http_connection(self, host: str, port: int, is_secure: bool, 
+                                   username: Optional[str], password: Optional[str],
+                                   api_key: Optional[str], bearer_token: Optional[str]) -> str:
+        """
+        Test HTTP/HTTPS connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            is_secure: Whether to use HTTPS
+            username: Optional username for basic auth
+            password: Optional password for basic auth
+            api_key: Optional API key
+            bearer_token: Optional bearer token
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import aiohttp
+        
+        protocol = "https" if is_secure else "http"
+        url = f"{protocol}://{host}:{port}"
+        
+        try:
+            headers = {}
+            auth = None
+            
+            # Add authentication if provided
+            if bearer_token:
+                headers["Authorization"] = f"Bearer {bearer_token}"
+            elif api_key:
+                headers["X-API-Key"] = api_key
+            elif username and password:
+                auth = aiohttp.BasicAuth(username, password)
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, auth=auth, 
+                                      ssl=None, timeout=10) as response:
+                    # Any response means we could connect
+                    return "connected"
+        except Exception as e:
+            self.logger.error(f"HTTP connection test failed: {str(e)}")
+            return "failed"
+    
+    async def _test_ssh_connection(self, host: str, port: int, username: Optional[str],
+                                  password: Optional[str], private_key: Optional[str],
+                                  passphrase: Optional[str]) -> str:
+        """
+        Test SSH connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            username: SSH username
+            password: Optional SSH password
+            private_key: Optional private key
+            passphrase: Optional passphrase for private key
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        import asyncssh
+        import tempfile
+        import os
+        
+        # If no username is provided, we can't authenticate
+        if not username:
+            self.logger.warning("No username provided for SSH connection test")
+            # Fall back to basic connection test
+            return await self._test_basic_connection(host, port)
+        
+        try:
+            # Set up connection parameters
+            conn_params = {
+                'host': host,
+                'port': port,
+                'username': username,
+                'known_hosts': None  # Don't verify host keys for testing
+            }
+            
+            # Add authentication method
+            if private_key:
+                # Create a temporary file for the private key
+                with tempfile.NamedTemporaryFile(mode='w', delete=False) as key_file:
+                    key_file.write(private_key)
+                    key_path = key_file.name
+                
+                try:
+                    # Add private key authentication
+                    if passphrase:
+                        conn_params['client_keys'] = [(key_path, passphrase)]
+                    else:
+                        conn_params['client_keys'] = [key_path]
+                    
+                    # Try to connect with timeout
+                    async with asyncio.timeout(10):
+                        async with asyncssh.connect(**conn_params):
+                            self.logger.info(f"SSH connection successful to {host}:{port} with key authentication")
+                            return "connected"
+                finally:
+                    # Clean up the temporary key file
+                    try:
+                        os.unlink(key_path)
+                    except Exception:
+                        pass
+            
+            elif password:
+                # Add password authentication
+                conn_params['password'] = password
+                
+                # Try to connect with timeout
+                async with asyncio.timeout(10):
+                    async with asyncssh.connect(**conn_params):
+                        self.logger.info(f"SSH connection successful to {host}:{port} with password authentication")
+                        return "connected"
+            else:
+                self.logger.warning("No authentication method provided for SSH connection test")
+                # Fall back to basic connection test
+                return await self._test_basic_connection(host, port)
+                
+        except (asyncssh.DisconnectError, asyncssh.ProcessError) as e:
+            self.logger.error(f"SSH connection error: {str(e)}")
+            return "failed"
+        except (asyncssh.ChannelOpenError, asyncssh.ConnectionLost) as e:
+            self.logger.error(f"SSH channel error: {str(e)}")
+            return "failed"
+        except asyncssh.PermissionDenied as e:
+            self.logger.error(f"SSH authentication failed: {str(e)}")
+            return "failed"
+        except asyncio.TimeoutError:
+            self.logger.error(f"SSH connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"SSH connection test failed: {str(e)}")
+            # Fall back to basic connection test if SSH library fails
+            return await self._test_basic_connection(host, port)
+    
+    async def _test_database_connection(self, host: str, port: int, db_type: str,
+                                       db_name: Optional[str], username: Optional[str],
+                                       password: Optional[str]) -> str:
+        """
+        Test database connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            db_type: Database type (mysql, postgresql, etc.)
+            db_name: Database name
+            username: Database username
+            password: Database password
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        
+        # If no database type is specified, fall back to basic connection
+        if not db_type:
+            self.logger.warning("No database type specified for connection test")
+            return await self._test_basic_connection(host, port)
+        
+        # Normalize database type
+        db_type = db_type.lower()
+        
+        try:
+            # PostgreSQL connection test
+            if db_type == 'postgresql':
+                return await self._test_postgresql_connection(
+                    host, port, db_name, username, password
+                )
+            
+            # MySQL connection test
+            elif db_type == 'mysql':
+                return await self._test_mysql_connection(
+                    host, port, db_name, username, password
+                )
+            
+            # MongoDB connection test
+            elif db_type == 'mongodb':
+                return await self._test_mongodb_connection(
+                    host, port, db_name, username, password
+                )
+            
+            # Redis connection test
+            elif db_type == 'redis':
+                return await self._test_redis_connection(
+                    host, port, password
+                )
+            
+            # For other database types, fall back to basic connection test
+            else:
+                self.logger.info(f"Using basic connection test for database type: {db_type}")
+                return await self._test_basic_connection(host, port)
+                
+        except asyncio.TimeoutError:
+            self.logger.error(f"Database connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"Database connection test failed: {str(e)}")
+            # Fall back to basic connection test if database-specific test fails
+            return await self._test_basic_connection(host, port)
+    
+    async def _test_postgresql_connection(self, host: str, port: int, db_name: Optional[str],
+                                         username: Optional[str], password: Optional[str]) -> str:
+        """Test PostgreSQL connection"""
+        try:
+            import asyncpg
+            
+            # Set default database if not provided
+            db_name = db_name or 'postgres'
+            
+            # Connect with timeout
+            import asyncio
+            async with asyncio.timeout(10):
+                conn = await asyncpg.connect(
+                    host=host,
+                    port=port,
+                    user=username,
+                    password=password,
+                    database=db_name
+                )
+                await conn.close()
+                
+            self.logger.info(f"PostgreSQL connection successful to {host}:{port}/{db_name}")
+            return "connected"
+        except ImportError:
+            self.logger.warning("asyncpg library not available, falling back to basic connection test")
+            return await self._test_basic_connection(host, port)
+        except Exception as e:
+            self.logger.error(f"PostgreSQL connection error: {str(e)}")
+            return "failed"
+    
+    async def _test_mysql_connection(self, host: str, port: int, db_name: Optional[str],
+                                    username: Optional[str], password: Optional[str]) -> str:
+        """Test MySQL connection"""
+        try:
+            import aiomysql
+            
+            # Set default database if not provided
+            db_name = db_name or 'mysql'
+            
+            # Connect with timeout
+            import asyncio
+            async with asyncio.timeout(10):
+                conn = await aiomysql.connect(
+                    host=host,
+                    port=port,
+                    user=username,
+                    password=password,
+                    db=db_name
+                )
+                conn.close()
+                
+            self.logger.info(f"MySQL connection successful to {host}:{port}/{db_name}")
+            return "connected"
+        except ImportError:
+            self.logger.warning("aiomysql library not available, falling back to basic connection test")
+            return await self._test_basic_connection(host, port)
+        except Exception as e:
+            self.logger.error(f"MySQL connection error: {str(e)}")
+            return "failed"
+    
+    async def _test_mongodb_connection(self, host: str, port: int, db_name: Optional[str],
+                                      username: Optional[str], password: Optional[str]) -> str:
+        """Test MongoDB connection"""
+        try:
+            import motor.motor_asyncio
+            
+            # Build connection string
+            if username and password:
+                uri = f"mongodb://{username}:{password}@{host}:{port}"
+            else:
+                uri = f"mongodb://{host}:{port}"
+                
+            # Add database name if provided
+            if db_name:
+                uri += f"/{db_name}"
+                
+            # Connect with timeout
+            import asyncio
+            async with asyncio.timeout(10):
+                client = motor.motor_asyncio.AsyncIOMotorClient(
+                    uri, 
+                    serverSelectionTimeoutMS=5000
+                )
+                # Force a connection to verify it works
+                await client.admin.command('ping')
+                client.close()
+                
+            self.logger.info(f"MongoDB connection successful to {host}:{port}")
+            return "connected"
+        except ImportError:
+            self.logger.warning("motor library not available, falling back to basic connection test")
+            return await self._test_basic_connection(host, port)
+        except Exception as e:
+            self.logger.error(f"MongoDB connection error: {str(e)}")
+            return "failed"
+    
+    async def _test_redis_connection(self, host: str, port: int, password: Optional[str]) -> str:
+        """Test Redis connection"""
+        try:
+            import aioredis
+            
+            # Build connection URL
+            if password:
+                redis_url = f"redis://:{password}@{host}:{port}"
+            else:
+                redis_url = f"redis://{host}:{port}"
+                
+            # Connect with timeout
+            import asyncio
+            async with asyncio.timeout(10):
+                redis = aioredis.from_url(redis_url)
+                await redis.ping()
+                await redis.close()
+                
+            self.logger.info(f"Redis connection successful to {host}:{port}")
+            return "connected"
+        except ImportError:
+            self.logger.warning("aioredis library not available, falling back to basic connection test")
+            return await self._test_basic_connection(host, port)
+        except Exception as e:
+            self.logger.error(f"Redis connection error: {str(e)}")
+            return "failed"
+    
+    async def _test_ftp_connection(self, host: str, port: int, is_secure: bool,
+                                  username: Optional[str], password: Optional[str]) -> str:
+        """
+        Test FTP connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            is_secure: Whether to use FTPS
+            username: FTP username
+            password: FTP password
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        from ftplib import FTP, FTP_TLS, error_perm
+        import ssl
+        
+        # Use default port if not specified
+        if not port:
+            port = 990 if is_secure else 21
+        
+        # Use anonymous login if credentials not provided
+        username = username or 'anonymous'
+        password = password or 'anonymous@example.com'
+        
+        # Create a future to hold the result
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        
+        # Define the FTP connection function to run in a thread
+        def connect_ftp():
+            try:
+                if is_secure:
+                    # Use FTPS
+                    ftp = FTP_TLS()
+                    ftp.connect(host, port, timeout=10)
+                    ftp.login(username, password)
+                    ftp.prot_p()  # Set up secure data connection
+                else:
+                    # Use regular FTP
+                    ftp = FTP()
+                    ftp.connect(host, port, timeout=10)
+                    ftp.login(username, password)
+                
+                # Test if we can list directory contents
+                ftp.nlst()
+                
+                # Close the connection
+                ftp.quit()
+                return "connected"
+            except error_perm as e:
+                # Authentication succeeded but permission error on command
+                if str(e).startswith('530'):
+                    self.logger.error(f"FTP authentication failed: {str(e)}")
+                else:
+                    self.logger.error(f"FTP permission error: {str(e)}")
+                return "failed"
+            except ssl.SSLError as e:
+                self.logger.error(f"FTP SSL error: {str(e)}")
+                return "failed"
+            except Exception as e:
+                self.logger.error(f"FTP connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Run the FTP connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_ftp),
+                timeout=15
+            )
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"FTP connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"FTP connection test failed: {str(e)}")
+            # Fall back to basic connection test if FTP test fails
+            return await self._test_basic_connection(host, port)
+    
+    async def _test_smtp_connection(self, host: str, port: int, is_secure: bool,
+                                   username: Optional[str], password: Optional[str]) -> str:
+        """
+        Test SMTP connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number
+            is_secure: Whether to use SSL/TLS
+            username: SMTP username
+            password: SMTP password
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        import smtplib
+        import ssl
+        
+        # Use default port if not specified
+        if not port:
+            if is_secure:
+                port = 465  # SMTPS
+            else:
+                port = 587 if username and password else 25  # SMTP with STARTTLS or plain SMTP
+        
+        # Create a future to hold the result
+        loop = asyncio.get_event_loop()
+        
+        # Define the SMTP connection function to run in a thread
+        def connect_smtp():
+            try:
+                if is_secure:
+                    # Use SMTP_SSL for direct SSL connection
+                    context = ssl.create_default_context()
+                    server = smtplib.SMTP_SSL(host, port, context=context, timeout=10)
+                else:
+                    # Use regular SMTP with optional STARTTLS
+                    server = smtplib.SMTP(host, port, timeout=10)
+                    
+                    # Try STARTTLS if available
+                    try:
+                        server.ehlo()
+                        if server.has_extn('STARTTLS'):
+                            context = ssl.create_default_context()
+                            server.starttls(context=context)
+                            server.ehlo()
+                    except Exception as e:
+                        self.logger.warning(f"STARTTLS failed, continuing with unencrypted connection: {str(e)}")
+                
+                # Try to authenticate if credentials are provided
+                if username and password:
+                    server.login(username, password)
+                
+                # Close the connection
+                server.quit()
+                return "connected"
+            except smtplib.SMTPAuthenticationError as e:
+                self.logger.error(f"SMTP authentication failed: {str(e)}")
+                return "failed"
+            except smtplib.SMTPException as e:
+                self.logger.error(f"SMTP error: {str(e)}")
+                return "failed"
+            except ssl.SSLError as e:
+                self.logger.error(f"SMTP SSL error: {str(e)}")
+                return "failed"
+            except Exception as e:
+                self.logger.error(f"SMTP connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Run the SMTP connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_smtp),
+                timeout=15
+            )
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"SMTP connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"SMTP connection test failed: {str(e)}")
+            # Fall back to basic connection test if SMTP test fails
+            return await self._test_basic_connection(host, port)
+            
+    async def _test_winrm_connection(self, host: str, port: int, is_secure: bool,
+                                   username: Optional[str], password: Optional[str],
+                                   domain: Optional[str]) -> str:
+        """
+        Test WinRM connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number (typically 5985 for HTTP or 5986 for HTTPS)
+            is_secure: Whether to use HTTPS (WinRM HTTPS)
+            username: WinRM username
+            password: WinRM password
+            domain: Windows domain (optional)
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        
+        # If no username or password is provided, we can't authenticate
+        if not username or not password:
+            self.logger.warning("No username or password provided for WinRM connection test")
+            # Fall back to basic connection test
+            return await self._test_basic_connection(host, port)
+        
+        # Define a synchronous function to run in a thread
+        def connect_winrm():
+            try:
+                import winrm
+                
+                # Build endpoint URL
+                protocol = "https" if is_secure else "http"
+                endpoint = f"{protocol}://{host}:{port}/wsman"
+                
+                # Format username with domain if provided
+                if domain and username and not username.startswith(f"{domain}\\"):
+                    auth_username = f"{domain}\\{username}"
+                else:
+                    auth_username = username
+                
+                # Set up session options
+                session_options = {
+                    'transport': 'ntlm',  # Use NTLM authentication by default
+                    'read_timeout_sec': 10,
+                    'operation_timeout_sec': 10
+                }
+                
+                # Add SSL verification options for HTTPS
+                if is_secure:
+                    session_options['server_cert_validation'] = 'ignore'  # For testing purposes
+                
+                # Create session
+                session = winrm.Session(
+                    endpoint,
+                    auth=(auth_username, password),
+                    **session_options
+                )
+                
+                # Execute a simple command to test connectivity
+                result = session.run_cmd("hostname")
+                if result.status_code == 0:
+                    self.logger.info(f"WinRM connection successful to {host}:{port}")
+                    return "connected"
+                else:
+                    self.logger.error(f"WinRM command failed with status {result.status_code}: {result.std_err}")
+                    return "failed"
+                    
+            except ImportError:
+                self.logger.warning("winrm library not available, falling back to basic connection test")
+                return "import_error"
+            except Exception as e:
+                self.logger.error(f"WinRM connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Get event loop
+            loop = asyncio.get_event_loop()
+            
+            # Run the WinRM connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_winrm),
+                timeout=15
+            )
+            
+            # If import error occurred, fall back to basic connection test
+            if result == "import_error":
+                return await self._test_basic_connection(host, port)
+                
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"WinRM connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"WinRM connection test failed: {str(e)}")
+            # Fall back to basic connection test if WinRM test fails
+            return await self._test_basic_connection(host, port)
+
+
+    async def _test_rdp_connection(self, host: str, port: int, username: Optional[str],
+                                  password: Optional[str], domain: Optional[str]) -> str:
+        """
+        Test RDP connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number (typically 3389)
+            username: RDP username
+            password: RDP password
+            domain: Windows domain (optional)
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        import socket
+        
+        # Define a synchronous function to run in a thread
+        def connect_rdp():
+            try:
+                # For RDP, we can use the freerdp-python library if available
+                # Otherwise, we'll do a more basic check
+                try:
+                    import freerdp
+                    
+                    # Format username with domain if provided
+                    if domain and username and not username.startswith(f"{domain}\\"):
+                        auth_username = f"{domain}\\{username}"
+                    else:
+                        auth_username = username
+                    
+                    # Create RDP client
+                    client = freerdp.Client()
+                    
+                    # Set connection parameters
+                    client.hostname = host
+                    client.port = port
+                    client.username = auth_username
+                    client.password = password
+                    client.ignore_certificate = True  # For testing purposes
+                    
+                    # Connect with a timeout
+                    result = client.connect()
+                    if result:
+                        self.logger.info(f"RDP connection successful to {host}:{port}")
+                        client.disconnect()
+                        return "connected"
+                    else:
+                        self.logger.error(f"RDP connection failed to {host}:{port}")
+                        return "failed"
+                        
+                except ImportError:
+                    # If freerdp-python is not available, fall back to a basic socket check
+                    # with an RDP protocol negotiation attempt
+                    self.logger.warning("freerdp-python library not available, using basic RDP check")
+                    
+                    # Create socket
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(5)
+                    
+                    # Connect to the server
+                    sock.connect((host, port))
+                    
+                    # Send RDP connection request (simplified)
+                    # This is a basic RDP negotiation packet
+                    rdp_neg_req = bytes.fromhex(
+                        "0300002b26e00000000000436f6f6b69653a206d737473686173683d757365720d0a0100080001000000"
+                    )
+                    sock.send(rdp_neg_req)
+                    
+                    # Try to receive a response
+                    response = sock.recv(1024)
+                    
+                    # Close the socket
+                    sock.close()
+                    
+                    # Check if we got a valid RDP response
+                    # A valid response should be at least 19 bytes and start with 0x03 (TPKT header)
+                    if len(response) >= 19 and response[0] == 0x03:
+                        self.logger.info(f"Basic RDP check successful to {host}:{port}")
+                        return "connected"
+                    else:
+                        self.logger.error(f"Invalid RDP response from {host}:{port}")
+                        return "failed"
+                    
+            except socket.timeout:
+                self.logger.error(f"RDP connection timeout to {host}:{port}")
+                return "failed"
+            except socket.error as e:
+                self.logger.error(f"RDP socket error: {str(e)}")
+                return "failed"
+            except Exception as e:
+                self.logger.error(f"RDP connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Get event loop
+            loop = asyncio.get_event_loop()
+            
+            # Run the RDP connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_rdp),
+                timeout=15
+            )
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"RDP connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"RDP connection test failed: {str(e)}")
+            # Fall back to basic connection test if RDP test fails
+            return await self._test_basic_connection(host, port)
+            
+    async def _test_smb_connection(self, host: str, port: int, username: Optional[str],
+                                  password: Optional[str], domain: Optional[str]) -> str:
+        """
+        Test SMB/CIFS connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number (typically 445)
+            username: SMB username
+            password: SMB password
+            domain: Windows domain (optional)
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        import uuid
+        
+        # If no username or password is provided, we can't authenticate
+        if not username or not password:
+            self.logger.warning("No username or password provided for SMB connection test")
+            # Fall back to basic connection test
+            return await self._test_basic_connection(host, port)
+        
+        # Define a synchronous function to run in a thread
+        def connect_smb():
+            try:
+                import smbprotocol.connection
+                from smbprotocol.session import Session
+                
+                # Format username with domain if provided
+                if domain:
+                    auth_username = f"{domain}\\{username}"
+                else:
+                    auth_username = username
+                
+                # Create SMB connection
+                connection = smbprotocol.connection.Connection(uuid.uuid4(), host, port)
+                
+                # Connect to the server
+                connection.connect()
+                
+                # Create session and authenticate
+                session = Session(connection, auth_username, password)
+                session.connect()
+                
+                # If we get here, authentication was successful
+                self.logger.info(f"SMB connection successful to {host}:{port}")
+                
+                # Clean up
+                connection.disconnect()
+                return "connected"
+                
+            except ImportError:
+                self.logger.warning("smbprotocol library not available, falling back to pysmb")
+                try:
+                    from smb.SMBConnection import SMBConnection
+                    
+                    # Create SMB connection
+                    conn = SMBConnection(
+                        username,
+                        password,
+                        "OpsConductor",  # Client name
+                        host,            # Server name
+                        domain=domain,
+                        use_ntlm_v2=True,
+                        is_direct_tcp=(port == 445)
+                    )
+                    
+                    # Connect to the server
+                    if conn.connect(host, port):
+                        # List shares to verify connection
+                        shares = conn.listShares()
+                        conn.close()
+                        self.logger.info(f"SMB connection successful to {host}:{port}")
+                        return "connected"
+                    else:
+                        self.logger.error(f"SMB connection failed to {host}:{port}")
+                        return "failed"
+                        
+                except ImportError:
+                    self.logger.warning("No SMB libraries available, falling back to basic connection test")
+                    return "import_error"
+                except Exception as e:
+                    self.logger.error(f"SMB connection error with pysmb: {str(e)}")
+                    return "failed"
+                    
+            except Exception as e:
+                self.logger.error(f"SMB connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Get event loop
+            loop = asyncio.get_event_loop()
+            
+            # Run the SMB connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_smb),
+                timeout=15
+            )
+            
+            # If import error occurred, fall back to basic connection test
+            if result == "import_error":
+                return await self._test_basic_connection(host, port)
+                
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"SMB connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"SMB connection test failed: {str(e)}")
+            # Fall back to basic connection test if SMB test fails
+            return await self._test_basic_connection(host, port)
+            
+    async def _test_snmp_connection(self, host: str, port: int, username: Optional[str],
+                                   password: Optional[str]) -> str:
+        """
+        Test SNMP connection
+        
+        Args:
+            host: Hostname or IP address
+            port: Port number (typically 161)
+            username: SNMP community string or username
+            password: SNMP password or auth key
+            
+        Returns:
+            Connection status: "connected" or "failed"
+        """
+        import asyncio
+        
+        # Define a synchronous function to run in a thread
+        def connect_snmp():
+            try:
+                from pysnmp.hlapi import (
+                    SnmpEngine, CommunityData, UdpTransportTarget,
+                    ContextData, ObjectType, ObjectIdentity, getCmd
+                )
+                
+                # Set up SNMP parameters
+                # Use username as community string if provided, otherwise use "public"
+                community = username or "public"
+                
+                # Create SNMP engine
+                engine = SnmpEngine()
+                
+                # Send SNMP GET request for system description
+                error_indication, error_status, error_index, var_binds = next(
+                    getCmd(
+                        engine,
+                        CommunityData(community),
+                        UdpTransportTarget((host, port), timeout=5, retries=1),
+                        ContextData(),
+                        ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0))
+                    )
+                )
+                
+                # Check for errors
+                if error_indication:
+                    self.logger.error(f"SNMP error: {error_indication}")
+                    return "failed"
+                elif error_status:
+                    self.logger.error(f"SNMP error: {error_status.prettyPrint()} at {var_binds[int(error_index) - 1][0] if error_index else '?'}")
+                    return "failed"
+                else:
+                    # Successfully got a response
+                    self.logger.info(f"SNMP connection successful to {host}:{port}")
+                    return "connected"
+                    
+            except ImportError:
+                self.logger.warning("pysnmp library not available, falling back to basic connection test")
+                return "import_error"
+            except Exception as e:
+                self.logger.error(f"SNMP connection error: {str(e)}")
+                return "failed"
+        
+        try:
+            # Get event loop
+            loop = asyncio.get_event_loop()
+            
+            # Run the SNMP connection in a thread with timeout
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, connect_snmp),
+                timeout=15
+            )
+            
+            # If import error occurred, fall back to basic connection test
+            if result == "import_error":
+                return await self._test_basic_connection(host, port)
+                
+            return result
+        except asyncio.TimeoutError:
+            self.logger.error(f"SNMP connection timeout to {host}:{port}")
+            return "failed"
+        except Exception as e:
+            self.logger.error(f"SNMP connection test failed: {str(e)}")
+            # Fall back to basic connection test if SNMP test fails
+            return await self._test_basic_connection(host, port)
 
 
 if __name__ == "__main__":

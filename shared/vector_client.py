@@ -25,7 +25,7 @@ class VectorCollection(Enum):
 class VectorStoreClient:
     """Client for interacting with the centralized vector store service"""
     
-    def __init__(self, vector_service_url: str = "http://vector-service:3000"):
+    def __init__(self, vector_service_url: str = "http://ai-brain:3000"):
         self.vector_service_url = vector_service_url
         self.http_client = httpx.AsyncClient(timeout=30.0)
         

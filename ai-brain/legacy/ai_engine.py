@@ -225,12 +225,12 @@ class OpsConductorAI:
             if CENTRALIZED_COMPONENTS:
                 try:
                     # Use centralized vector client instead of local store
-                    self.vector_client = VectorStoreClient("http://vector-service:3000")
+                    self.vector_client = VectorStoreClient("http://ai-brain:3000")
                     logger.info("Centralized vector client initialized")
                     
                     # Initialize learning orchestrator
                     self.learning_orchestrator = LearningOrchestrator(
-                        vector_service_url="http://vector-service:3000",
+                        vector_service_url="http://ai-brain:3000",
                         redis_client=self.redis_client
                     )
                     await self.learning_orchestrator.start_background_tasks()

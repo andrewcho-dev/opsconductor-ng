@@ -124,8 +124,8 @@ class AIBrainEngine:
             
             # Initialize LLM job creator (replaces NLM intent engine)
             if self.job_creation_enabled:
-                self.llm_job_creator = LLMJobCreator(self.llm_engine)
-                logger.info("LLM job creator initialized successfully")
+                self.llm_job_creator = LLMJobCreator(self.llm_engine, self.automation_client)
+                logger.info("LLM job creator initialized successfully with automation client integration")
             
             logger.info("Integration clients initialized successfully")
         except Exception as e:

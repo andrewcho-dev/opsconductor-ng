@@ -32,22 +32,10 @@ DROP FUNCTION IF EXISTS assets.validate_target_group_hierarchy();
 -- Verify new tables exist
 DO $$
 BEGIN
-    -- Check if new targets table exists
+    -- Check if new assets table exists
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables 
-                   WHERE table_schema = 'assets' AND table_name = 'targets') THEN
-        RAISE EXCEPTION 'New assets.targets table not found! Please run complete-schema.sql first.';
-    END IF;
-    
-    -- Check if tags table exists
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables 
-                   WHERE table_schema = 'assets' AND table_name = 'tags') THEN
-        RAISE EXCEPTION 'New assets.tags table not found! Please run complete-schema.sql first.';
-    END IF;
-    
-    -- Check if target_tags table exists
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables 
-                   WHERE table_schema = 'assets' AND table_name = 'target_tags') THEN
-        RAISE EXCEPTION 'New assets.target_tags table not found! Please run complete-schema.sql first.';
+                   WHERE table_schema = 'assets' AND table_name = 'assets') THEN
+        RAISE EXCEPTION 'New assets.assets table not found! Please run consolidate-assets-schema.sql first.';
     END IF;
     
     RAISE NOTICE 'New schema verification passed. Old tables cleaned up successfully.';
@@ -61,9 +49,8 @@ END $$;
 SELECT 
     table_name,
     CASE 
-        WHEN table_name = 'targets' THEN 'NEW - Core target table with all connection methods'
-        WHEN table_name = 'tags' THEN 'NEW - Enhanced tag system'
-        WHEN table_name = 'target_tags' THEN 'NEW - Target-tag relationships'
+        WHEN table_name = 'assets' THEN 'NEW - Consolidated assets table with all target information'
+        WHEN table_name LIKE 'backup_%' THEN 'BACKUP - Backup of old schema tables'
         ELSE 'OTHER - ' || table_name
     END as description
 FROM information_schema.tables 

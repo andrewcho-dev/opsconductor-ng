@@ -117,7 +117,7 @@ class SystemCapabilitiesManager:
                     supported_operations=["routing", "authentication", "rate_limiting", "load_balancing"]
                 )
             ],
-            dependencies=["identity-service", "asset-service", "automation-service", "communication-service", "ai-command"]
+            dependencies=["identity-service", "asset-service", "automation-service", "communication-service", "ai-brain"]
         )
         
         # Identity Service
@@ -253,9 +253,9 @@ class SystemCapabilitiesManager:
             dependencies=["postgres", "redis"]
         )
         
-        # AI Command Service (Self)
-        self.components['ai-command'] = SystemComponent(
-            name="AI Command Service",
+        # AI Brain Service (Self)
+        self.components['ai-brain'] = SystemComponent(
+            name="AI Brain Service",
             type="service",
             description="Main AI interface with natural language processing and intent classification",
             port=3005,
@@ -287,7 +287,7 @@ class SystemCapabilitiesManager:
                     protocols=["SSH", "SNMP", "SMTP", "HTTP", "PowerShell", "VAPIX"]
                 )
             ],
-            dependencies=["postgres", "redis", "vector-service", "llm-service", "ollama"]
+            dependencies=["postgres", "redis", "ollama"]
         )
         
         # Infrastructure Components
@@ -532,7 +532,7 @@ class SystemCapabilitiesManager:
         healthy_services = [
             'frontend', 'api-gateway', 'identity-service', 
             'asset-service', 'automation-service', 'communication-service', 
-            'ai-command', 'postgres', 'redis', 'nginx'
+            'ai-brain', 'postgres', 'redis', 'nginx'
         ]
         
         for component_name in self.components:

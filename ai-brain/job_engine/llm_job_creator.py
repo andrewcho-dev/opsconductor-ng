@@ -19,6 +19,7 @@ from datetime import datetime
 import asyncio
 
 from integrations.llm_client import LLMEngine
+from integrations.automation_client import AutomationServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,9 @@ class JobValidation:
 class LLMJobCreator:
     """Pure LLM-based job creation engine"""
     
-    def __init__(self, llm_engine: LLMEngine):
+    def __init__(self, llm_engine: LLMEngine, automation_client: Optional[AutomationServiceClient] = None):
         self.llm_engine = llm_engine
+        self.automation_client = automation_client or AutomationServiceClient()
         
     async def create_job_from_natural_language(self, description: str, 
                                              user_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -329,42 +331,81 @@ Provide your validation assessment as JSON:"""
     async def _create_executable_job(self, description: str, analysis: JobAnalysis, 
                                    plan: JobPlan, validation: JobValidation,
                                    user_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """STAGE 4: Create the final executable job structure"""
+        """STAGE 4: Create and submit the actual executable job to automation service"""
         try:
-            # Generate unique job ID
-            job_id = f"llm_job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            # Check if automation service is available
+            if not await self.automation_client.health_check():
+                logger.error("Automation service is not available")
+                return {
+                    "success": False,
+                    "error": "Automation service is not available - cannot create real jobs",
+                    "timestamp": datetime.now().isoformat()
+                }
             
-            # Build the complete job structure
-            job_result = {
-                "success": True,
-                "job_id": job_id,
-                "workflow": {
-                    "workflow_id": job_id,
-                    "name": f"LLM Generated: {description[:50]}...",
-                    "description": description,
-                    "workflow_type": plan.workflow_type,
-                    "steps": plan.steps,
-                    "risk_level": analysis.risk_level,
-                    "estimated_duration": analysis.estimated_duration,
-                    "created_by": "llm_engine",
-                    "created_at": datetime.now().isoformat()
-                },
-                "execution_plan": {
-                    "plan_id": f"{job_id}_plan",
-                    "workflow_id": job_id,
-                    "execution_mode": "sequential",
+            # Build workflow structure for automation service
+            workflow = {
+                "id": f"llm_workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "name": f"LLM Generated: {description[:50]}...",
+                "description": description,
+                "workflow_type": plan.workflow_type,
+                "steps": plan.steps,
+                "risk_level": analysis.risk_level,
+                "estimated_duration": analysis.estimated_duration,
+                "created_by": "llm_engine",
+                "created_at": datetime.now().isoformat(),
+                "source_request": description,
+                "confidence": analysis.confidence,
+                "rollback_plan": plan.rollback_plan,
+                "validation_checks": plan.validation_checks,
+                "metadata": {
+                    "intent_type": analysis.intent_type,
+                    "complexity": analysis.complexity,
+                    "safety_score": validation.safety_score,
+                    "warnings": validation.warnings,
+                    "recommendations": validation.recommendations,
+                    "engine": "llm_job_creator",
+                    "llm_stages": ["analyze", "plan", "validate", "create"],
+                    "target_systems": analysis.target_systems,
                     "requires_approval": len(validation.required_approvals) > 0,
-                    "approval_required_from": validation.required_approvals,
-                    "planned_start_time": datetime.now().isoformat(),
-                    "estimated_end_time": datetime.now().isoformat(),  # TODO: Calculate based on duration
-                    "rollback_plan": plan.rollback_plan,
-                    "validation_checks": plan.validation_checks
-                },
-                "target_resolution": {
-                    "resolved_targets": analysis.target_systems,
-                    "target_summary": f"Targeting {len(analysis.target_systems)} systems",
-                    "resolution_time": "immediate"
-                },
+                    "approval_required_from": validation.required_approvals
+                }
+            }
+            
+            # Generate job name
+            job_name = f"AI Job: {description[:30]}..."
+            
+            logger.info(f"Submitting real job to automation service: {job_name}")
+            
+            # Actually submit the job to automation service
+            submission_result = await self.automation_client.submit_ai_workflow(
+                workflow=workflow,
+                job_name=job_name
+            )
+            
+            if not submission_result.get('success'):
+                logger.error(f"Failed to submit job to automation service: {submission_result.get('error')}")
+                return {
+                    "success": False,
+                    "error": f"Failed to submit job to automation service: {submission_result.get('error')}",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            # Return actual results from automation service
+            real_job_id = submission_result.get('job_id')
+            execution_id = submission_result.get('execution_id')
+            task_id = submission_result.get('task_id')
+            
+            logger.info(f"Successfully created and submitted real job: {real_job_id}")
+            
+            return {
+                "success": True,
+                "job_id": real_job_id,  # Real job ID from automation service
+                "execution_id": execution_id,  # Real execution ID
+                "task_id": task_id,  # Real task ID
+                "job_name": job_name,
+                "message": f"Job successfully created and started execution in automation service",
+                "workflow": workflow,
+                "submission_details": submission_result,
                 "metadata": {
                     "created_at": datetime.now().isoformat(),
                     "intent_type": analysis.intent_type,
@@ -377,17 +418,15 @@ Provide your validation assessment as JSON:"""
                     "warnings": validation.warnings,
                     "recommendations": validation.recommendations,
                     "engine": "llm_job_creator",
-                    "llm_stages": ["analyze", "plan", "validate", "create"]
+                    "llm_stages": ["analyze", "plan", "validate", "create", "submit"],
+                    "automation_service_integration": True
                 }
             }
             
-            logger.info(f"Successfully created LLM job: {job_id}")
-            return job_result
-            
         except Exception as e:
-            logger.error(f"Error creating executable job: {e}")
+            logger.error(f"Error creating and submitting executable job: {e}")
             return {
                 "success": False,
-                "error": f"Failed to create executable job: {str(e)}",
+                "error": f"Failed to create and submit job: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }

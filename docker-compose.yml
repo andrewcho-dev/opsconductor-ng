@@ -111,6 +111,7 @@ services:
     ports:
       - "3002:3002"
     environment:
+      SERVICE_NAME: asset-service
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: opsconductor
@@ -120,7 +121,12 @@ services:
       REDIS_URL: redis://redis:6379/2
       IDENTITY_SERVICE_URL: http://identity-service:3001
       AUTOMATION_SERVICE_URL: http://automation-service:3003
-      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
+      # Service-specific encryption key with fallback for development
+      ASSET_SERVICE_ENCRYPTION_KEY: ${ASSET_SERVICE_ENCRYPTION_KEY:-Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=}
+      # Legacy key for backward compatibility
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=}
+      # Optional: Previous keys for key rotation (comma-separated)
+      # ASSET_SERVICE_PREVIOUS_KEYS: ${ASSET_SERVICE_PREVIOUS_KEYS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,8 +138,9 @@ services:
       - opsconductor-net
     volumes:
       - ./asset-service/main.py:/app/main.py
-      - ./asset-service/main_with_groups.py:/app/main_with_groups.py
       - ./asset-service/data:/app/data
+      - ./asset-service/tests/test_asset_service.py:/app/tests/test_asset_service.py
+      - ./asset-service/tests/test_asset_service_integration.py:/app/tests/test_asset_service_integration.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
@@ -244,12 +251,6 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-
-  # AI Microservices
-
-
-
-
 
   # Ollama LLM Server
   ollama:
