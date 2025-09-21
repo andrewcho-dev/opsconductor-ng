@@ -63,15 +63,8 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
         return <MessageSquare {...iconProps} />;
       
       // AI Services
-      case 'ai-command-service':
+      case 'ai-brain':
         return <Bot {...iconProps} />;
-      case 'ai-overview-service':
-        return <Network {...iconProps} />;
-
-      case 'vector-service':
-        return <Search {...iconProps} />;
-      case 'llm-service':
-        return <Cpu {...iconProps} />;
       
       // Infrastructure
       case 'postgres':

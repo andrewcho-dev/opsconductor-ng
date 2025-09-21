@@ -336,9 +336,11 @@ services:
       - ./ai-brain/intent_engine:/app/intent_engine
       - ./ai-brain/job_engine:/app/job_engine
       - ./ai-brain/integrations:/app/integrations
-      
-      # Legacy support
-      - ./ai-brain/legacy:/app/legacy
+      - ./ai-brain/processing:/app/processing
+      - ./ai-brain/api:/app/api
+      - ./ai-brain/analytics:/app/analytics
+      - ./ai-brain/capabilities:/app/capabilities
+      - ./ai-brain/engines:/app/engines
       
       # Shared libraries
       - ./shared:/app/shared

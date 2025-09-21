@@ -9,10 +9,7 @@ This document provides a comprehensive overview of the OpsConductor NG repositor
 ```
 opsconductor-ng/
 ├── 🤖 AI Services
-│   ├── ai-command/              # Main AI service with intent classification
-│   ├── ai-orchestrator/         # AI workflow coordination
-│   ├── vector-service/          # Knowledge storage and retrieval (ChromaDB)
-│   └── llm-service/             # Large language model interface (Ollama)
+│   └── ai-brain/                # Unified AI service with modular engine architecture
 │
 ├── 🌐 Core Services
 │   ├── api-gateway/             # Central API routing and authentication
@@ -49,95 +46,55 @@ opsconductor-ng/
 
 ## 🤖 AI Services
 
-### AI Command Service (`/ai-command/`)
-**Main AI interface with intent classification and command execution**
+### AI Brain Service (`/ai-brain/`)
+**Unified AI service with modular engine architecture**
 
 ```
-ai-command/
+ai-brain/
 ├── main.py                      # FastAPI service entry point
-├── ai_engine.py                 # Modular AI orchestrator (601 lines)
-├── nlp_processor.py             # Natural language processing
-├── vector_store.py              # Vector embeddings storage
-├── learning_engine.py           # Machine learning engine
-├── predictive_analytics.py      # Predictive analytics
-├── protocol_manager.py          # Protocol management
-├── workflow_generator.py        # Workflow generation
-├── schema_introspector.py       # Database schema analysis
-├── query_handlers/              # Modular query handlers
-│   ├── base_handler.py          # Base handler class
-│   ├── automation_queries.py    # Automation-related queries
-│   ├── infrastructure_queries.py # Infrastructure queries
-│   ├── communication_queries.py # Communication queries
-│   └── dynamic_schema_queries.py # Dynamic schema queries
-├── asset_client.py              # Asset service integration
-├── automation_client.py         # Automation service integration
-├── communication_client.py      # Communication service integration
-├── learning_api.py              # Learning API endpoints
+├── brain_engine.py              # Main AI orchestrator and coordinator
+├── llm_conversation_handler.py  # LLM conversation management
+├── intent_engine/               # Intent classification and processing
+│   ├── intent_classifier.py     # ML-based intent classification
+│   ├── entity_extractor.py      # Named entity recognition
+│   └── context_manager.py       # Conversation context management
+├── knowledge_engine/            # AI knowledge and learning systems
+│   ├── it_knowledge_base.py     # IT operations knowledge
+│   ├── error_resolution.py      # Error diagnosis and solutions
+│   ├── learning_system.py       # Continuous learning engine
+│   └── solution_patterns.py     # Common solution patterns
+├── job_engine/                  # Intelligent job creation
+│   ├── llm_job_creator.py       # LLM-powered job generation
+│   ├── workflow_generator.py    # Workflow creation from NL
+│   ├── job_validator.py         # Job validation and safety
+│   ├── execution_planner.py     # Execution planning
+│   ├── step_optimizer.py        # Step optimization
+│   └── target_resolver.py       # Target resolution
+├── system_model/                # System understanding and mapping
+│   ├── asset_mapper.py          # Asset relationship mapping
+│   ├── protocol_knowledge.py    # Protocol and service knowledge
+│   ├── service_capabilities.py  # Service capability mapping
+│   └── workflow_templates.py    # Workflow templates
+├── integrations/                # External service integrations
+│   ├── asset_client.py          # Asset service integration
+│   ├── automation_client.py     # Automation service integration
+│   ├── communication_client.py  # Communication service integration
+│   ├── llm_client.py           # Ollama LLM integration
+│   └── vector_client.py        # Vector database integration
+├── legacy/                     # Legacy compatibility layer
 ├── requirements.txt             # Python dependencies
 └── Dockerfile                   # Container configuration
 ```
 
 **Key Responsibilities**:
-- Natural language intent classification
-- Entity extraction and command parsing
-- Integration with all core services
-- Machine learning and predictive analytics
-- Workflow generation from natural language
-- Knowledge storage and retrieval
+- Unified AI orchestration and coordination
+- Natural language intent classification and entity extraction
+- Intelligent job creation and workflow generation
+- IT knowledge base and error resolution
+- Continuous learning and improvement
+- Integration with all core services and external AI infrastructure
 
-### AI Orchestrator (`/ai-orchestrator/`)
-**AI workflow coordination and management**
 
-```
-ai-orchestrator/
-├── main.py                      # FastAPI service entry point
-├── orchestrator.py              # Core orchestration logic
-├── protocol_manager.py          # AI workflow protocols
-├── workflow_generator.py        # Workflow generation
-├── knowledge_manager.py         # Knowledge management
-├── requirements.txt             # Python dependencies
-└── Dockerfile                   # Container configuration
-```
-
-**Key Responsibilities**:
-- AI workflow coordination
-- Multi-service AI request routing
-- Response aggregation and formatting
-- Protocol management for AI workflows
-
-### Vector Service (`/vector-service/`)
-**Knowledge storage and retrieval using ChromaDB**
-
-```
-vector-service/
-├── main.py                      # FastAPI service entry point
-├── vector_store.py              # ChromaDB integration
-├── requirements.txt             # Python dependencies
-└── Dockerfile                   # Container configuration
-```
-
-**Key Responsibilities**:
-- ChromaDB integration for vector storage
-- Semantic search and similarity matching
-- Knowledge storage (documentation, procedures)
-- Pattern storage and retrieval
-
-### LLM Service (`/llm-service/`)
-**Large language model interface with Ollama**
-
-```
-llm-service/
-├── main.py                      # FastAPI service entry point
-├── llm_engine.py                # Ollama integration
-├── requirements.txt             # Python dependencies
-└── Dockerfile                   # Container configuration
-```
-
-**Key Responsibilities**:
-- Ollama integration for local LLM serving
-- Multiple model support (Llama2, CodeLlama, etc.)
-- Context-aware text generation
-- Code generation and explanation
 
 ## 🌐 Core Services
 
@@ -420,7 +377,7 @@ REDIS_URL=redis://redis:6379/0
 # Service URLs
 IDENTITY_SERVICE_URL=http://identity-service:3001
 ASSET_SERVICE_URL=http://asset-service:3002
-AI_SERVICE_URL=http://ai-command:3005
+AI_SERVICE_URL=http://ai-brain:3005
 ```
 
 ## 📊 Monitoring & Observability

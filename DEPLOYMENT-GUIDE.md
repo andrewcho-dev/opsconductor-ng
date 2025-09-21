@@ -104,7 +104,7 @@ docker-compose up -d ollama
 docker-compose exec ollama ollama pull llama2:latest
 
 # Start AI services
-docker-compose up -d ai-command vector-service llm-service ai-orchestrator
+docker-compose up -d ai-brain
 
 # Check AI service health
 curl http://localhost:3005/health
@@ -225,9 +225,7 @@ curl -X POST http://localhost:3000/api/v1/assets \
 docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 # Verify GPU access
-docker exec opsconductor-ai-command nvidia-smi
-docker exec opsconductor-vector nvidia-smi
-docker exec opsconductor-llm nvidia-smi
+docker exec opsconductor-ai-brain nvidia-smi
 ```
 
 ### Production SSL Configuration
@@ -250,7 +248,7 @@ docker-compose up -d nginx
 docker-compose up -d --scale automation-worker-1=3 --scale automation-worker-2=2
 
 # Scale AI services
-docker-compose up -d --scale ai-command=2
+docker-compose up -d --scale ai-brain=2
 ```
 
 ### Custom Environment Configuration
@@ -360,10 +358,10 @@ curl http://localhost:11434/api/tags
 curl http://localhost:8000/api/v1/heartbeat
 
 # Restart AI services
-docker-compose restart ai-command vector-service llm-service
+docker-compose restart ai-brain
 
 # Check GPU access (if using GPU)
-docker exec opsconductor-ai-command nvidia-smi
+docker exec opsconductor-ai-brain nvidia-smi
 ```
 
 #### Frontend Not Loading

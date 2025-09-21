@@ -15,8 +15,8 @@ from brain_engine import AIBrainEngine
 # PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
 
 # Modern API imports (replacing legacy)
-from api.knowledge_router import knowledge_router
-from api.learning_router import learning_router
+from api.knowledge_router import knowledge_router  # Re-enabled - working properly
+from api.learning_router import learning_router  # Re-enabled - working properly
 
 # Modern Analytics and Processing (Phase 3A)
 from analytics.system_analytics import system_analytics

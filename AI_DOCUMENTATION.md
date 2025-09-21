@@ -2,71 +2,97 @@
 
 ## Overview
 
-OpsConductor features a modern **AI microservices architecture** that provides intelligent automation capabilities through natural language processing, machine learning, and advanced analytics. The AI system transforms complex infrastructure operations into simple conversational interfaces while continuously learning and improving from user interactions.
+OpsConductor features a modern **AI Brain architecture** that provides intelligent automation capabilities through natural language processing, machine learning, and advanced analytics. The AI system transforms complex infrastructure operations into simple conversational interfaces while continuously learning and improving from user interactions.
 
 ## 🏗️ AI Architecture
 
 ### Current Production Architecture
 
-The AI system is built using a distributed microservices architecture for optimal scalability, maintainability, and performance:
+The AI system is built using a unified AI Brain service that integrates with external AI infrastructure for optimal performance:
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  AI Command     │◄──►│ AI Orchestrator │    │  Vector Service │    │   LLM Service   │
-│   (Port 3005)   │    │   (Port 3010)   │    │   (Port 3007)   │    │   (Port 3008)   │
-│                 │    │                 │    │                 │    │                 │
-│ • Intent Class. │    │ • Coordination  │    │ • Knowledge     │    │ • Text Gen.     │
-│ • Entity Extract│    │ • Routing       │    │ • Vector Search │    │ • Chat Interface│
-│ • NLP Processing│    │ • Integration   │    │ • ChromaDB      │    │ • Ollama        │
-│ • Job Creation  │    │ • Workflows     │    │ • Embeddings    │    │ • Multi-Models  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │                       │
-         └───────────────────────┼───────────────────────┼───────────────────────┘
-                                 ▼                       ▼
-                    ┌─────────────────┐    ┌─────────────────┐
-                    │     Ollama      │    │    ChromaDB     │
-                    │  (Port 11434)   │    │   (Port 8000)   │
-                    │                 │    │                 │
-                    │ • LLM Models    │    │ • Vector Store  │
-                    │ • GPU Support   │    │ • Embeddings    │
-                    │ • Local Serving │    │ • Semantic Search│
-                    └─────────────────┘    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        AI Brain Service                         │
+│                        (Port 3005)                              │
+│                                                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │  Intent Engine  │  │ Knowledge Engine│  │   Job Engine    │ │
+│  │                 │  │                 │  │                 │ │
+│  │ • Classification│  │ • IT Knowledge  │  │ • Job Creation  │ │
+│  │ • Entity Extract│  │ • Error Resolut.│  │ • Validation    │ │
+│  │ • Context Aware │  │ • Learning Sys. │  │ • Optimization  │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+│                                                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │ System Model    │  │  Integrations   │  │ Brain Engine    │ │
+│  │                 │  │                 │  │                 │ │
+│  │ • Asset Mapping │  │ • Asset Client  │  │ • Orchestration │ │
+│  │ • Protocols     │  │ • Automation    │  │ • Conversation  │ │
+│  │ • Capabilities  │  │ • Communication │  │ • LLM Handler   │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────┐
+                    │     Ollama      │
+                    │  (Port 11434)   │
+                    │                 │
+                    │ • LLM Models    │
+                    │ • GPU Support   │
+                    │ • Local Serving │
+                    └─────────────────┘
 ```
 
-## 🧠 AI Services
+## 🧠 AI Brain Service (Port 3005)
 
-### 1. AI Command Service (Port 3005)
-**Main AI interface with integrated NLP and intent classification**
+**Unified AI service with modular engine architecture**
 
-**Purpose**: Primary AI service that handles natural language processing, intent classification, and job creation
+**Purpose**: Single AI service that handles all natural language processing, intent classification, job creation, and system intelligence through specialized engines.
 
 **Key Features**:
-- Integrated natural language processing (nlp_processor.py)
-- Intent classification and entity extraction
+- Modular engine architecture for specialized AI tasks
+- Advanced intent classification and entity extraction
+- Integrated knowledge base with IT expertise
+- Intelligent job creation and workflow generation
+- System model awareness for infrastructure operations
+- Continuous learning and improvement capabilities
 - Direct integration with all core services
-- Machine learning and predictive analytics
-- Workflow generation from natural language
-- Learning engine with continuous improvement
-- Schema introspection for dynamic queries
 
-**Core Components**:
+**Core Architecture**:
 ```
-ai-command/
-├── ai_engine.py                 # Main AI orchestrator (601 lines)
-├── nlp_processor.py             # Natural language processing
-├── learning_engine.py           # Machine learning engine
-├── predictive_analytics.py      # Predictive analytics
-├── vector_store.py              # Vector embeddings storage
-├── workflow_generator.py        # Workflow generation
-├── schema_introspector.py       # Database schema analysis
-├── query_handlers/              # Modular query handlers
-│   ├── automation_queries.py    # Automation-related queries
-│   ├── infrastructure_queries.py # Infrastructure queries
-│   ├── communication_queries.py # Communication queries
-│   └── dynamic_schema_queries.py # Dynamic schema queries
-├── asset_client.py              # Asset service integration
-├── automation_client.py         # Automation service integration
-└── communication_client.py      # Communication service integration
+ai-brain/
+├── brain_engine.py              # Main AI orchestrator and coordinator
+├── llm_conversation_handler.py  # LLM conversation management
+├── main.py                      # FastAPI service entry point
+├── intent_engine/               # Intent classification and processing
+│   ├── intent_classifier.py     # ML-based intent classification
+│   ├── entity_extractor.py      # Named entity recognition
+│   └── context_manager.py       # Conversation context management
+├── knowledge_engine/            # AI knowledge and learning systems
+│   ├── it_knowledge_base.py     # IT operations knowledge
+│   ├── error_resolution.py      # Error diagnosis and solutions
+│   ├── learning_system.py       # Continuous learning engine
+│   └── solution_patterns.py     # Common solution patterns
+├── job_engine/                  # Intelligent job creation
+│   ├── llm_job_creator.py       # LLM-powered job generation
+│   ├── workflow_generator.py    # Workflow creation from NL
+│   ├── job_validator.py         # Job validation and safety
+│   ├── execution_planner.py     # Execution planning
+│   ├── step_optimizer.py        # Step optimization
+│   └── target_resolver.py       # Target resolution
+├── system_model/                # System understanding and mapping
+│   ├── asset_mapper.py          # Asset relationship mapping
+│   ├── protocol_knowledge.py    # Protocol and service knowledge
+│   ├── service_capabilities.py  # Service capability mapping
+│   └── workflow_templates.py    # Workflow templates
+├── integrations/                # External service integrations
+│   ├── asset_client.py          # Asset service integration
+│   ├── automation_client.py     # Automation service integration
+│   ├── communication_client.py  # Communication service integration
+│   ├── llm_client.py           # Ollama LLM integration
+│   └── vector_client.py        # Vector database integration
+└── legacy/                     # Legacy compatibility layer
+    └── [legacy components for backward compatibility]
 ```
 
 **Core Endpoints**:
@@ -77,196 +103,107 @@ POST /ai/analyze           - Analyze text and generate insights
 GET  /ai/capabilities      - Get AI system capabilities
 POST /ai/learn             - Store learning patterns
 GET  /health               - Service health check
+POST /ai/intent            - Intent classification endpoint
+GET  /ai/knowledge         - Knowledge base queries
 ```
 
-**Example Usage**:
-```json
-// Chat Request
-{
-  "message": "restart nginx on web servers",
-  "user_id": 1,
-  "context": {}
-}
+**Engine Responsibilities**:
 
-// Response
-{
-  "response": "I'll restart nginx on your web servers. Let me create a job for that.",
-  "intent": "service_management",
-  "confidence": 0.95,
-  "actions": [
-    {
-      "type": "job_creation",
-      "target_group": "web servers",
-      "operation": "restart",
-      "service": "nginx"
-    }
-  ]
-}
-```
+**Intent Engine**:
+- Classifies user intents from natural language
+- Extracts entities and parameters
+- Manages conversation context and state
+- Handles multi-turn conversations
 
-### 2. AI Orchestrator Service (Port 3010)
-**AI workflow coordination and management**
+**Knowledge Engine**:
+- Maintains IT operations knowledge base
+- Provides error resolution guidance
+- Learns from successful operations
+- Stores and retrieves solution patterns
 
-**Purpose**: Coordinates complex AI workflows and manages multi-service AI operations
+**Job Engine**:
+- Creates automation jobs from natural language
+- Generates complex workflows
+- Validates job safety and feasibility
+- Optimizes execution plans
+- Resolves target systems and dependencies
+
+**System Model**:
+- Maps infrastructure assets and relationships
+- Understands service capabilities and protocols
+- Provides workflow templates
+- Maintains system topology awareness
+
+## 🔧 External AI Infrastructure
+
+### Ollama (Port 11434)
+**Local LLM serving infrastructure**
+
+**Purpose**: Provides local large language model serving with GPU acceleration support
 
 **Key Features**:
-- AI workflow coordination
-- Multi-service AI request routing
-- Response aggregation and formatting
-- Protocol management for AI workflows
-- Knowledge management integration
+- Multiple model support (Llama2, CodeLlama, etc.)
+- GPU acceleration for enhanced performance
+- Local deployment for data privacy
+- REST API for model interactions
+- Model management and switching
 
-**Core Components**:
-```
-ai-orchestrator/
-├── orchestrator.py              # Core orchestration logic
-├── protocol_manager.py          # AI workflow protocols
-├── workflow_generator.py        # Workflow generation
-└── knowledge_manager.py         # Knowledge management
-```
+**Supported Models**:
+- `llama2:latest` - General purpose conversational AI
+- `codellama:latest` - Code generation and analysis
+- `mistral:latest` - Efficient general purpose model
+- Custom fine-tuned models for specific tasks
 
-**Core Endpoints**:
-```
-POST /orchestrate          - Orchestrate complex AI workflows
-POST /workflow/generate    - Generate workflows from requirements
-GET  /protocols            - List available AI protocols
-GET  /health               - Service health check
-```
+**Configuration**:
+```bash
+# Pull models
+docker exec opsconductor-ollama ollama pull llama2:latest
+docker exec opsconductor-ollama ollama pull codellama:latest
 
-### 3. Vector Service (Port 3007)
-**Knowledge Storage and Retrieval using ChromaDB**
+# List available models
+curl http://localhost:11434/api/tags
 
-**Purpose**: Store and retrieve AI knowledge using vector embeddings for semantic search
-
-**Key Features**:
-- ChromaDB integration for vector storage
-- Knowledge storage (documentation, procedures, solutions)
-- Semantic search and similarity matching
-- Pattern storage and retrieval
-- Learning from successful operations
-- GPU-accelerated embeddings
-
-**Core Endpoints**:
-```
-POST /vector/store         - Store knowledge documents
-POST /vector/search        - Search knowledge base semantically
-GET  /vector/stats         - Get vector database statistics
-POST /vector/store-pattern - Store automation patterns
-DELETE /vector/clear       - Clear vector database
-GET  /health               - Service health check
+# Test model interaction
+curl http://localhost:11434/api/generate -d '{
+  "model": "llama2",
+  "prompt": "Explain Docker containers",
+  "stream": false
+}'
 ```
 
-**Example Usage**:
-```json
-// Store Knowledge
-{
-  "content": "To restart nginx service, use 'sudo systemctl restart nginx' on Linux systems",
-  "category": "system_administration",
-  "title": "Nginx Restart Procedure",
-  "metadata": {
-    "os_type": "linux",
-    "service": "nginx",
-    "operation": "restart"
-  }
-}
+## 🚀 Deployment Configuration
 
-// Search Knowledge
-{
-  "query": "how to restart nginx",
-  "limit": 3,
-  "filter": {"os_type": "linux"}
-}
-```
-
-### 4. LLM Service (Port 3008)
-**Large Language Model Interface with Ollama**
-
-**Purpose**: Text generation and reasoning using large language models
-
-**Key Features**:
-- Ollama integration for local LLM serving
-- Multiple model support (Llama2, CodeLlama, Mistral, etc.)
-- Context-aware text generation
-- Summarization and analysis
-- Code generation and explanation
-- GPU acceleration support
-
-**Core Endpoints**:
-```
-POST /llm/chat             - Chat with LLM
-POST /llm/generate         - Generate text
-POST /llm/summarize        - Summarize text
-POST /llm/analyze          - Analyze text content
-GET  /llm/models           - List available models
-POST /llm/pull             - Pull new models
-GET  /health               - Service health check
-```
-
-**Example Usage**:
-```json
-// Chat Request
-{
-  "message": "Explain how to troubleshoot network connectivity issues",
-  "system_prompt": "You are OpsConductor AI, an IT operations assistant.",
-  "model": "llama2:latest",
-  "temperature": 0.7
-}
-
-// Response
-{
-  "response": "To troubleshoot network connectivity issues, follow these systematic steps:\n\n1. Check physical connections...",
-  "model_used": "llama2:latest",
-  "tokens_used": 245,
-  "response_time": 2.3
-}
-```
-
-## 🔄 Request Flow
-
-### Natural Language Chat Request
-```
-User Input → API Gateway → AI Command Service → NLP Processor (parse intent)
-                                             → Vector Store (search context)
-                                             → LLM Service (generate response)
-                                             → Learning Engine (store patterns)
-                                             → Response to User
-```
-
-### Automation Job Creation
-```
-User Request → API Gateway → AI Command Service → Intent Classification
-                                               → Asset Service (get targets)
-                                               → Workflow Generator (create workflow)
-                                               → Automation Service (execute job)
-                                               → Communication Service (notify)
-```
-
-### Complex AI Workflow
-```
-User Request → API Gateway → AI Orchestrator → AI Command Service
-                                           → Vector Service (knowledge)
-                                           → LLM Service (reasoning)
-                                           → Multiple Core Services
-                                           → Aggregated Response
-```
-
-## 🚀 Deployment
-
-### Docker Compose Configuration
-
-The AI services are deployed as part of the main docker-compose.yml:
-
+### Standard Deployment
 ```yaml
-# AI Infrastructure
-chromadb:
-  image: chromadb/chroma:0.6.1
-  ports: ["8000:8000"]
-  volumes: [chromadb_data:/chroma/chroma]
+ai-brain:
+  build: ./ai-brain
+  ports:
+    - "3005:3005"
+  environment:
+    - OLLAMA_URL=http://ollama:11434
+    - REDIS_URL=redis://redis:6379
+    - POSTGRES_URL=postgresql://postgres:password@postgres:5432/opsconductor
+  depends_on: [ollama, redis, postgres]
+  volumes:
+    - ./shared:/app/shared
 
 ollama:
-  image: ollama/ollama:0.11.11
-  ports: ["11434:11434"]
-  volumes: [ollama_models:/root/.ollama]
+  image: ollama/ollama:latest
+  ports:
+    - "11434:11434"
+  volumes:
+    - ollama_data:/root/.ollama
+```
+
+### GPU-Accelerated Deployment
+```yaml
+ai-brain:
+  build: ./ai-brain
+  ports:
+    - "3005:3005"
+  environment:
+    - OLLAMA_URL=http://ollama:11434
+    - CUDA_VISIBLE_DEVICES=0
   deploy:
     resources:
       reservations:
@@ -275,165 +212,208 @@ ollama:
             count: 1
             capabilities: [gpu]
 
-# AI Services
-ai-command:
-  build: ./ai-command
-  ports: ["3005:3005"]
-  environment:
-    CHROMADB_URL: http://chromadb:8000
-    OLLAMA_HOST: http://ollama:11434
-  depends_on: [chromadb, ollama]
-
-vector-service:
-  build: ./vector-service
-  ports: ["3007:3000"]
-  environment:
-    CHROMADB_URL: http://chromadb:8000
-  depends_on: [chromadb]
-
-llm-service:
-  build: ./llm-service
-  ports: ["3008:3000"]
-  environment:
-    OLLAMA_HOST: http://ollama:11434
-  depends_on: [ollama]
-
-ai-orchestrator:
-  build: ./ai-orchestrator
-  ports: ["3010:3000"]
-  depends_on: [vector-service, llm-service]
+ollama:
+  image: ollama/ollama:latest
+  ports:
+    - "11434:11434"
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
 ```
 
-### GPU Acceleration
+## 🔍 AI System Monitoring
 
-For enhanced AI performance, GPU acceleration is available:
-
+### Health Checks
 ```bash
-# Deploy with GPU support
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# AI Brain service health
+curl http://localhost:3005/health
 
-# Verify GPU access
-docker exec opsconductor-ai-command nvidia-smi
-```
+# Ollama service health
+curl http://localhost:11434/api/tags
 
-## 🧪 Testing
-
-### AI System Testing
-
-```bash
-# Comprehensive AI system test
-python test_ai_microservices.py
-
-# Specific AI functionality tests
-python test_ai_system_v2.py
-python test_knowledge_storage.py
-python test_tag_awareness.py
-```
-
-### Manual Testing
-
-```bash
-# Test AI chat interface
+# Test AI functionality
 curl -X POST http://localhost:3005/ai/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "restart nginx on web servers", "user_id": 1}'
-
-# Test vector search
-curl -X POST http://localhost:3007/vector/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "nginx restart", "limit": 3}'
-
-# Test LLM generation
-curl -X POST http://localhost:3008/llm/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Explain Docker containers", "model": "llama2:latest"}'
+  -d '{"message": "show me all servers", "user_id": "test"}'
 ```
 
-## 📊 AI Performance Metrics
+### Performance Monitoring
+```bash
+# Check GPU utilization (if using GPU)
+docker exec opsconductor-ai-brain nvidia-smi
 
-### Response Times
-- **Intent Classification**: < 500ms
-- **Vector Search**: < 1 second
-- **LLM Generation**: 2-5 seconds (depending on model and length)
-- **End-to-End Chat**: < 10 seconds
+# Monitor AI Brain logs
+docker logs opsconductor-ai-brain -f
 
-### Accuracy Metrics
-- **Intent Classification**: 95%+ accuracy
-- **Entity Extraction**: 90%+ accuracy
-- **Job Creation Success**: 85%+ success rate
-- **User Satisfaction**: Based on feedback learning
+# Monitor Ollama logs
+docker logs opsconductor-ollama -f
+```
 
-### Resource Usage
-- **CPU**: 2-4 cores per AI service
-- **Memory**: 4-8GB per AI service
-- **GPU**: Optional, significantly improves performance
-- **Storage**: 10-50GB for models and knowledge base
+## 🎯 AI Capabilities
+
+### Natural Language Processing
+- **Intent Classification**: Automatically classifies user intents from natural language
+- **Entity Extraction**: Identifies and extracts relevant entities (servers, services, etc.)
+- **Context Management**: Maintains conversation context across multiple interactions
+- **Multi-turn Conversations**: Supports complex, multi-step conversations
+
+### Infrastructure Intelligence
+- **Asset Awareness**: Understands infrastructure topology and relationships
+- **Protocol Knowledge**: Knows how to interact with different systems and protocols
+- **Service Capabilities**: Understands what each service can do and how to use it
+- **Workflow Generation**: Creates complex automation workflows from simple requests
+
+### Learning and Adaptation
+- **Continuous Learning**: Learns from successful operations and user feedback
+- **Error Resolution**: Provides intelligent error diagnosis and resolution suggestions
+- **Pattern Recognition**: Identifies common patterns and optimizes responses
+- **Solution Storage**: Stores and retrieves proven solution patterns
+
+### Job Creation Intelligence
+- **Natural Language to Jobs**: Converts natural language requests into executable jobs
+- **Safety Validation**: Validates job safety and prevents destructive operations
+- **Execution Planning**: Creates optimal execution plans for complex operations
+- **Target Resolution**: Intelligently resolves target systems and dependencies
 
 ## 🔧 Configuration
 
 ### Environment Variables
-
 ```bash
-# AI Command Service
-CHROMADB_URL=http://chromadb:8000
-OLLAMA_HOST=http://ollama:11434
-ASSET_SERVICE_URL=http://asset-service:3002
-AUTOMATION_SERVICE_URL=http://automation-service:3003
+# AI Brain Configuration
+OLLAMA_URL=http://ollama:11434
+REDIS_URL=redis://redis:6379
+POSTGRES_URL=postgresql://postgres:password@postgres:5432/opsconductor
 
-# Vector Service
-CHROMADB_URL=http://chromadb:8000
-CUDA_VISIBLE_DEVICES=all
+# AI Model Configuration
+DEFAULT_MODEL=llama2:latest
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+MAX_CONTEXT_LENGTH=4096
 
-# LLM Service
-OLLAMA_HOST=http://ollama:11434
-DEFAULT_LLM_MODEL=llama2:latest
-CUDA_VISIBLE_DEVICES=all
+# Learning Configuration
+ENABLE_LEARNING=true
+LEARNING_RATE=0.001
+CONFIDENCE_THRESHOLD=0.8
 
-# AI Orchestrator
-VECTOR_SERVICE_URL=http://vector-service:3000
-LLM_SERVICE_URL=http://llm-service:3000
+# Performance Configuration
+MAX_CONCURRENT_REQUESTS=10
+REQUEST_TIMEOUT=30
+CACHE_TTL=3600
 ```
 
-### Model Management
-
-```bash
-# Pull new models
-curl -X POST http://localhost:3008/llm/pull \
-  -H "Content-Type: application/json" \
-  -d '{"model": "codellama:latest"}'
-
-# List available models
-curl http://localhost:3008/llm/models
-
-# Set default model
-export DEFAULT_LLM_MODEL=codellama:latest
+### Model Configuration
+```python
+# Configure available models
+AVAILABLE_MODELS = {
+    "llama2": {
+        "name": "llama2:latest",
+        "type": "general",
+        "context_length": 4096
+    },
+    "codellama": {
+        "name": "codellama:latest", 
+        "type": "code",
+        "context_length": 16384
+    }
+}
 ```
 
-## 🔮 AI Roadmap
+## 🚨 Troubleshooting
 
-### Current Capabilities (Production Ready)
-- ✅ Natural language intent classification
-- ✅ Entity extraction and command parsing
-- ✅ Vector-based knowledge storage and retrieval
-- ✅ Local LLM serving with GPU acceleration
-- ✅ Automated job creation from natural language
-- ✅ Learning engine with pattern storage
-- ✅ Multi-service AI workflow orchestration
+### Common Issues
 
-### Planned Enhancements
-- **Multi-Model Support**: Support for multiple LLM providers (OpenAI, Anthropic, etc.)
-- **Advanced RAG**: Retrieval-Augmented Generation with improved context
-- **Fine-Tuning**: Custom model fine-tuning for IT operations
-- **Voice Interface**: Speech-to-text and text-to-speech capabilities
-- **Predictive Analytics**: Advanced anomaly detection and forecasting
-- **Auto-Documentation**: Automatic procedure documentation generation
+#### AI Brain Not Responding
+```bash
+# Check service status
+docker ps | grep ai-brain
 
-### Research Areas
+# Check logs
+docker logs opsconductor-ai-brain
+
+# Restart service
+docker-compose restart ai-brain
+```
+
+#### Ollama Connection Issues
+```bash
+# Check Ollama status
+curl http://localhost:11434/api/tags
+
+# Check if models are loaded
+docker exec opsconductor-ollama ollama list
+
+# Restart Ollama
+docker-compose restart ollama
+```
+
+#### Performance Issues
+```bash
+# Check resource usage
+docker stats opsconductor-ai-brain opsconductor-ollama
+
+# Check GPU usage (if applicable)
+docker exec opsconductor-ai-brain nvidia-smi
+
+# Monitor memory usage
+docker exec opsconductor-ai-brain free -h
+```
+
+### Performance Optimization
+
+#### GPU Acceleration
+- Ensure NVIDIA Docker runtime is installed
+- Configure GPU access in docker-compose.gpu.yml
+- Monitor GPU utilization and memory usage
+- Use appropriate model sizes for available GPU memory
+
+#### Memory Management
+- Configure appropriate memory limits for containers
+- Monitor memory usage during peak loads
+- Use model quantization for memory-constrained environments
+- Implement request queuing for high-load scenarios
+
+#### Response Time Optimization
+- Use model caching for frequently accessed models
+- Implement response caching for common queries
+- Configure appropriate timeout values
+- Use streaming responses for long-running operations
+
+## 📊 Metrics and Analytics
+
+### AI Performance Metrics
+- **Response Time**: Average time to process AI requests
+- **Intent Accuracy**: Accuracy of intent classification
+- **Job Success Rate**: Success rate of generated automation jobs
+- **Learning Effectiveness**: Improvement in responses over time
+
+### System Metrics
+- **Request Volume**: Number of AI requests per time period
+- **Model Usage**: Usage statistics for different AI models
+- **Resource Utilization**: CPU, memory, and GPU usage
+- **Error Rates**: Error rates for different AI operations
+
+### Monitoring Dashboard
+The AI system provides comprehensive monitoring through the OpsConductor dashboard:
+- Real-time AI performance metrics
+- Model usage statistics
+- Learning progress indicators
+- System health status
+- Resource utilization graphs
+
+## 🔮 Future Enhancements
+
+### Planned Features
+- **Multi-modal AI**: Support for image and document analysis
+- **Advanced RAG**: Retrieval-Augmented Generation for enhanced knowledge
+- **Custom Model Training**: Fine-tuning models on organization-specific data
 - **Federated Learning**: Distributed learning across multiple deployments
-- **Explainable AI**: Better transparency in AI decision-making
-- **Multi-Agent Systems**: Collaborative AI agents for complex tasks
-- **Edge AI**: Lightweight AI models for edge deployments
+- **Advanced Analytics**: Predictive analytics and anomaly detection
 
----
-
-**The OpsConductor AI system represents a production-ready implementation of intelligent IT operations automation, combining the power of modern LLMs with practical infrastructure management needs.**
+### Integration Roadmap
+- **External AI Services**: Integration with cloud AI services
+- **Knowledge Graphs**: Advanced knowledge representation
+- **Workflow Optimization**: AI-powered workflow optimization
+- **Automated Documentation**: AI-generated documentation and runbooks

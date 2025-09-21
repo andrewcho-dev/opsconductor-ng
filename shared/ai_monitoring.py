@@ -20,6 +20,7 @@ class MetricsCollector:
     def __init__(self, redis_client: Optional[redis.Redis] = None):
         self.redis_client = redis_client
         self.metrics = defaultdict(lambda: deque(maxlen=100))  # Keep last 100 metrics per service
+        # Only monitor services that actually exist in the current deployment
         self.service_urls = {
             "ai_brain": "http://ai-brain:3000"
         }

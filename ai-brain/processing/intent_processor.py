@@ -11,7 +11,7 @@ import structlog
 
 # Import AI Brain components
 from integrations.llm_client import LLMEngine
-from integrations.vector_client import OpsConductorVectorStore, VectorCollection
+from integrations.vector_client import OpsConductorVectorStore
 
 logger = structlog.get_logger()
 
@@ -55,8 +55,17 @@ class IntentProcessor:
     
     def __init__(self):
         """Initialize the intent processor"""
-        self.llm_engine = LLMEngine()
-        self.vector_store = OpsConductorVectorStore()
+        import os
+        import chromadb
+        
+        # Initialize LLM engine with required parameters
+        ollama_host = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        default_model = os.getenv("DEFAULT_LLM_MODEL", "llama3.2:3b")
+        self.llm_engine = LLMEngine(ollama_host, default_model)
+        
+        # Initialize ChromaDB client
+        chroma_client = chromadb.PersistentClient(path="/app/chromadb_data")
+        self.vector_store = OpsConductorVectorStore(chroma_client)
         self.intent_patterns_initialized = False
         
         # Intent categories for classification

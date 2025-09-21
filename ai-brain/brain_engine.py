@@ -12,9 +12,8 @@ from datetime import datetime, timedelta
 
 # Modern AI components
 from analytics.system_analytics import SystemAnalytics
-from processors.intent_processor import IntentProcessor
-from capabilities.system_capabilities import SystemCapabilities
-from engines.ai_engine import ModernAIEngine
+from processing.intent_processor import IntentProcessor
+from capabilities.system_capabilities import ModernSystemCapabilities
 
 # Integration imports
 from integrations.asset_client import AssetServiceClient as AssetClient
@@ -53,8 +52,7 @@ class AIBrainEngine:
         # Initialize modern AI components
         self.system_analytics = SystemAnalytics()
         self.intent_processor = IntentProcessor()
-        self.system_capabilities = SystemCapabilities()
-        self.ai_engine = ModernAIEngine()
+        self.system_capabilities = ModernSystemCapabilities()
         
         # Initialize integration clients
         self._init_integration_clients()

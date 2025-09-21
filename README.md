@@ -257,10 +257,7 @@ pip install -r requirements-dev.txt
 ### Code Structure
 ```
 opsconductor-ng/
-├── ai-command/              # Main AI service with Ollama integration
-├── ai-orchestrator/         # AI workflow coordination
-├── vector-service/          # Knowledge storage and retrieval
-├── llm-service/             # Large language model interface
+├── ai-brain/                # Unified AI service with modular engine architecture
 ├── api-gateway/             # Central API routing
 ├── identity-service/        # User management
 ├── asset-service/           # Infrastructure targets

@@ -14,7 +14,7 @@ from collections import defaultdict, deque
 import structlog
 
 # Import AI Brain components
-from integrations.vector_client import OpsConductorVectorStore, VectorCollection
+from integrations.vector_client import OpsConductorVectorStore
 from integrations.llm_client import LLMEngine
 
 logger = structlog.get_logger()
@@ -90,8 +90,20 @@ class SystemAnalytics:
     
     def __init__(self):
         """Initialize the system analytics engine"""
-        self.vector_store = OpsConductorVectorStore()
-        self.llm_engine = LLMEngine()
+        # Initialize ChromaDB client
+        import chromadb
+        import os
+        
+        chromadb_url = os.getenv("CHROMADB_URL", "http://localhost:8000")
+        chroma_client = chromadb.HttpClient(host=chromadb_url.replace("http://", "").split(":")[0], 
+                                          port=int(chromadb_url.split(":")[-1]))
+        
+        self.vector_store = OpsConductorVectorStore(chroma_client)
+        
+        # Initialize LLM engine with required parameters
+        ollama_host = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        default_model = os.getenv("DEFAULT_LLM_MODEL", "llama3.2:3b")
+        self.llm_engine = LLMEngine(ollama_host, default_model)
         
         # Time series data for trend analysis
         self.metric_history = defaultdict(lambda: deque(maxlen=1000))
@@ -345,7 +357,6 @@ class SystemAnalytics:
             # Search for similar patterns
             results = await self.vector_store.search_patterns(
                 query=query,
-                collection=VectorCollection.AUTOMATION_PATTERNS,
                 limit=3
             )
             
@@ -394,7 +405,6 @@ class SystemAnalytics:
             # Search for anomaly patterns
             results = await self.vector_store.search_patterns(
                 query=query,
-                collection=VectorCollection.AUTOMATION_PATTERNS,
                 limit=5
             )
             
@@ -501,7 +511,6 @@ class SystemAnalytics:
             
             results = await self.vector_store.search_patterns(
                 query=query,
-                collection=VectorCollection.AUTOMATION_PATTERNS,
                 limit=2
             )
             
@@ -621,7 +630,6 @@ class SystemAnalytics:
                 
                 results = await self.vector_store.search_patterns(
                     query=query,
-                    collection=VectorCollection.AUTOMATION_PATTERNS,
                     limit=3
                 )
                 
@@ -670,7 +678,6 @@ class SystemAnalytics:
             
             results = await self.vector_store.search_patterns(
                 query=query,
-                collection=VectorCollection.AUTOMATION_PATTERNS,
                 limit=2
             )
             

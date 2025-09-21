@@ -17,7 +17,9 @@ from integrations.vector_client import OpsConductorVectorStore
 logger = logging.getLogger(__name__)
 
 # Initialize learning orchestrator with vector client
-vector_client = OpsConductorVectorStore()
+import chromadb
+chroma_client = chromadb.PersistentClient(path="/home/opsconductor/opsconductor-ng/ai-brain/chromadb_data")
+vector_client = OpsConductorVectorStore(chroma_client)
 learning_orchestrator = LearningOrchestrator(vector_client)
 
 # Create router
@@ -36,6 +38,13 @@ class FailurePredictionRequest(BaseModel):
     system_type: str = Field(..., description="Type of system to predict failures for")
     current_metrics: Dict[str, Any] = Field(..., description="Current system metrics")
     prediction_horizon: int = Field(24, description="Hours ahead to predict")
+
+class FeedbackRequest(BaseModel):
+    user_id: str = Field(..., description="User ID submitting feedback")
+    automation_id: str = Field(..., description="ID of the automation being rated")
+    rating: int = Field(..., ge=1, le=5, description="Rating from 1-5")
+    feedback_text: Optional[str] = Field(None, description="Optional feedback text")
+    improvement_suggestions: Optional[List[str]] = Field(None, description="Optional improvement suggestions")
 
 class TrainingRequest(BaseModel):
     force_retrain: bool = Field(False, description="Force retraining of all models")
@@ -306,29 +315,23 @@ async def get_feedback_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 @learning_router.post("/feedback")
-async def submit_feedback(
-    user_id: str,
-    automation_id: str,
-    rating: int = Field(..., ge=1, le=5, description="Rating from 1-5"),
-    feedback_text: Optional[str] = None,
-    improvement_suggestions: Optional[List[str]] = None
-):
+async def submit_feedback(request: FeedbackRequest):
     """Submit user feedback for learning improvement"""
     try:
         # Process feedback through learning orchestrator
         result = await learning_orchestrator.feedback_processor.process_user_feedback(
-            user_id=user_id,
-            automation_id=automation_id,
-            rating=rating,
-            feedback_text=feedback_text,
-            improvement_suggestions=improvement_suggestions or []
+            user_id=request.user_id,
+            automation_id=request.automation_id,
+            rating=request.rating,
+            feedback_text=request.feedback_text,
+            improvement_suggestions=request.improvement_suggestions or []
         )
         
         return {
             "success": True,
             "message": "Feedback submitted successfully",
-            "user_id": user_id,
-            "automation_id": automation_id,
+            "user_id": request.user_id,
+            "automation_id": request.automation_id,
             "processing_result": result,
             "timestamp": datetime.utcnow().isoformat()
         }

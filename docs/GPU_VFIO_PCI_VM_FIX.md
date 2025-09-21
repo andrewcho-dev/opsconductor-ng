@@ -132,11 +132,7 @@ volumes:
 ### 5. Complete Configuration for OpsConductor AI Services
 
 The complete `docker-compose.gpu.yml` includes configurations for all AI services:
-- ai-command
-- ai-orchestrator
-- nlp-service
-- vector-service
-- llm-service
+- ai-brain
 - ollama
 
 Each service follows the same pattern with the configuration elements above.
@@ -202,7 +198,7 @@ except ImportError:
 
 Run the test in any AI container:
 ```bash
-docker exec opsconductor-ai-command python test_gpu.py
+docker exec opsconductor-ai-brain python test_gpu.py
 ```
 
 ### 8. Troubleshooting
