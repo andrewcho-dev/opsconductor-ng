@@ -513,8 +513,8 @@ const AIMonitor: React.FC = () => {
         </div>
       )}
 
-      {/* Alerts Section - Keep this */}
-      {dashboard?.analysis?.alerts && dashboard.analysis.alerts.length > 0 && (
+      {/* Alerts Section - Disabled */}
+      {false && dashboard?.analysis?.alerts && dashboard.analysis.alerts.length > 0 && (
         <div className="alerts-section" style={{ marginTop: '12px' }}>
           <div className="section-header-small">Active Alerts</div>
           <div className="alerts-list">

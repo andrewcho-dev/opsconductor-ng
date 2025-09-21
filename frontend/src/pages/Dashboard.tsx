@@ -227,7 +227,7 @@ const Dashboard: React.FC = () => {
             <Settings size={14} />
             <span>{stats.jobs} Jobs</span>
           </Link>
-          <Link to="/monitoring" className="stat-pill">
+          <Link to="/history/job-runs" className="stat-pill">
             <Play size={14} />
             <span>{stats.recentRuns} Runs</span>
           </Link>
