@@ -718,9 +718,12 @@ class APIGateway:
                 service_url = self.service_urls.get("/api/v1/automation")
                 service_path = path.replace("api/v1/automation/", "", 1)
             else:
-                # Standard route matching
+                # Standard route matching - fix the logic here
                 for route_prefix, url in self.service_urls.items():
-                    if path.startswith(route_prefix.lstrip("/")):
+                    # Remove leading slash from route_prefix for comparison
+                    stripped_prefix = route_prefix.lstrip("/")
+                    # Check if path starts with the stripped prefix
+                    if path.startswith(stripped_prefix):
                         service_url = url
                         break
             
@@ -730,9 +733,12 @@ class APIGateway:
                     detail=f"No service found for path: /{path}"
                 )
             
-            # Build target URL - strip /api/v1 prefix for service calls
+            # Build target URL - strip /api/v1/ prefix for service calls
+            # Services expect paths without the /api/v1/ prefix
             if service_path.startswith("api/v1/"):
                 service_path = service_path[7:]  # Remove "api/v1/" prefix
+            elif service_path.startswith("/api/v1/"):
+                service_path = service_path[8:]  # Remove "/api/v1/" prefix
             target_url = f"{service_url}/{service_path}"
             
             # Prepare request

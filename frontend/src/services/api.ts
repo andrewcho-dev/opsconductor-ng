@@ -65,6 +65,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 60000, // 60 second timeout for AI requests
 });
 
 // Request interceptor to set dynamic baseURL
@@ -664,9 +665,38 @@ export const aiApi = {
       response_time: number;
       cached: boolean;
     };
+    intent_classification?: {
+      intent_type: string;
+      confidence: number;
+      method: string;
+      alternatives: Array<{
+        intent: string;
+        confidence: number;
+      }>;
+      entities: Array<{
+        value: string;
+        type: string;
+        confidence: number;
+        normalized_value?: string;
+      }>;
+      context_analysis: {
+        confidence_score: number;
+        risk_level: string;
+        requirements_count: number;
+        recommendations: string[];
+      };
+      reasoning: string;
+      metadata: {
+        engine: string;
+        success: boolean;
+      };
+    };
+    timestamp?: string;
     error?: string;
   }> => {
+    console.log('🚀 Sending AI chat request:', request);
     const response = await api.post('/api/v1/ai/chat', request);
+    console.log('✅ AI chat response received:', response.data);
     return response.data;
   },
 

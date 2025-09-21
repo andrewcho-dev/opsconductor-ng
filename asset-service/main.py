@@ -358,7 +358,7 @@ class ConsolidatedAssetService(BaseService):
         # METADATA ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/api/v1/metadata")
+        @self.app.get("/metadata")
         async def get_metadata():
             """Get metadata for dropdowns and form options"""
             return {
@@ -431,7 +431,7 @@ class ConsolidatedAssetService(BaseService):
         # ASSET ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/api/v1/assets")
+        @self.app.get("/assets")
         async def list_assets(
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000),
@@ -553,7 +553,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to list assets"
                 )
 
-        @self.app.post("/api/v1/assets")
+        @self.app.post("/assets")
         async def create_asset(asset_data: AssetCreate):
             """Create a new asset"""
             try:
@@ -652,7 +652,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to create asset"
                 )
 
-        @self.app.get("/api/v1/assets/{asset_id}")
+        @self.app.get("/assets/{asset_id}")
         async def get_asset(asset_id: int):
             """Get asset by ID with decrypted credentials for display"""
             try:
@@ -752,7 +752,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to get asset"
                 )
 
-        @self.app.put("/api/v1/assets/{asset_id}")
+        @self.app.put("/assets/{asset_id}")
         async def update_asset(asset_id: int, asset_data: AssetUpdate):
             """Update an asset"""
             try:
@@ -866,7 +866,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to update asset"
                 )
 
-        @self.app.delete("/api/v1/assets/{asset_id}")
+        @self.app.delete("/assets/{asset_id}")
         async def delete_asset(asset_id: int):
             """Delete an asset"""
             try:
@@ -886,7 +886,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to delete asset"
                 )
         
-        @self.app.post("/api/v1/assets/{asset_id}/test")
+        @self.app.post("/assets/{asset_id}/test")
         async def test_asset_connection(asset_id: int):
             """
             Test connection to an asset
