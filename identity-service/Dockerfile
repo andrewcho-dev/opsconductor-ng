@@ -1,3 +1,4 @@
+# Use base Dockerfile for common Python service setup
 FROM python:3.12.8-slim
 
 WORKDIR /app
