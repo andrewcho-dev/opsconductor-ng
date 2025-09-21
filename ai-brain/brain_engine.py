@@ -77,8 +77,14 @@ class AIBrainEngine:
         try:
             logger.info("Starting AI Brain Engine async initialization...")
             
-            # Perform any async initialization tasks here
-            # For now, just return success since all initialization is done in __init__
+            # Initialize LLM engine asynchronously
+            if hasattr(self, 'llm_engine'):
+                logger.info("Initializing LLM engine...")
+                llm_success = await self.llm_engine.initialize()
+                if not llm_success:
+                    logger.error("Failed to initialize LLM engine")
+                    return False
+                logger.info("LLM engine initialized successfully")
             
             logger.info("AI Brain Engine async initialization completed successfully")
             return True
@@ -111,10 +117,10 @@ class AIBrainEngine:
             default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
             self.llm_engine = LLMEngine(ollama_host, default_model)
             
-            # Initialize LLM conversation handler
+            # Initialize LLM conversation handler with asset client
             if self.llm_conversation_enabled:
-                self.llm_conversation_handler = LLMConversationHandler(self.llm_engine)
-                logger.info("LLM conversation handler initialized successfully")
+                self.llm_conversation_handler = LLMConversationHandler(self.llm_engine, self.asset_client)
+                logger.info("LLM conversation handler initialized successfully with asset client access")
             
             # Initialize LLM job creator (replaces NLM intent engine)
             if self.job_creation_enabled:

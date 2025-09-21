@@ -40,16 +40,17 @@ class LLMConversationHandler:
     No hardcoded intents, no pattern matching, no templates - just pure AI conversation.
     """
     
-    def __init__(self, llm_engine):
-        """Initialize with LLM engine"""
+    def __init__(self, llm_engine, asset_client=None):
+        """Initialize with LLM engine and optional asset client"""
         self.llm_engine = llm_engine
+        self.asset_client = asset_client
         self.conversations: Dict[str, LLMConversation] = {}
         
-        # System prompt for IT operations automation
-        self.system_prompt = """You are an AI assistant specialized in IT operations automation and infrastructure management. You help users automate tasks, troubleshoot issues, manage systems, and provide technical guidance.
+        # System prompt for OpsConductor AI
+        self.system_prompt = """You are OpsConductor AI, an intelligent IT operations automation assistant with access to your organization's infrastructure data.
 
 Your capabilities include:
-- Analyzing IT infrastructure and system requirements
+- Access to the complete asset inventory with servers, IP addresses, operating systems, and configurations
 - Creating automation workflows and scripts
 - Troubleshooting technical issues
 - Providing configuration guidance
@@ -58,15 +59,19 @@ Your capabilities include:
 - Monitoring and alerting setup
 - Database and network operations
 
-When users ask for help:
-1. Understand their specific needs and context
-2. Ask clarifying questions if needed
-3. Provide detailed, actionable solutions
-4. Explain technical concepts clearly
-5. Consider security and best practices
-6. Offer step-by-step guidance when appropriate
+IMPORTANT: When users ask about specific IP addresses, hostnames, or systems, you can look up that information in the asset database. You have access to:
+- Server details by IP address
+- Operating system information
+- Service configurations
+- Asset relationships and groupings
 
-Always be helpful, professional, and technically accurate. If you need more information to provide a complete solution, ask specific questions to gather the necessary details."""
+When users ask questions:
+1. If they mention an IP address, hostname, or system - look it up in the asset database first
+2. Provide specific, accurate information based on the actual infrastructure data
+3. Ask clarifying questions only if you need additional context beyond what's in the asset database
+4. Be direct and informative - you have access to real data, so use it
+
+Always be helpful, professional, and technically accurate. Use the actual infrastructure data to provide precise answers."""
 
     async def process_message(self, user_message: str, user_id: str = "default", conversation_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -180,15 +185,22 @@ Always be helpful, professional, and technically accurate. If you need more info
         }
     
     async def _generate_llm_response(self, context: Dict[str, Any]) -> str:
-        """Generate response using LLM"""
+        """Generate response using LLM with asset lookup capability"""
         
-        # Use the chat method instead of generate_response
         try:
+            # Check if the message contains IP addresses and look them up
+            asset_info = await self._lookup_assets_in_message(context["current_message"])
+            
+            # Build the enhanced system prompt with asset information
+            enhanced_system_prompt = self.system_prompt
+            if asset_info:
+                enhanced_system_prompt += f"\n\nCURRENT ASSET INFORMATION:\n{asset_info}"
+            
             if context["is_new_conversation"]:
-                # For new conversations, use the chat method with system prompt
+                # For new conversations, use the chat method with enhanced system prompt
                 response_data = await self.llm_engine.chat(
                     message=context["current_message"],
-                    system_prompt=self.system_prompt
+                    system_prompt=enhanced_system_prompt
                 )
             else:
                 # Include conversation history in context
@@ -201,7 +213,7 @@ Always be helpful, professional, and technically accurate. If you need more info
                 response_data = await self.llm_engine.chat(
                     message=context["current_message"],
                     context=conversation_context,
-                    system_prompt=self.system_prompt
+                    system_prompt=enhanced_system_prompt
                 )
             
             return response_data.get("response", "I'm having trouble generating a response right now.").strip()
@@ -209,6 +221,47 @@ Always be helpful, professional, and technically accurate. If you need more info
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             return "I'm having trouble generating a response right now. Could you please rephrase your request or try again?"
+    
+    async def _lookup_assets_in_message(self, message: str) -> str:
+        """Look up asset information for any IP addresses mentioned in the message"""
+        if not self.asset_client:
+            return ""
+        
+        import re
+        
+        # Find IP addresses in the message
+        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+        ip_addresses = re.findall(ip_pattern, message)
+        
+        if not ip_addresses:
+            return ""
+        
+        asset_info_parts = []
+        for ip in ip_addresses:
+            try:
+                asset = await self.asset_client.get_asset_by_ip(ip)
+                if asset:
+                    asset_info = f"IP {ip}:\n"
+                    asset_info += f"  - Name: {asset.get('name', 'Unknown')}\n"
+                    asset_info += f"  - Hostname: {asset.get('hostname', 'Unknown')}\n"
+                    asset_info += f"  - Operating System: {asset.get('os_type', 'Unknown')}\n"
+                    asset_info += f"  - OS Version: {asset.get('os_version', 'Unknown')}\n"
+                    asset_info += f"  - Device Type: {asset.get('device_type', 'Unknown')}\n"
+                    asset_info += f"  - Service Type: {asset.get('service_type', 'Unknown')}\n"
+                    asset_info += f"  - Port: {asset.get('port', 'Unknown')}\n"
+                    asset_info += f"  - Status: {'Active' if asset.get('is_active') else 'Inactive'}\n"
+                    if asset.get('tags'):
+                        asset_info += f"  - Tags: {', '.join(asset['tags'])}\n"
+                    if asset.get('description'):
+                        asset_info += f"  - Description: {asset['description']}\n"
+                    asset_info_parts.append(asset_info)
+                else:
+                    asset_info_parts.append(f"IP {ip}: Not found in asset database")
+            except Exception as e:
+                logger.error(f"Error looking up asset for IP {ip}: {e}")
+                asset_info_parts.append(f"IP {ip}: Error retrieving asset information")
+        
+        return "\n".join(asset_info_parts) if asset_info_parts else ""
     
     async def _update_conversation_context(self, conversation: LLMConversation, user_message: str, ai_response: str):
         """Update conversation context based on the interaction"""

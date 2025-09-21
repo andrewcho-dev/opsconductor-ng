@@ -63,7 +63,7 @@ class LLMEngine:
                 return []
             
             models_response = self.client.list()
-            models = [model['name'] for model in models_response.get('models', [])]
+            models = [model.model for model in models_response.models]
             self.available_models = models
             return models
             

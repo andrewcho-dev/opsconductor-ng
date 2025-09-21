@@ -138,19 +138,19 @@ class ServiceCapabilitiesManager:
             base_url_template="http://asset-service:3002",
             capabilities=[
                 ServiceCapability(
-                    name="target_management",
-                    description="Manage automation targets (servers, devices, services)",
+                    name="asset_management",
+                    description="Manage infrastructure assets (servers, devices, services)",
                     endpoints=[
-                        APIEndpoint("/targets", "GET", "List all targets", {"group_id": "int?", "type": "str?"}, "json"),
-                        APIEndpoint("/targets", "POST", "Create new target", {"name": "str", "host": "str", "type": "str"}, "json"),
-                        APIEndpoint("/targets/{target_id}", "GET", "Get target details", {"target_id": "int"}, "json"),
-                        APIEndpoint("/targets/{target_id}", "PUT", "Update target", {"target_id": "int"}, "json"),
-                        APIEndpoint("/targets/{target_id}", "DELETE", "Delete target", {"target_id": "int"}, "json"),
-                        APIEndpoint("/targets/{target_id}/test", "POST", "Test target connectivity", {"target_id": "int"}, "json"),
+                        APIEndpoint("/assets", "GET", "List all assets", {"limit": "int?", "skip": "int?"}, "json"),
+                        APIEndpoint("/assets", "POST", "Create new asset", {"name": "str", "ip_address": "str", "os_type": "str"}, "json"),
+                        APIEndpoint("/assets/{asset_id}", "GET", "Get asset details", {"asset_id": "int"}, "json"),
+                        APIEndpoint("/assets/{asset_id}", "PUT", "Update asset", {"asset_id": "int"}, "json"),
+                        APIEndpoint("/assets/{asset_id}", "DELETE", "Delete asset", {"asset_id": "int"}, "json"),
+                        APIEndpoint("/health", "GET", "Asset service health check", {}, "json"),
                     ],
                     protocols_supported=[ProtocolType.SSH, ProtocolType.WINRM, ProtocolType.SNMP, ProtocolType.HTTP, ProtocolType.HTTPS],
-                    data_models=["Target", "TargetType", "TargetStatus", "ConnectivityTest"],
-                    dependencies=["postgres", "redis"]
+                    data_models=["Asset", "AssetType", "AssetStatus", "DeviceType"],
+                    dependencies=["postgres"]
                 ),
                 ServiceCapability(
                     name="credential_management",
@@ -167,20 +167,15 @@ class ServiceCapabilitiesManager:
                     data_models=["Credential", "CredentialType", "EncryptedData"],
                     dependencies=["postgres", "encryption_key"]
                 ),
-                ServiceCapability(
-                    name="group_management",
-                    description="Organize targets into hierarchical groups",
-                    endpoints=[
-                        APIEndpoint("/groups", "GET", "List all groups", {}, "json"),
-                        APIEndpoint("/groups", "POST", "Create group", {"name": "str", "parent_id": "int?"}, "json"),
-                        APIEndpoint("/groups/{group_id}", "GET", "Get group details", {"group_id": "int"}, "json"),
-                        APIEndpoint("/groups/{group_id}/targets", "GET", "Get targets in group", {"group_id": "int"}, "json"),
-                        APIEndpoint("/groups/{group_id}/targets", "POST", "Add target to group", {"group_id": "int", "target_id": "int"}, "json"),
-                    ],
-                    protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
-                    data_models=["Group", "GroupHierarchy", "GroupMembership"],
-                    dependencies=["postgres"]
-                )
+                # Note: Group management not yet implemented in asset service
+                # ServiceCapability(
+                #     name="group_management", 
+                #     description="Organize assets into hierarchical groups - Coming Soon",
+                #     endpoints=[],
+                #     protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
+                #     data_models=["Group", "GroupHierarchy", "GroupMembership"],
+                #     dependencies=["postgres"]
+                # )
             ]
         )
         
