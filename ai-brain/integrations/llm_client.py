@@ -62,9 +62,11 @@ class LLMEngine:
             if not self.client:
                 return []
             
+            # Use synchronous call since ollama client is synchronous
             models_response = self.client.list()
             models = [model.model for model in models_response.models]
             self.available_models = models
+            logger.info(f"Available models: {models}")
             return models
             
         except Exception as e:
@@ -97,8 +99,14 @@ class LLMEngine:
             start_time = time.time()
             model_to_use = model or self.default_model
             
-            if model_to_use not in self.available_models:
-                raise Exception(f"Model '{model_to_use}' not available")
+            # Refresh available models if list is empty
+            if not self.available_models:
+                await self.get_available_models()
+            
+            # Check if model is available, but don't fail if we can't verify
+            if self.available_models and model_to_use not in self.available_models:
+                logger.warning(f"Model '{model_to_use}' not in available models list: {self.available_models}")
+                # Try to use the model anyway - Ollama might have it
             
             # Build the conversation
             messages = []
@@ -183,8 +191,14 @@ class LLMEngine:
             start_time = time.time()
             model_to_use = model or self.default_model
             
-            if model_to_use not in self.available_models:
-                raise Exception(f"Model '{model_to_use}' not available")
+            # Refresh available models if list is empty
+            if not self.available_models:
+                await self.get_available_models()
+            
+            # Check if model is available, but don't fail if we can't verify
+            if self.available_models and model_to_use not in self.available_models:
+                logger.warning(f"Model '{model_to_use}' not in available models list: {self.available_models}")
+                # Try to use the model anyway - Ollama might have it
             
             # Build full prompt
             full_prompt = prompt
