@@ -359,6 +359,30 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
             steps = workflow_definition.get('nodes', [])
         total_steps = len(steps)
         
+        # Handle empty workflow case
+        if total_steps == 0:
+            print(f"Warning: Job {job_id} has empty workflow definition")
+            
+            # Update job execution status to failed for empty workflows
+            if execution_id:
+                try:
+                    asyncio.run(update_job_execution_status(job_id, execution_id, 'failed', 'Job has no executable steps'))
+                    print(f"Updated job execution {execution_id} to failed status (empty workflow)")
+                except Exception as e:
+                    print(f"Warning: Failed to update job execution failure status: {e}")
+            
+            # Return failure result for empty workflows
+            return {
+                'status': 'failed',
+                'results': [],
+                'message': f'Job {job_id} failed - no executable steps defined in workflow',
+                'step_summary': {
+                    'total_steps': 0,
+                    'successful_steps': 0,
+                    'failed_steps': 0
+                }
+            }
+        
         results = []
         step_outputs = {}  # Store outputs for next steps
         
@@ -636,10 +660,27 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
         # Update job execution status based on step results
         if execution_id:
             try:
-                asyncio.run(update_job_execution_status(job_id, execution_id, final_status))
-                print(f"Updated job execution {execution_id} to {final_status} status")
+                # Map internal status to database status
+                db_status = final_status
+                if final_status == 'completed_success':
+                    db_status = 'completed'
+                elif final_status == 'completed_with_errors':
+                    db_status = 'failed'  # Treat partial failures as failed for clarity
+                
+                error_message = None
+                if failed_steps:
+                    error_message = f"{len(failed_steps)} step(s) failed: {', '.join([s.get('step_name', s.get('step_id', 'unknown')) for s in failed_steps[:3]])}"
+                
+                asyncio.run(update_job_execution_status(job_id, execution_id, db_status, error_message))
+                print(f"Updated job execution {execution_id} to {db_status} status")
             except Exception as e:
                 print(f"Warning: Failed to update job execution completion status: {e}")
+                # Try one more time with a simpler update
+                try:
+                    asyncio.run(update_job_execution_status(job_id, execution_id, 'failed', f'Job completed but status update failed: {str(e)}'))
+                    print(f"Fallback: Updated job execution {execution_id} to failed status")
+                except Exception as e2:
+                    print(f"Critical: Failed to update job execution status even with fallback: {e2}")
         
         return final_results
         

@@ -113,7 +113,7 @@ class ModernSystemCapabilities:
             # Store OpsConductor architecture knowledge
             architecture_knowledge = [
                 {
-                    "content": "OpsConductor is a microservices-based IT automation platform with 6 core services: Frontend (React), API Gateway, Identity Service, Asset Service, Automation Service, Communication Service, and AI Brain Service.",
+                    "content": "OpsConductor is a microservices-based IT automation platform with 7 core services: Frontend (React), API Gateway, Identity Service, Asset Service, Automation Service, Communication Service, Network Analyzer Service, and AI Brain Service.",
                     "metadata": {"type": "architecture", "category": "system_overview"}
                 },
                 {
@@ -129,7 +129,19 @@ class ModernSystemCapabilities:
                     "metadata": {"type": "service", "category": "automation"}
                 },
                 {
-                    "content": "The system supports protocols: SSH, PowerShell, SNMP, HTTP/HTTPS, SMTP, Database connections, and VAPIX for comprehensive IT operations.",
+                    "content": "Network Analyzer Service provides comprehensive packet analysis and protocol troubleshooting with AI-powered insights. It supports real-time packet capture using tcpdump/tshark/scapy, continuous network monitoring, deep protocol analysis, AI anomaly detection, and remote analysis capabilities.",
+                    "metadata": {"type": "service", "category": "network_analysis"}
+                },
+                {
+                    "content": "The Network Analyzer Service supports comprehensive protocol analysis including TCP, UDP, HTTP/HTTPS, DNS, ICMP, SSH, FTP, SMTP, and SNMP. It provides packet capture, traffic analysis, protocol inspection, bandwidth monitoring, latency tracking, packet loss detection, and AI-powered anomaly detection.",
+                    "metadata": {"type": "protocols", "category": "network_capabilities"}
+                },
+                {
+                    "content": "OpsConductor has a built-in protocol analyzer that can capture and analyze network packets, monitor network performance in real-time, perform deep protocol analysis, detect anomalies using AI, and deploy remote analysis agents. It's accessible through the Network Analyzer Service on port 3006.",
+                    "metadata": {"type": "capabilities", "category": "network_analysis"}
+                },
+                {
+                    "content": "The system supports protocols: SSH, PowerShell, SNMP, HTTP/HTTPS, SMTP, Database connections, VAPIX, and comprehensive network protocols (TCP, UDP, DNS, ICMP, FTP) for complete IT operations and network analysis.",
                     "metadata": {"type": "protocols", "category": "capabilities"}
                 }
             ]
@@ -184,6 +196,51 @@ class ModernSystemCapabilities:
                 )
             ],
             dependencies=["postgres", "redis", "ollama"]
+        )
+        
+        # Network Analyzer Service
+        self.components['network-analyzer'] = SystemComponent(
+            name="Network Analyzer Service",
+            type="service",
+            description="Comprehensive network packet analysis and protocol troubleshooting service with AI-powered insights",
+            port=3006,
+            health_endpoint="/health",
+            capabilities=[
+                ServiceCapability(
+                    name="Packet Capture",
+                    description="Real-time packet capture and analysis using tcpdump, tshark, and scapy",
+                    endpoints=["/api/v1/analysis/start-capture", "/api/v1/analysis/capture/{session_id}"],
+                    supported_operations=["packet_capture", "traffic_analysis", "protocol_inspection", "network_troubleshooting"],
+                    protocols=["TCP", "UDP", "HTTP", "HTTPS", "DNS", "ICMP", "SSH", "FTP", "SMTP", "SNMP"]
+                ),
+                ServiceCapability(
+                    name="Real-time Monitoring",
+                    description="Continuous network performance monitoring with configurable alerting",
+                    endpoints=["/api/v1/monitoring/start", "/api/v1/monitoring/metrics"],
+                    supported_operations=["bandwidth_monitoring", "latency_tracking", "packet_loss_detection", "connection_monitoring"],
+                    protocols=["TCP", "UDP", "ICMP"]
+                ),
+                ServiceCapability(
+                    name="Protocol Analysis",
+                    description="Deep analysis of specific network protocols with performance metrics",
+                    endpoints=["/api/v1/analysis/protocol", "/api/v1/analysis/protocol/{protocol}/metrics"],
+                    supported_operations=["http_analysis", "dns_analysis", "tcp_analysis", "smtp_analysis", "ssh_analysis"],
+                    protocols=["HTTP", "HTTPS", "DNS", "TCP", "SMTP", "SSH"]
+                ),
+                ServiceCapability(
+                    name="AI Anomaly Detection",
+                    description="Machine learning-based detection of network anomalies and intelligent diagnosis",
+                    endpoints=["/api/v1/ai/analyze", "/api/v1/ai/anomaly-detection"],
+                    supported_operations=["anomaly_detection", "pattern_recognition", "threat_identification", "performance_prediction", "intelligent_recommendations"]
+                ),
+                ServiceCapability(
+                    name="Remote Analysis",
+                    description="Deploy lightweight agents to remote systems for distributed network analysis",
+                    endpoints=["/api/v1/remote/deploy-agent", "/api/v1/remote/analysis/{target_id}"],
+                    supported_operations=["remote_monitoring", "distributed_analysis", "edge_analysis", "cross_site_analysis"]
+                )
+            ],
+            dependencies=["postgres", "redis"]
         )
         
         # Other core services (simplified modern definitions)

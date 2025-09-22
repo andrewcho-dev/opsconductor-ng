@@ -335,17 +335,47 @@ class AutomationService(BaseService):
             """Create a new job with workflow complexity validation"""
             try:
                 # ============================================================================
-                # AUTOMATION JOB LIMITS - Prevent resource exhaustion
+                # AUTOMATION JOB VALIDATION - Prevent invalid and resource-exhausting jobs
                 # ============================================================================
                 
                 workflow_def = job_data.workflow_definition or {}
                 
-                # Limit 1: Maximum workflow steps (prevents infinite loops and memory issues)
-                max_steps = 100
+                # Validation 1: Ensure workflow has meaningful content
                 steps = workflow_def.get('steps', [])
                 nodes = workflow_def.get('nodes', [])
                 total_steps = len(steps) + len(nodes)
                 
+                # Prevent empty workflows from being created (except for specific job types)
+                if total_steps == 0 and job_data.job_type not in ['template', 'placeholder']:
+                    self.logger.error(f"Empty workflow rejected for job type '{job_data.job_type}'")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Workflow definition cannot be empty. Please add at least one step or node."
+                    )
+                
+                # Validation 2: Validate step structure for non-empty workflows
+                if total_steps > 0:
+                    invalid_steps = []
+                    for i, step in enumerate(steps + nodes):
+                        step_id = step.get('id', f'step_{i}')
+                        step_name = step.get('name', '')
+                        library_name = step.get('library')
+                        function_name = step.get('function')
+                        command = step.get('command')
+                        
+                        # Each step must have either library+function or command
+                        if not ((library_name and function_name) or command):
+                            invalid_steps.append(f"Step '{step_id}' ({step_name}) has no executable action (missing library+function or command)")
+                    
+                    if invalid_steps:
+                        self.logger.error(f"Invalid steps found: {invalid_steps}")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Invalid workflow steps: {'; '.join(invalid_steps)}"
+                        )
+                
+                # Limit 3: Maximum workflow steps (prevents infinite loops and memory issues)
+                max_steps = 100
                 if total_steps > max_steps:
                     self.logger.error(f"Workflow too complex: {total_steps} steps exceeds limit of {max_steps}")
                     raise HTTPException(
@@ -1355,12 +1385,12 @@ class AutomationService(BaseService):
 
         @self.app.post("/executions", response_model=dict)
         async def create_execution(execution_data: ExecutionCreate):
-            """Create a new execution"""
+            """Create a new execution with pre-execution validation"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get job details including workflow definition
+                    # Get job details including workflow definition and job type
                     job_row = await conn.fetchrow("""
-                        SELECT name, workflow_definition FROM automation.jobs WHERE id = $1
+                        SELECT name, workflow_definition, job_type, is_enabled FROM automation.jobs WHERE id = $1
                     """, execution_data.job_id)
                     
                     if not job_row:
@@ -1368,6 +1398,48 @@ class AutomationService(BaseService):
                             status_code=status.HTTP_404_NOT_FOUND,
                             detail="Job not found"
                         )
+                    
+                    # Check if job is enabled
+                    if not job_row['is_enabled']:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Cannot execute disabled job"
+                        )
+                    
+                    # Validate workflow before execution
+                    workflow_def = json.loads(job_row['workflow_definition']) if job_row['workflow_definition'] else {}
+                    steps = workflow_def.get('steps', [])
+                    nodes = workflow_def.get('nodes', [])
+                    total_steps = len(steps) + len(nodes)
+                    
+                    # Prevent execution of empty workflows (except for specific job types)
+                    if total_steps == 0 and job_row['job_type'] not in ['template', 'placeholder']:
+                        self.logger.error(f"Execution rejected: Job {execution_data.job_id} has empty workflow")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Cannot execute job with empty workflow definition"
+                        )
+                    
+                    # Validate step structure for non-empty workflows
+                    if total_steps > 0:
+                        invalid_steps = []
+                        for i, step in enumerate(steps + nodes):
+                            step_id = step.get('id', f'step_{i}')
+                            step_name = step.get('name', '')
+                            library_name = step.get('library')
+                            function_name = step.get('function')
+                            command = step.get('command')
+                            
+                            # Each step must have either library+function or command
+                            if not ((library_name and function_name) or command):
+                                invalid_steps.append(f"Step '{step_id}' ({step_name}) has no executable action")
+                        
+                        if invalid_steps:
+                            self.logger.error(f"Execution rejected: Job {execution_data.job_id} has invalid steps: {invalid_steps}")
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"Cannot execute job with invalid steps: {'; '.join(invalid_steps[:3])}{'...' if len(invalid_steps) > 3 else ''}"
+                            )
                     
                     # Queue the job for execution using Celery first to get task ID
                     try:
@@ -1556,6 +1628,141 @@ class AutomationService(BaseService):
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to get execution steps"
+                )
+
+        @self.app.post("/executions/cleanup-stuck", response_model=dict)
+        async def cleanup_stuck_executions():
+            """Clean up stuck executions that are in queued/running state but have no active Celery task"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Find executions that have been in queued/running state for more than 30 minutes
+                    stuck_executions = await conn.fetch("""
+                        SELECT je.id, je.job_id, je.execution_id, je.status, j.name as job_name,
+                               j.workflow_definition, je.created_at
+                        FROM automation.job_executions je
+                        JOIN automation.jobs j ON je.job_id = j.id
+                        WHERE je.status IN ('queued', 'running', 'pending')
+                        AND je.created_at < NOW() - INTERVAL '30 minutes'
+                        ORDER BY je.created_at
+                    """)
+                    
+                    cleaned_count = 0
+                    errors = []
+                    
+                    for execution in stuck_executions:
+                        try:
+                            # Check if this is an empty workflow job
+                            workflow_def = json.loads(execution['workflow_definition']) if execution['workflow_definition'] else {}
+                            steps = workflow_def.get('steps', [])
+                            nodes = workflow_def.get('nodes', [])
+                            total_steps = len(steps) + len(nodes)
+                            
+                            error_message = None
+                            if total_steps == 0:
+                                error_message = "Job has empty workflow definition - no executable steps"
+                            else:
+                                error_message = "Job execution stuck - cleaned up by system"
+                            
+                            # Update to failed status
+                            await conn.execute("""
+                                UPDATE automation.job_executions 
+                                SET status = 'failed', 
+                                    completed_at = NOW(), 
+                                    error_message = $1
+                                WHERE id = $2
+                            """, error_message, execution['id'])
+                            
+                            cleaned_count += 1
+                            self.logger.info(f"Cleaned up stuck execution {execution['id']} for job '{execution['job_name']}'")
+                            
+                        except Exception as e:
+                            error_msg = f"Failed to clean execution {execution['id']}: {str(e)}"
+                            errors.append(error_msg)
+                            self.logger.error(error_msg)
+                    
+                    return {
+                        "success": True,
+                        "message": f"Cleanup completed: {cleaned_count} executions cleaned",
+                        "data": {
+                            "cleaned_count": cleaned_count,
+                            "errors": errors,
+                            "total_found": len(stuck_executions)
+                        }
+                    }
+            except Exception as e:
+                self.logger.error("Failed to cleanup stuck executions", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to cleanup stuck executions"
+                )
+
+        @self.app.post("/jobs/validate-existing", response_model=dict)
+        async def validate_existing_jobs():
+            """Validate all existing jobs and report issues"""
+            try:
+                async with self.db.pool.acquire() as conn:
+                    # Get all jobs
+                    jobs = await conn.fetch("""
+                        SELECT id, name, workflow_definition, job_type, is_enabled
+                        FROM automation.jobs
+                        ORDER BY created_at DESC
+                    """)
+                    
+                    issues = []
+                    valid_count = 0
+                    
+                    for job in jobs:
+                        job_issues = []
+                        workflow_def = json.loads(job['workflow_definition']) if job['workflow_definition'] else {}
+                        steps = workflow_def.get('steps', [])
+                        nodes = workflow_def.get('nodes', [])
+                        total_steps = len(steps) + len(nodes)
+                        
+                        # Check for empty workflows
+                        if total_steps == 0 and job['job_type'] not in ['template', 'placeholder']:
+                            job_issues.append("Empty workflow definition")
+                        
+                        # Check for invalid steps
+                        if total_steps > 0:
+                            invalid_steps = []
+                            for i, step in enumerate(steps + nodes):
+                                step_id = step.get('id', f'step_{i}')
+                                library_name = step.get('library')
+                                function_name = step.get('function')
+                                command = step.get('command')
+                                
+                                if not ((library_name and function_name) or command):
+                                    invalid_steps.append(step_id)
+                            
+                            if invalid_steps:
+                                job_issues.append(f"Invalid steps (no executable action): {', '.join(invalid_steps[:3])}")
+                        
+                        if job_issues:
+                            issues.append({
+                                "job_id": job['id'],
+                                "job_name": job['name'],
+                                "job_type": job['job_type'],
+                                "is_enabled": job['is_enabled'],
+                                "issues": job_issues
+                            })
+                        else:
+                            valid_count += 1
+                    
+                    return {
+                        "success": True,
+                        "message": f"Validation completed: {valid_count} valid, {len(issues)} with issues",
+                        "data": {
+                            "valid_count": valid_count,
+                            "issues_count": len(issues),
+                            "total_jobs": len(jobs),
+                            "issues": issues
+                        }
+                    }
+            except Exception as e:
+                self.logger.error("Failed to validate existing jobs", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to validate existing jobs"
                 )
 
         @self.app.put("/executions/{execution_id}", response_model=dict)
