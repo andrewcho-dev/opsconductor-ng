@@ -450,10 +450,14 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 
                 # Execute the step function or command
                 if library_name and function_name:
-                    # Import the library (handle hyphen to underscore conversion)
+                    # Import the library from libraries package
                     library_import_name = library_name.replace('-', '_')
-                    library_module = __import__(library_import_name)
-                    step_function = getattr(library_module, function_name)
+                    try:
+                        library_module = __import__(f'libraries.{library_import_name}', fromlist=[library_import_name])
+                        step_function = getattr(library_module, function_name)
+                    except (ImportError, AttributeError) as e:
+                        print(f"Error importing library function {library_name}.{function_name}: {e}")
+                        raise Exception(f"Library function {library_name}.{function_name} not found")
                     
                     # Execute the function
                     if asyncio.iscoroutinefunction(step_function):

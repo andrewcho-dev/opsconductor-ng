@@ -247,7 +247,7 @@ class AnalysisSessionInfo(BaseModel):
     """Analysis session information"""
     session_id: str
     session_type: str
-    user_id: int
+    user_id: Union[int, str]
     started_at: float
     status: str
 

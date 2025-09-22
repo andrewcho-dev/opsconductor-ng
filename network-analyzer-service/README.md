@@ -177,9 +177,10 @@ print(f"Agent deployed: {agent_id}")
 - Ensure compliance with privacy regulations
 
 ### Access Control
-- All endpoints are protected by OpsConductor's RBAC system
-- Requires appropriate permissions for network analysis operations
-- Audit all network analysis activities
+- Authentication has been disabled for this service
+- Service should be secured at the infrastructure/network level
+- Consider implementing IP-based access controls or VPN access
+- Audit all network analysis activities through application logs
 
 ## Troubleshooting
 

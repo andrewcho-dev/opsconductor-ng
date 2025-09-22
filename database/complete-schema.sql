@@ -7,6 +7,7 @@ CREATE SCHEMA IF NOT EXISTS identity;
 CREATE SCHEMA IF NOT EXISTS assets;
 CREATE SCHEMA IF NOT EXISTS automation;
 CREATE SCHEMA IF NOT EXISTS communication;
+CREATE SCHEMA IF NOT EXISTS network_analysis;
 
 -- ============================================================================
 -- IDENTITY SERVICE SCHEMA
@@ -322,16 +323,21 @@ INSERT INTO identity.roles (name, description, permissions, is_active) VALUES
 ('manager', 'Team Manager', '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
   "targets:read", "targets:create", "targets:update",
-  "executions:read", "users:read"
+  "executions:read", "users:read",
+  "network:analysis:read", "network:monitoring:read"
 ]', true),
 ('operator', 'System Operator', '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute", "jobs:delete",
   "targets:read", "targets:create", "targets:update", "targets:delete",
-  "executions:read"
+  "executions:read",
+  "network:analysis:read", "network:analysis:write",
+  "network:monitoring:read", "network:monitoring:write",
+  "network:capture:start", "network:capture:stop"
 ]', true),
 ('developer', 'Developer', '[
   "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
-  "targets:read", "executions:read"
+  "targets:read", "executions:read",
+  "network:analysis:read", "network:monitoring:read"
 ]', true),
 ('viewer', 'Read-only User', '[
   "jobs:read", "targets:read", "executions:read"
@@ -365,5 +371,165 @@ FROM identity.users u WHERE u.username = 'admin'
 ON CONFLICT (name) DO NOTHING;
 
 -- No additional initial data needed for consolidated assets table
+
+-- ============================================================================
+-- NETWORK ANALYSIS SERVICE SCHEMA
+-- ============================================================================
+
+-- Remote Probes Table
+CREATE TABLE IF NOT EXISTS network_analysis.remote_probes (
+    id SERIAL PRIMARY KEY,
+    probe_id VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    location VARCHAR(255),
+    ip_address VARCHAR(45),
+    hostname VARCHAR(255),
+    os_type VARCHAR(50),
+    version VARCHAR(100),
+    capabilities JSONB DEFAULT '[]',
+    interfaces JSONB DEFAULT '[]',
+    status VARCHAR(50) DEFAULT 'active',
+    registered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Capture Sessions Table
+CREATE TABLE IF NOT EXISTS network_analysis.capture_sessions (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(255) UNIQUE NOT NULL,
+    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
+    user_id INTEGER,
+    interface_name VARCHAR(100),
+    filter_expression TEXT,
+    duration INTEGER,
+    packet_count INTEGER,
+    status VARCHAR(50) DEFAULT 'starting',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    configuration JSONB DEFAULT '{}',
+    results_summary JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Capture Results Table
+CREATE TABLE IF NOT EXISTS network_analysis.capture_results (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(255) REFERENCES network_analysis.capture_sessions(session_id),
+    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
+    packet_data JSONB,
+    statistics JSONB DEFAULT '{}',
+    ai_analysis JSONB DEFAULT '{}',
+    file_path TEXT,
+    file_size BIGINT,
+    packet_count INTEGER DEFAULT 0,
+    bytes_captured BIGINT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Network Monitoring Data Table
+CREATE TABLE IF NOT EXISTS network_analysis.monitoring_data (
+    id SERIAL PRIMARY KEY,
+    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
+    interface_name VARCHAR(100),
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    rx_bytes BIGINT DEFAULT 0,
+    tx_bytes BIGINT DEFAULT 0,
+    rx_packets BIGINT DEFAULT 0,
+    tx_packets BIGINT DEFAULT 0,
+    rx_errors BIGINT DEFAULT 0,
+    tx_errors BIGINT DEFAULT 0,
+    bandwidth_utilization FLOAT,
+    latency_ms FLOAT,
+    packet_loss_rate FLOAT,
+    active_connections INTEGER,
+    metrics JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Network Alerts Table
+CREATE TABLE IF NOT EXISTS network_analysis.network_alerts (
+    id SERIAL PRIMARY KEY,
+    alert_id VARCHAR(255) UNIQUE NOT NULL,
+    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
+    alert_type VARCHAR(100) NOT NULL,
+    severity VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    source VARCHAR(255),
+    interface_name VARCHAR(100),
+    threshold_value FLOAT,
+    current_value FLOAT,
+    status VARCHAR(50) DEFAULT 'active',
+    resolved BOOLEAN DEFAULT false,
+    resolved_at TIMESTAMP WITH TIME ZONE,
+    resolved_by INTEGER,
+    resolution_notes TEXT,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Analysis Jobs Table
+CREATE TABLE IF NOT EXISTS network_analysis.analysis_jobs (
+    id SERIAL PRIMARY KEY,
+    job_id VARCHAR(255) UNIQUE NOT NULL,
+    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
+    user_id INTEGER,
+    job_type VARCHAR(100) NOT NULL,
+    parameters JSONB DEFAULT '{}',
+    status VARCHAR(50) DEFAULT 'pending',
+    priority INTEGER DEFAULT 5,
+    scheduled_at TIMESTAMP WITH TIME ZONE,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    results JSONB DEFAULT '{}',
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_remote_probes_probe_id ON network_analysis.remote_probes(probe_id);
+CREATE INDEX IF NOT EXISTS idx_remote_probes_status ON network_analysis.remote_probes(status);
+CREATE INDEX IF NOT EXISTS idx_remote_probes_last_heartbeat ON network_analysis.remote_probes(last_heartbeat);
+
+CREATE INDEX IF NOT EXISTS idx_capture_sessions_session_id ON network_analysis.capture_sessions(session_id);
+CREATE INDEX IF NOT EXISTS idx_capture_sessions_probe_id ON network_analysis.capture_sessions(probe_id);
+CREATE INDEX IF NOT EXISTS idx_capture_sessions_status ON network_analysis.capture_sessions(status);
+
+CREATE INDEX IF NOT EXISTS idx_monitoring_data_probe_id ON network_analysis.monitoring_data(probe_id);
+CREATE INDEX IF NOT EXISTS idx_monitoring_data_timestamp ON network_analysis.monitoring_data(timestamp);
+
+CREATE INDEX IF NOT EXISTS idx_network_alerts_probe_id ON network_analysis.network_alerts(probe_id);
+CREATE INDEX IF NOT EXISTS idx_network_alerts_status ON network_analysis.network_alerts(status);
+
+-- Triggers for updated_at columns
+CREATE TRIGGER trigger_remote_probes_updated_at
+    BEFORE UPDATE ON network_analysis.remote_probes
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_capture_sessions_updated_at
+    BEFORE UPDATE ON network_analysis.capture_sessions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_network_alerts_updated_at
+    BEFORE UPDATE ON network_analysis.network_alerts
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_analysis_jobs_updated_at
+    BEFORE UPDATE ON network_analysis.analysis_jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 COMMIT;

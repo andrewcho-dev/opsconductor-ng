@@ -22,7 +22,6 @@ import uvicorn
 sys.path.append('/app/shared')
 
 from base_service import BaseService
-from rbac_middleware import RBACMiddleware, require_permission
 
 # Import our analyzer modules
 from analyzers.packet_analyzer import PacketAnalyzer
@@ -197,15 +196,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# RBAC middleware is available as utility functions
-# Individual endpoints will use @require_permission decorator
+# Authentication disabled for network analyzer service
+# Service secured at infrastructure level
 
 # Packet Analysis Endpoints
 @app.post("/api/v1/analysis/start-capture", response_model=CaptureSessionResponse)
 async def start_packet_capture(
     request: StartCaptureRequest,
-    background_tasks: BackgroundTasks,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
+    background_tasks: BackgroundTasks
 ):
     """Start a packet capture session"""
     try:
@@ -220,7 +218,7 @@ async def start_packet_capture(
         # Store session info
         service.active_sessions[session_id] = {
             "type": "capture",
-            "user_id": user_info["user_id"],
+            "user_id": "system",
             "started_at": asyncio.get_event_loop().time(),
             "request": request.dict()
         }
@@ -234,11 +232,11 @@ async def start_packet_capture(
         
         logger.info("Started packet capture session", 
                    session_id=session_id, 
-                   user_id=user_info["user_id"])
+                   user_id="system")
         
         return CaptureSessionResponse(
             session_id=session_id,
-            status="started",
+            status=CaptureStatus.STARTING,
             message="Packet capture session started successfully"
         )
         
@@ -248,8 +246,7 @@ async def start_packet_capture(
 
 @app.get("/api/v1/analysis/capture/{session_id}", response_model=CaptureResultResponse)
 async def get_capture_results(
-    session_id: str,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
+    session_id: str
 ):
     """Get results from a packet capture session"""
     try:
@@ -274,8 +271,7 @@ async def get_capture_results(
 
 @app.post("/api/v1/analysis/stop-capture/{session_id}")
 async def stop_packet_capture(
-    session_id: str,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_WRITE"))
+    session_id: str
 ):
     """Stop a packet capture session"""
     try:
@@ -289,7 +285,7 @@ async def stop_packet_capture(
         
         logger.info("Stopped packet capture session", 
                    session_id=session_id, 
-                   user_id=user_info["user_id"])
+                   user_id="system")
         
         return {"status": "stopped", "session_id": session_id}
         
@@ -300,9 +296,7 @@ async def stop_packet_capture(
 
 # Network Monitoring Endpoints
 @app.get("/api/v1/monitoring/status", response_model=NetworkStatusResponse)
-async def get_network_status(
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
-):
+async def get_network_status():
     """Get current network monitoring status"""
     try:
         status = await service.network_monitor.get_current_status()
@@ -321,15 +315,14 @@ async def get_network_status(
 
 @app.post("/api/v1/monitoring/alerts/configure")
 async def configure_network_alerts(
-    config: NetworkAlertConfig,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_WRITE"))
+    config: NetworkAlertConfig
 ):
     """Configure network monitoring alerts"""
     try:
         await service.network_monitor.configure_alerts(config.dict())
         
         logger.info("Configured network alerts", 
-                   user_id=user_info["user_id"],
+                   user_id="system",
                    config=config.dict())
         
         return {"status": "configured", "message": "Network alerts configured successfully"}
@@ -341,8 +334,7 @@ async def configure_network_alerts(
 # Protocol Analysis Endpoints
 @app.post("/api/v1/analysis/protocol", response_model=ProtocolAnalysisResponse)
 async def analyze_protocol(
-    request: ProtocolAnalysisRequest,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
+    request: ProtocolAnalysisRequest
 ):
     """Analyze specific network protocols"""
     try:
@@ -369,8 +361,7 @@ async def analyze_protocol(
 @app.post("/api/v1/analysis/ai-diagnose", response_model=AIDiagnosisResponse)
 async def ai_network_diagnosis(
     request: AIDiagnosisRequest,
-    background_tasks: BackgroundTasks,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
+    background_tasks: BackgroundTasks
 ):
     """AI-powered network diagnosis and troubleshooting"""
     try:
@@ -385,7 +376,7 @@ async def ai_network_diagnosis(
             background_tasks.add_task(
                 service.ai_analyzer.execute_remediation,
                 diagnosis["remediation_plan"],
-                user_info["user_id"]
+                "system"
             )
         
         return AIDiagnosisResponse(
@@ -405,8 +396,7 @@ async def ai_network_diagnosis(
 # Remote Analysis Endpoints
 @app.post("/api/v1/remote/deploy-agent")
 async def deploy_remote_agent(
-    request: DeployAgentRequest,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_WRITE"))
+    request: DeployAgentRequest
 ):
     """Deploy analysis agent to remote target"""
     try:
@@ -418,7 +408,7 @@ async def deploy_remote_agent(
         logger.info("Deployed remote analysis agent", 
                    agent_id=agent_id,
                    target_id=request.target_id,
-                   user_id=user_info["user_id"])
+                   user_id="system")
         
         return {
             "agent_id": agent_id,
@@ -434,8 +424,7 @@ async def deploy_remote_agent(
 @app.post("/api/v1/remote/analyze/{agent_id}")
 async def remote_network_analysis(
     agent_id: str,
-    request: RemoteAnalysisRequest,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
+    request: RemoteAnalysisRequest
 ):
     """Execute network analysis on remote target"""
     try:
@@ -479,9 +468,7 @@ async def websocket_analysis_updates(websocket: WebSocket, session_id: str):
 
 # Session Management Endpoints
 @app.get("/api/v1/sessions", response_model=List[AnalysisSessionInfo])
-async def list_analysis_sessions(
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_READ"))
-):
+async def list_analysis_sessions():
     """List all active analysis sessions"""
     try:
         sessions = []
@@ -502,8 +489,7 @@ async def list_analysis_sessions(
 
 @app.delete("/api/v1/sessions/{session_id}")
 async def delete_analysis_session(
-    session_id: str,
-    user_info: dict = Depends(require_permission("NETWORK_ANALYSIS_WRITE"))
+    session_id: str
 ):
     """Delete an analysis session"""
     try:
@@ -518,13 +504,145 @@ async def delete_analysis_session(
         
         logger.info("Deleted analysis session", 
                    session_id=session_id,
-                   user_id=user_info["user_id"])
+                   user_id="system")
         
         return {"status": "deleted", "session_id": session_id}
         
     except Exception as e:
         logger.error("Failed to delete analysis session", 
                     session_id=session_id, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Probe Management Endpoints
+
+@app.post("/api/v1/remote/register-probe")
+async def register_probe(probe_info: dict):
+    """Register a remote network analytics probe"""
+    try:
+        probe_id = probe_info.get("probe_id")
+        if not probe_id:
+            raise HTTPException(status_code=400, detail="probe_id is required")
+        
+        # Store probe information (in production, this would go to database)
+        if not hasattr(service, 'registered_probes'):
+            service.registered_probes = {}
+        
+        service.registered_probes[probe_id] = {
+            **probe_info,
+            "registered_at": datetime.now(timezone.utc).isoformat(),
+            "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+            "status": "active"
+        }
+        
+        logger.info("Registered network probe", 
+                   probe_id=probe_id,
+                   probe_name=probe_info.get("name"),
+                   location=probe_info.get("location"))
+        
+        return {
+            "status": "registered",
+            "probe_id": probe_id,
+            "message": f"Probe {probe_id} registered successfully"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to register probe", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/remote/heartbeat")
+async def probe_heartbeat(heartbeat_data: dict):
+    """Receive heartbeat from remote probe"""
+    try:
+        probe_id = heartbeat_data.get("probe_id")
+        if not probe_id:
+            raise HTTPException(status_code=400, detail="probe_id is required")
+        
+        if not hasattr(service, 'registered_probes'):
+            service.registered_probes = {}
+        
+        if probe_id in service.registered_probes:
+            service.registered_probes[probe_id]["last_heartbeat"] = heartbeat_data.get("timestamp")
+            service.registered_probes[probe_id]["status"] = heartbeat_data.get("status", "active")
+            service.registered_probes[probe_id]["active_captures"] = heartbeat_data.get("active_captures", 0)
+            service.registered_probes[probe_id]["interfaces"] = heartbeat_data.get("interfaces", [])
+        
+        return {"status": "acknowledged"}
+        
+    except Exception as e:
+        logger.error("Failed to process heartbeat", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/remote/capture-results")
+async def receive_capture_results(results: dict):
+    """Receive capture results from remote probe"""
+    try:
+        session_id = results.get("session_id")
+        probe_id = results.get("probe_id")
+        
+        if not session_id or not probe_id:
+            raise HTTPException(status_code=400, detail="session_id and probe_id are required")
+        
+        # Store capture results (in production, this would go to database)
+        if not hasattr(service, 'capture_results'):
+            service.capture_results = {}
+        
+        service.capture_results[session_id] = {
+            **results,
+            "received_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        logger.info("Received capture results", 
+                   session_id=session_id,
+                   probe_id=probe_id,
+                   packets=results.get("packets_captured", 0))
+        
+        return {"status": "received", "session_id": session_id}
+        
+    except Exception as e:
+        logger.error("Failed to receive capture results", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/remote/probes")
+async def list_probes():
+    """List all registered probes"""
+    try:
+        if not hasattr(service, 'registered_probes'):
+            service.registered_probes = {}
+        
+        return {
+            "probes": list(service.registered_probes.values()),
+            "count": len(service.registered_probes)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list probes", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/interfaces")
+async def get_available_interfaces():
+    """Get network interfaces from all registered probes"""
+    try:
+        if not hasattr(service, 'registered_probes'):
+            service.registered_probes = {}
+        
+        all_interfaces = []
+        
+        for probe_id, probe_info in service.registered_probes.items():
+            probe_interfaces = probe_info.get("interfaces", [])
+            for interface in probe_interfaces:
+                interface["probe_id"] = probe_id
+                interface["probe_name"] = probe_info.get("name", probe_id)
+                interface["probe_location"] = probe_info.get("location", "Unknown")
+                all_interfaces.append(interface)
+        
+        return {
+            "interfaces": all_interfaces,
+            "total_probes": len(service.registered_probes),
+            "total_interfaces": len(all_interfaces)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get interfaces", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

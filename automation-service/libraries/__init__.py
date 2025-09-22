@@ -10,7 +10,8 @@ __author__ = "OpsConductor Team"
 AVAILABLE_LIBRARIES = [
     'windows_powershell',
     'connection_manager',
-    'linux_ssh'  # Future implementation
+    'linux_ssh',  # Future implementation
+    'network_analyzer'  # Network analysis and protocol analysis
 ]
 
 def get_library_info():
