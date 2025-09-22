@@ -51,6 +51,7 @@ services:
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       AI_SERVICE_URL: http://ai-brain:3005
+      NETWORK_ANALYZER_SERVICE_URL: http://network-analyzer-service:3006
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -227,6 +228,58 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+
+  # Network Analyzer Service
+  network-analyzer-service:
+    build: ./network-analyzer-service
+    container_name: opsconductor-network-analyzer
+    ports:
+      - "3006:3006"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: network_analysis
+      REDIS_URL: redis://redis:6379/6
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      AI_SERVICE_URL: http://ai-brain:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./network-analyzer-service/main.py:/app/main.py
+      - ./network-analyzer-service/models:/app/models
+      - ./network-analyzer-service/analyzers:/app/analyzers
+      - ./network-analyzer-service/agents:/app/agents
+      - ./network-analyzer-service/utils:/app/utils
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    # Grant network capabilities for packet capture
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    # Use host network for better packet capture capabilities (optional)
+    # network_mode: host
 
   # Vector Database for AI Knowledge
   chromadb:

@@ -64,10 +64,17 @@ OpsConductor NG is a **production-ready, microservices-based IT operations autom
                                 │                       │
                                 ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Communication   │    │  Vector Service │    │   LLM Service   │
-│ Service         │    │  (ChromaDB)     │    │   (Ollama)      │
-│ Port 3004       │    │  Port 3007      │    │  Port 3008      │
+│ Communication   │    │ Network Analyzer│    │  Vector Service │
+│ Service         │    │ Service         │    │  (ChromaDB)     │
+│ Port 3004       │    │ Port 3006       │    │  Port 3007      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │                       │
+                                ▼                       ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │   LLM Service   │    │ AI Orchestrator │
+                       │   (Ollama)      │    │ Service         │
+                       │  Port 3008      │    │ Port 3010       │
+                       └─────────────────┘    └─────────────────┘
 ```
 
 ### Core Services
@@ -84,6 +91,7 @@ OpsConductor NG is a **production-ready, microservices-based IT operations autom
 - **Asset Service** (Port 3002) - Infrastructure targets with embedded credentials
 - **Automation Service** (Port 3003) - Job execution with Celery workers
 - **Communication Service** (Port 3004) - Notifications, audit logging
+- **Network Analyzer Service** (Port 3006) - Packet analysis, network monitoring, and troubleshooting
 
 #### AI Services
 - **AI Command Service** (Port 3005) - Main AI interface with intent classification

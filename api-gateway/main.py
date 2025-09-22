@@ -63,6 +63,12 @@ SERVICE_ROUTES = {
     "/api/v1/notifications": "COMMUNICATION_SERVICE_URL",
     "/api/v1/audit": "COMMUNICATION_SERVICE_URL",
     
+    # Network Analyzer Service
+    "/api/v1/network": "NETWORK_ANALYZER_SERVICE_URL",
+    "/api/v1/analysis": "NETWORK_ANALYZER_SERVICE_URL",
+    "/api/v1/monitoring": "NETWORK_ANALYZER_SERVICE_URL",
+    "/api/v1/remote": "NETWORK_ANALYZER_SERVICE_URL",
+    
     # AI Services
     "/api/v1/ai": "AI_SERVICE_URL",  # AI Orchestrator
     "/api/v1/ai-overview": "AI_OVERVIEW_SERVICE_URL",  # AI Overview Service

@@ -180,13 +180,15 @@ class AIBrainEngine:
             try:
                 from knowledge_engine import (
                     it_knowledge_base, solution_patterns,
-                    error_resolution, learning_system
+                    error_resolution, learning_system,
+                    network_analyzer_knowledge
                 )
                 self.it_knowledge_base = it_knowledge_base
                 self.solution_patterns = solution_patterns
                 self.error_resolution = error_resolution
                 self.learning_system = learning_system
-                logger.info("Knowledge engine components initialized successfully")
+                self.network_analyzer_knowledge = network_analyzer_knowledge
+                logger.info("Knowledge engine components initialized successfully (including network analyzer knowledge)")
             except Exception as e:
                 logger.error(f"Failed to initialize knowledge engine: {e}")
                 self.knowledge_graph_enabled = False

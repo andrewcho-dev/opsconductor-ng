@@ -29,6 +29,12 @@ class ProtocolType(Enum):
     HTTPS = "https"
     DATABASE = "database"
     REST_API = "rest_api"
+    TCP = "tcp"
+    UDP = "udp"
+    ICMP = "icmp"
+    DNS = "dns"
+    FTP = "ftp"
+    SMTP = "smtp"
 
 @dataclass
 class APIEndpoint:
@@ -333,6 +339,82 @@ class ServiceCapabilitiesManager:
             ]
         )
         
+        # Network Analyzer Service
+        services["network-analyzer-service"] = OpsConductorService(
+            name="network-analyzer-service",
+            container_name="opsconductor-network-analyzer",
+            port=3006,
+            service_type=ServiceType.CORE_BUSINESS,
+            description="Network packet analysis, monitoring, and troubleshooting",
+            health_endpoint="/health",
+            base_url_template="http://network-analyzer-service:3006",
+            capabilities=[
+                ServiceCapability(
+                    name="packet_analysis",
+                    description="Capture and analyze network packets in real-time",
+                    endpoints=[
+                        APIEndpoint("/api/v1/network/capture", "POST", "Start packet capture", {"interface": "str", "filter": "str?", "duration": "int?", "max_packets": "int?"}, "json"),
+                        APIEndpoint("/api/v1/network/capture/{session_id}", "GET", "Get capture results", {"session_id": "str"}, "json"),
+                        APIEndpoint("/api/v1/network/capture/{session_id}", "DELETE", "Stop capture session", {"session_id": "str"}, "json"),
+                        APIEndpoint("/api/v1/network/interfaces", "GET", "List network interfaces", {}, "json"),
+                    ],
+                    protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
+                    data_models=["PacketCaptureRequest", "PacketCaptureResult", "NetworkInterface", "PacketData"],
+                    dependencies=["tcpdump", "tshark", "scapy"]
+                ),
+                ServiceCapability(
+                    name="network_monitoring",
+                    description="Real-time network performance monitoring and alerting",
+                    endpoints=[
+                        APIEndpoint("/api/v1/monitoring/start", "POST", "Start network monitoring", {"interface": "str", "thresholds": "dict?"}, "json"),
+                        APIEndpoint("/api/v1/monitoring/status/{session_id}", "GET", "Get monitoring status", {"session_id": "str"}, "json"),
+                        APIEndpoint("/api/v1/monitoring/stop/{session_id}", "POST", "Stop monitoring session", {"session_id": "str"}, "json"),
+                        APIEndpoint("/ws/monitoring/{session_id}", "WebSocket", "Real-time monitoring updates", {"session_id": "str"}, "websocket"),
+                    ],
+                    protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
+                    data_models=["MonitoringRequest", "NetworkMetrics", "AlertThreshold", "MonitoringStatus"],
+                    dependencies=["psutil", "websocket_manager"]
+                ),
+                ServiceCapability(
+                    name="protocol_analysis",
+                    description="Deep analysis of specific network protocols",
+                    endpoints=[
+                        APIEndpoint("/api/v1/analysis/protocol", "POST", "Analyze specific protocols", {"protocol": "str", "data": "str", "options": "dict?"}, "json"),
+                        APIEndpoint("/api/v1/analysis/protocols", "GET", "List supported protocols", {}, "json"),
+                        APIEndpoint("/api/v1/analysis/performance", "POST", "Analyze network performance", {"interface": "str", "duration": "int"}, "json"),
+                    ],
+                    protocols_supported=[ProtocolType.TCP, ProtocolType.UDP, ProtocolType.HTTP, ProtocolType.HTTPS, ProtocolType.DNS, ProtocolType.ICMP, ProtocolType.SSH, ProtocolType.FTP, ProtocolType.SMTP, ProtocolType.SNMP],
+                    data_models=["ProtocolAnalysisRequest", "ProtocolAnalysisResult", "PerformanceMetrics", "ProtocolInfo"],
+                    dependencies=["scapy", "dpkt", "pyshark"]
+                ),
+                ServiceCapability(
+                    name="ai_network_analysis",
+                    description="AI-powered network diagnosis and anomaly detection",
+                    endpoints=[
+                        APIEndpoint("/api/v1/analysis/ai/diagnose", "POST", "AI-powered network diagnosis", {"symptoms": "list", "network_data": "dict"}, "json"),
+                        APIEndpoint("/api/v1/analysis/ai/anomaly", "POST", "Detect network anomalies", {"data": "dict", "baseline": "dict?"}, "json"),
+                        APIEndpoint("/api/v1/analysis/ai/suggestions/{analysis_id}", "GET", "Get AI suggestions", {"analysis_id": "str"}, "json"),
+                    ],
+                    protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
+                    data_models=["NetworkDiagnosis", "AnomalyDetectionResult", "AIAnalysisRequest", "NetworkSuggestion"],
+                    dependencies=["ai-brain", "scikit-learn", "numpy"]
+                ),
+                ServiceCapability(
+                    name="remote_analysis",
+                    description="Deploy and manage remote network analysis agents",
+                    endpoints=[
+                        APIEndpoint("/api/v1/remote/deploy", "POST", "Deploy remote agent", {"target_id": "str", "analysis_type": "str", "duration": "int?"}, "json"),
+                        APIEndpoint("/api/v1/remote/agents", "GET", "List active agents", {}, "json"),
+                        APIEndpoint("/api/v1/remote/analyze", "POST", "Start remote analysis", {"agent_id": "str", "analysis_config": "dict"}, "json"),
+                        APIEndpoint("/api/v1/remote/agent/{agent_id}", "DELETE", "Remove remote agent", {"agent_id": "str"}, "json"),
+                    ],
+                    protocols_supported=[ProtocolType.SSH, ProtocolType.WINRM, ProtocolType.REST_API],
+                    data_models=["RemoteAgent", "AgentDeployment", "RemoteAnalysisRequest", "AgentStatus"],
+                    dependencies=["asset-service", "automation-service"]
+                )
+            ]
+        )
+        
         # API Gateway
         services["api-gateway"] = OpsConductorService(
             name="api-gateway",
@@ -352,7 +434,7 @@ class ServiceCapabilitiesManager:
                     ],
                     protocols_supported=[ProtocolType.REST_API, ProtocolType.HTTPS],
                     data_models=["RouteConfig", "ProxyRequest"],
-                    dependencies=["identity-service", "asset-service", "automation-service", "communication-service", "ai-brain"]
+                    dependencies=["identity-service", "asset-service", "automation-service", "communication-service", "network-analyzer-service", "ai-brain"]
                 )
             ]
         )
@@ -366,6 +448,19 @@ class ServiceCapabilitiesManager:
     def get_all_services(self) -> Dict[str, OpsConductorService]:
         """Get all service definitions"""
         return self.services
+    
+    def get_all_capabilities(self) -> Dict[str, Dict[str, Any]]:
+        """Get all services with their capabilities in a simplified format"""
+        capabilities = {}
+        for service_name, service in self.services.items():
+            capabilities[service_name] = {
+                'name': service.name,
+                'description': service.description,
+                'capabilities': [cap.name for cap in service.capabilities],
+                'service_type': service.service_type.value,
+                'port': service.port
+            }
+        return capabilities
     
     def get_services_by_type(self, service_type: ServiceType) -> List[OpsConductorService]:
         """Get services filtered by type"""

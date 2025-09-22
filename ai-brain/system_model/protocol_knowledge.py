@@ -20,6 +20,7 @@ class ProtocolCategory(Enum):
     DATABASE = "database"
     WEB_API = "web_api"
     MESSAGING = "messaging"
+    NETWORK_ANALYSIS = "network_analysis"
 
 class SecurityLevel(Enum):
     """Security levels for protocols"""

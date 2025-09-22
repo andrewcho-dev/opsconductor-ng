@@ -33,6 +33,9 @@ class WorkflowType(Enum):
     CONFIGURATION_CHANGE = "configuration_change"
     TROUBLESHOOTING = "troubleshooting"
     INFORMATION_GATHERING = "information_gathering"
+    NETWORK_ANALYSIS = "network_analysis"
+    NETWORK_MONITORING = "network_monitoring"
+    NETWORK_TROUBLESHOOTING = "network_troubleshooting"
 
 class StepType(Enum):
     """Types of workflow steps"""
@@ -44,6 +47,10 @@ class StepType(Enum):
     SEQUENTIAL = "sequential"
     ERROR_HANDLER = "error_handler"
     NOTIFICATION = "notification"
+    NETWORK_CAPTURE = "network_capture"
+    NETWORK_MONITOR = "network_monitor"
+    PROTOCOL_ANALYSIS = "protocol_analysis"
+    AI_NETWORK_DIAGNOSIS = "ai_network_diagnosis"
 
 class ExecutionMode(Enum):
     """Execution modes for workflow steps"""
@@ -121,6 +128,9 @@ class WorkflowGenerator:
         self.step_library = self._initialize_step_library()
         self.asset_client = AssetServiceClient()
         self.job_validator = JobValidator()
+        # Expose workflow and step types for testing and introspection
+        self.workflow_types = WorkflowType
+        self.step_types = StepType
         logger.info(f"Initialized workflow generator with {len(self.workflow_templates)} templates")
     
     def generate_workflow(
@@ -242,7 +252,16 @@ class WorkflowGenerator:
             "service_management": WorkflowType.SYSTEM_MAINTENANCE,
             "user_management": WorkflowType.SYSTEM_MAINTENANCE,
             "network_operations": WorkflowType.SYSTEM_MAINTENANCE,
-            "database_operations": WorkflowType.SYSTEM_MAINTENANCE
+            "database_operations": WorkflowType.SYSTEM_MAINTENANCE,
+            # Network analysis specific intents
+            "network_analysis": WorkflowType.NETWORK_ANALYSIS,
+            "packet_analysis": WorkflowType.NETWORK_ANALYSIS,
+            "network_monitoring": WorkflowType.NETWORK_MONITORING,
+            "network_troubleshooting": WorkflowType.NETWORK_TROUBLESHOOTING,
+            "protocol_analysis": WorkflowType.NETWORK_ANALYSIS,
+            "network_diagnosis": WorkflowType.NETWORK_TROUBLESHOOTING,
+            "packet_capture": WorkflowType.NETWORK_ANALYSIS,
+            "network_performance": WorkflowType.NETWORK_MONITORING
         }
         
         workflow_type = intent_to_workflow_map.get(intent_type)

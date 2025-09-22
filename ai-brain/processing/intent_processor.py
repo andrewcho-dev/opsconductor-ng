@@ -75,7 +75,33 @@ class IntentProcessor:
             'monitoring': ['check', 'monitor', 'alert', 'report', 'analyze'],
             'maintenance': ['backup', 'cleanup', 'optimize', 'repair', 'maintain'],
             'security': ['scan', 'audit', 'secure', 'encrypt', 'authenticate'],
-            'configuration': ['configure', 'setup', 'modify', 'change', 'adjust']
+            'configuration': ['configure', 'setup', 'modify', 'change', 'adjust'],
+            'network_analysis': ['capture', 'analyze', 'monitor', 'troubleshoot', 'diagnose'],
+            'network_monitoring': ['monitor', 'track', 'observe', 'watch', 'measure'],
+            'network_troubleshooting': ['troubleshoot', 'debug', 'diagnose', 'fix', 'resolve']
+        }
+        
+        # Compatibility attribute for testing - provides intent patterns interface
+        self.intent_patterns = {
+            'network_analysis': [
+                {'description': 'network packet capture and analysis', 'keywords': ['packet', 'capture', 'network', 'analyze']},
+                {'description': 'protocol analysis and inspection', 'keywords': ['protocol', 'analyze', 'inspect', 'decode']},
+                {'description': 'network performance analysis', 'keywords': ['network', 'performance', 'bandwidth', 'latency']}
+            ],
+            'network_monitoring': [
+                {'description': 'real-time network monitoring', 'keywords': ['monitor', 'network', 'real-time', 'traffic']},
+                {'description': 'network metrics collection', 'keywords': ['metrics', 'network', 'collect', 'measure']}
+            ],
+            'network_troubleshooting': [
+                {'description': 'network connectivity troubleshooting', 'keywords': ['troubleshoot', 'network', 'connectivity', 'debug']},
+                {'description': 'network performance troubleshooting', 'keywords': ['troubleshoot', 'network', 'performance', 'slow']}
+            ],
+            'packet_capture': [
+                {'description': 'packet capture operations', 'keywords': ['packet', 'capture', 'tcpdump', 'wireshark']}
+            ],
+            'protocol_analysis': [
+                {'description': 'protocol-specific analysis', 'keywords': ['protocol', 'analysis', 'http', 'tcp', 'dns']}
+            ]
         }
         
         logger.info("Modern Intent Processor initialized")
@@ -175,6 +201,63 @@ class IntentProcessor:
                     "operation": "cleanup",
                     "target_group": "application servers",
                     "intent_category": "maintenance"
+                },
+                # Network Analysis Patterns
+                {
+                    "pattern": "capture network packets on interface eth0",
+                    "operation": "capture",
+                    "target_service": "network",
+                    "intent_category": "network_analysis",
+                    "parameters": {"interface": "eth0", "type": "packet_capture"}
+                },
+                {
+                    "pattern": "analyze network traffic for HTTP requests",
+                    "operation": "analyze",
+                    "target_service": "network",
+                    "intent_category": "network_analysis",
+                    "parameters": {"protocol": "http", "type": "protocol_analysis"}
+                },
+                {
+                    "pattern": "monitor network bandwidth on all interfaces",
+                    "operation": "monitor",
+                    "target_service": "network",
+                    "intent_category": "network_monitoring",
+                    "parameters": {"type": "bandwidth_monitoring"}
+                },
+                {
+                    "pattern": "diagnose network connectivity issues",
+                    "operation": "diagnose",
+                    "target_service": "network",
+                    "intent_category": "network_troubleshooting",
+                    "parameters": {"type": "connectivity_diagnosis"}
+                },
+                {
+                    "pattern": "detect network anomalies using AI",
+                    "operation": "detect",
+                    "target_service": "network",
+                    "intent_category": "network_analysis",
+                    "parameters": {"type": "ai_anomaly_detection"}
+                },
+                {
+                    "pattern": "analyze TCP protocol performance",
+                    "operation": "analyze",
+                    "target_service": "network",
+                    "intent_category": "network_analysis",
+                    "parameters": {"protocol": "tcp", "type": "protocol_analysis"}
+                },
+                {
+                    "pattern": "monitor network latency and packet loss",
+                    "operation": "monitor",
+                    "target_service": "network",
+                    "intent_category": "network_monitoring",
+                    "parameters": {"type": "performance_monitoring"}
+                },
+                {
+                    "pattern": "deploy network analysis agent to remote server",
+                    "operation": "deploy",
+                    "target_service": "network_agent",
+                    "intent_category": "network_analysis",
+                    "parameters": {"type": "remote_agent_deployment"}
                 }
             ]
             
