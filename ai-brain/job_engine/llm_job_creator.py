@@ -410,8 +410,8 @@ Provide your validation assessment as JSON:"""
                 }
             }
             
-            # Generate job name
-            job_name = f"AI Job: {description[:30]}..."
+            # Generate intelligent job name based on analysis and plan
+            job_name = await self._generate_intelligent_job_name(description, analysis, plan)
             
             logger.info(f"Submitting real job to automation service: {job_name}")
             
@@ -469,3 +469,98 @@ Provide your validation assessment as JSON:"""
                 "error": f"Failed to create and submit job: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }
+    
+    async def _generate_intelligent_job_name(self, description: str, analysis: JobAnalysis, plan: JobPlan) -> str:
+        """Generate an intelligent, descriptive job name based on the chat context and automation purpose"""
+        try:
+            system_prompt = """You are an expert at creating concise, descriptive job names for IT automation tasks.
+
+Your task is to generate a clear, professional job name that:
+1. Reflects the main purpose/action of the automation
+2. Includes key target systems or services when relevant
+3. Is concise but descriptive (ideally 3-8 words)
+4. Uses professional IT terminology
+5. Avoids generic terms like "AI Job" or "Automation Task"
+
+Examples of good job names:
+- "Restart Apache Services on Web Servers"
+- "Deploy Application to Production Environment"
+- "Monitor Disk Usage on Database Servers"
+- "Update Security Patches on Linux Hosts"
+- "Backup MySQL Database to S3"
+- "Scale Kubernetes Pods for High Traffic"
+- "Configure Load Balancer Health Checks"
+- "Rotate SSL Certificates on API Gateway"
+
+Return ONLY the job name, no additional text or formatting."""
+
+            # Create context for the LLM
+            context_info = f"""
+Original Request: "{description}"
+
+Analysis:
+- Intent Type: {analysis.intent_type}
+- Target Systems: {', '.join(analysis.target_systems) if analysis.target_systems else 'General'}
+- Workflow Type: {plan.workflow_type}
+- Main Actions: {', '.join([step.get('action', step.get('name', 'Unknown')) for step in plan.steps[:3]])}
+- Risk Level: {analysis.risk_level}
+- Complexity: {analysis.complexity}
+"""
+
+            prompt = f"""Generate a professional job name for this automation task:
+
+{context_info}
+
+Job Name:"""
+
+            response = await self.llm_engine.chat(
+                message=prompt,
+                system_prompt=system_prompt,
+                model=None  # Use default model
+            )
+            
+            # Extract the job name from the response
+            job_name = response["response"].strip()
+            
+            # Clean up the response (remove quotes, extra formatting)
+            job_name = job_name.strip('"\'`')
+            job_name = job_name.replace('\n', ' ').replace('\r', ' ')
+            
+            # Ensure it's not too long (max 80 characters)
+            if len(job_name) > 80:
+                job_name = job_name[:77] + "..."
+            
+            # Fallback to a reasonable default if the LLM response is empty or too short
+            if not job_name or len(job_name) < 5:
+                # Create a fallback name based on intent and targets
+                action_map = {
+                    "system_maintenance": "System Maintenance",
+                    "deployment": "Application Deployment", 
+                    "monitoring_setup": "Monitoring Setup",
+                    "security_audit": "Security Audit",
+                    "backup_restore": "Backup & Restore",
+                    "configuration_change": "Configuration Update",
+                    "troubleshooting": "System Troubleshooting",
+                    "service_management": "Service Management",
+                    "automation_request": "Automation Task"
+                }
+                
+                base_name = action_map.get(analysis.intent_type, "Automation Task")
+                
+                if analysis.target_systems:
+                    targets = ', '.join(analysis.target_systems[:2])  # Limit to first 2 targets
+                    job_name = f"{base_name} on {targets}"
+                else:
+                    job_name = base_name
+            
+            logger.info(f"Generated intelligent job name: '{job_name}' for request: '{description[:50]}...'")
+            return job_name
+            
+        except Exception as e:
+            logger.error(f"Error generating intelligent job name: {e}")
+            # Fallback to a simple but better name than the original
+            if analysis.target_systems:
+                targets = ', '.join(analysis.target_systems[:2])
+                return f"{analysis.intent_type.replace('_', ' ').title()} on {targets}"
+            else:
+                return f"{analysis.intent_type.replace('_', ' ').title()} Task"
