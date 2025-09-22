@@ -59,9 +59,9 @@ class NetworkAnalyzerService(BaseService):
     
     def __init__(self):
         super().__init__(
-            service_name="network-analyzer-service",
-            service_port=3006,
-            db_schema="network_analysis"
+            name="network-analyzer",
+            version="1.0.0",
+            port=3006
         )
         
         # Initialize analyzers
@@ -76,33 +76,117 @@ class NetworkAnalyzerService(BaseService):
         
         # Active analysis sessions
         self.active_sessions: Dict[str, Dict] = {}
+        
+        # Service URLs
+        self.identity_service_url = os.getenv("IDENTITY_SERVICE_URL", "http://identity-service:3001")
+        
+        # Setup routes
+        self._setup_routes()
+    
+    async def on_startup(self):
+        """Service-specific startup logic"""
+        logger.info("Starting Network Analyzer Service")
+        
+        # Initialize analyzers (if they have initialize methods)
+        if hasattr(self.packet_analyzer, 'initialize'):
+            await self.packet_analyzer.initialize()
+        if hasattr(self.ai_analyzer, 'initialize'):
+            await self.ai_analyzer.initialize()
+        
+        # Start background monitoring
+        asyncio.create_task(self.network_monitor.start_monitoring())
+    
+    async def on_shutdown(self):
+        """Service-specific shutdown logic"""
+        logger.info("Shutting down Network Analyzer Service")
+        await self.cleanup()
+    
+    async def check_db_connection(self):
+        """Check database connection status"""
+        try:
+            # Simple query to check connection
+            async with self.db.get_connection() as conn:
+                await conn.execute("SELECT 1")
+            return {"status": "healthy", "message": "Database connection OK"}
+        except Exception as e:
+            return {"status": "unhealthy", "message": f"Database connection failed: {str(e)}"}
+    
+    async def check_redis_connection(self):
+        """Check Redis connection status"""
+        try:
+            await self.redis.ping()
+            return {"status": "healthy", "message": "Redis connection OK"}
+        except Exception as e:
+            return {"status": "unhealthy", "message": f"Redis connection failed: {str(e)}"}
+    
+    async def cleanup(self):
+        """Cleanup resources"""
+        try:
+            # Stop monitoring
+            if hasattr(self.network_monitor, 'stop_monitoring'):
+                await self.network_monitor.stop_monitoring()
+            
+            # Close any active sessions
+            for session_id in list(self.active_sessions.keys()):
+                try:
+                    await self.stop_capture_session(session_id)
+                except Exception as e:
+                    logger.warning(f"Failed to stop session {session_id}: {e}")
+            
+            logger.info("Service cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+    
+    async def stop_capture_session(self, session_id: str):
+        """Stop a capture session"""
+        if session_id in self.active_sessions:
+            # Stop the capture
+            session = self.active_sessions[session_id]
+            if 'capture_task' in session:
+                session['capture_task'].cancel()
+            
+            # Remove from active sessions
+            del self.active_sessions[session_id]
+            logger.info(f"Stopped capture session: {session_id}")
+    
+    def _setup_routes(self):
+        """Setup service-specific routes"""
+        # Health check endpoint
+        @self.app.get("/health")
+        async def health_check():
+            """Health check endpoint"""
+            try:
+                # Check database connection
+                db_status = await self.check_db_connection()
+                
+                # Check Redis connection
+                redis_status = await self.check_redis_connection()
+                
+                # Check analyzer status
+                analyzer_status = {
+                    "packet_analyzer": self.packet_analyzer.is_ready(),
+                    "network_monitor": self.network_monitor.is_running(),
+                    "ai_analyzer": self.ai_analyzer.is_ready()
+                }
+                
+                return {
+                    "status": "healthy",
+                    "service": "network-analyzer-service",
+                    "version": "1.0.0",
+                    "database": db_status,
+                    "redis": redis_status,
+                    "analyzers": analyzer_status,
+                    "active_sessions": len(self.active_sessions)
+                }
+            except Exception as e:
+                logger.error("Health check failed", error=str(e))
+                raise HTTPException(status_code=503, detail="Service unhealthy")
 
 # Global service instance
 service = NetworkAnalyzerService()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
-    logger.info("Starting Network Analyzer Service")
-    
-    # Initialize service
-    await service.initialize()
-    
-    # Start background monitoring
-    asyncio.create_task(service.network_monitor.start_monitoring())
-    
-    yield
-    
-    logger.info("Shutting down Network Analyzer Service")
-    await service.cleanup()
-
-# Create FastAPI app
-app = FastAPI(
-    title="OpsConductor Network Analyzer Service",
-    description="Comprehensive network packet analysis and troubleshooting service",
-    version="1.0.0",
-    lifespan=lifespan
-)
+# Get the app from the service
+app = service.app
 
 # Add CORS middleware
 app.add_middleware(
@@ -113,39 +197,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add RBAC middleware
-rbac = RBACMiddleware(service.identity_service_url)
-app.add_middleware(rbac.middleware_class)
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    try:
-        # Check database connection
-        db_status = await service.check_db_connection()
-        
-        # Check Redis connection
-        redis_status = await service.check_redis_connection()
-        
-        # Check analyzer status
-        analyzer_status = {
-            "packet_analyzer": service.packet_analyzer.is_ready(),
-            "network_monitor": service.network_monitor.is_running(),
-            "ai_analyzer": service.ai_analyzer.is_ready()
-        }
-        
-        return {
-            "status": "healthy",
-            "service": "network-analyzer-service",
-            "version": "1.0.0",
-            "database": db_status,
-            "redis": redis_status,
-            "analyzers": analyzer_status,
-            "active_sessions": len(service.active_sessions)
-        }
-    except Exception as e:
-        logger.error("Health check failed", error=str(e))
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+# RBAC middleware is available as utility functions
+# Individual endpoints will use @require_permission decorator
 
 # Packet Analysis Endpoints
 @app.post("/api/v1/analysis/start-capture", response_model=CaptureSessionResponse)

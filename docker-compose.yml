@@ -262,11 +262,6 @@ services:
     networks:
       - opsconductor-net
     volumes:
-      - ./network-analyzer-service/main.py:/app/main.py
-      - ./network-analyzer-service/models:/app/models
-      - ./network-analyzer-service/analyzers:/app/analyzers
-      - ./network-analyzer-service/agents:/app/agents
-      - ./network-analyzer-service/utils:/app/utils
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/health"]

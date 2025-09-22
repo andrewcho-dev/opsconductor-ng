@@ -20,3 +20,4 @@ plotly==5.17.0
 networkx==3.2.1
 dpkt==1.9.8
 python-nmap==0.7.1
+scikit-learn==1.3.2
