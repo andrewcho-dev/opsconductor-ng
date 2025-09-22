@@ -254,7 +254,7 @@ class ModernSystemCapabilities:
             """
             
             if self.llm_engine:
-                health_analysis = await self.llm_engine.generate_response(health_prompt)
+                health_analysis = await self.llm_engine.generate(health_prompt)
                 self.system_status = "active"  # Simplified for now
                 logger.info(f"System health analysis: {health_analysis[:100]}...")
             else:

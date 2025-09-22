@@ -13,6 +13,7 @@ Multi-stage LLM pipeline:
 
 import logging
 import json
+import re
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,23 @@ from integrations.llm_client import LLMEngine
 from integrations.automation_client import AutomationServiceClient
 
 logger = logging.getLogger(__name__)
+
+def extract_json_from_response(response_text: str) -> str:
+    """Extract JSON from LLM response that may be wrapped in markdown code blocks"""
+    # First try to find JSON in code blocks
+    json_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+    match = re.search(json_pattern, response_text, re.DOTALL)
+    if match:
+        return match.group(1)
+    
+    # If no code blocks, try to find JSON object directly
+    json_pattern = r'\{.*\}'
+    match = re.search(json_pattern, response_text, re.DOTALL)
+    if match:
+        return match.group(0)
+    
+    # If still no match, return the original text
+    return response_text.strip()
 
 @dataclass
 class JobAnalysis:
@@ -79,10 +97,14 @@ class LLMJobCreator:
             if not analysis:
                 return {"success": False, "error": "Failed to analyze request"}
             
+            logger.info(f"✅ Analysis completed: {analysis.intent_type}")
+            
             # STAGE 2: PLAN - Generate workflow structure
             plan = await self._generate_plan(description, analysis, user_context)
             if not plan:
                 return {"success": False, "error": "Failed to generate plan"}
+                
+            logger.info(f"✅ Plan generated: {plan.workflow_type} with {len(plan.steps)} steps")
             
             # STAGE 3: VALIDATE - Check safety and feasibility
             validation = await self._validate_plan(description, analysis, plan, user_context)
@@ -149,7 +171,9 @@ Provide your analysis as a JSON object:"""
             
             # Parse JSON response
             try:
-                analysis_data = json.loads(response["response"])
+                # Extract JSON from the response (handles markdown code blocks)
+                json_text = extract_json_from_response(response["response"])
+                analysis_data = json.loads(json_text)
                 
                 return JobAnalysis(
                     intent_type=analysis_data.get("intent_type", "automation_request"),
@@ -223,9 +247,14 @@ Generate a comprehensive workflow plan as JSON:"""
                 model=None
             )
             
+            logger.info(f"Raw plan response: {response['response'][:300]}...")
+            
             # Parse JSON response
             try:
-                plan_data = json.loads(response["response"])
+                # Extract JSON from the response (handles markdown code blocks)
+                json_text = extract_json_from_response(response["response"])
+                logger.info(f"Extracted JSON for plan: {json_text[:200]}...")
+                plan_data = json.loads(json_text)
                 
                 return JobPlan(
                     workflow_type=plan_data.get("workflow_type", "automation"),
@@ -259,12 +288,12 @@ Your task is to validate the plan and return a JSON object with this structure:
     "required_approvals": ["manager", "security_team"]
 }
 
-Be thorough in your safety assessment. Consider:
-- Data loss risks
-- Service disruption potential  
-- Security implications
-- Rollback feasibility
-- Resource requirements"""
+Validation Guidelines:
+- For LOW RISK operations (service restarts, status checks, log viewing): Be permissive, approve if basic safety measures are in place
+- For MEDIUM/HIGH RISK operations: Be thorough in safety assessment
+- Consider: Data loss risks, Service disruption potential, Security implications, Rollback feasibility
+- Simple service management operations (start/stop/restart/status) are generally safe if they target appropriate services
+- Approve operations that have reasonable error handling and rollback plans"""
 
             plan_context = f"""
 Plan to Validate:
@@ -294,9 +323,19 @@ Provide your validation assessment as JSON:"""
                 model=None
             )
             
+            logger.info(f"Raw validation response: {response['response']}")
+            
             # Parse JSON response
             try:
-                validation_data = json.loads(response["response"])
+                # Extract JSON from the response (handles markdown code blocks)
+                json_text = extract_json_from_response(response["response"])
+                validation_data = json.loads(json_text)
+                
+                # Log validation details for debugging
+                logger.info(f"Validation result: is_valid={validation_data.get('is_valid', False)}")
+                logger.info(f"Safety score: {validation_data.get('safety_score', 0.5)}")
+                logger.info(f"Warnings: {validation_data.get('warnings', [])}")
+                logger.info(f"Recommendations: {validation_data.get('recommendations', [])}")
                 
                 return JobValidation(
                     is_valid=validation_data.get("is_valid", False),

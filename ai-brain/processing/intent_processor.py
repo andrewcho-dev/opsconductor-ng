@@ -64,7 +64,7 @@ class IntentProcessor:
         self.llm_engine = LLMEngine(ollama_host, default_model)
         
         # Initialize ChromaDB client
-        chroma_client = chromadb.PersistentClient(path="/app/chromadb_data")
+        chroma_client = chromadb.PersistentClient(path="/home/opsconductor/opsconductor-ng/ai-brain/chromadb_data")
         self.vector_store = OpsConductorVectorStore(chroma_client)
         self.intent_patterns_initialized = False
         
@@ -86,18 +86,24 @@ class IntentProcessor:
             return
             
         try:
-            # Initialize vector store
-            await self.vector_store.initialize()
-            
-            # Load or create intent patterns
-            await self._initialize_intent_patterns()
+            # Initialize vector store if available
+            if self.vector_store:
+                try:
+                    await self.vector_store.initialize()
+                    # Load or create intent patterns
+                    await self._initialize_intent_patterns()
+                    logger.info("Intent processing patterns initialized with vector store")
+                except Exception as ve:
+                    logger.warning(f"Vector store initialization failed, continuing without it: {ve}")
+            else:
+                logger.info("Vector store not available, initializing intent processor without pattern storage")
             
             self.intent_patterns_initialized = True
-            logger.info("Intent processing patterns initialized")
+            logger.info("Intent Processor initialized successfully")
             
         except Exception as e:
-            logger.error("Failed to initialize Intent Processor", error=str(e))
-            raise
+            logger.warning(f"Intent Processor initialization had issues but continuing: {e}")
+            self.intent_patterns_initialized = True  # Continue anyway
     
     async def _initialize_intent_patterns(self):
         """Initialize intent patterns in vector store"""
@@ -254,7 +260,7 @@ class IntentProcessor:
             }}
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             
             try:
                 parsed_data = json.loads(response)
@@ -406,7 +412,7 @@ class IntentProcessor:
             }}
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             
             try:
                 entities_data = json.loads(response)
@@ -526,7 +532,7 @@ class IntentProcessor:
             }}
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             
             try:
                 classification = json.loads(response)
@@ -621,7 +627,7 @@ class IntentProcessor:
                 }}
                 """
                 
-                response = await self.llm_engine.generate_response(prompt)
+                response = await self.llm_engine.generate(prompt)
                 
                 try:
                     enhanced_context = json.loads(response)

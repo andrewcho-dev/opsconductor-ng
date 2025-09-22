@@ -92,7 +92,7 @@ class ModernAIEngine:
             
             # Fallback to basic LLM processing
             if self.llm_client:
-                llm_response = await self.llm_client.generate_response(
+                llm_response = await self.llm_client.generate(
                     f"Process this IT operations request: {message}"
                 )
                 
@@ -150,7 +150,7 @@ class ModernAIEngine:
                 Respond with JSON: {{"intent": "category", "confidence": 0.0-1.0, "reasoning": "explanation"}}
                 """
                 
-                response = await self.llm_client.generate_response(intent_prompt)
+                response = await self.llm_client.generate(intent_prompt)
                 
                 # Parse LLM response (simplified)
                 try:

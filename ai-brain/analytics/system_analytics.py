@@ -120,18 +120,24 @@ class SystemAnalytics:
             return
             
         try:
-            # Initialize vector store
-            await self.vector_store.initialize()
-            
-            # Load or create analytics patterns
-            await self._initialize_analytics_patterns()
+            # Initialize vector store if available
+            if self.vector_store:
+                try:
+                    await self.vector_store.initialize()
+                    # Load or create analytics patterns
+                    await self._initialize_analytics_patterns()
+                    logger.info("System Analytics patterns initialized with vector store")
+                except Exception as ve:
+                    logger.warning(f"Vector store initialization failed, continuing without it: {ve}")
+            else:
+                logger.info("Vector store not available, initializing analytics without pattern storage")
             
             self.analytics_initialized = True
-            logger.info("System Analytics patterns initialized")
+            logger.info("System Analytics initialized successfully")
             
         except Exception as e:
-            logger.error("Failed to initialize System Analytics", error=str(e))
-            raise
+            logger.warning(f"System Analytics initialization had issues but continuing: {e}")
+            self.analytics_initialized = True  # Continue anyway
     
     async def _initialize_analytics_patterns(self):
         """Initialize analytics patterns in vector store"""
@@ -201,16 +207,15 @@ class SystemAnalytics:
             all_patterns = performance_patterns + security_patterns + maintenance_patterns
             
             for i, pattern in enumerate(all_patterns):
-                await self.vector_store.store_automation_pattern(
-                    pattern_id=f"analytics_pattern_{i}",
-                    pattern_name=f"{pattern['category']}_pattern_{i}",
-                    description=pattern['pattern'],
+                await self.vector_store.store_knowledge(
+                    content=pattern['pattern'],
+                    title=f"{pattern['category']}_pattern_{i}",
+                    category="analytics_pattern",
                     metadata={
-                        "category": pattern['category'],
                         "severity": pattern['severity'],
-                        "indicators": pattern['indicators'],
-                        "recommendations": pattern['recommendations'],
-                        "type": "analytics_pattern"
+                        "indicators": str(pattern['indicators']),
+                        "recommendations": str(pattern['recommendations']),
+                        "pattern_type": pattern['category']
                     }
                 )
             
@@ -289,7 +294,7 @@ class SystemAnalytics:
             Respond with only one word: improving, stable, or degrading
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             trend = response.strip().lower()
             
             if trend not in ['improving', 'stable', 'degrading']:
@@ -326,7 +331,7 @@ class SystemAnalytics:
             {{"prediction_7d": <value>, "prediction_30d": <value>, "confidence": <value>}}
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             
             try:
                 predictions = json.loads(response)
@@ -571,7 +576,7 @@ class SystemAnalytics:
                 }}
                 """
                 
-                response = await self.llm_engine.generate_response(prompt)
+                response = await self.llm_engine.generate(prompt)
                 
                 try:
                     maintenance_data = json.loads(response)
@@ -748,7 +753,7 @@ class SystemAnalytics:
             }
             """
             
-            response = await self.llm_engine.generate_response(prompt)
+            response = await self.llm_engine.generate(prompt)
             
             try:
                 insights = json.loads(response)

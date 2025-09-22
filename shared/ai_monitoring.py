@@ -22,7 +22,7 @@ class MetricsCollector:
         self.metrics = defaultdict(lambda: deque(maxlen=100))  # Keep last 100 metrics per service
         # Only monitor services that actually exist in the current deployment
         self.service_urls = {
-            "ai_brain": "http://ai-brain:3000"
+            "ai_brain": "http://ai-brain:3005"
         }
         self.http_client = httpx.AsyncClient(timeout=10.0)
     

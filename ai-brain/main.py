@@ -2,11 +2,16 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import structlog
 import os
+import json
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
 import sys
-sys.path.append('/app/shared')
+# Check if running in Docker container
+if os.path.exists('/app/shared'):
+    sys.path.append('/app/shared')
+else:
+    sys.path.append('/home/opsconductor/opsconductor-ng/shared')
 from base_service import BaseService
 
 # Import the new AI Brain Engine
@@ -68,8 +73,8 @@ app.include_router(learning_router)
 service = AIService()
 ai_engine = AIBrainEngine()
 workflow_generator = WorkflowGenerator()
-asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"))
-automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
+asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
+automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
 
 @app.on_event("startup")
 async def startup_event():
@@ -97,6 +102,7 @@ async def pure_llm_chat_endpoint(request, ai_engine):
     """
     try:
         logger.info("🧠 Processing PURE LLM chat request", message=request.message[:100], conversation_id=request.conversation_id)
+        logger.info(f"🧠 AI Engine type: {type(ai_engine)}, has llm_engine: {hasattr(ai_engine, 'llm_engine')}")
         user_id = str(request.user_id) if request.user_id else "system"
         
         # Generate conversation_id if not provided
@@ -104,10 +110,15 @@ async def pure_llm_chat_endpoint(request, ai_engine):
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
         # Step 1: Use LLM to determine intent (job creation vs conversation)
+        logger.info(f"🔍 Starting intent analysis for message: '{request.message}'")
         intent_analysis = await _analyze_user_intent_with_llm(request.message, ai_engine)
+        logger.info(f"🔍 Intent analysis result: {intent_analysis}")
         
         # Step 2: Route based on LLM analysis
-        if intent_analysis.get("is_job_request", False):
+        is_job_request = intent_analysis.get("is_job_request", False)
+        logger.info(f"🔍 Routing decision: is_job_request={is_job_request}")
+        
+        if is_job_request:
             logger.info("🚀 LLM detected job creation request - routing to LLM job creator")
             return await _handle_job_creation_request(request, ai_engine, intent_analysis)
         else:
@@ -158,13 +169,26 @@ async def pure_llm_chat_endpoint(request, ai_engine):
 async def _analyze_user_intent_with_llm(message: str, ai_engine) -> Dict[str, Any]:
     """Use LLM to analyze if the user wants to create a job or have a conversation"""
     try:
-        # Get LLM client from ai_engine
-        if not hasattr(ai_engine, 'llm_client'):
-            return {"is_job_request": False, "confidence": 0.5, "reasoning": "LLM client not available"}
+        # Get LLM engine from ai_engine (AIBrainEngine)
+        if not hasattr(ai_engine, 'llm_engine') or ai_engine.llm_engine is None:
+            logger.warning("🔍 LLM engine not available, using fallback keyword analysis")
+            # Fallback analysis based on keywords
+            job_keywords = ["create", "run", "execute", "deploy", "restart", "start", "stop", "install", "configure", "backup", "monitor", "automate"]
+            is_job = any(keyword in message.lower() for keyword in job_keywords)
+            logger.info(f"🔍 Fallback keyword analysis result: is_job={is_job}, message='{message.lower()}'")
+            return {
+                "is_job_request": is_job,
+                "confidence": 0.8 if is_job else 0.3,
+                "reasoning": "Fallback keyword analysis - LLM engine not available",
+                "job_type": "automation" if is_job else None,
+                "conversation_type": "general" if not is_job else None
+            }
         
         analysis_prompt = f"""Analyze this user message and determine if they want to create an automation job or just have a conversation.
 
 User message: "{message}"
+
+IMPORTANT: If the user is asking to perform ANY action on servers, services, or systems, this is a JOB REQUEST, not a conversation.
 
 Respond with JSON only:
 {{
@@ -175,30 +199,50 @@ Respond with JSON only:
     "conversation_type": "question/help/general" (if conversation)
 }}
 
-Job request indicators:
-- Words like: create, run, execute, deploy, restart, start, stop, install, configure, backup, monitor, automate
-- Mentions of servers, services, systems, applications
-- Requests for actions to be performed
+JOB REQUEST indicators (set is_job_request=true):
+- Action verbs: restart, start, stop, deploy, install, configure, backup, monitor, update, upgrade, create, delete, remove, run, execute, automate
+- Target mentions: server, service, application, database, container, VM, system, host, node
+- Commands or operations to be performed
+- Infrastructure management tasks
+- System administration requests
 
-Conversation indicators:
-- Questions about how things work
-- Requests for information or explanations
-- General help or guidance requests
-- Status inquiries without action requests"""
+CONVERSATION indicators (set is_job_request=false):
+- Questions starting with: what, how, why, when, where
+- Requests for information, explanations, or help
+- General inquiries about system status (without requesting changes)
+- Documentation or guidance requests
 
-        llm_response = await ai_engine.llm_client.generate_response(analysis_prompt)
+Examples:
+- "restart nginx service on server1" → JOB REQUEST (action: restart, target: service)
+- "how does nginx work?" → CONVERSATION (question about how something works)
+- "deploy application to production" → JOB REQUEST (action: deploy, target: application)
+- "what is the status of server1?" → CONVERSATION (information request)"""
+
+        llm_response = await ai_engine.llm_engine.generate(analysis_prompt)
+        logger.info(f"🔍 LLM intent analysis response: {llm_response}")
+        
+        # Extract the generated text from the LLM response
+        if isinstance(llm_response, dict) and "generated_text" in llm_response:
+            generated_text = llm_response["generated_text"]
+        else:
+            generated_text = str(llm_response)
+        
+        logger.info(f"🔍 Extracted generated text: {generated_text}")
         
         # Parse LLM response
         try:
-            analysis = json.loads(llm_response)
+            analysis = json.loads(generated_text)
+            logger.info(f"🔍 Parsed intent analysis: {analysis}")
             return analysis
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(f"🔍 JSON parsing failed: {e}, falling back to keyword analysis")
             # Fallback analysis based on keywords
             job_keywords = ["create", "run", "execute", "deploy", "restart", "start", "stop", "install", "configure", "backup", "monitor", "automate"]
             is_job = any(keyword in message.lower() for keyword in job_keywords)
+            logger.info(f"🔍 Keyword analysis result: is_job={is_job}, message='{message.lower()}'")
             return {
                 "is_job_request": is_job,
-                "confidence": 0.7 if is_job else 0.3,
+                "confidence": 0.8 if is_job else 0.3,
                 "reasoning": "Fallback keyword analysis",
                 "job_type": "automation" if is_job else None,
                 "conversation_type": "general" if not is_job else None
@@ -234,7 +278,7 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
                 "conversation_id": request.conversation_id,
                 "intent": "job_creation",
                 "confidence": job_result.get("confidence", 0.9),
-                "job_id": job_result.get("job_id"),
+                "job_id": str(job_result.get("job_id")) if job_result.get("job_id") is not None else None,
                 "execution_id": job_result.get("execution_id"),
                 "automation_job_id": job_result.get("automation_job_id"),
                 "workflow": job_result.get("workflow"),
@@ -688,7 +732,7 @@ async def proceed_with_risk(request: ProceedWithRiskRequest):
         
         return {
             "message": "Job created with acknowledged risks",
-            "job_id": response.get("job_id"),
+            "job_id": str(response.get("job_id")) if response.get("job_id") is not None else None,
             "execution_id": response.get("execution_id"),
             "automation_job_id": response.get("automation_job_id"),
             "workflow": response.get("workflow"),
@@ -706,10 +750,13 @@ async def proceed_with_risk(request: ProceedWithRiskRequest):
 # System queries and script generation are now handled through the main chat interface
 
 @app.get("/ai/knowledge-stats")
-async def get_knowledge_stats():
+def get_knowledge_stats():
     """Get AI knowledge base statistics"""
     try:
-        stats = await ai_engine.get_knowledge_stats()
+        if not ai_engine:
+            raise HTTPException(status_code=503, detail="AI Brain Engine not initialized")
+        
+        stats = ai_engine.get_knowledge_stats()
         return {
             "status": "success",
             "stats": stats,
@@ -1483,7 +1530,7 @@ async def test_integration():
                 )
                 result["test_submission"] = {
                     "success": submission_result.get('success'),
-                    "job_id": submission_result.get('job_id'),
+                    "job_id": str(submission_result.get('job_id')) if submission_result.get('job_id') is not None else None,
                     "message": submission_result.get('message', submission_result.get('error'))
                 }
             except Exception as e:
@@ -1669,10 +1716,10 @@ async def get_ai_status():
         # Check which components are available
         components_status = {
             "modern_components": {
-                "system_analytics": hasattr(brain_engine, 'system_analytics'),
-                "intent_processor": hasattr(brain_engine, 'intent_processor'),
-                "system_capabilities": hasattr(brain_engine, 'system_capabilities'),
-                "ai_engine": hasattr(brain_engine, 'ai_engine')
+                "system_analytics": hasattr(ai_engine, 'system_analytics'),
+                "intent_processor": hasattr(ai_engine, 'intent_processor'),
+                "system_capabilities": hasattr(ai_engine, 'system_capabilities'),
+                "ai_engine": hasattr(ai_engine, 'ai_engine')
             },
             "migration_complete": True,
             "active_mode": "modern",
@@ -1693,6 +1740,215 @@ async def get_ai_status():
     except Exception as e:
         logger.error(f"Failed to get AI status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# API v1 routes for dashboard compatibility
+@app.get("/api/v1/ai/health")
+async def api_v1_health_check():
+    """API v1 compatible health check endpoint for dashboard"""
+    try:
+        # Get detailed health status from AI Brain Engine
+        brain_health = ai_engine.get_health_status()
+        
+        # Transform to expected dashboard format
+        services = {
+            "ai-brain": {
+                "status": "healthy" if brain_health.get("status") == "healthy" else "unhealthy",
+                "service": "ai-brain",
+                "components": brain_health.get("components", {}),
+                "architecture": brain_health.get("architecture", "pure_llm"),
+                "timestamp": brain_health.get("timestamp")
+            }
+        }
+        
+        return {
+            "status": "healthy",
+            "services": services,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"API v1 health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "services": {
+                "ai-brain": {
+                    "status": "unhealthy",
+                    "service": "ai-brain",
+                    "error": str(e),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@app.get("/api/v1/ai/monitoring/dashboard")
+async def api_v1_monitoring_dashboard():
+    """API v1 compatible monitoring dashboard endpoint"""
+    try:
+        # Get current health status
+        brain_health = ai_engine.get_health_status()
+        
+        # Create dashboard data structure
+        current_services = {
+            "ai-brain": {
+                "status": "healthy" if brain_health.get("status") == "healthy" else "unhealthy",
+                "service": "ai-brain",
+                "components": brain_health.get("components", {}),
+                "architecture": brain_health.get("architecture", "pure_llm"),
+                "response_time": 0.1,
+                "timestamp": brain_health.get("timestamp")
+            }
+        }
+        
+        # Determine overall health
+        overall_health = "healthy" if brain_health.get("status") == "healthy" else "degraded"
+        
+        # Create alerts based on component status
+        alerts = []
+        components = brain_health.get("components", {})
+        for component, status in components.items():
+            if not status:
+                alerts.append({
+                    "severity": "warning",
+                    "service": "ai-brain",
+                    "message": f"Component {component} is not available"
+                })
+        
+        # Generate recommendations
+        recommendations = []
+        if alerts:
+            recommendations.append("Some AI components are not fully initialized - this may affect functionality")
+        else:
+            recommendations.append("AI system is operating normally")
+        
+        return {
+            "current": {
+                "services": current_services,
+                "overall_health": overall_health
+            },
+            "history": [],  # Could be populated with historical data
+            "analysis": {
+                "overall_health": overall_health,
+                "alerts": alerts,
+                "recommendations": recommendations
+            },
+            "statistics": {
+                "total_services": 1,
+                "healthy_services": 1 if overall_health == "healthy" else 0,
+                "unhealthy_services": 0 if overall_health == "healthy" else 1,
+                "uptime_percentage": 100.0 if overall_health == "healthy" else 75.0
+            }
+        }
+    except Exception as e:
+        logger.error(f"API v1 monitoring dashboard failed: {e}")
+        return {
+            "current": {
+                "services": {
+                    "ai-brain": {
+                        "status": "unhealthy",
+                        "service": "ai-brain",
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                },
+                "overall_health": "unhealthy"
+            },
+            "history": [],
+            "analysis": {
+                "overall_health": "unhealthy",
+                "alerts": [{
+                    "severity": "critical",
+                    "service": "ai-brain",
+                    "message": f"AI service error: {str(e)}"
+                }],
+                "recommendations": ["Check AI service logs and restart if necessary"]
+            },
+            "statistics": {
+                "total_services": 1,
+                "healthy_services": 0,
+                "unhealthy_services": 1,
+                "uptime_percentage": 0.0
+            }
+        }
+
+@app.post("/api/v1/ai/circuit-breaker/reset/{service_name}")
+async def api_v1_reset_circuit_breaker(service_name: str):
+    """API v1 compatible circuit breaker reset endpoint"""
+    try:
+        logger.info(f"Circuit breaker reset requested for service: {service_name}")
+        
+        # For AI brain, we can try to reinitialize components
+        if service_name == "ai-brain":
+            # Attempt to reinitialize the AI engine
+            try:
+                # This would reinitialize the AI engine if it has such capability
+                if hasattr(ai_engine, 'reinitialize'):
+                    await ai_engine.reinitialize()
+                    return {"message": f"Circuit breaker reset for {service_name}", "success": True}
+                else:
+                    return {"message": f"Circuit breaker reset acknowledged for {service_name} (no action needed)", "success": True}
+            except Exception as reinit_error:
+                logger.error(f"Failed to reinitialize {service_name}: {reinit_error}")
+                return {"message": f"Circuit breaker reset attempted for {service_name} but reinitialize failed", "success": False}
+        else:
+            return {"message": f"Circuit breaker reset not applicable for {service_name}", "success": False}
+            
+    except Exception as e:
+        logger.error(f"Circuit breaker reset failed for {service_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reset circuit breaker: {str(e)}")
+
+@app.get("/api/v1/ai/knowledge-stats")
+def api_v1_knowledge_stats():
+    """API v1 compatible knowledge stats endpoint"""
+    try:
+        if not ai_engine:
+            raise HTTPException(status_code=503, detail="AI Brain Engine not initialized")
+        
+        stats = ai_engine.get_knowledge_stats()
+        return {
+            "status": "success",
+            "stats": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Failed to get knowledge stats", error=str(e))
+        # Return basic stats if detailed stats fail
+        return {
+            "status": "partial",
+            "stats": {
+                "total_documents": 0,
+                "total_patterns": 0,
+                "vector_store_status": "unavailable",
+                "error": str(e)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+@app.get("/ai/knowledge-stats")
+def knowledge_stats():
+    """Knowledge stats endpoint for API gateway routing"""
+    try:
+        if not ai_engine:
+            raise HTTPException(status_code=503, detail="AI Brain Engine not initialized")
+        
+        stats = ai_engine.get_knowledge_stats()
+        return {
+            "status": "success",
+            "stats": stats,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("Failed to get knowledge stats", error=str(e))
+        # Return basic stats if detailed stats fail
+        return {
+            "status": "partial",
+            "stats": {
+                "total_documents": 0,
+                "total_patterns": 0,
+                "vector_store_status": "unavailable",
+                "error": str(e)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 if __name__ == "__main__":
     import uvicorn

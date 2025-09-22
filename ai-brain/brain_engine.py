@@ -121,8 +121,8 @@ class AIBrainEngine:
     def _init_integration_clients(self):
         """Initialize all external service integration clients."""
         try:
-            self.asset_client = AssetClient()
-            self.automation_client = AutomationClient()
+            self.asset_client = AssetClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
+            self.automation_client = AutomationClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
             self.communication_client = CommunicationClient()
             
             # Initialize vector store and LLM engine
@@ -130,7 +130,7 @@ class AIBrainEngine:
                 import chromadb
                 
                 # Configure ChromaDB with new client configuration
-                chroma_client = chromadb.PersistentClient(path="/app/chromadb_data")
+                chroma_client = chromadb.PersistentClient(path="/home/opsconductor/opsconductor-ng/ai-brain/chromadb_data")
                 
                 self.vector_store = VectorStore(chroma_client)
                 logger.info("Vector store initialized successfully")
@@ -139,7 +139,7 @@ class AIBrainEngine:
                 self.vector_store = None
             
             # Initialize LLM engine with configuration
-            ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+            ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
             default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
             self.llm_engine = LLMEngine(ollama_host, default_model)
             
@@ -412,4 +412,51 @@ class AIBrainEngine:
             "nlm_status": "completely_removed",
             "timestamp": datetime.utcnow().isoformat()
         }
+    
+    def get_knowledge_stats(self) -> Dict[str, Any]:
+        """
+        Get knowledge base statistics for monitoring dashboard.
+        
+        Returns:
+            Dict containing knowledge base statistics
+        """
+        try:
+            # Basic stats that are always available
+            stats = {
+                "total_documents": 0,
+                "total_embeddings": 0,
+                "knowledge_sources": [],
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "healthy"
+            }
+            
+            # If knowledge graph is enabled, get more detailed stats
+            if self.knowledge_graph_enabled and hasattr(self, 'knowledge_graph'):
+                try:
+                    # Try to get stats from knowledge graph if available
+                    kg_stats = getattr(self.knowledge_graph, 'get_stats', lambda: {})()
+                    if kg_stats:
+                        stats.update(kg_stats)
+                except Exception as e:
+                    logger.warning(f"Could not get knowledge graph stats: {e}")
+            
+            # Add component availability info
+            stats["components"] = {
+                "knowledge_graph": self.knowledge_graph_enabled,
+                "embeddings": hasattr(self, 'embeddings_client'),
+                "vector_store": hasattr(self, 'vector_store')
+            }
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error getting knowledge stats: {e}")
+            return {
+                "total_documents": 0,
+                "total_embeddings": 0,
+                "knowledge_sources": [],
+                "last_updated": datetime.utcnow().isoformat(),
+                "status": "error",
+                "error": str(e)
+            }
     

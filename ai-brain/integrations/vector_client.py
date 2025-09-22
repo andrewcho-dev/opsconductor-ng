@@ -44,6 +44,21 @@ class OpsConductorVectorStore:
         except Exception as e:
             logger.error(f"Failed to load embedding model: {e}")
             self.embedding_model = None
+    
+    async def initialize(self):
+        """Initialize the vector store and all collections"""
+        try:
+            logger.info("Initializing OpsConductor Vector Store...")
+            success = await self.initialize_collections()
+            if success:
+                logger.info("Vector store initialized successfully")
+                return True
+            else:
+                logger.error("Vector store initialization failed")
+                return False
+        except Exception as e:
+            logger.error(f"Vector store initialization failed: {e}")
+            return False
         
     async def initialize_collections(self):
         """Initialize all required collections"""
@@ -92,19 +107,43 @@ class OpsConductorVectorStore:
             collection = self.client.get_collection(name=name)
             logger.info(f"Found existing collection: {name}")
             return collection
-        except Exception:
-            # Create new collection
-            collection = self.client.create_collection(
-                name=name,
-                metadata=metadata or {}
-            )
-            logger.info(f"Created new collection: {name}")
-            return collection
+        except Exception as e:
+            logger.info(f"Collection {name} not found, creating new one: {e}")
+            try:
+                # Create new collection
+                collection = self.client.create_collection(
+                    name=name,
+                    metadata=metadata or {}
+                )
+                logger.info(f"Created new collection: {name}")
+                return collection
+            except Exception as create_error:
+                logger.error(f"Failed to create collection {name}: {create_error}")
+                # Try to delete and recreate if there's a conflict
+                try:
+                    self.client.delete_collection(name=name)
+                    collection = self.client.create_collection(
+                        name=name,
+                        metadata=metadata or {}
+                    )
+                    logger.info(f"Recreated collection: {name}")
+                    return collection
+                except Exception as final_error:
+                    logger.error(f"Final attempt to create collection {name} failed: {final_error}")
+                    raise
     
     async def store_knowledge(self, content: str, title: str, category: str, 
                             metadata: Dict = None) -> str:
         """Store system knowledge/documentation"""
         try:
+            # Ensure collections are initialized
+            if not self.collections or 'knowledge' not in self.collections:
+                logger.warning("Collections not initialized, attempting to initialize...")
+                await self.initialize_collections()
+            
+            if 'knowledge' not in self.collections:
+                raise Exception("Knowledge collection not available")
+            
             doc_id = str(uuid.uuid4())
             
             # Prepare metadata (ensure all values are strings, ints, floats, or bools)
