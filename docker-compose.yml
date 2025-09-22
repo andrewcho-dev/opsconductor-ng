@@ -51,7 +51,7 @@ services:
       AUTOMATION_SERVICE_URL: http://automation-service:3003
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       AI_SERVICE_URL: http://ai-brain:3005
-      NETWORK_ANALYZER_SERVICE_URL: http://network-analyzer-service:3006
+      NETWORK_ANALYZER_SERVICE_URL: http://172.18.0.1:3006
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres
@@ -233,21 +233,19 @@ services:
   network-analyzer-service:
     build: ./network-analyzer-service
     container_name: opsconductor-network-analyzer
-    ports:
-      - "3006:3006"
     environment:
-      DB_HOST: postgres
+      DB_HOST: localhost
       DB_PORT: 5432
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
       DB_SCHEMA: network_analysis
-      REDIS_URL: redis://redis:6379/6
-      IDENTITY_SERVICE_URL: http://identity-service:3001
-      ASSET_SERVICE_URL: http://asset-service:3002
-      AUTOMATION_SERVICE_URL: http://automation-service:3003
-      COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      AI_SERVICE_URL: http://ai-brain:3005
+      REDIS_URL: redis://localhost:6379/6
+      IDENTITY_SERVICE_URL: http://localhost:3001
+      ASSET_SERVICE_URL: http://localhost:3002
+      AUTOMATION_SERVICE_URL: http://localhost:3003
+      COMMUNICATION_SERVICE_URL: http://localhost:3004
+      AI_SERVICE_URL: http://localhost:3005
     depends_on:
       postgres:
         condition: service_healthy
@@ -259,22 +257,26 @@ services:
         condition: service_healthy
       automation-service:
         condition: service_healthy
-    networks:
-      - opsconductor-net
+    # Grant network capabilities for packet capture
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - SYS_ADMIN
+    # Use host network for better packet capture capabilities
+    network_mode: host
+    privileged: true
     volumes:
+      - ./network-analyzer-service/main.py:/app/main.py
+      - ./network-analyzer-service/models:/app/models
       - ./shared:/app/shared
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     restart: unless-stopped
-    # Grant network capabilities for packet capture
-    cap_add:
-      - NET_RAW
-      - NET_ADMIN
-    # Use host network for better packet capture capabilities (optional)
-    # network_mode: host
 
   # Vector Database for AI Knowledge
   chromadb:
