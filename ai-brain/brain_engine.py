@@ -23,8 +23,9 @@ from integrations.vector_client import OpsConductorVectorStore as VectorStore
 from integrations.llm_client import LLMEngine
 from llm_conversation_handler import LLMConversationHandler
 
-# LLM-based job creation engine
+# LLM-based job creation engines
 from job_engine.llm_job_creator import LLMJobCreator
+from job_engine.template_aware_job_creator import TemplateAwareJobCreator
 
 logger = logging.getLogger(__name__)
 
@@ -148,10 +149,10 @@ class AIBrainEngine:
                 self.llm_conversation_handler = LLMConversationHandler(self.llm_engine, self.asset_client)
                 logger.info("LLM conversation handler initialized successfully with asset client access")
             
-            # Initialize LLM job creator (replaces NLM intent engine)
+            # Initialize Template-Aware LLM job creator (replaces NLM intent engine)
             if self.job_creation_enabled:
-                self.llm_job_creator = LLMJobCreator(self.llm_engine, self.automation_client)
-                logger.info("LLM job creator initialized successfully with automation client integration")
+                self.llm_job_creator = TemplateAwareJobCreator(self.llm_engine, self.automation_client)
+                logger.info("Template-aware LLM job creator initialized successfully with automation client integration and template knowledge")
             
             logger.info("Integration clients initialized successfully")
         except Exception as e:

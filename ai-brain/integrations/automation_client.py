@@ -456,12 +456,250 @@ class AutomationServiceClient:
                         execution_id=execution_id, error=str(e))
             return []
 
+    async def load_job_template(self, template_path: str) -> Optional[Dict[str, Any]]:
+        """
+        Load a job template from the automation-jobs directory
+        
+        Args:
+            template_path: Path to the job template JSON file
+            
+        Returns:
+            Dict with job template data or None if failed
+        """
+        try:
+            import json
+            import os
+            
+            # Ensure the path is absolute and within the automation-jobs directory
+            if not os.path.isabs(template_path):
+                base_dir = "/home/opsconductor/opsconductor-ng/automation-jobs"
+                template_path = os.path.join(base_dir, template_path)
+            
+            if not os.path.exists(template_path):
+                logger.error("Job template not found", template_path=template_path)
+                return None
+            
+            with open(template_path, 'r') as f:
+                template_data = json.load(f)
+            
+            logger.info("Job template loaded successfully", 
+                       template_path=template_path,
+                       job_name=template_data.get('name', 'Unknown'))
+            
+            return template_data
+            
+        except Exception as e:
+            logger.error("Failed to load job template", 
+                        template_path=template_path, 
+                        error=str(e))
+            return None
+
+    async def execute_job_template(self, template_path: str, 
+                                 parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Execute an existing job template with optional parameter substitution
+        
+        Args:
+            template_path: Path to the job template JSON file
+            parameters: Optional parameters to substitute in the template
+            
+        Returns:
+            Dict with job creation and execution results
+        """
+        try:
+            # Load the job template
+            template_data = await self.load_job_template(template_path)
+            if not template_data:
+                return {
+                    'success': False,
+                    'error': f'Failed to load job template: {template_path}'
+                }
+            
+            # Apply parameter substitution if provided
+            if parameters:
+                template_data = self._substitute_template_parameters(template_data, parameters)
+            
+            logger.info("Executing job template", 
+                       template_path=template_path,
+                       job_name=template_data.get('name'),
+                       parameters=parameters)
+            
+            # Create job from template
+            job_data = {
+                'name': template_data.get('name', 'Template Job'),
+                'description': template_data.get('description', 'Job created from template'),
+                'workflow_definition': template_data.get('workflow_definition', {}),
+                'job_type': template_data.get('job_type', 'template_based'),
+                'is_enabled': True,
+                'tags': template_data.get('tags', []) + ['template-based', 'ai-executed'],
+                'metadata': {
+                    'template_source': template_path,
+                    'template_based': True,
+                    'executed_by_ai': True,
+                    'original_metadata': template_data.get('metadata', {}),
+                    'submission_time': datetime.utcnow().isoformat(),
+                    'parameters_applied': parameters or {}
+                }
+            }
+            
+            # Submit job to automation service
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/jobs",
+                    json=job_data
+                )
+                
+                if response.status_code != 200:
+                    raise AutomationServiceError(
+                        f"Failed to create job from template: {response.status_code} - {response.text}"
+                    )
+                
+                job_result = response.json()
+                # Handle nested response format from automation service
+                if 'data' in job_result:
+                    job_data_response = job_result['data']
+                    job_id = job_data_response['id']
+                else:
+                    job_id = job_result['id']
+                
+                logger.info("Template-based job created successfully", 
+                           job_id=job_id, 
+                           template_path=template_path)
+                
+                # Start job execution
+                execution_result = await self.execute_job(job_id)
+                
+                return {
+                    'success': True,
+                    'job_id': job_id,
+                    'job_name': template_data.get('name'),
+                    'execution_id': execution_result.get('execution_id'),
+                    'task_id': execution_result.get('task_id'),
+                    'message': f"Template-based job submitted and started execution",
+                    'template_path': template_path,
+                    'job_details': job_result,
+                    'execution_details': execution_result,
+                    'template_data': template_data
+                }
+                
+        except Exception as e:
+            logger.error("Failed to execute job template", 
+                        template_path=template_path,
+                        error=str(e))
+            
+            return {
+                'success': False,
+                'error': f"Failed to execute template: {str(e)}",
+                'template_path': template_path
+            }
+
+    def _substitute_template_parameters(self, template_data: Dict[str, Any], 
+                                      parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Substitute parameters in template data using simple string replacement
+        
+        Args:
+            template_data: The job template data
+            parameters: Parameters to substitute (e.g., {'target_host': '192.168.50.211'})
+            
+        Returns:
+            Template data with parameters substituted
+        """
+        try:
+            import json
+            import re
+            
+            # Convert template to JSON string for easy substitution
+            template_json = json.dumps(template_data)
+            
+            # Apply parameter substitutions
+            for key, value in parameters.items():
+                # Replace both {{ key }} and {{ parameters.key }} patterns
+                patterns = [
+                    f"{{{{ {key} }}}}",
+                    f"{{{{ parameters.{key} }}}}",
+                    f"{{{{parameters.{key}}}}}",
+                    f"{{{{{key}}}}}"
+                ]
+                
+                for pattern in patterns:
+                    template_json = template_json.replace(pattern, str(value))
+            
+            # Also handle credential substitutions if provided
+            if 'credentials' in parameters:
+                creds = parameters['credentials']
+                for cred_key, cred_value in creds.items():
+                    patterns = [
+                        f"{{{{ credentials.{cred_key} }}}}",
+                        f"{{{{credentials.{cred_key}}}}}"
+                    ]
+                    for pattern in patterns:
+                        template_json = template_json.replace(pattern, str(cred_value))
+            
+            # Convert back to dict
+            return json.loads(template_json)
+            
+        except Exception as e:
+            logger.error("Failed to substitute template parameters", 
+                        error=str(e))
+            return template_data
+
+    async def list_available_templates(self) -> List[Dict[str, Any]]:
+        """
+        List all available job templates in the automation-jobs directory
+        
+        Returns:
+            List of template information
+        """
+        try:
+            import os
+            import json
+            
+            templates = []
+            templates_dir = "/home/opsconductor/opsconductor-ng/automation-jobs"
+            
+            if not os.path.exists(templates_dir):
+                logger.warning("Templates directory not found", path=templates_dir)
+                return []
+            
+            for filename in os.listdir(templates_dir):
+                if filename.endswith('.json'):
+                    template_path = os.path.join(templates_dir, filename)
+                    try:
+                        with open(template_path, 'r') as f:
+                            template_data = json.load(f)
+                        
+                        templates.append({
+                            'filename': filename,
+                            'path': template_path,
+                            'name': template_data.get('name', filename),
+                            'description': template_data.get('description', 'No description'),
+                            'job_type': template_data.get('job_type', 'unknown'),
+                            'tags': template_data.get('tags', []),
+                            'metadata': template_data.get('metadata', {}),
+                            'target_os': template_data.get('metadata', {}).get('target_os'),
+                            'estimated_duration': template_data.get('metadata', {}).get('estimated_duration')
+                        })
+                        
+                    except Exception as e:
+                        logger.warning("Failed to parse template", 
+                                     filename=filename, 
+                                     error=str(e))
+                        continue
+            
+            logger.info("Found job templates", count=len(templates))
+            return templates
+            
+        except Exception as e:
+            logger.error("Failed to list available templates", error=str(e))
+            return []
+
     def get_client_info(self) -> Dict[str, Any]:
         """Get client information"""
         return {
             'name': 'Automation Service Client',
-            'version': '1.0.0',
-            'description': 'Client for AI Service to Automation Service integration',
+            'version': '1.1.0',
+            'description': 'Client for AI Service to Automation Service integration with template support',
             'base_url': self.base_url,
             'capabilities': [
                 'AI workflow submission',
@@ -472,11 +710,21 @@ class AutomationServiceClient:
                 'Execution history tracking',
                 'Job scheduling queries',
                 'Workflow step analysis',
-                'Task queue monitoring'
+                'Task queue monitoring',
+                'Job template loading',
+                'Template-based job execution',
+                'Template parameter substitution',
+                'Available templates listing'
             ],
             'timeouts': {
                 'request_timeout': self.timeout,
                 'max_retries': self.max_retries
+            },
+            'template_support': {
+                'templates_directory': '/home/opsconductor/opsconductor-ng/automation-jobs',
+                'parameter_substitution': True,
+                'credential_substitution': True,
+                'supported_formats': ['json']
             }
         }
 
