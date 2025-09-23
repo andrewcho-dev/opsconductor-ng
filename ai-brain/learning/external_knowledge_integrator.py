@@ -1,491 +1,492 @@
 """
-External Knowledge Integrator for Multi-Brain AI Architecture
-
-This module integrates external knowledge sources to enhance
-AI brain capabilities and keep the system up-to-date.
+External Knowledge Integrator for AI-Intent-Based Strategy Phase 3
+Integrates external knowledge sources into the SME brain system
 """
 
-import logging
 import asyncio
-from typing import Dict, List, Optional, Any, Set
-from enum import Enum
-from dataclasses import dataclass, field
+import logging
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
 import json
+import aiohttp
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-class KnowledgeSource(Enum):
-    """Types of external knowledge sources."""
-    DOCUMENTATION = "documentation"
-    API_REFERENCE = "api_reference"
-    BEST_PRACTICES = "best_practices"
-    SECURITY_ADVISORIES = "security_advisories"
-    PERFORMANCE_BENCHMARKS = "performance_benchmarks"
-    COMMUNITY_KNOWLEDGE = "community_knowledge"
-    VENDOR_UPDATES = "vendor_updates"
-
-class IntegrationStatus(Enum):
-    """Status of knowledge integration."""
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    OUTDATED = "outdated"
-
 @dataclass
-class ExternalKnowledge:
-    """External knowledge item."""
-    knowledge_id: str
-    source: KnowledgeSource
+class SecurityAdvisory:
+    """Security advisory data structure"""
+    id: str
     title: str
-    content: str
-    source_url: Optional[str] = None
-    relevance_score: float = 0.0
-    confidence_score: float = 0.0
-    applicable_domains: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.now)
-    last_updated: datetime = field(default_factory=datetime.now)
-    metadata: Optional[Dict[str, Any]] = None
+    severity: str
+    description: str
+    affected_systems: List[str]
+    mitigation_steps: List[str]
+    published_date: datetime
+    source: str
 
 @dataclass
-class IntegrationTask:
-    """Knowledge integration task."""
-    task_id: str
-    source: KnowledgeSource
-    target_brain_id: Optional[str] = None
-    priority: int = 5  # 1-10, higher is more important
-    status: IntegrationStatus = IntegrationStatus.PENDING
-    progress: float = 0.0
-    error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.now)
-    completed_at: Optional[datetime] = None
+class BestPractice:
+    """Best practice data structure"""
+    id: str
+    domain: str
+    title: str
+    description: str
+    implementation_steps: List[str]
+    benefits: List[str]
+    updated_date: datetime
+    source: str
+
+@dataclass
+class KnowledgeUpdate:
+    """Knowledge update tracking"""
+    source: str
+    last_updated: datetime
+    items_processed: int
+    success_rate: float
+    errors: List[str]
 
 class ExternalKnowledgeIntegrator:
     """
-    Integrates external knowledge sources to enhance AI brain capabilities.
-    
-    This component fetches, processes, and integrates knowledge from various
-    external sources to keep the multi-brain system current and effective.
+    Integrates external knowledge sources into the SME brain system
     """
     
-    def __init__(self):
-        """Initialize the external knowledge integrator."""
-        self.logger = logging.getLogger(__name__)
-        self.knowledge_cache: Dict[str, ExternalKnowledge] = {}
-        self.integration_tasks: List[IntegrationTask] = []
-        self.source_configurations: Dict[KnowledgeSource, Dict] = {}
-        self.brain_subscriptions: Dict[str, Set[KnowledgeSource]] = {}
-        self.logger.info("External Knowledge Integrator initialized")
-    
-    async def configure_knowledge_source(
-        self,
-        source: KnowledgeSource,
-        configuration: Dict[str, Any]
-    ):
-        """
-        Configure a knowledge source.
+    def __init__(self, config_path: Optional[str] = None):
+        self.config = self._load_config(config_path)
+        self.knowledge_cache = {}
+        self.update_history: List[KnowledgeUpdate] = []
         
-        Args:
-            source: Knowledge source type
-            configuration: Source-specific configuration
-        """
-        self.source_configurations[source] = configuration
-        self.logger.info(f"Configured knowledge source: {source.value}")
-    
-    async def subscribe_brain_to_source(
-        self,
-        brain_id: str,
-        sources: List[KnowledgeSource]
-    ):
-        """
-        Subscribe a brain to specific knowledge sources.
-        
-        Args:
-            brain_id: ID of the brain
-            sources: List of knowledge sources to subscribe to
-        """
-        if brain_id not in self.brain_subscriptions:
-            self.brain_subscriptions[brain_id] = set()
-        
-        self.brain_subscriptions[brain_id].update(sources)
-        self.logger.info(f"Brain {brain_id} subscribed to {len(sources)} knowledge sources")
-    
-    async def fetch_external_knowledge(
-        self,
-        source: KnowledgeSource,
-        query: Optional[str] = None,
-        limit: int = 10
-    ) -> List[ExternalKnowledge]:
-        """
-        Fetch knowledge from an external source.
-        
-        Args:
-            source: Knowledge source to fetch from
-            query: Optional search query
-            limit: Maximum number of items to fetch
-            
-        Returns:
-            List of external knowledge items
-        """
-        self.logger.info(f"Fetching knowledge from {source.value}")
-        
-        # Simulate fetching external knowledge
-        # In a real implementation, this would connect to actual external sources
-        knowledge_items = []
-        
-        if source == KnowledgeSource.DOCUMENTATION:
-            knowledge_items = await self._fetch_documentation(query, limit)
-        elif source == KnowledgeSource.API_REFERENCE:
-            knowledge_items = await self._fetch_api_reference(query, limit)
-        elif source == KnowledgeSource.BEST_PRACTICES:
-            knowledge_items = await self._fetch_best_practices(query, limit)
-        elif source == KnowledgeSource.SECURITY_ADVISORIES:
-            knowledge_items = await self._fetch_security_advisories(query, limit)
-        elif source == KnowledgeSource.PERFORMANCE_BENCHMARKS:
-            knowledge_items = await self._fetch_performance_benchmarks(query, limit)
-        elif source == KnowledgeSource.COMMUNITY_KNOWLEDGE:
-            knowledge_items = await self._fetch_community_knowledge(query, limit)
-        elif source == KnowledgeSource.VENDOR_UPDATES:
-            knowledge_items = await self._fetch_vendor_updates(query, limit)
-        
-        # Cache the knowledge items
-        for item in knowledge_items:
-            self.knowledge_cache[item.knowledge_id] = item
-        
-        self.logger.info(f"Fetched {len(knowledge_items)} items from {source.value}")
-        return knowledge_items
-    
-    async def integrate_knowledge_for_brain(
-        self,
-        brain_id: str,
-        knowledge_items: List[ExternalKnowledge]
-    ) -> Dict[str, Any]:
-        """
-        Integrate external knowledge for a specific brain.
-        
-        Args:
-            brain_id: ID of the target brain
-            knowledge_items: Knowledge items to integrate
-            
-        Returns:
-            Integration results
-        """
-        self.logger.info(f"Integrating {len(knowledge_items)} knowledge items for brain {brain_id}")
-        
-        integrated_count = 0
-        failed_count = 0
-        
-        for item in knowledge_items:
-            try:
-                # Process and validate the knowledge item
-                processed_item = await self._process_knowledge_item(item, brain_id)
-                
-                if processed_item:
-                    # In a real implementation, this would update the brain's knowledge base
-                    integrated_count += 1
-                    self.logger.debug(f"Integrated knowledge: {item.title}")
-                else:
-                    failed_count += 1
-                    
-            except Exception as e:
-                failed_count += 1
-                self.logger.error(f"Failed to integrate knowledge {item.knowledge_id}: {e}")
-        
-        results = {
-            "brain_id": brain_id,
-            "total_items": len(knowledge_items),
-            "integrated": integrated_count,
-            "failed": failed_count,
-            "success_rate": integrated_count / len(knowledge_items) if knowledge_items else 0.0
+    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+        """Load configuration for external knowledge sources"""
+        default_config = {
+            "security_sources": {
+                "cve_api": "https://cve.circl.lu/api/",
+                "nist_nvd": "https://services.nvd.nist.gov/rest/json/",
+                "update_interval_hours": 24
+            },
+            "best_practices_sources": {
+                "devops_practices": "internal://devops-knowledge-base",
+                "security_practices": "internal://security-knowledge-base",
+                "update_interval_hours": 168  # Weekly
+            },
+            "community_sources": {
+                "github_advisories": "https://api.github.com/advisories",
+                "stackoverflow_trends": "internal://stackoverflow-trends",
+                "update_interval_hours": 72  # Every 3 days
+            }
         }
         
-        self.logger.info(f"Integration completed for {brain_id}: {integrated_count}/{len(knowledge_items)} successful")
-        return results
-    
-    async def schedule_knowledge_update(
-        self,
-        source: KnowledgeSource,
-        brain_id: Optional[str] = None,
-        priority: int = 5
-    ) -> str:
-        """
-        Schedule a knowledge update task.
-        
-        Args:
-            source: Knowledge source to update from
-            brain_id: Optional specific brain to update
-            priority: Task priority (1-10)
-            
-        Returns:
-            Task ID
-        """
-        task_id = f"task_{datetime.now().timestamp()}"
-        
-        task = IntegrationTask(
-            task_id=task_id,
-            source=source,
-            target_brain_id=brain_id,
-            priority=priority
-        )
-        
-        self.integration_tasks.append(task)
-        self.logger.info(f"Scheduled knowledge update task: {task_id}")
-        
-        return task_id
-    
-    async def process_integration_tasks(self) -> Dict[str, Any]:
-        """
-        Process pending integration tasks.
-        
-        Returns:
-            Processing results
-        """
-        pending_tasks = [task for task in self.integration_tasks if task.status == IntegrationStatus.PENDING]
-        
-        if not pending_tasks:
-            return {"processed": 0, "message": "No pending tasks"}
-        
-        # Sort by priority (higher first)
-        pending_tasks.sort(key=lambda x: x.priority, reverse=True)
-        
-        processed_count = 0
-        failed_count = 0
-        
-        for task in pending_tasks[:5]:  # Process up to 5 tasks at a time
+        if config_path and Path(config_path).exists():
             try:
-                task.status = IntegrationStatus.IN_PROGRESS
-                
-                # Fetch knowledge from the source
-                knowledge_items = await self.fetch_external_knowledge(task.source)
-                
-                if task.target_brain_id:
-                    # Integrate for specific brain
-                    await self.integrate_knowledge_for_brain(task.target_brain_id, knowledge_items)
-                else:
-                    # Integrate for all subscribed brains
-                    for brain_id, sources in self.brain_subscriptions.items():
-                        if task.source in sources:
-                            await self.integrate_knowledge_for_brain(brain_id, knowledge_items)
-                
-                task.status = IntegrationStatus.COMPLETED
-                task.completed_at = datetime.now()
-                processed_count += 1
-                
+                with open(config_path, 'r') as f:
+                    user_config = json.load(f)
+                    default_config.update(user_config)
             except Exception as e:
-                task.status = IntegrationStatus.FAILED
-                task.error_message = str(e)
-                failed_count += 1
-                self.logger.error(f"Task {task.task_id} failed: {e}")
+                logger.warning(f"Failed to load config from {config_path}: {e}")
         
-        return {
-            "processed": processed_count,
-            "failed": failed_count,
-            "remaining": len([t for t in self.integration_tasks if t.status == IntegrationStatus.PENDING])
-        }
+        return default_config
     
-    async def get_knowledge_summary(
-        self,
-        brain_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    async def integrate_security_advisories(self) -> List[SecurityAdvisory]:
         """
-        Get summary of available knowledge.
+        Integrate latest security advisories from external sources
+        """
+        logger.info("🔒 Integrating security advisories...")
         
-        Args:
-            brain_id: Optional brain ID to filter by subscriptions
+        advisories = []
+        errors = []
+        
+        try:
+            # Simulate CVE integration (in real implementation, would call actual APIs)
+            mock_advisories = [
+                SecurityAdvisory(
+                    id="CVE-2024-0001",
+                    title="Critical vulnerability in container runtime",
+                    severity="CRITICAL",
+                    description="Remote code execution vulnerability in container runtime",
+                    affected_systems=["docker", "containerd", "kubernetes"],
+                    mitigation_steps=[
+                        "Update container runtime to latest version",
+                        "Implement network segmentation",
+                        "Enable security monitoring"
+                    ],
+                    published_date=datetime.now() - timedelta(days=1),
+                    source="NVD"
+                ),
+                SecurityAdvisory(
+                    id="CVE-2024-0002",
+                    title="SQL injection vulnerability in web frameworks",
+                    severity="HIGH",
+                    description="SQL injection vulnerability affecting multiple web frameworks",
+                    affected_systems=["django", "flask", "express"],
+                    mitigation_steps=[
+                        "Update framework to patched version",
+                        "Implement input validation",
+                        "Use parameterized queries"
+                    ],
+                    published_date=datetime.now() - timedelta(days=2),
+                    source="GitHub Security Advisory"
+                )
+            ]
             
-        Returns:
-            Knowledge summary
-        """
-        total_items = len(self.knowledge_cache)
+            advisories.extend(mock_advisories)
+            
+            # Cache the advisories
+            self.knowledge_cache['security_advisories'] = {
+                'data': advisories,
+                'last_updated': datetime.now()
+            }
+            
+            logger.info(f"✅ Integrated {len(advisories)} security advisories")
+            
+        except Exception as e:
+            error_msg = f"Failed to integrate security advisories: {e}"
+            logger.error(error_msg)
+            errors.append(error_msg)
         
-        # Filter by brain subscriptions if specified
-        relevant_items = list(self.knowledge_cache.values())
-        if brain_id and brain_id in self.brain_subscriptions:
-            subscribed_sources = self.brain_subscriptions[brain_id]
-            relevant_items = [
-                item for item in relevant_items
-                if item.source in subscribed_sources
+        # Record update history
+        self.update_history.append(KnowledgeUpdate(
+            source="security_advisories",
+            last_updated=datetime.now(),
+            items_processed=len(advisories),
+            success_rate=1.0 if not errors else 0.0,
+            errors=errors
+        ))
+        
+        return advisories
+    
+    async def integrate_best_practices(self) -> List[BestPractice]:
+        """
+        Integrate evolving best practices from various sources
+        """
+        logger.info("📚 Integrating best practices...")
+        
+        best_practices = []
+        errors = []
+        
+        try:
+            # Simulate best practices integration
+            mock_practices = [
+                BestPractice(
+                    id="BP-DEVOPS-001",
+                    domain="devops",
+                    title="Infrastructure as Code Best Practices",
+                    description="Comprehensive guide for implementing Infrastructure as Code",
+                    implementation_steps=[
+                        "Choose appropriate IaC tool (Terraform, CloudFormation, etc.)",
+                        "Implement version control for infrastructure code",
+                        "Set up automated testing for infrastructure changes",
+                        "Implement proper state management",
+                        "Create modular and reusable infrastructure components"
+                    ],
+                    benefits=[
+                        "Improved consistency and repeatability",
+                        "Reduced manual errors",
+                        "Better change tracking and rollback capabilities",
+                        "Enhanced collaboration between teams"
+                    ],
+                    updated_date=datetime.now() - timedelta(days=7),
+                    source="DevOps Community"
+                ),
+                BestPractice(
+                    id="BP-SECURITY-001",
+                    domain="security",
+                    title="Zero Trust Security Implementation",
+                    description="Best practices for implementing Zero Trust security model",
+                    implementation_steps=[
+                        "Implement identity verification for all users and devices",
+                        "Apply least privilege access principles",
+                        "Implement micro-segmentation",
+                        "Enable continuous monitoring and analytics",
+                        "Implement strong encryption for data in transit and at rest"
+                    ],
+                    benefits=[
+                        "Reduced attack surface",
+                        "Better visibility into network traffic",
+                        "Improved compliance posture",
+                        "Enhanced data protection"
+                    ],
+                    updated_date=datetime.now() - timedelta(days=3),
+                    source="Security Community"
+                ),
+                BestPractice(
+                    id="BP-MONITORING-001",
+                    domain="monitoring",
+                    title="Observability-Driven Development",
+                    description="Best practices for implementing comprehensive observability",
+                    implementation_steps=[
+                        "Implement structured logging across all services",
+                        "Set up distributed tracing for request flows",
+                        "Create meaningful metrics and dashboards",
+                        "Implement proactive alerting strategies",
+                        "Establish SLIs and SLOs for critical services"
+                    ],
+                    benefits=[
+                        "Faster incident resolution",
+                        "Proactive issue detection",
+                        "Better understanding of system behavior",
+                        "Improved user experience"
+                    ],
+                    updated_date=datetime.now() - timedelta(days=5),
+                    source="SRE Community"
+                )
+            ]
+            
+            best_practices.extend(mock_practices)
+            
+            # Cache the best practices
+            self.knowledge_cache['best_practices'] = {
+                'data': best_practices,
+                'last_updated': datetime.now()
+            }
+            
+            logger.info(f"✅ Integrated {len(best_practices)} best practices")
+            
+        except Exception as e:
+            error_msg = f"Failed to integrate best practices: {e}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+        
+        # Record update history
+        self.update_history.append(KnowledgeUpdate(
+            source="best_practices",
+            last_updated=datetime.now(),
+            items_processed=len(best_practices),
+            success_rate=1.0 if not errors else 0.0,
+            errors=errors
+        ))
+        
+        return best_practices
+    
+    async def integrate_community_knowledge(self) -> Dict[str, Any]:
+        """
+        Integrate community knowledge from various sources
+        """
+        logger.info("🌐 Integrating community knowledge...")
+        
+        community_data = {}
+        errors = []
+        
+        try:
+            # Simulate community knowledge integration
+            community_data = {
+                "trending_technologies": [
+                    {
+                        "name": "Kubernetes",
+                        "trend_score": 95,
+                        "growth_rate": 15.2,
+                        "community_size": 150000,
+                        "key_discussions": [
+                            "Service mesh adoption patterns",
+                            "Multi-cluster management strategies",
+                            "Security best practices"
+                        ]
+                    },
+                    {
+                        "name": "Terraform",
+                        "trend_score": 88,
+                        "growth_rate": 12.8,
+                        "community_size": 85000,
+                        "key_discussions": [
+                            "State management strategies",
+                            "Module design patterns",
+                            "Cloud provider integrations"
+                        ]
+                    },
+                    {
+                        "name": "Prometheus",
+                        "trend_score": 82,
+                        "growth_rate": 10.5,
+                        "community_size": 65000,
+                        "key_discussions": [
+                            "Alerting rule optimization",
+                            "Long-term storage solutions",
+                            "Federation strategies"
+                        ]
+                    }
+                ],
+                "common_issues": [
+                    {
+                        "category": "container_orchestration",
+                        "issue": "Pod scheduling failures",
+                        "frequency": 45,
+                        "common_solutions": [
+                            "Check resource requests and limits",
+                            "Verify node capacity and taints",
+                            "Review pod affinity rules"
+                        ]
+                    },
+                    {
+                        "category": "infrastructure_automation",
+                        "issue": "Terraform state conflicts",
+                        "frequency": 38,
+                        "common_solutions": [
+                            "Implement proper state locking",
+                            "Use remote state backends",
+                            "Coordinate team workflows"
+                        ]
+                    }
+                ],
+                "emerging_patterns": [
+                    {
+                        "pattern": "GitOps for infrastructure management",
+                        "adoption_rate": 65,
+                        "benefits": [
+                            "Improved change tracking",
+                            "Automated deployments",
+                            "Better security posture"
+                        ]
+                    },
+                    {
+                        "pattern": "Platform engineering teams",
+                        "adoption_rate": 58,
+                        "benefits": [
+                            "Standardized development workflows",
+                            "Reduced cognitive load for developers",
+                            "Improved operational efficiency"
+                        ]
+                    }
+                ]
+            }
+            
+            # Cache the community knowledge
+            self.knowledge_cache['community_knowledge'] = {
+                'data': community_data,
+                'last_updated': datetime.now()
+            }
+            
+            logger.info("✅ Integrated community knowledge successfully")
+            
+        except Exception as e:
+            error_msg = f"Failed to integrate community knowledge: {e}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+        
+        # Record update history
+        self.update_history.append(KnowledgeUpdate(
+            source="community_knowledge",
+            last_updated=datetime.now(),
+            items_processed=len(community_data),
+            success_rate=1.0 if not errors else 0.0,
+            errors=errors
+        ))
+        
+        return community_data
+    
+    async def get_relevant_knowledge(self, domain: str, query_context: str) -> Dict[str, Any]:
+        """
+        Get relevant knowledge for a specific domain and context
+        """
+        relevant_knowledge = {
+            "security_advisories": [],
+            "best_practices": [],
+            "community_insights": {}
+        }
+        
+        # Get security advisories
+        if 'security_advisories' in self.knowledge_cache:
+            advisories = self.knowledge_cache['security_advisories']['data']
+            relevant_knowledge['security_advisories'] = [
+                advisory for advisory in advisories
+                if domain.lower() in [system.lower() for system in advisory.affected_systems]
+                or any(keyword in query_context.lower() for keyword in [advisory.title.lower(), advisory.description.lower()])
             ]
         
-        # Calculate statistics
-        source_breakdown = {}
-        for item in relevant_items:
-            source_breakdown[item.source.value] = source_breakdown.get(item.source.value, 0) + 1
+        # Get best practices
+        if 'best_practices' in self.knowledge_cache:
+            practices = self.knowledge_cache['best_practices']['data']
+            relevant_knowledge['best_practices'] = [
+                practice for practice in practices
+                if practice.domain.lower() == domain.lower()
+                or any(keyword in query_context.lower() for keyword in [practice.title.lower(), practice.description.lower()])
+            ]
         
-        avg_relevance = sum(item.relevance_score for item in relevant_items) / len(relevant_items) if relevant_items else 0.0
-        avg_confidence = sum(item.confidence_score for item in relevant_items) / len(relevant_items) if relevant_items else 0.0
+        # Get community insights
+        if 'community_knowledge' in self.knowledge_cache:
+            community_data = self.knowledge_cache['community_knowledge']['data']
+            relevant_knowledge['community_insights'] = {
+                "trending_technologies": [
+                    tech for tech in community_data.get('trending_technologies', [])
+                    if tech['name'].lower() in query_context.lower()
+                ],
+                "common_issues": [
+                    issue for issue in community_data.get('common_issues', [])
+                    if issue['category'].lower() == domain.lower()
+                    or any(keyword in query_context.lower() for keyword in [issue['issue'].lower()])
+                ]
+            }
         
-        return {
-            "total_knowledge_items": total_items,
-            "relevant_items": len(relevant_items),
-            "source_breakdown": source_breakdown,
-            "average_relevance_score": avg_relevance,
-            "average_confidence_score": avg_confidence,
-            "configured_sources": len(self.source_configurations),
-            "subscribed_brains": len(self.brain_subscriptions),
-            "pending_tasks": len([t for t in self.integration_tasks if t.status == IntegrationStatus.PENDING])
-        }
+        return relevant_knowledge
     
-    # Simulated fetch methods (in real implementation, these would connect to actual sources)
-    
-    async def _fetch_documentation(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching documentation."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"doc_{i}",
-                source=KnowledgeSource.DOCUMENTATION,
-                title=f"Documentation Item {i}",
-                content=f"Sample documentation content for {query or 'general topics'}",
-                relevance_score=0.8,
-                confidence_score=0.9,
-                applicable_domains=["general", "documentation"],
-                tags=["docs", "reference"]
-            )
-            for i in range(min(limit, 3))
-        ]
-    
-    async def _fetch_api_reference(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching API reference."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"api_{i}",
-                source=KnowledgeSource.API_REFERENCE,
-                title=f"API Reference {i}",
-                content=f"API documentation for {query or 'various endpoints'}",
-                relevance_score=0.7,
-                confidence_score=0.95,
-                applicable_domains=["api", "development"],
-                tags=["api", "reference", "endpoints"]
-            )
-            for i in range(min(limit, 2))
-        ]
-    
-    async def _fetch_best_practices(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching best practices."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"bp_{i}",
-                source=KnowledgeSource.BEST_PRACTICES,
-                title=f"Best Practice {i}",
-                content=f"Best practice guidelines for {query or 'system operations'}",
-                relevance_score=0.85,
-                confidence_score=0.8,
-                applicable_domains=["operations", "best_practices"],
-                tags=["best_practices", "guidelines"]
-            )
-            for i in range(min(limit, 2))
-        ]
-    
-    async def _fetch_security_advisories(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching security advisories."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"sec_{i}",
-                source=KnowledgeSource.SECURITY_ADVISORIES,
-                title=f"Security Advisory {i}",
-                content=f"Security advisory regarding {query or 'system vulnerabilities'}",
-                relevance_score=0.9,
-                confidence_score=0.95,
-                applicable_domains=["security", "vulnerabilities"],
-                tags=["security", "advisory", "vulnerability"]
-            )
-            for i in range(min(limit, 1))
-        ]
-    
-    async def _fetch_performance_benchmarks(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching performance benchmarks."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"perf_{i}",
-                source=KnowledgeSource.PERFORMANCE_BENCHMARKS,
-                title=f"Performance Benchmark {i}",
-                content=f"Performance data for {query or 'system components'}",
-                relevance_score=0.75,
-                confidence_score=0.85,
-                applicable_domains=["performance", "benchmarks"],
-                tags=["performance", "benchmarks", "metrics"]
-            )
-            for i in range(min(limit, 1))
-        ]
-    
-    async def _fetch_community_knowledge(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching community knowledge."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"comm_{i}",
-                source=KnowledgeSource.COMMUNITY_KNOWLEDGE,
-                title=f"Community Knowledge {i}",
-                content=f"Community insights about {query or 'common issues'}",
-                relevance_score=0.6,
-                confidence_score=0.7,
-                applicable_domains=["community", "troubleshooting"],
-                tags=["community", "insights", "troubleshooting"]
-            )
-            for i in range(min(limit, 2))
-        ]
-    
-    async def _fetch_vendor_updates(self, query: Optional[str], limit: int) -> List[ExternalKnowledge]:
-        """Simulate fetching vendor updates."""
-        return [
-            ExternalKnowledge(
-                knowledge_id=f"vendor_{i}",
-                source=KnowledgeSource.VENDOR_UPDATES,
-                title=f"Vendor Update {i}",
-                content=f"Vendor update information for {query or 'product updates'}",
-                relevance_score=0.8,
-                confidence_score=0.9,
-                applicable_domains=["vendor", "updates"],
-                tags=["vendor", "updates", "releases"]
-            )
-            for i in range(min(limit, 1))
-        ]
-    
-    async def _process_knowledge_item(
-        self,
-        item: ExternalKnowledge,
-        brain_id: str
-    ) -> Optional[ExternalKnowledge]:
+    async def update_all_knowledge_sources(self) -> Dict[str, Any]:
         """
-        Process and validate a knowledge item for integration.
-        
-        Args:
-            item: Knowledge item to process
-            brain_id: Target brain ID
-            
-        Returns:
-            Processed knowledge item or None if invalid
+        Update all external knowledge sources
         """
-        # Simulate processing and validation
-        if item.relevance_score < 0.5:
-            return None  # Too low relevance
+        logger.info("🔄 Updating all external knowledge sources...")
         
-        if item.confidence_score < 0.6:
-            return None  # Too low confidence
+        results = {}
         
-        # In a real implementation, this would perform more sophisticated processing
-        return item
+        # Update security advisories
+        try:
+            advisories = await self.integrate_security_advisories()
+            results['security_advisories'] = {
+                'success': True,
+                'count': len(advisories),
+                'last_updated': datetime.now()
+            }
+        except Exception as e:
+            results['security_advisories'] = {
+                'success': False,
+                'error': str(e),
+                'last_updated': datetime.now()
+            }
+        
+        # Update best practices
+        try:
+            practices = await self.integrate_best_practices()
+            results['best_practices'] = {
+                'success': True,
+                'count': len(practices),
+                'last_updated': datetime.now()
+            }
+        except Exception as e:
+            results['best_practices'] = {
+                'success': False,
+                'error': str(e),
+                'last_updated': datetime.now()
+            }
+        
+        # Update community knowledge
+        try:
+            community_data = await self.integrate_community_knowledge()
+            results['community_knowledge'] = {
+                'success': True,
+                'count': len(community_data),
+                'last_updated': datetime.now()
+            }
+        except Exception as e:
+            results['community_knowledge'] = {
+                'success': False,
+                'error': str(e),
+                'last_updated': datetime.now()
+            }
+        
+        logger.info("✅ External knowledge update completed")
+        return results
     
-    async def cleanup_old_knowledge(self):
-        """Clean up old knowledge items to prevent memory bloat."""
-        cutoff_time = datetime.now() - timedelta(days=30)  # Keep 30 days of knowledge
+    def get_update_history(self) -> List[KnowledgeUpdate]:
+        """Get the history of knowledge updates"""
+        return self.update_history
+    
+    def get_cache_status(self) -> Dict[str, Any]:
+        """Get the current status of knowledge cache"""
+        status = {}
         
-        old_items = [
-            item_id for item_id, item in self.knowledge_cache.items()
-            if item.last_updated < cutoff_time
-        ]
+        for source, cache_data in self.knowledge_cache.items():
+            status[source] = {
+                'last_updated': cache_data['last_updated'],
+                'item_count': len(cache_data['data']) if isinstance(cache_data['data'], list) else 1,
+                'age_hours': (datetime.now() - cache_data['last_updated']).total_seconds() / 3600
+            }
         
-        for item_id in old_items:
-            del self.knowledge_cache[item_id]
-        
-        # Clean up old tasks
-        self.integration_tasks = [
-            task for task in self.integration_tasks
-            if task.created_at >= cutoff_time or task.status == IntegrationStatus.PENDING
-        ]
-        
-        self.logger.debug(f"Cleaned up {len(old_items)} old knowledge items")
-
-# Global instance for easy access
-external_knowledge_integrator = ExternalKnowledgeIntegrator()
+        return status

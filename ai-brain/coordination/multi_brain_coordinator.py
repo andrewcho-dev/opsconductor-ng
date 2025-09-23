@@ -12,6 +12,13 @@ from datetime import datetime
 from enum import Enum
 import asyncio
 
+# Import advanced SME orchestration components
+from ..brains.sme.advanced_sme_orchestrator import (
+    AdvancedSMEOrchestrator, ConsultationRequest, ConsultationPattern, 
+    ConsultationPriority, ConsultationResult
+)
+from ..brains.base_sme_brain import SMEQuery
+
 logger = logging.getLogger(__name__)
 
 class CoordinationPhase(Enum):
@@ -80,20 +87,27 @@ class MultiBrainCoordinator:
             learning_engine: Continuous learning engine
         """
         self.coordinator_id = "multi_brain_coordinator"
-        self.version = "1.0.0"
+        self.version = "2.0.0"  # Updated for Phase 3 advanced features
         self.brain_registry = brain_registry
         self.learning_engine = learning_engine
         
+        # Initialize advanced SME orchestrator
+        self.advanced_sme_orchestrator = None
+        if brain_registry:
+            sme_brains = self._extract_sme_brains(brain_registry)
+            if sme_brains:
+                self.advanced_sme_orchestrator = AdvancedSMEOrchestrator(sme_brains)
+        
         # Coordination configuration
         self.min_confidence_threshold = 0.7
-        self.sme_consultation_threshold = 0.8  # When to consult SME brains
+        self.sme_consultation_threshold = 0.6  # Lowered for more SME consultation
         self.escalation_threshold = 0.5  # When to escalate decisions
-        self.max_coordination_time = 30.0  # Maximum coordination time in seconds
+        self.max_coordination_time = 45.0  # Increased for advanced consultation
         
         # Active coordinations
         self.active_coordinations: Dict[str, CoordinationResult] = {}
         
-        logger.info(f"Multi-Brain Coordinator v{self.version} initialized")
+        logger.info(f"Multi-Brain Coordinator v{self.version} initialized with advanced SME orchestration")
     
     async def coordinate_request(self, user_message: str, 
                                context: Optional[Dict] = None) -> CoordinationResult:
@@ -265,7 +279,63 @@ class MultiBrainCoordinator:
     
     async def _coordinate_sme_consultation(self, intent_result: Dict[str, Any],
                                          technical_result: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-        """Coordinate with relevant SME Brains for domain expertise."""
+        """Coordinate with relevant SME Brains for domain expertise using advanced orchestration."""
+        sme_results = {}
+        
+        try:
+            # Use advanced SME orchestrator if available
+            if self.advanced_sme_orchestrator:
+                return await self._advanced_sme_consultation(intent_result, technical_result)
+            
+            # Fallback to legacy SME consultation
+            return await self._legacy_sme_consultation(intent_result, technical_result)
+            
+        except Exception as e:
+            logger.error(f"SME consultation coordination failed: {e}")
+            return sme_results
+    
+    async def _advanced_sme_consultation(self, intent_result: Dict[str, Any],
+                                       technical_result: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Advanced SME consultation using the new orchestrator."""
+        try:
+            # Determine consultation strategy based on intent complexity
+            consultation_pattern = self._determine_consultation_pattern(intent_result, technical_result)
+            
+            # Identify target domains and priorities
+            target_domains, priority_domains = self._analyze_domain_requirements(intent_result, technical_result)
+            
+            if not target_domains:
+                logger.info("No SME domains identified for consultation")
+                return {}
+            
+            # Create SME query from intent and technical results
+            sme_query = self._create_sme_query(intent_result, technical_result)
+            
+            # Create consultation request
+            consultation_request = ConsultationRequest(
+                query=sme_query,
+                pattern=consultation_pattern,
+                target_domains=target_domains,
+                priority_domains=priority_domains,
+                context_sharing=True,
+                max_consultation_time=int(self.max_coordination_time * 0.7),  # 70% of total time
+                require_consensus=consultation_pattern == ConsultationPattern.COLLABORATIVE
+            )
+            
+            # Execute advanced consultation
+            consultation_result = await self.advanced_sme_orchestrator.orchestrate_consultation(consultation_request)
+            
+            # Convert consultation result to legacy format for compatibility
+            return self._convert_consultation_result(consultation_result)
+            
+        except Exception as e:
+            logger.error(f"Advanced SME consultation failed: {e}")
+            # Fallback to legacy consultation
+            return await self._legacy_sme_consultation(intent_result, technical_result)
+    
+    async def _legacy_sme_consultation(self, intent_result: Dict[str, Any],
+                                     technical_result: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Legacy SME consultation method for fallback."""
         sme_results = {}
         
         try:
@@ -294,7 +364,7 @@ class MultiBrainCoordinator:
             return sme_results
             
         except Exception as e:
-            logger.error(f"SME consultation coordination failed: {e}")
+            logger.error(f"Legacy SME consultation failed: {e}")
             return sme_results
     
     def _identify_required_smes(self, intent_result: Dict[str, Any],
@@ -523,6 +593,193 @@ class MultiBrainCoordinator:
             risk_assessment["overall_risk"] = "LOW"
         
         return risk_assessment
+    
+    def _extract_sme_brains(self, brain_registry) -> Dict[str, Any]:
+        """Extract SME brains from brain registry for advanced orchestrator."""
+        sme_brains = {}
+        
+        try:
+            # Get all available brains
+            all_brains = brain_registry.get_all_brains() if hasattr(brain_registry, 'get_all_brains') else {}
+            
+            # Filter SME brains
+            for brain_name, brain_instance in all_brains.items():
+                if 'sme' in brain_name.lower() and hasattr(brain_instance, 'provide_expertise'):
+                    # Extract domain name from brain name (e.g., "container_sme" -> "container_orchestration")
+                    domain_mapping = {
+                        'container_sme': 'container_orchestration',
+                        'security_sme': 'security_and_compliance',
+                        'network_sme': 'network_infrastructure',
+                        'database_sme': 'database_administration',
+                        'cloud_sme': 'cloud_services',
+                        'monitoring_sme': 'observability_monitoring'
+                    }
+                    
+                    domain = domain_mapping.get(brain_name, brain_name.replace('_sme', ''))
+                    sme_brains[domain] = brain_instance
+            
+            logger.info(f"Extracted {len(sme_brains)} SME brains for advanced orchestration")
+            return sme_brains
+            
+        except Exception as e:
+            logger.error(f"Failed to extract SME brains: {e}")
+            return {}
+    
+    def _determine_consultation_pattern(self, intent_result: Dict[str, Any], 
+                                      technical_result: Optional[Dict[str, Any]]) -> ConsultationPattern:
+        """Determine the best consultation pattern based on intent complexity."""
+        
+        # Analyze complexity factors
+        complexity_score = 0
+        
+        # Intent complexity
+        technical_requirements = intent_result.get("technical_requirements", [])
+        complexity_score += len(technical_requirements) * 0.2
+        
+        # Risk level
+        risk_level = intent_result.get("risk_level", "MEDIUM")
+        if risk_level == "HIGH":
+            complexity_score += 0.5
+        elif risk_level == "CRITICAL":
+            complexity_score += 1.0
+        
+        # Technical complexity
+        if technical_result:
+            execution_steps = technical_result.get("execution_steps", [])
+            complexity_score += len(execution_steps) * 0.1
+            
+            if technical_result.get("requires_coordination", False):
+                complexity_score += 0.3
+        
+        # Determine pattern based on complexity
+        if complexity_score >= 1.5:
+            return ConsultationPattern.COLLABORATIVE  # High complexity - need collaboration
+        elif complexity_score >= 1.0:
+            return ConsultationPattern.HIERARCHICAL   # Medium-high complexity - prioritized consultation
+        elif complexity_score >= 0.5:
+            return ConsultationPattern.SEQUENTIAL     # Medium complexity - sequential with context
+        else:
+            return ConsultationPattern.PARALLEL       # Low complexity - parallel consultation
+    
+    def _analyze_domain_requirements(self, intent_result: Dict[str, Any], 
+                                   technical_result: Optional[Dict[str, Any]]) -> Tuple[List[str], Dict[str, ConsultationPriority]]:
+        """Analyze domain requirements and priorities."""
+        
+        target_domains = []
+        priority_domains = {}
+        
+        # Analyze technical requirements
+        technical_requirements = intent_result.get("technical_requirements", [])
+        
+        for requirement in technical_requirements:
+            requirement_lower = requirement.lower()
+            
+            # Container/orchestration requirements
+            if any(keyword in requirement_lower for keyword in ["container", "docker", "kubernetes", "orchestration"]):
+                target_domains.append("container_orchestration")
+                priority_domains["container_orchestration"] = ConsultationPriority.HIGH
+            
+            # Security requirements
+            if any(keyword in requirement_lower for keyword in ["security", "firewall", "certificate", "encryption", "compliance"]):
+                target_domains.append("security_and_compliance")
+                priority_domains["security_and_compliance"] = ConsultationPriority.CRITICAL
+            
+            # Network requirements
+            if any(keyword in requirement_lower for keyword in ["network", "routing", "dns", "load", "proxy"]):
+                target_domains.append("network_infrastructure")
+                priority_domains["network_infrastructure"] = ConsultationPriority.HIGH
+            
+            # Database requirements
+            if any(keyword in requirement_lower for keyword in ["database", "sql", "nosql", "data", "storage"]):
+                target_domains.append("database_administration")
+                priority_domains["database_administration"] = ConsultationPriority.HIGH
+            
+            # Cloud requirements
+            if any(keyword in requirement_lower for keyword in ["cloud", "aws", "azure", "gcp", "scaling"]):
+                target_domains.append("cloud_services")
+                priority_domains["cloud_services"] = ConsultationPriority.MEDIUM
+            
+            # Monitoring requirements
+            if any(keyword in requirement_lower for keyword in ["monitor", "alert", "log", "metric", "observability"]):
+                target_domains.append("observability_monitoring")
+                priority_domains["observability_monitoring"] = ConsultationPriority.MEDIUM
+        
+        # Remove duplicates while preserving order
+        target_domains = list(dict.fromkeys(target_domains))
+        
+        # If no specific domains identified, use general consultation
+        if not target_domains:
+            # Default to most common domains for general consultation
+            target_domains = ["security_and_compliance", "network_infrastructure", "observability_monitoring"]
+            priority_domains = {
+                "security_and_compliance": ConsultationPriority.HIGH,
+                "network_infrastructure": ConsultationPriority.MEDIUM,
+                "observability_monitoring": ConsultationPriority.LOW
+            }
+        
+        return target_domains, priority_domains
+    
+    def _create_sme_query(self, intent_result: Dict[str, Any], 
+                         technical_result: Optional[Dict[str, Any]]) -> SMEQuery:
+        """Create SME query from intent and technical results."""
+        
+        # Build query text
+        intent_summary = intent_result.get("intent_summary", "Unknown request")
+        query_text = f"Intent: {intent_summary}"
+        
+        # Add technical requirements if available
+        technical_requirements = intent_result.get("technical_requirements", [])
+        if technical_requirements:
+            query_text += f"\nTechnical Requirements: {', '.join(technical_requirements)}"
+        
+        # Build context
+        context = {
+            "intent_result": intent_result,
+            "technical_result": technical_result,
+            "coordination_timestamp": datetime.now().isoformat(),
+            "coordination_id": intent_result.get("intent_id", "unknown")
+        }
+        
+        return SMEQuery(
+            query_text=query_text,
+            context=context,
+            user_id=intent_result.get("user_id", "system"),
+            session_id=intent_result.get("session_id", "coordination")
+        )
+    
+    def _convert_consultation_result(self, consultation_result: ConsultationResult) -> Dict[str, Dict[str, Any]]:
+        """Convert advanced consultation result to legacy format."""
+        
+        legacy_results = {}
+        
+        # Extract primary recommendation
+        primary_rec = consultation_result.resolved_recommendation.primary_recommendation
+        
+        # Create results for each consulted domain
+        for domain in consultation_result.consulted_domains:
+            legacy_results[f"{domain}_sme"] = {
+                "recommendations": primary_rec,
+                "confidence": consultation_result.confidence_distribution.get(domain, 0.5),
+                "reasoning": consultation_result.resolved_recommendation.reasoning,
+                "implementation_steps": consultation_result.resolved_recommendation.implementation_notes,
+                "risk_assessment": consultation_result.resolved_recommendation.risk_mitigation,
+                "consultation_metadata": {
+                    "pattern": consultation_result.consultation_metadata.get("consultation_pattern", "unknown"),
+                    "duration": consultation_result.consultation_duration,
+                    "consensus_achieved": consultation_result.consensus_achieved
+                }
+            }
+        
+        # Add overall consultation metadata
+        legacy_results["_consultation_summary"] = {
+            "total_domains": len(consultation_result.consulted_domains),
+            "consultation_duration": consultation_result.consultation_duration,
+            "consensus_achieved": consultation_result.consensus_achieved,
+            "resolution_strategy": consultation_result.resolved_recommendation.resolution_strategy.value,
+            "overall_confidence": consultation_result.resolved_recommendation.confidence_level.value
+        }
+        
+        return legacy_results
     
     def _finalize_coordination(self, result: CoordinationResult, start_time: datetime) -> CoordinationResult:
         """Finalize coordination and clean up."""
