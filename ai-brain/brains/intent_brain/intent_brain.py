@@ -1,9 +1,15 @@
 """
-Intent Brain - Multi-Brain AI Architecture
+Intent Brain - Multi-Brain AI Architecture with 4W Framework
 
-The Intent Brain is responsible for understanding WHAT the user wants - their business
-intent and desired outcomes. It combines ITIL-based classification with business
-intent analysis to provide comprehensive understanding of user requests.
+The Intent Brain is responsible for understanding WHAT the user wants using a systematic
+4W framework approach:
+- WHAT: Action type and root need analysis
+- WHERE/WHAT: Target identification and scope determination  
+- WHEN: Urgency and timeline analysis
+- HOW: Method preferences and execution constraints
+
+This replaces the previous ITIL-based approach with operational action normalization
+focused on resource complexity and systematic intent understanding.
 """
 
 import logging
@@ -12,23 +18,24 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import asyncio
 
-from .itil_classifier import IntentAnalysisBrain, IntentAnalysis
+from .four_w_analyzer import FourWAnalyzer, FourWAnalysis, ActionType
 from .business_intent_analyzer import BusinessIntentAnalyzer, BusinessIntent
+from .intent_technical_bridge import IntentTechnicalBridge
 
 logger = logging.getLogger(__name__)
 
 @dataclass
 class IntentAnalysisResult:
-    """Complete intent analysis result from Intent Brain"""
+    """Complete intent analysis result from Intent Brain using 4W Framework"""
     # Core identification
     intent_id: str
     user_message: str
     timestamp: datetime
     
-    # Intent Analysis
-    intent_analysis: IntentAnalysis
+    # 4W Framework Analysis
+    four_w_analysis: FourWAnalysis
     
-    # Business Intent Analysis
+    # Business Intent Analysis (retained for business context)
     business_intent: BusinessIntent
     
     # Aggregated confidence and reasoning
@@ -54,15 +61,30 @@ class IntentAnalysisResult:
             "intent_id": self.intent_id,
             "user_message": self.user_message,
             "timestamp": self.timestamp.isoformat(),
-            "primary_intent": self.intent_analysis.primary_intent.value,
-            "intent_confidence": self.intent_analysis.confidence,
-            "urgency": self.intent_analysis.urgency.value,
-            "complexity": self.intent_analysis.complexity.value,
-            "risk_level_intent": self.intent_analysis.risk_level.value,
-            "missing_information": [info.value for info in self.intent_analysis.missing_information],
+            
+            # 4W Framework data
+            "action_type": self.four_w_analysis.what_analysis.action_type.value,
+            "specific_outcome": self.four_w_analysis.what_analysis.specific_outcome,
+            "root_need": self.four_w_analysis.what_analysis.root_need,
+            "target_systems": self.four_w_analysis.where_what_analysis.target_systems,
+            "scope_level": self.four_w_analysis.where_what_analysis.scope_level.value,
+            "urgency": self.four_w_analysis.when_analysis.urgency.value,
+            "timeline_type": self.four_w_analysis.when_analysis.timeline_type.value,
+            "method_preference": self.four_w_analysis.how_analysis.method_preference.value,
+            
+            # Backward compatibility mappings
+            "primary_intent": self.four_w_analysis.what_analysis.action_type.value,  # Maps action_type to old primary_intent
+            "intent_confidence": self.four_w_analysis.overall_confidence,
+            "complexity": self.four_w_analysis.resource_complexity.lower(),  # Maps resource_complexity to old complexity
+            "risk_level_intent": self.four_w_analysis.risk_level.lower(),
+            "missing_information": self.four_w_analysis.missing_information,
+            
+            # Business intent (retained)
             "business_intent": self.business_intent.primary_outcome.value,
             "business_outcomes": [outcome.value for outcome in self.business_intent.secondary_outcomes],
             "business_confidence": self.business_intent.confidence,
+            
+            # Aggregated results
             "overall_confidence": self.overall_confidence,
             "confidence_score": self.overall_confidence,  # Alias for backward compatibility
             "intent_summary": self.intent_summary,
@@ -72,7 +94,50 @@ class IntentAnalysisResult:
             "risk_level": self.risk_level,
             "risk_factors": self.risk_factors,
             "processing_time": self.processing_time,
-            "brain_version": self.brain_version
+            "brain_version": self.brain_version,
+            
+            # 4W Framework detailed data (for advanced consumers)
+            "four_w_analysis": {
+                "what": {
+                    "action_type": self.four_w_analysis.what_analysis.action_type.value,
+                    "specific_outcome": self.four_w_analysis.what_analysis.specific_outcome,
+                    "root_need": self.four_w_analysis.what_analysis.root_need,
+                    "surface_request": self.four_w_analysis.what_analysis.surface_request,
+                    "confidence": self.four_w_analysis.what_analysis.confidence,
+                    "reasoning": self.four_w_analysis.what_analysis.reasoning
+                },
+                "where_what": {
+                    "target_systems": self.four_w_analysis.where_what_analysis.target_systems,
+                    "scope_level": self.four_w_analysis.where_what_analysis.scope_level.value,
+                    "affected_components": self.four_w_analysis.where_what_analysis.affected_components,
+                    "dependencies": self.four_w_analysis.where_what_analysis.dependencies,
+                    "confidence": self.four_w_analysis.where_what_analysis.confidence,
+                    "reasoning": self.four_w_analysis.where_what_analysis.reasoning
+                },
+                "when": {
+                    "urgency": self.four_w_analysis.when_analysis.urgency.value,
+                    "timeline_type": self.four_w_analysis.when_analysis.timeline_type.value,
+                    "specific_timeline": self.four_w_analysis.when_analysis.specific_timeline,
+                    "scheduling_constraints": self.four_w_analysis.when_analysis.scheduling_constraints,
+                    "business_hours_required": self.four_w_analysis.when_analysis.business_hours_required,
+                    "confidence": self.four_w_analysis.when_analysis.confidence,
+                    "reasoning": self.four_w_analysis.when_analysis.reasoning
+                },
+                "how": {
+                    "method_preference": self.four_w_analysis.how_analysis.method_preference.value,
+                    "execution_constraints": self.four_w_analysis.how_analysis.execution_constraints,
+                    "approval_required": self.four_w_analysis.how_analysis.approval_required,
+                    "rollback_needed": self.four_w_analysis.how_analysis.rollback_needed,
+                    "testing_required": self.four_w_analysis.how_analysis.testing_required,
+                    "confidence": self.four_w_analysis.how_analysis.confidence,
+                    "reasoning": self.four_w_analysis.how_analysis.reasoning
+                },
+                "resource_analysis": {
+                    "resource_complexity": self.four_w_analysis.resource_complexity,
+                    "estimated_effort": self.four_w_analysis.estimated_effort,
+                    "required_capabilities": self.four_w_analysis.required_capabilities
+                }
+            }
         }
     
     def get(self, key: str, default: Any = None) -> Any:
@@ -82,42 +147,46 @@ class IntentAnalysisResult:
 
 class IntentBrain:
     """
-    Intent Brain - Understanding WHAT the user wants
+    Intent Brain - Understanding WHAT the user wants using 4W Framework
     
     The Intent Brain is the first component in the multi-brain architecture,
-    responsible for:
-    1. AI-powered intent analysis and categorization
-    2. Intelligent identification of missing information
-    3. Smart question generation for user clarification
-    4. Business intent and outcome analysis
-    5. Risk assessment and prioritization
-    6. Technical requirement identification
-    7. Confidence scoring and reasoning
+    responsible for systematic intent analysis using the 4W framework:
     
-    Uses ITIL Operations Management concepts as guidance/reference for
-    intelligent categorization, not as strict classification rules.
+    1. WHAT: Action type and root need analysis (operational action normalization)
+    2. WHERE/WHAT: Target identification and scope determination
+    3. WHEN: Urgency and timeline analysis  
+    4. HOW: Method preferences and execution constraints
+    5. Business intent and outcome analysis
+    6. Resource complexity assessment
+    7. Risk assessment and prioritization
+    8. Technical requirement identification
+    9. Confidence scoring and reasoning
+    
+    Focuses on operational action understanding and resource complexity rather than
+    traditional ITIL process categorization.
     """
     
     def __init__(self, llm_engine=None):
         """
-        Initialize the Intent Brain.
+        Initialize the Intent Brain with 4W Framework.
         
         Args:
             llm_engine: Optional LLM engine for enhanced analysis
         """
         self.brain_id = "intent_brain"
-        self.version = "1.0.0"
+        self.version = "2.0.0"  # Updated version for 4W framework
         self.llm_engine = llm_engine
         
         # Initialize components
-        self.intent_analyzer = IntentAnalysisBrain(llm_engine)
+        self.four_w_analyzer = FourWAnalyzer(llm_engine)
         self.business_analyzer = BusinessIntentAnalyzer()
+        self.technical_bridge = IntentTechnicalBridge()
         
         # Learning and adaptation
         self.learning_enabled = True
         self.confidence_threshold = 0.7
         
-        logger.info(f"Intent Brain v{self.version} initialized")
+        logger.info(f"Intent Brain v{self.version} initialized with 4W Framework")
     
     async def analyze_intent(self, user_message: str, 
                            context: Optional[Dict] = None) -> IntentAnalysisResult:
@@ -135,50 +204,47 @@ class IntentBrain:
         intent_id = f"intent_{int(start_time.timestamp())}"
         
         try:
-            logger.info(f"Intent Brain analyzing: {user_message[:100]}...")
+            logger.info(f"Intent Brain analyzing with 4W Framework: {user_message[:100]}...")
             
             # Parallel analysis for efficiency
-            intent_task = asyncio.create_task(
-                self.intent_analyzer.analyze_intent(user_message, context)
+            four_w_task = asyncio.create_task(
+                self.four_w_analyzer.analyze_4w(user_message, context)
             )
             business_task = asyncio.create_task(
                 self.business_analyzer.analyze_business_intent(user_message, context)
             )
             
             # Wait for both analyses to complete
-            intent_analysis, business_intent = await asyncio.gather(
-                intent_task, business_task
+            four_w_analysis, business_intent = await asyncio.gather(
+                four_w_task, business_task
             )
             
-            # Aggregate confidence scores
+            # Aggregate confidence scores (4W analysis already has overall confidence)
             overall_confidence = self._calculate_overall_confidence(
-                intent_analysis.confidence, business_intent.confidence
+                four_w_analysis.overall_confidence, business_intent.confidence
             )
             
-            # Generate intent summary
-            intent_summary = self._generate_intent_summary(
-                intent_analysis, business_intent
+            # Generate intent summary using 4W analysis
+            intent_summary = self._generate_intent_summary_4w(
+                four_w_analysis, business_intent
             )
             
-            # Determine recommended approach
-            recommended_approach = self._determine_recommended_approach(
-                intent_analysis, business_intent
+            # Determine recommended approach using 4W analysis
+            recommended_approach = self._determine_recommended_approach_4w(
+                four_w_analysis, business_intent
             )
             
-            # Identify technical requirements
-            technical_requirements = self._identify_technical_requirements(
-                intent_analysis, business_intent, user_message
+            # Identify technical requirements from 4W analysis
+            technical_requirements = self._identify_technical_requirements_4w(
+                four_w_analysis, business_intent, user_message
             )
             
-            # Identify resource requirements
-            resource_requirements = self._identify_resource_requirements(
-                intent_analysis, business_intent
-            )
+            # Resource requirements come directly from 4W analysis
+            resource_requirements = four_w_analysis.required_capabilities
             
-            # Assess risk
-            risk_level, risk_factors = self._assess_risk(
-                intent_analysis, business_intent
-            )
+            # Risk assessment comes from 4W analysis
+            risk_level = four_w_analysis.risk_level
+            risk_factors = four_w_analysis.risk_factors
             
             # Calculate processing time
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -187,7 +253,7 @@ class IntentBrain:
                 intent_id=intent_id,
                 user_message=user_message,
                 timestamp=start_time,
-                intent_analysis=intent_analysis,
+                four_w_analysis=four_w_analysis,
                 business_intent=business_intent,
                 overall_confidence=overall_confidence,
                 intent_summary=intent_summary,
@@ -224,75 +290,69 @@ class IntentBrain:
         # Weighted average with slight bias toward intent analysis
         return (intent_confidence * 0.6 + business_confidence * 0.4)
     
-    def _generate_intent_summary(self, intent: IntentAnalysis, 
+    def _generate_intent_summary(self, four_w: FourWAnalysis, 
                                business: BusinessIntent) -> str:
         """Generate a concise summary of the user's intent."""
-        return (f"{intent.primary_intent.value.replace('_', ' ').title()} request "
+        return (f"{four_w.what_analysis.action_type.value.replace('_', ' ').title()} request "
                 f"aimed at {business.primary_outcome.value.replace('_', ' ')} "
-                f"with {intent.urgency.value} urgency")
+                f"with {four_w.when_analysis.urgency.value} urgency")
     
-    def _determine_recommended_approach(self, intent: IntentAnalysis,
+    def _determine_recommended_approach(self, four_w: FourWAnalysis,
                                       business: BusinessIntent) -> str:
         """Determine the recommended approach for handling this intent."""
         approach_map = {
-            ("incident_response", "critical"): "Immediate escalation and emergency response",
-            ("incident_response", "high"): "Priority incident response with stakeholder notification",
-            ("provisioning_request", "strategic"): "Strategic project planning with executive oversight",
-            ("change_request", "high"): "Formal change approval process with risk assessment",
-            ("monitoring_request", "operational"): "Standard monitoring implementation"
+            ("diagnostic", "critical"): "Immediate escalation and emergency response",
+            ("diagnostic", "high"): "Priority incident response with stakeholder notification",
+            ("provisioning", "high"): "Strategic project planning with executive oversight",
+            ("operational", "high"): "Formal change approval process with risk assessment",
+            ("information", "low"): "Standard information gathering"
         }
         
-        key = (intent.primary_intent.value, intent.urgency.value)
+        key = (four_w.what_analysis.action_type.value, four_w.when_analysis.urgency.value)
         if key in approach_map:
             return approach_map[key]
         
-        # Default approach based on intent type
-        if intent.primary_intent.value == "incident_response":
-            return "Standard incident response process"
-        elif intent.primary_intent.value == "provisioning_request":
+        # Default approach based on action type
+        action_type = four_w.what_analysis.action_type.value
+        if action_type == "diagnostic":
+            return "Standard diagnostic and troubleshooting process"
+        elif action_type == "provisioning":
             return "Service provisioning process"
-        elif intent.primary_intent.value == "change_request":
-            return "Change management process with approval workflow"
+        elif action_type == "operational":
+            return "Operational task execution with approval workflow"
         else:
-            return f"Standard {intent.primary_intent.value.replace('_', ' ')} process execution"
+            return f"Standard {action_type.replace('_', ' ')} process execution"
     
-    def _identify_technical_requirements(self, intent: IntentAnalysis,
+    def _identify_technical_requirements(self, four_w: FourWAnalysis,
                                        business: BusinessIntent, 
                                        message: str) -> List[str]:
         """Identify technical requirements for the Technical Brain."""
         requirements = []
         
-        # Base requirements from intent type
-        intent_requirements = {
-            "incident_response": [
+        # Base requirements from 4W action type
+        action_requirements = {
+            "information": [
+                "Information gathering and reporting",
+                "Status monitoring and analysis"
+            ],
+            "operational": [
+                "System operation and management",
+                "Service control and coordination"
+            ],
+            "diagnostic": [
                 "System diagnostics and troubleshooting",
                 "Service restoration procedures",
                 "Root cause analysis"
             ],
-            "provisioning_request": [
-                "Resource provisioning",
+            "provisioning": [
+                "Resource provisioning and allocation",
                 "Configuration management",
                 "Access control implementation"
-            ],
-            "change_request": [
-                "Change impact assessment",
-                "Implementation planning",
-                "Rollback procedures"
-            ],
-            "monitoring_request": [
-                "Monitoring system configuration",
-                "Alert threshold definition",
-                "Dashboard and reporting setup"
-            ],
-            "security_request": [
-                "Security policy implementation",
-                "Access control configuration",
-                "Vulnerability assessment"
             ]
         }
         
         requirements.extend(
-            intent_requirements.get(intent.primary_intent.value, ["Standard technical implementation"])
+            action_requirements.get(four_w.what_analysis.action_type.value, ["Standard technical implementation"])
         )
         
         # Additional requirements from business intent
@@ -316,26 +376,30 @@ class IntentBrain:
         
         return list(set(requirements))  # Remove duplicates
     
-    def _identify_resource_requirements(self, intent: IntentAnalysis,
+    def _identify_resource_requirements(self, four_w: FourWAnalysis,
                                       business: BusinessIntent) -> List[str]:
         """Identify resource requirements."""
         resources = []
         
-        # Priority-based resource allocation
-        if intent.urgency.value == "high" and intent.risk_level.value == "high":
+        # Priority-based resource allocation from 4W analysis
+        urgency = four_w.when_analysis.urgency.value
+        risk_level = four_w.risk_level
+        
+        if urgency == "critical" or risk_level == "HIGH":
             resources.extend(["Senior technical staff", "Emergency response team"])
-        elif intent.urgency.value == "high" or intent.risk_level.value == "high":
+        elif urgency == "high" or risk_level == "MEDIUM":
             resources.extend(["Experienced technical staff", "Management oversight"])
         else:
             resources.extend(["Standard technical staff"])
         
-        # Intent-specific resources
-        if intent.primary_intent.value == "incident_response":
-            resources.extend(["Incident response team", "Diagnostic tools"])
-        elif intent.primary_intent.value == "change_request":
-            resources.extend(["Change advisory board", "Testing environment"])
-        elif intent.primary_intent.value == "security_request":
-            resources.extend(["Security team", "Compliance tools"])
+        # Action type-specific resources
+        action_type = four_w.what_analysis.action_type.value
+        if action_type == "diagnostic":
+            resources.extend(["Diagnostic specialists", "Troubleshooting tools"])
+        elif action_type == "provisioning":
+            resources.extend(["Infrastructure team", "Provisioning tools"])
+        elif action_type == "operational":
+            resources.extend(["Operations team", "Management tools"])
         
         # Business outcome resources
         if business.business_priority.value == "strategic":
@@ -343,31 +407,38 @@ class IntentBrain:
         
         return list(set(resources))
     
-    def _assess_risk(self, intent: IntentAnalysis, 
+    def _assess_risk(self, four_w: FourWAnalysis, 
                     business: BusinessIntent) -> tuple[str, List[str]]:
         """Assess overall risk level and identify risk factors."""
         risk_factors = []
         
-        # Intent-based risk factors
-        if intent.risk_level.value == "high":
+        # 4W-based risk factors
+        if four_w.risk_level == "HIGH":
             risk_factors.append("High operational risk identified")
-        if intent.urgency.value == "high":
+        if four_w.when_analysis.urgency.value in ["critical", "high"]:
             risk_factors.append("Time-sensitive execution required")
-        if intent.complexity.value == "high":
+        if four_w.resource_complexity == "HIGH":
             risk_factors.append("High complexity implementation")
+        
+        # Scope-based risk factors
+        scope = four_w.where_what_analysis.scope_level.value
+        if scope == "org_wide":
+            risk_factors.append("Organization-wide impact")
+        elif scope == "environment":
+            risk_factors.append("Environment-wide changes")
         
         # Business intent risk factors
         if business.business_priority.value == "strategic":
             risk_factors.append("Strategic business initiative")
-        if intent.primary_intent.value == "security_request":
+        if "security" in four_w.what_analysis.root_need.lower():
             risk_factors.append("Security implications")
         if "compliance" in business.business_risk.lower():
             risk_factors.append("Compliance requirements")
         
         # Determine overall risk level
-        if intent.risk_level.value == "high" or business.business_priority.value == "strategic":
+        if four_w.risk_level == "HIGH" or business.business_priority.value == "strategic":
             risk_level = "HIGH"
-        elif intent.risk_level.value == "medium" or len(risk_factors) >= 3:
+        elif four_w.risk_level == "MEDIUM" or len(risk_factors) >= 3:
             risk_level = "MEDIUM"
         else:
             risk_level = "LOW"
@@ -395,25 +466,163 @@ class IntentBrain:
         except Exception as e:
             logger.warning(f"Learning process failed: {e}")
     
+    # 4W Framework Helper Methods
+    
+    def _generate_intent_summary_4w(self, four_w: FourWAnalysis, 
+                                   business: BusinessIntent) -> str:
+        """Generate a concise summary using 4W analysis."""
+        action_type = four_w.what_analysis.action_type.value.replace('_', ' ').title()
+        scope = four_w.where_what_analysis.scope_level.value.replace('_', ' ')
+        urgency = four_w.when_analysis.urgency.value
+        business_outcome = business.primary_outcome.value.replace('_', ' ')
+        
+        return (f"{action_type} request for {scope} scope "
+                f"aimed at {business_outcome} with {urgency} urgency")
+    
+    def _determine_recommended_approach_4w(self, four_w: FourWAnalysis,
+                                         business: BusinessIntent) -> str:
+        """Determine recommended approach using 4W analysis."""
+        action_type = four_w.what_analysis.action_type
+        urgency = four_w.when_analysis.urgency
+        scope = four_w.where_what_analysis.scope_level
+        method = four_w.how_analysis.method_preference
+        
+        # High-level approach mapping based on 4W dimensions
+        if urgency.value == "critical":
+            if action_type == ActionType.DIAGNOSTIC:
+                return "Emergency diagnostic response with immediate escalation"
+            elif action_type == ActionType.OPERATIONAL:
+                return "Emergency operational response with stakeholder notification"
+            else:
+                return "Critical priority handling with executive oversight"
+        
+        elif urgency.value == "high":
+            if action_type == ActionType.PROVISIONING:
+                return "Priority provisioning with accelerated approval process"
+            elif action_type == ActionType.DIAGNOSTIC:
+                return "Priority diagnostic response with senior technical staff"
+            else:
+                return "High priority operational response"
+        
+        # Standard approaches based on action type
+        approach_map = {
+            ActionType.INFORMATION: "Standard information retrieval and analysis",
+            ActionType.OPERATIONAL: "Standard operational execution with monitoring",
+            ActionType.DIAGNOSTIC: "Systematic diagnostic process with root cause analysis",
+            ActionType.PROVISIONING: "Standard provisioning process with proper approvals"
+        }
+        
+        base_approach = approach_map.get(action_type, "Standard operational process")
+        
+        # Modify based on method preference
+        if method.value == "automated":
+            return f"{base_approach} (automated execution preferred)"
+        elif method.value == "manual":
+            return f"{base_approach} (manual execution required)"
+        elif method.value == "guided":
+            return f"{base_approach} (guided execution with assistance)"
+        
+        return base_approach
+    
+    def _identify_technical_requirements_4w(self, four_w: FourWAnalysis,
+                                          business: BusinessIntent, 
+                                          message: str) -> List[str]:
+        """Identify technical requirements using 4W analysis."""
+        requirements = []
+        
+        # Requirements based on action type
+        action_requirements = {
+            ActionType.INFORMATION: [
+                "Data retrieval and analysis capabilities",
+                "System monitoring and reporting tools"
+            ],
+            ActionType.OPERATIONAL: [
+                "System administration capabilities",
+                "Change execution procedures",
+                "Monitoring and validation tools"
+            ],
+            ActionType.DIAGNOSTIC: [
+                "Advanced diagnostic tools and expertise",
+                "System troubleshooting capabilities",
+                "Root cause analysis procedures",
+                "Performance monitoring and analysis"
+            ],
+            ActionType.PROVISIONING: [
+                "Resource provisioning capabilities",
+                "Configuration management tools",
+                "Infrastructure automation",
+                "Access control implementation"
+            ]
+        }
+        
+        requirements.extend(
+            action_requirements.get(four_w.what_analysis.action_type, [])
+        )
+        
+        # Requirements based on scope
+        if four_w.where_what_analysis.scope_level.value in ["environment", "org_wide"]:
+            requirements.extend([
+                "Multi-system orchestration capabilities",
+                "Enterprise-scale coordination",
+                "Cross-environment management"
+            ])
+        
+        # Requirements based on urgency
+        if four_w.when_analysis.urgency.value in ["high", "critical"]:
+            requirements.extend([
+                "Emergency response procedures",
+                "Rapid escalation capabilities",
+                "24/7 operational support"
+            ])
+        
+        # Requirements based on method preference
+        if four_w.how_analysis.method_preference.value == "automated":
+            requirements.append("Automated execution capabilities")
+        elif four_w.how_analysis.rollback_needed:
+            requirements.append("Rollback and recovery procedures")
+        elif four_w.how_analysis.testing_required:
+            requirements.append("Testing and validation frameworks")
+        
+        # Business-driven requirements
+        if business.primary_outcome.value == "performance_improvement":
+            requirements.append("Performance optimization expertise")
+        elif business.primary_outcome.value == "scalability_improvement":
+            requirements.append("Scalability architecture and planning")
+        elif business.primary_outcome.value == "cost_reduction":
+            requirements.append("Resource optimization and cost analysis")
+        
+        # Context-specific requirements from message analysis
+        message_lower = message.lower()
+        context_requirements = {
+            "database": "Database administration expertise",
+            "network": "Network configuration and analysis",
+            "security": "Security implementation and hardening",
+            "backup": "Backup and recovery procedures",
+            "monitoring": "Monitoring system configuration",
+            "performance": "Performance tuning and optimization",
+            "cloud": "Cloud platform expertise",
+            "kubernetes": "Container orchestration expertise",
+            "docker": "Container technology expertise"
+        }
+        
+        for keyword, requirement in context_requirements.items():
+            if keyword in message_lower:
+                requirements.append(requirement)
+        
+        return list(set(requirements))  # Remove duplicates
+    
     def _create_fallback_result(self, intent_id: str, user_message: str,
                               start_time: datetime, processing_time: float,
                               error: str) -> IntentAnalysisResult:
         """Create a fallback result when analysis fails."""
-        from .itil_classifier import IntentCategory, UrgencyLevel, ComplexityLevel, RiskLevel, InformationNeeded, IntentAnalysis
         from .business_intent_analyzer import BusinessOutcome, BusinessPriority, BusinessIntent
         
-        # Create minimal fallback intent analysis
-        fallback_intent = IntentAnalysis(
-            primary_intent=IntentCategory.INFORMATION_REQUEST,
-            urgency=UrgencyLevel.MEDIUM,
-            complexity=ComplexityLevel.MEDIUM,
-            risk_level=RiskLevel.MEDIUM,
-            missing_information=[InformationNeeded.SYSTEM_DETAILS],
-            suggested_questions=["Could you provide more details about your request?"],
-            confidence=0.3,
-            reasoning=f"Fallback analysis due to error: {error}"
+        # Create fallback 4W analysis using the analyzer's fallback method
+        fallback_four_w = self.four_w_analyzer._create_fallback_analysis(
+            user_message, start_time, error
         )
         
+        # Create fallback business intent
         fallback_business = BusinessIntent(
             primary_outcome=BusinessOutcome.OPERATIONAL_EFFICIENCY,
             secondary_outcomes=[],
@@ -431,18 +640,81 @@ class IntentBrain:
             intent_id=intent_id,
             user_message=user_message,
             timestamp=start_time,
-            intent_analysis=fallback_intent,
+            four_w_analysis=fallback_four_w,
             business_intent=fallback_business,
-            overall_confidence=0.3,
-            intent_summary="General service request",
-            recommended_approach="Standard processing with manual review",
+            overall_confidence=0.1,
+            intent_summary="Analysis failed - manual review required",
+            recommended_approach="Manual analysis and processing required",
             technical_requirements=["Manual analysis required"],
             resource_requirements=["Technical staff review"],
-            risk_level="MEDIUM",
+            risk_level="HIGH",
             risk_factors=["Analysis failure requires manual review"],
             processing_time=processing_time,
             brain_version=self.version
         )
+    
+    def get_technical_brain_input(self, intent_result: IntentAnalysisResult) -> Dict[str, Any]:
+        """
+        Convert Intent Brain analysis result to Technical Brain compatible input.
+        
+        This method uses the Intent-to-Technical Bridge to convert 4W Framework
+        analysis into the format expected by the Technical Brain.
+        
+        Args:
+            intent_result: Complete intent analysis result from Intent Brain
+            
+        Returns:
+            Dict compatible with Technical Brain create_execution_plan() method
+        """
+        try:
+            logger.info(f"Converting Intent Brain result to Technical Brain input: {intent_result.intent_id}")
+            
+            # Use the bridge to convert 4W analysis
+            technical_input = self.technical_bridge.convert_4w_to_technical_input(
+                intent_result.four_w_analysis
+            )
+            
+            # Add additional context from Intent Brain analysis
+            technical_input.update({
+                "intent_id": intent_result.intent_id,
+                "user_message": intent_result.user_message,
+                "intent_summary": intent_result.intent_summary,
+                "recommended_approach": intent_result.recommended_approach,
+                "business_context": {
+                    "primary_outcome": intent_result.business_intent.primary_outcome.value,
+                    "business_priority": intent_result.business_intent.business_priority.value,
+                    "value_proposition": intent_result.business_intent.value_proposition,
+                    "success_criteria": intent_result.business_intent.success_criteria,
+                    "stakeholders": intent_result.business_intent.stakeholders
+                }
+            })
+            
+            logger.info(f"Technical Brain input generated successfully for intent: {intent_result.intent_id}")
+            return technical_input
+            
+        except Exception as e:
+            logger.error(f"Error generating Technical Brain input: {e}")
+            # Return fallback technical input
+            return {
+                "itil_service_type": "service_request",
+                "business_intent": intent_result.intent_summary,
+                "technical_requirements": intent_result.technical_requirements,
+                "urgency_level": "medium",
+                "scope_level": "single_system",
+                "execution_method_preference": "guided",
+                "resource_complexity": "MEDIUM",
+                "estimated_effort": "HOURS",
+                "overall_confidence": intent_result.overall_confidence,
+                "error_info": {
+                    "bridge_error": str(e),
+                    "fallback_used": True,
+                    "timestamp": datetime.now().isoformat()
+                }
+            }
+    
+    def get_bridge_stats(self) -> Dict[str, Any]:
+        """Get statistics from the Intent-to-Technical Bridge."""
+        return self.technical_bridge.get_conversion_stats()
     
     async def get_brain_status(self) -> Dict[str, Any]:
         """Get current brain status and capabilities."""
