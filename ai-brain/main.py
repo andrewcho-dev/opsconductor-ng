@@ -14,8 +14,10 @@ else:
     sys.path.append('/home/opsconductor/opsconductor-ng/shared')
 from base_service import BaseService
 
-# Import the new AI Brain Engine
-from brain_engine import AIBrainEngine
+# Import the new Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)
+from multi_brain_engine import MultiBrainAIEngine
+# Legacy compatibility import
+from brain_engine import AIBrainEngine as LegacyAIBrainEngine
 
 # PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
 
@@ -71,7 +73,16 @@ app.include_router(learning_router)
 
 # Initialize service components
 service = AIService()
-ai_engine = AIBrainEngine()
+
+# Initialize Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)
+multi_brain_enabled = os.getenv("MULTI_BRAIN_ENABLED", "true").lower() == "true"
+if multi_brain_enabled:
+    logger.info("🧠 Initializing Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)")
+    ai_engine = MultiBrainAIEngine()
+else:
+    logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain disabled)")
+    ai_engine = LegacyAIBrainEngine()
+
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
@@ -79,15 +90,33 @@ automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", 
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI engine on startup"""
-    logger.info("Initializing AI engine...")
+    engine_type = "Multi-Brain AI Engine" if multi_brain_enabled else "Legacy AI Brain Engine"
+    logger.info(f"Initializing {engine_type}...")
     try:
         success = await ai_engine.initialize()
         if success:
-            logger.info("AI engine initialized successfully")
+            logger.info(f"🚀 {engine_type} initialized successfully")
+            if multi_brain_enabled:
+                logger.info("🧠 Phase 1: Intent Brain Foundation is now active")
+                logger.info("🔮 Features: ITIL Classification, Business Intent Analysis, Continuous Learning")
         else:
-            logger.error("Failed to initialize AI engine")
+            logger.error(f"❌ Failed to initialize {engine_type}")
     except Exception as e:
-        logger.error(f"Exception during AI engine initialization: {e}")
+        logger.error(f"❌ Exception during {engine_type} initialization: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup AI engine on shutdown"""
+    engine_type = "Multi-Brain AI Engine" if multi_brain_enabled else "Legacy AI Brain Engine"
+    logger.info(f"Shutting down {engine_type}...")
+    try:
+        if multi_brain_enabled and hasattr(ai_engine, 'cleanup'):
+            await ai_engine.cleanup()
+            logger.info(f"🧠 {engine_type} cleanup completed")
+        else:
+            logger.info(f"🧠 {engine_type} shutdown completed")
+    except Exception as e:
+        logger.error(f"❌ Exception during {engine_type} shutdown: {e}")
 
 # PURE LLM CHAT FUNCTION - INTELLIGENT ROUTING BETWEEN CONVERSATION AND JOB CREATION
 async def pure_llm_chat_endpoint(request, ai_engine):

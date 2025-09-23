@@ -1,0 +1,696 @@
+"""
+Multi-Brain AI Engine - Phase 1 Implementation
+
+This is the main orchestrator for the Multi-Brain AI Architecture.
+It coordinates Intent Brain, Technical Brain, and SME Brains to process user requests.
+
+Phase 1 Implementation following exact roadmap specification:
+- Week 1: Intent Brain Core Implementation ✓
+- Week 2: Technical Brain Implementation ✓  
+- Week 3: Initial SME Brain Implementation ✓
+
+This replaces the legacy keyword-based system with intelligent multi-brain reasoning.
+"""
+
+import logging
+import asyncio
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from dataclasses import dataclass, asdict
+
+# Multi-Brain Components
+from brains.intent_brain.intent_brain import IntentBrain, IntentAnalysisResult
+from brains.technical_brain import TechnicalBrain, TechnicalPlan
+from brains.sme.container_sme_brain import ContainerSMEBrain
+from brains.sme.security_sme_brain import SecuritySMEBrain
+from brains.sme.network_sme_brain import NetworkSMEBrain
+from brains.sme.database_sme_brain import DatabaseSMEBrain
+from communication.brain_protocol import BrainCommunicationProtocol, MultibrainAnalysis
+from learning.continuous_learning_system import ContinuousLearningSystem, ExecutionFeedback
+from learning.quality_assurance import LearningQualityAssurance
+from confidence.multibrain_confidence import MultibrainConfidenceEngine, AggregatedConfidence
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class MultiBrainProcessingResult:
+    """Complete result from multi-brain processing"""
+    # Request information
+    request_id: str
+    user_message: str
+    timestamp: datetime
+    
+    # Brain analysis results
+    intent_analysis: IntentAnalysisResult
+    technical_plan: TechnicalPlan
+    sme_consultations: Dict[str, Any]
+    
+    # Aggregated results
+    overall_confidence: float
+    execution_strategy: str
+    recommended_actions: List[str]
+    risk_assessment: Dict[str, Any]
+    
+    # Processing metadata
+    processing_time: float
+    brains_consulted: List[str]
+    phase: str = "phase_1"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API responses"""
+        return {
+            "request_id": self.request_id,
+            "user_message": self.user_message,
+            "timestamp": self.timestamp.isoformat(),
+            "intent_analysis": self.intent_analysis.to_dict(),
+            "technical_plan": self.technical_plan.to_dict(),
+            "sme_consultations": self.sme_consultations,
+            "overall_confidence": self.overall_confidence,
+            "execution_strategy": self.execution_strategy,
+            "recommended_actions": self.recommended_actions,
+            "risk_assessment": self.risk_assessment,
+            "processing_time": self.processing_time,
+            "brains_consulted": self.brains_consulted,
+            "phase": self.phase
+        }
+
+class MultiBrainAIEngine:
+    """
+    Multi-Brain AI Engine - Phase 2 Implementation
+    
+    This engine orchestrates the multi-brain architecture to process user requests
+    with intelligent reasoning, advanced communication, continuous learning, and
+    sophisticated confidence aggregation.
+    
+    Phase 2 Architecture Flow:
+    1. Intent Brain: Understands WHAT the user wants
+    2. Technical Brain: Determines HOW to achieve it
+    3. SME Brains: Provide domain-specific expertise (Container, Security, Network, Database)
+    4. Brain Communication Protocol: Coordinates multi-brain analysis
+    5. Continuous Learning System: Learns from execution feedback
+    6. Multi-Brain Confidence Engine: Risk-adjusted confidence aggregation
+    7. Quality Assurance: Validates learning updates
+    """
+    
+    def __init__(self, llm_engine=None):
+        """
+        Initialize Multi-Brain AI Engine
+        
+        Args:
+            llm_engine: Optional LLM engine for enhanced analysis
+        """
+        self.engine_id = "multi_brain_ai_engine"
+        self.engine_version = "2.0.0"
+        self.phase = "phase_2"
+        
+        # Initialize brain components
+        self.intent_brain = IntentBrain(llm_engine)
+        self.technical_brain = TechnicalBrain()
+        
+        # Initialize SME brains (Phase 2: All SME brains)
+        self.sme_brains = {
+            "container_orchestration": ContainerSMEBrain(),
+            "security_and_compliance": SecuritySMEBrain(),
+            "network_infrastructure": NetworkSMEBrain(),
+            "database_administration": DatabaseSMEBrain()
+        }
+        
+        # Initialize Brain Communication Protocol
+        self.communication_protocol = BrainCommunicationProtocol()
+        
+        # Initialize Phase 2 Systems
+        self.continuous_learning_system = ContinuousLearningSystem()
+        self.learning_quality_assurance = LearningQualityAssurance()
+        self.multibrain_confidence_engine = MultibrainConfidenceEngine()
+        
+        # Configuration
+        self.confidence_threshold = 0.7
+        self.max_processing_time = 30.0  # seconds
+        
+        # Tracking
+        self.request_history = []
+        self.performance_metrics = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "average_processing_time": 0.0,
+            "average_confidence": 0.0
+        }
+        
+        # Initialize communication protocol with brains
+        asyncio.create_task(self._initialize_communication_protocol())
+        
+        # Initialize learning systems
+        asyncio.create_task(self._initialize_learning_systems())
+        
+        logger.info(f"Multi-Brain AI Engine initialized - Phase 2 with {len(self.sme_brains)} SME brains")
+    
+    async def process_request(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> MultiBrainProcessingResult:
+        """
+        Process user request through multi-brain architecture
+        
+        This is the main entry point that replaces legacy keyword-based processing.
+        
+        Args:
+            user_message: User's request message
+            context: Optional additional context
+            
+        Returns:
+            MultiBrainProcessingResult: Complete processing result
+        """
+        start_time = datetime.now()
+        request_id = f"mbr_{start_time.strftime('%Y%m%d_%H%M%S')}_{len(self.request_history)}"
+        
+        try:
+            logger.info(f"Processing multi-brain request: {request_id}")
+            
+            # Step 1: Intent Brain Analysis
+            logger.info("Step 1: Intent Brain analysis")
+            intent_analysis = await self.intent_brain.analyze_intent(user_message, context or {})
+            logger.info(f"Intent analysis completed with confidence: {intent_analysis.overall_confidence}")
+            
+            # Step 2: Technical Brain Planning
+            logger.info("Step 2: Technical Brain planning")
+            technical_plan = await self.technical_brain.create_execution_plan(intent_analysis.to_dict())
+            logger.info(f"Technical plan created with {len(technical_plan.steps)} steps")
+            
+            # Step 3: SME Brain Consultations
+            logger.info("Step 3: SME Brain consultations")
+            sme_consultations = await self._consult_sme_brains(technical_plan, intent_analysis)
+            logger.info(f"SME consultations completed for {len(sme_consultations)} domains")
+            
+            # Step 4: Aggregate Confidence and Determine Strategy
+            logger.info("Step 4: Confidence aggregation and strategy determination")
+            overall_confidence = await self._aggregate_confidence(intent_analysis, technical_plan, sme_consultations)
+            execution_strategy = await self._determine_execution_strategy(overall_confidence, technical_plan, intent_analysis)
+            
+            # Step 5: Generate Recommendations
+            logger.info("Step 5: Generating recommendations")
+            recommended_actions = await self._generate_recommendations(technical_plan, sme_consultations, execution_strategy)
+            
+            # Step 6: Risk Assessment
+            risk_assessment = await self._aggregate_risk_assessment(technical_plan, sme_consultations, intent_analysis)
+            
+            # Calculate processing time
+            end_time = datetime.now()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            # Create result
+            result = MultiBrainProcessingResult(
+                request_id=request_id,
+                user_message=user_message,
+                timestamp=start_time,
+                intent_analysis=intent_analysis,
+                technical_plan=technical_plan,
+                sme_consultations=sme_consultations,
+                overall_confidence=overall_confidence,
+                execution_strategy=execution_strategy,
+                recommended_actions=recommended_actions,
+                risk_assessment=risk_assessment,
+                processing_time=processing_time,
+                brains_consulted=["intent_brain", "technical_brain"] + list(sme_consultations.keys())
+            )
+            
+            # Update metrics
+            await self._update_metrics(result)
+            
+            # Store in history
+            self.request_history.append(result)
+            
+            logger.info(f"Multi-brain processing completed: {request_id} in {processing_time:.2f}s")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in multi-brain processing: {str(e)}")
+            
+            # Create error result
+            end_time = datetime.now()
+            processing_time = (end_time - start_time).total_seconds()
+            
+            # Create minimal result for error case
+            error_result = MultiBrainProcessingResult(
+                request_id=request_id,
+                user_message=user_message,
+                timestamp=start_time,
+                intent_analysis=IntentAnalysisResult(
+                    intent_id=request_id,
+                    user_message=user_message,
+                    timestamp=start_time,
+                    itil_classification=None,
+                    business_intent=None,
+                    overall_confidence=0.0,
+                    intent_summary="Error in processing",
+                    recommended_approach="Manual review required",
+                    technical_requirements=[],
+                    resource_requirements=[],
+                    risk_level="high",
+                    risk_factors=["Processing error"],
+                    processing_time=processing_time,
+                    brain_version="1.0.0"
+                ),
+                technical_plan=None,
+                sme_consultations={},
+                overall_confidence=0.0,
+                execution_strategy="manual_review",
+                recommended_actions=["Review error and retry"],
+                risk_assessment={"error": str(e)},
+                processing_time=processing_time,
+                brains_consulted=[]
+            )
+            
+            return error_result
+    
+    async def _consult_sme_brains(self, technical_plan: TechnicalPlan, intent_analysis: IntentAnalysisResult) -> Dict[str, Any]:
+        """Consult relevant SME brains based on technical plan"""
+        consultations = {}
+        
+        try:
+            # Determine which SME brains to consult
+            relevant_domains = set(technical_plan.sme_consultations_needed)
+            
+            # Always consult security for high-risk operations
+            if intent_analysis.risk_level == "high" or technical_plan.risk_assessment.get("overall_risk") == "high":
+                relevant_domains.add("security_and_compliance")
+            
+            # Consult available SME brains
+            for domain in relevant_domains:
+                if domain in self.sme_brains:
+                    try:
+                        sme_brain = self.sme_brains[domain]
+                        
+                        # Analyze technical plan from SME perspective
+                        sme_analysis = await sme_brain.analyze_technical_plan(
+                            technical_plan.to_dict(),
+                            intent_analysis.to_dict()
+                        )
+                        
+                        consultations[domain] = sme_analysis
+                        logger.info(f"SME consultation completed for domain: {domain}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error consulting SME brain {domain}: {str(e)}")
+                        consultations[domain] = {"error": str(e)}
+            
+            return consultations
+            
+        except Exception as e:
+            logger.error(f"Error in SME consultations: {str(e)}")
+            return {}
+    
+    async def _aggregate_confidence(self, intent_analysis: IntentAnalysisResult, technical_plan: TechnicalPlan, sme_consultations: Dict[str, Any]) -> float:
+        """Aggregate confidence from all brain components"""
+        try:
+            # Base confidence from intent and technical analysis
+            intent_confidence = intent_analysis.overall_confidence
+            technical_confidence = technical_plan.confidence_score
+            
+            # SME confidence (average of all consultations)
+            sme_confidences = []
+            for domain, consultation in sme_consultations.items():
+                if "error" not in consultation:
+                    # Extract confidence from SME recommendations
+                    recommendations = consultation.get("recommendations", [])
+                    if recommendations:
+                        avg_sme_confidence = sum(rec.get("confidence", 0.5) for rec in recommendations) / len(recommendations)
+                        sme_confidences.append(avg_sme_confidence)
+            
+            sme_confidence = sum(sme_confidences) / len(sme_confidences) if sme_confidences else 0.5
+            
+            # Weighted aggregation
+            weights = {
+                "intent": 0.4,
+                "technical": 0.4,
+                "sme": 0.2
+            }
+            
+            overall_confidence = (
+                intent_confidence * weights["intent"] +
+                technical_confidence * weights["technical"] +
+                sme_confidence * weights["sme"]
+            )
+            
+            return max(0.0, min(1.0, overall_confidence))
+            
+        except Exception as e:
+            logger.error(f"Error aggregating confidence: {str(e)}")
+            return 0.5  # Default confidence
+    
+    async def _determine_execution_strategy(self, overall_confidence: float, technical_plan: TechnicalPlan, intent_analysis: IntentAnalysisResult) -> str:
+        """Determine execution strategy based on confidence and risk"""
+        try:
+            # High confidence and low risk: Automated execution
+            if overall_confidence >= 0.8 and intent_analysis.risk_level == "low":
+                return "automated_execution"
+            
+            # Medium confidence: Guided execution with validation
+            elif overall_confidence >= 0.6:
+                return "guided_execution"
+            
+            # Low confidence or high risk: Manual review required
+            elif overall_confidence < 0.4 or intent_analysis.risk_level == "high":
+                return "manual_review"
+            
+            # Default: Assisted execution
+            else:
+                return "assisted_execution"
+                
+        except Exception as e:
+            logger.error(f"Error determining execution strategy: {str(e)}")
+            return "manual_review"  # Safe default
+    
+    async def _generate_recommendations(self, technical_plan: TechnicalPlan, sme_consultations: Dict[str, Any], execution_strategy: str) -> List[str]:
+        """Generate actionable recommendations"""
+        recommendations = []
+        
+        try:
+            # Add strategy-specific recommendations
+            if execution_strategy == "automated_execution":
+                recommendations.append("Execute plan automatically with monitoring")
+                recommendations.append("Set up automated rollback on failure")
+            elif execution_strategy == "guided_execution":
+                recommendations.append("Execute plan with step-by-step validation")
+                recommendations.append("Require approval for high-risk steps")
+            elif execution_strategy == "manual_review":
+                recommendations.append("Manual review required before execution")
+                recommendations.append("Consider breaking down into smaller steps")
+            else:  # assisted_execution
+                recommendations.append("Execute with human oversight")
+                recommendations.append("Validate each step before proceeding")
+            
+            # Add technical recommendations
+            if technical_plan.steps:
+                recommendations.append(f"Execute {len(technical_plan.steps)} planned steps")
+                if technical_plan.estimated_duration > 300:  # 5 minutes
+                    recommendations.append("Consider scheduling during maintenance window")
+            
+            # Add SME recommendations
+            for domain, consultation in sme_consultations.items():
+                if "recommendations" in consultation:
+                    domain_recs = consultation["recommendations"]
+                    if domain_recs:
+                        recommendations.append(f"Follow {domain} expert recommendations")
+            
+            # Add risk-based recommendations
+            if technical_plan.risk_assessment.get("overall_risk") == "high":
+                recommendations.append("Implement additional safety measures")
+                recommendations.append("Prepare rollback procedures")
+            
+            return recommendations[:10]  # Limit to top 10 recommendations
+            
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {str(e)}")
+            return ["Manual review recommended due to processing error"]
+    
+    async def _aggregate_risk_assessment(self, technical_plan: TechnicalPlan, sme_consultations: Dict[str, Any], intent_analysis: IntentAnalysisResult) -> Dict[str, Any]:
+        """Aggregate risk assessment from all sources"""
+        try:
+            risk_assessment = {
+                "overall_risk_level": intent_analysis.risk_level,
+                "risk_factors": intent_analysis.risk_factors.copy(),
+                "technical_risks": technical_plan.risk_assessment,
+                "sme_risks": {},
+                "mitigation_strategies": []
+            }
+            
+            # Aggregate SME risk assessments
+            for domain, consultation in sme_consultations.items():
+                if "risk_assessment" in consultation:
+                    risk_assessment["sme_risks"][domain] = consultation["risk_assessment"]
+                
+                if "risk_mitigation_strategies" in consultation:
+                    risk_assessment["mitigation_strategies"].extend(consultation["risk_mitigation_strategies"])
+            
+            # Determine overall risk level
+            risk_levels = [intent_analysis.risk_level]
+            if technical_plan.risk_assessment.get("overall_risk"):
+                risk_levels.append(technical_plan.risk_assessment["overall_risk"])
+            
+            for consultation in sme_consultations.values():
+                if "risk_assessment" in consultation and "overall_risk_level" in consultation["risk_assessment"]:
+                    risk_levels.append(consultation["risk_assessment"]["overall_risk_level"])
+            
+            # Use highest risk level
+            if "high" in risk_levels:
+                risk_assessment["overall_risk_level"] = "high"
+            elif "medium" in risk_levels:
+                risk_assessment["overall_risk_level"] = "medium"
+            else:
+                risk_assessment["overall_risk_level"] = "low"
+            
+            return risk_assessment
+            
+        except Exception as e:
+            logger.error(f"Error aggregating risk assessment: {str(e)}")
+            return {"overall_risk_level": "high", "error": str(e)}
+    
+    async def _update_metrics(self, result: MultiBrainProcessingResult):
+        """Update performance metrics"""
+        try:
+            self.performance_metrics["total_requests"] += 1
+            
+            if result.overall_confidence > 0.5:  # Consider successful if confidence > 0.5
+                self.performance_metrics["successful_requests"] += 1
+            
+            # Update average processing time
+            total_requests = self.performance_metrics["total_requests"]
+            current_avg_time = self.performance_metrics["average_processing_time"]
+            new_avg_time = ((current_avg_time * (total_requests - 1)) + result.processing_time) / total_requests
+            self.performance_metrics["average_processing_time"] = new_avg_time
+            
+            # Update average confidence
+            current_avg_confidence = self.performance_metrics["average_confidence"]
+            new_avg_confidence = ((current_avg_confidence * (total_requests - 1)) + result.overall_confidence) / total_requests
+            self.performance_metrics["average_confidence"] = new_avg_confidence
+            
+        except Exception as e:
+            logger.error(f"Error updating metrics: {str(e)}")
+    
+    async def get_engine_status(self) -> Dict[str, Any]:
+        """Get current status of the multi-brain engine"""
+        try:
+            # Get brain statuses
+            brain_statuses = {}
+            
+            brain_statuses["intent_brain"] = await self.intent_brain.get_brain_status()
+            brain_statuses["technical_brain"] = await self.technical_brain.get_brain_status()
+            
+            for domain, sme_brain in self.sme_brains.items():
+                brain_statuses[f"sme_{domain}"] = await sme_brain.get_brain_status()
+            
+            return {
+                "engine_id": self.engine_id,
+                "engine_version": self.engine_version,
+                "phase": self.phase,
+                "status": "active",
+                "confidence_threshold": self.confidence_threshold,
+                "brain_count": 2 + len(self.sme_brains),  # Intent + Technical + SME brains
+                "sme_domains": list(self.sme_brains.keys()),
+                "performance_metrics": self.performance_metrics,
+                "request_history_size": len(self.request_history),
+                "brain_statuses": brain_statuses
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting engine status: {str(e)}")
+            return {"error": str(e)}
+    
+    async def get_recent_requests(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent request history"""
+        try:
+            recent_requests = self.request_history[-limit:]
+            return [request.to_dict() for request in recent_requests]
+        except Exception as e:
+            logger.error(f"Error getting recent requests: {str(e)}")
+            return []
+    
+    async def _initialize_communication_protocol(self):
+        """Initialize the brain communication protocol"""
+        try:
+            await self.communication_protocol.initialize_brains(
+                self.intent_brain,
+                self.technical_brain,
+                self.sme_brains
+            )
+            logger.info("Brain communication protocol initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing communication protocol: {str(e)}")
+    
+    async def _initialize_learning_systems(self):
+        """Initialize the learning systems"""
+        try:
+            # Initialize continuous learning system with quality assurance
+            await self.continuous_learning_system.initialize(self.learning_quality_assurance)
+            
+            # Add trusted sources to quality assurance
+            await self.learning_quality_assurance.add_trusted_source("execution_feedback_analyzer")
+            await self.learning_quality_assurance.add_trusted_source("cross_brain_learner")
+            
+            # Initialize brain reliability in confidence engine
+            for brain_name in self.sme_brains.keys():
+                # SME brains start with high reliability
+                self.multibrain_confidence_engine.brain_reliability_scores[brain_name] = 1.1
+            
+            logger.info("Learning systems initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing learning systems: {str(e)}")
+    
+    async def process_request_with_protocol(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> MultibrainAnalysis:
+        """
+        Process request using the new Brain Communication Protocol
+        
+        This method uses the advanced communication protocol for coordinated multi-brain analysis.
+        """
+        try:
+            logger.info("Processing request with Brain Communication Protocol")
+            
+            # Use the communication protocol for coordinated analysis
+            analysis = await self.communication_protocol.coordinate_multi_brain_analysis(user_message)
+            
+            # Update performance metrics
+            self.performance_metrics["total_requests"] += 1
+            if analysis.aggregated_confidence > 0.5:
+                self.performance_metrics["successful_requests"] += 1
+            
+            # Update average metrics
+            total_requests = self.performance_metrics["total_requests"]
+            if total_requests > 0:
+                current_avg_time = self.performance_metrics["average_processing_time"]
+                analysis_time = analysis.analysis_metadata.get("total_duration", 0)
+                self.performance_metrics["average_processing_time"] = (
+                    (current_avg_time * (total_requests - 1) + analysis_time) / total_requests
+                )
+                
+                current_avg_confidence = self.performance_metrics["average_confidence"]
+                self.performance_metrics["average_confidence"] = (
+                    (current_avg_confidence * (total_requests - 1) + analysis.aggregated_confidence) / total_requests
+                )
+            
+            logger.info(f"Protocol-based analysis completed with confidence: {analysis.aggregated_confidence}")
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error in protocol-based processing: {str(e)}")
+            raise
+    
+    async def process_execution_feedback(self, request_id: str, execution_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process execution feedback for continuous learning
+        
+        Args:
+            request_id: ID of the original request
+            execution_result: Results from executing the recommended actions
+            
+        Returns:
+            Dict containing learning insights and updates
+        """
+        try:
+            logger.info(f"Processing execution feedback for request: {request_id}")
+            
+            # Find the original request in history
+            original_request = None
+            for request in self.request_history:
+                if request.get("request_id") == request_id:
+                    original_request = request
+                    break
+            
+            if not original_request:
+                logger.warning(f"Original request {request_id} not found in history")
+                return {"success": False, "error": "Original request not found"}
+            
+            # Process feedback through continuous learning system
+            learning_result = await self.continuous_learning_system.process_execution_feedback(
+                original_request,
+                execution_result
+            )
+            
+            # Update confidence engine with execution outcomes
+            if execution_result.get("success", False):
+                # Successful execution - increase brain reliability
+                for brain_name in original_request.get("consulted_brains", []):
+                    await self.multibrain_confidence_engine.update_brain_reliability(
+                        brain_name, 
+                        True,
+                        execution_result.get("confidence_accuracy", 0.8)
+                    )
+            else:
+                # Failed execution - decrease brain reliability
+                for brain_name in original_request.get("consulted_brains", []):
+                    await self.multibrain_confidence_engine.update_brain_reliability(
+                        brain_name, 
+                        False,
+                        execution_result.get("confidence_accuracy", 0.2)
+                    )
+            
+            # Update performance metrics
+            self.performance_metrics["total_requests"] += 1
+            if execution_result.get("success", False):
+                self.performance_metrics["successful_requests"] += 1
+            
+            logger.info(f"Execution feedback processed successfully for {request_id}")
+            return {
+                "success": True,
+                "learning_insights": learning_result,
+                "updated_brain_reliability": self.multibrain_confidence_engine.brain_reliability_scores
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing execution feedback: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    async def get_learning_insights(self) -> Dict[str, Any]:
+        """
+        Get comprehensive learning insights from all systems
+        
+        Returns:
+            Dict containing learning metrics, brain reliability, and system status
+        """
+        try:
+            # Get learning system metrics
+            learning_metrics = await self.continuous_learning_system.get_learning_metrics()
+            
+            # Get confidence engine status
+            confidence_status = {
+                "brain_reliability_scores": self.multibrain_confidence_engine.brain_reliability_scores,
+                "confidence_history": getattr(self.multibrain_confidence_engine, 'confidence_history', [])[-10:],  # Last 10 entries
+                "calibration_accuracy": getattr(self.multibrain_confidence_engine, 'calibration_accuracy', 0.0)
+            }
+            
+            # Get quality assurance metrics
+            qa_metrics = await self.learning_quality_assurance.get_quality_metrics()
+            
+            # Get communication protocol metrics
+            protocol_metrics = await self.communication_protocol.get_communication_metrics()
+            
+            return {
+                "learning_system": learning_metrics,
+                "confidence_engine": confidence_status,
+                "quality_assurance": qa_metrics,
+                "communication_protocol": protocol_metrics,
+                "performance_metrics": self.performance_metrics,
+                "system_status": {
+                    "phase": "phase_2",
+                    "active_sme_brains": list(self.sme_brains.keys()),
+                    "total_requests_processed": len(self.request_history),
+                    "engine_version": self.engine_version
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting learning insights: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    # Legacy compatibility methods for gradual migration
+    async def process_message(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Legacy compatibility method"""
+        result = await self.process_request(message, context)
+        
+        # Convert to legacy format for backward compatibility
+        return {
+            "success": True,
+            "confidence": result.overall_confidence,
+            "intent": result.intent_analysis.intent_summary,
+            "response": result.recommended_actions[0] if result.recommended_actions else "No action recommended",
+            "execution_plan": result.technical_plan.to_dict() if result.technical_plan else None,
+            "risk_level": result.risk_assessment.get("overall_risk_level", "medium"),
+            "processing_time": result.processing_time,
+            "multi_brain_result": result.to_dict()  # Full result for modern clients
+        }
