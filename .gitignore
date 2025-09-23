@@ -253,6 +253,13 @@ dist/
 test-results/
 coverage/
 
+# AI Brain test results
+*test_results_*.json
+phase3_*.json
+multibrain_*.json
+ai_network_training_results_*.json
+enhanced_training_summary_*.json
+
 # Certificates
 *.pem
 *.key
