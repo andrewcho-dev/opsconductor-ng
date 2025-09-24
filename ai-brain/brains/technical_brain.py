@@ -104,79 +104,85 @@ class TechnicalPlan:
         }
 
 class TechnicalMethodSelector:
-    """Selects appropriate technical methods based on intent analysis"""
+    """Selects appropriate technical methods using intelligent LLM analysis"""
     
-    def __init__(self):
-        self.method_patterns = self._load_method_patterns()
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
     
     async def select_methods(self, intent_analysis: Dict[str, Any]) -> List[str]:
-        """Select technical methods based on intent analysis"""
+        """Select technical methods using intelligent LLM analysis"""
         try:
-            methods = []
+            if not self.llm_engine:
+                raise Exception("LLM engine required for technical method selection - NO FALLBACKS ALLOWED")
             
-            # Extract key information
-            itil_service_type = intent_analysis.get("itil_service_type", "")
-            business_intent = intent_analysis.get("business_intent", "")
-            technical_requirements = intent_analysis.get("technical_requirements", [])
+            # Use LLM to intelligently select technical methods
+            analysis_prompt = f"""Based on this intent analysis, determine the appropriate technical methods needed:
+
+Intent Analysis: {json.dumps(intent_analysis, indent=2)}
+
+Available Technical Methods:
+- diagnostic_analysis: For troubleshooting and problem identification
+- service_restoration: For restoring failed services
+- root_cause_analysis: For finding underlying causes of issues
+- resource_provisioning: For creating/allocating resources
+- configuration_management: For system configuration tasks
+- deployment_automation: For automated deployments
+- change_planning: For planning system changes
+- impact_analysis: For assessing change impacts
+- rollback_preparation: For preparing rollback procedures
+- metrics_collection: For gathering performance data
+- alerting_configuration: For setting up monitoring alerts
+- dashboard_setup: For creating monitoring dashboards
+- database_operations: For database-related tasks
+- network_operations: For network-related tasks
+- security_operations: For security-related tasks
+- container_operations: For container/orchestration tasks
+- information_gathering: For collecting information
+- status_reporting: For providing status updates
+
+Select the most appropriate methods for this intent. Return as a JSON array of method names."""
+
+            response = await self.llm_engine.chat(
+                message=analysis_prompt,
+                system_prompt="You are a technical method selector. Analyze intent and select appropriate technical methods."
+            )
             
-            # Method selection based on ITIL service type
-            if itil_service_type == "incident_management":
-                methods.extend(["diagnostic_analysis", "service_restoration", "root_cause_analysis"])
-            elif itil_service_type == "service_request":
-                methods.extend(["resource_provisioning", "configuration_management", "deployment_automation"])
-            elif itil_service_type == "change_management":
-                methods.extend(["change_planning", "impact_analysis", "rollback_preparation"])
-            elif itil_service_type == "monitoring_management":
-                methods.extend(["metrics_collection", "alerting_configuration", "dashboard_setup"])
-            else:
-                methods.extend(["information_gathering", "status_reporting"])
+            if response and 'content' in response:
+                try:
+                    # Try to parse JSON response
+                    import json
+                    methods = json.loads(response['content'])
+                    if isinstance(methods, list):
+                        return methods
+                except:
+                    # Fallback: extract method names from text
+                    content = response['content'].lower()
+                    methods = []
+                    available_methods = [
+                        "diagnostic_analysis", "service_restoration", "root_cause_analysis",
+                        "resource_provisioning", "configuration_management", "deployment_automation",
+                        "change_planning", "impact_analysis", "rollback_preparation",
+                        "metrics_collection", "alerting_configuration", "dashboard_setup",
+                        "database_operations", "network_operations", "security_operations",
+                        "container_operations", "information_gathering", "status_reporting"
+                    ]
+                    for method in available_methods:
+                        if method in content:
+                            methods.append(method)
+                    return methods if methods else ["information_gathering", "status_reporting"]
             
-            # Add methods based on technical requirements
-            for requirement in technical_requirements:
-                if "database" in requirement.lower():
-                    methods.append("database_operations")
-                if "network" in requirement.lower():
-                    methods.append("network_configuration")
-                if "security" in requirement.lower():
-                    methods.append("security_hardening")
-                if "container" in requirement.lower():
-                    methods.append("container_orchestration")
-            
-            return list(set(methods))  # Remove duplicates
+            # Fallback
+            return ["information_gathering", "status_reporting"]
             
         except Exception as e:
             logger.error(f"Error selecting technical methods: {str(e)}")
             return ["information_gathering"]  # Fallback
-    
-    def _load_method_patterns(self) -> Dict[str, Any]:
-        """Load technical method patterns"""
-        return {
-            "diagnostic_analysis": {
-                "description": "Analyze system state and identify issues",
-                "complexity": TechnicalComplexity.MODERATE,
-                "typical_steps": ["gather_logs", "check_services", "analyze_metrics"]
-            },
-            "service_restoration": {
-                "description": "Restore failed or degraded services",
-                "complexity": TechnicalComplexity.COMPLEX,
-                "typical_steps": ["stop_service", "clear_locks", "restart_service", "verify_health"]
-            },
-            "resource_provisioning": {
-                "description": "Provision new resources or services",
-                "complexity": TechnicalComplexity.MODERATE,
-                "typical_steps": ["validate_requirements", "allocate_resources", "configure_service", "test_deployment"]
-            },
-            "configuration_management": {
-                "description": "Manage system and service configurations",
-                "complexity": TechnicalComplexity.SIMPLE,
-                "typical_steps": ["backup_config", "update_config", "validate_config", "apply_changes"]
-            }
-        }
 
 class ExecutionPlanGenerator:
-    """Generates detailed execution plans from technical methods"""
+    """Generates detailed execution plans using intelligent LLM analysis"""
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
         self.plan_templates = self._load_plan_templates()
     
     async def generate_plan(self, technical_methods: List[str], intent_analysis: Dict[str, Any]) -> TechnicalPlan:
@@ -287,49 +293,87 @@ class ExecutionPlanGenerator:
         return list(resources)
     
     def _assess_risks(self, steps: List[TechnicalStep], intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Assess risks of the execution plan"""
-        high_risk_steps = [step for step in steps if step.risk_level == "high"]
+        """Assess risks of the execution plan using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for risk assessment - NO FALLBACKS ALLOWED")
         
-        return {
-            "overall_risk": "high" if high_risk_steps else "medium",
-            "high_risk_steps": len(high_risk_steps),
-            "total_steps": len(steps),
-            "risk_factors": [
-                "Production environment" if "production" in str(intent_analysis).lower() else None,
-                "Database operations" if any("database" in step.description.lower() for step in steps) else None,
-                "Network changes" if any("network" in step.description.lower() for step in steps) else None
-            ],
-            "mitigation_strategies": [
-                "Rollback procedures prepared",
-                "Validation steps included",
-                "SME consultation recommended"
-            ]
-        }
+        # Use LLM for intelligent risk assessment
+        risk_prompt = f"""
+        Analyze the following technical execution plan for risks:
+        
+        Intent Analysis: {intent_analysis}
+        
+        Steps:
+        {chr(10).join([f"- {step.description} (Risk: {step.risk_level})" for step in steps])}
+        
+        Provide a comprehensive risk assessment including:
+        1. Overall risk level (low/medium/high)
+        2. Specific risk factors identified
+        3. Mitigation strategies
+        
+        Return as JSON with keys: overall_risk, risk_factors (array), mitigation_strategies (array)
+        """
+        
+        try:
+            risk_analysis = self.llm_engine.generate_response(risk_prompt, max_tokens=500)
+            import json
+            risk_data = json.loads(risk_analysis)
+            
+            high_risk_steps = [step for step in steps if step.risk_level == "high"]
+            risk_data.update({
+                "high_risk_steps": len(high_risk_steps),
+                "total_steps": len(steps)
+            })
+            
+            return risk_data
+        except Exception as e:
+            self.logger.warning(f"LLM risk assessment failed: {e}")
+            high_risk_steps = [step for step in steps if step.risk_level == "high"]
+            return {
+                "overall_risk": "high" if high_risk_steps else "medium",
+                "high_risk_steps": len(high_risk_steps),
+                "total_steps": len(steps),
+                "risk_factors": [],
+                "mitigation_strategies": [
+                    "Rollback procedures prepared",
+                    "Validation steps included",
+                    "SME consultation recommended"
+                ]
+            }
     
     def _determine_sme_consultations(self, methods: List[str], intent_analysis: Dict[str, Any]) -> List[str]:
-        """Determine which SME brains should be consulted"""
-        sme_domains = set()
+        """Determine which SME brains should be consulted using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for SME consultation selection - NO FALLBACKS ALLOWED")
         
-        # Based on technical methods
-        for method in methods:
-            if "database" in method:
-                sme_domains.add("database_administration")
-            if "network" in method:
-                sme_domains.add("network_infrastructure")
-            if "security" in method:
-                sme_domains.add("security_and_compliance")
-            if "container" in method:
-                sme_domains.add("container_orchestration")
+        # Use LLM for intelligent SME domain selection
+        sme_prompt = f"""
+        Based on the following technical methods and intent analysis, determine which Subject Matter Expert (SME) domains should be consulted:
         
-        # Based on intent analysis
-        technical_requirements = intent_analysis.get("technical_requirements", [])
-        for requirement in technical_requirements:
-            if "cloud" in requirement.lower():
-                sme_domains.add("cloud_services")
-            if "monitoring" in requirement.lower():
-                sme_domains.add("observability_monitoring")
+        Technical Methods: {methods}
+        Intent Analysis: {intent_analysis}
         
-        return list(sme_domains)
+        Available SME domains:
+        - database_administration
+        - network_infrastructure  
+        - security_and_compliance
+        - container_orchestration
+        - cloud_services
+        - observability_monitoring
+        
+        Return only the relevant SME domain names as a JSON array.
+        """
+        
+        try:
+            sme_response = self.llm_engine.generate_response(sme_prompt, max_tokens=200)
+            import json
+            sme_domains = json.loads(sme_response)
+            return sme_domains if isinstance(sme_domains, list) else []
+        except Exception as e:
+            self.logger.warning(f"LLM SME consultation determination failed: {e}")
+            # Fallback - return all available SME domains
+            return ["database_administration", "network_infrastructure", "security_and_compliance", 
+                   "container_orchestration", "cloud_services", "observability_monitoring"]
     
     def _calculate_confidence(self, steps: List[TechnicalStep], risk_assessment: Dict[str, Any], intent_analysis: Dict[str, Any]) -> float:
         """Calculate confidence score for the plan"""
@@ -480,22 +524,25 @@ class TechnicalBrain:
     4. Feasibility and Risk Analysis
     """
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
         self.brain_id = "technical_brain"
         self.brain_type = "technical"
-        self.brain_version = "1.0.0"
+        self.brain_version = "2.0.0"
         
-        # Core components
-        self.method_selector = TechnicalMethodSelector()
-        self.plan_generator = ExecutionPlanGenerator()
-        self.sme_orchestrator = SMEBrainOrchestrator()
-        self.feasibility_analyzer = TechnicalFeasibilityAnalyzer()
-        self.learning_engine = TechnicalLearningEngine()
+        # Store LLM engine for intelligent analysis
+        self.llm_engine = llm_engine
+        
+        # Core components - now with LLM support
+        self.method_selector = TechnicalMethodSelector(llm_engine)
+        self.plan_generator = ExecutionPlanGenerator(llm_engine)
+        self.sme_orchestrator = SMEBrainOrchestrator(llm_engine)
+        self.feasibility_analyzer = TechnicalFeasibilityAnalyzer(llm_engine)
+        self.learning_engine = TechnicalLearningEngine(llm_engine)
         
         # Configuration
         self.confidence_threshold = 0.7
         
-        logger.info("Technical Brain initialized - Phase 1 Week 2 implementation")
+        logger.info("Technical Brain initialized with LLM intelligence - Phase 2 implementation")
     
     async def create_execution_plan(self, intent_analysis: Dict[str, Any]) -> TechnicalPlan:
         """

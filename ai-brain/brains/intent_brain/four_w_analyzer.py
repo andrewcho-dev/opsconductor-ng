@@ -13,6 +13,7 @@ traditional ITIL process categorization.
 
 import logging
 import json
+import re
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 from dataclasses import dataclass
@@ -124,6 +125,94 @@ class FourWAnalysis:
     analysis_timestamp: datetime
     processing_time: float
 
+
+def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract and parse JSON from LLM response text.
+    
+    LLMs often return JSON wrapped in explanatory text or with formatting issues.
+    This function attempts multiple strategies to extract valid JSON.
+    
+    Args:
+        response_text: Raw text response from LLM
+        
+    Returns:
+        Parsed JSON dict if successful, None if no valid JSON found
+    """
+    if not response_text or not response_text.strip():
+        return None
+    
+    # Strategy 1: Try parsing the entire response as JSON
+    try:
+        return json.loads(response_text.strip())
+    except json.JSONDecodeError:
+        pass
+    
+    # Strategy 2: Look for JSON blocks between ```json and ``` or ``` and ```
+    json_block_patterns = [
+        r'```json\s*(\{.*?\})\s*```',
+        r'```\s*(\{.*?\})\s*```',
+        r'```json\s*(\[.*?\])\s*```',
+        r'```\s*(\[.*?\])\s*```'
+    ]
+    
+    for pattern in json_block_patterns:
+        matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
+        for match in matches:
+            try:
+                return json.loads(match.strip())
+            except json.JSONDecodeError:
+                continue
+    
+    # Strategy 3: Find JSON objects/arrays in the text
+    json_patterns = [
+        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Simple nested objects
+        r'\{.*?\}',  # Any object (greedy)
+        r'\[.*?\]'   # Any array (greedy)
+    ]
+    
+    for pattern in json_patterns:
+        matches = re.findall(pattern, response_text, re.DOTALL)
+        for match in matches:
+            try:
+                # Clean up common issues
+                cleaned = match.strip()
+                # Remove trailing commas before closing braces/brackets
+                cleaned = re.sub(r',(\s*[}\]])', r'\1', cleaned)
+                # Remove comments (// style)
+                cleaned = re.sub(r'//.*?$', '', cleaned, flags=re.MULTILINE)
+                # Remove comments (/* */ style)
+                cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
+                
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                continue
+    
+    # Strategy 4: Try to extract key-value pairs and build JSON
+    try:
+        # Look for patterns like "key": "value" or 'key': 'value'
+        kv_pattern = r'["\']([^"\']+)["\']\s*:\s*["\']([^"\']+)["\']'
+        matches = re.findall(kv_pattern, response_text)
+        if matches:
+            result = {}
+            for key, value in matches:
+                # Try to convert numeric values
+                try:
+                    if '.' in value:
+                        result[key] = float(value)
+                    else:
+                        result[key] = int(value)
+                except ValueError:
+                    # Keep as string if not numeric
+                    result[key] = value
+            if result:
+                return result
+    except Exception:
+        pass
+    
+    return None
+
+
 class FourWAnalyzer:
     """
     4W Framework Analyzer - Systematic intent analysis using the 4W approach
@@ -145,6 +234,128 @@ class FourWAnalyzer:
         self.where_what_prompt = self._build_where_what_prompt()
         self.when_prompt = self._build_when_prompt()
         self.how_prompt = self._build_how_prompt()
+    
+    def _parse_scope_level(self, scope_level_str: str) -> ScopeLevel:
+        """
+        Safely parse scope level string to enum, handling LLM formatting issues.
+        
+        Args:
+            scope_level_str: Raw scope level string from LLM
+            
+        Returns:
+            ScopeLevel enum value
+        """
+        try:
+            # Clean up the string
+            scope_level_str = scope_level_str.strip().upper()
+            
+            # Handle cases where LLM returns multiple values separated by |
+            if '|' in scope_level_str:
+                # Take the first valid option
+                options = scope_level_str.split('|')
+                for option in options:
+                    option = option.strip()
+                    if option in ['SINGLE_SYSTEM', 'CLUSTER', 'ENVIRONMENT', 'ORG_WIDE']:
+                        scope_level_str = option
+                        break
+                else:
+                    # If no valid option found, default to SINGLE_SYSTEM
+                    scope_level_str = 'SINGLE_SYSTEM'
+            
+            # Map to enum value
+            return ScopeLevel(scope_level_str.lower())
+            
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse scope level '{scope_level_str}': {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse scope level '{scope_level_str}': {e}")
+    
+    def _parse_action_type(self, action_type_str: str) -> ActionType:
+        """Safely parse action type string to enum, handling LLM formatting issues."""
+        try:
+            action_type_str = action_type_str.strip().upper()
+            
+            # Handle pipe-separated values
+            if '|' in action_type_str:
+                options = action_type_str.split('|')
+                for option in options:
+                    option = option.strip()
+                    if option in ['INFORMATION', 'OPERATIONAL', 'DIAGNOSTIC', 'PROVISIONING']:
+                        action_type_str = option
+                        break
+                else:
+                    action_type_str = 'INFORMATION'
+            
+            return ActionType(action_type_str.lower())
+            
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse action type '{action_type_str}': {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse action type '{action_type_str}': {e}")
+    
+    def _parse_urgency_level(self, urgency_str: str) -> UrgencyLevel:
+        """Safely parse urgency level string to enum, handling LLM formatting issues."""
+        try:
+            urgency_str = urgency_str.strip().upper()
+            
+            # Handle pipe-separated values
+            if '|' in urgency_str:
+                options = urgency_str.split('|')
+                for option in options:
+                    option = option.strip()
+                    if option in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']:
+                        urgency_str = option
+                        break
+                else:
+                    urgency_str = 'LOW'
+            
+            return UrgencyLevel(urgency_str.lower())
+            
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse urgency level '{urgency_str}': {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse urgency level '{urgency_str}': {e}")
+    
+    def _parse_timeline_type(self, timeline_str: str) -> TimelineType:
+        """Safely parse timeline type string to enum, handling LLM formatting issues."""
+        try:
+            timeline_str = timeline_str.strip().upper()
+            
+            # Handle pipe-separated values
+            if '|' in timeline_str:
+                options = timeline_str.split('|')
+                for option in options:
+                    option = option.strip()
+                    if option in ['IMMEDIATE', 'SCHEDULED', 'MAINTENANCE', 'FLEXIBLE']:
+                        timeline_str = option
+                        break
+                else:
+                    timeline_str = 'IMMEDIATE'
+            
+            return TimelineType(timeline_str.lower())
+            
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse timeline type '{timeline_str}': {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse timeline type '{timeline_str}': {e}")
+    
+    def _parse_method_type(self, method_str: str) -> MethodType:
+        """Safely parse method type string to enum, handling LLM formatting issues."""
+        try:
+            method_str = method_str.strip().upper()
+            
+            # Handle pipe-separated values
+            if '|' in method_str:
+                options = method_str.split('|')
+                for option in options:
+                    option = option.strip()
+                    if option in ['AUTOMATED', 'GUIDED', 'MANUAL', 'HYBRID']:
+                        method_str = option
+                        break
+                else:
+                    method_str = 'AUTOMATED'
+            
+            return MethodType(method_str.lower())
+            
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Failed to parse method type '{method_str}': {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse method type '{method_str}': {e}")
     
     async def analyze_4w(self, user_message: str, context: Optional[Dict] = None) -> FourWAnalysis:
         """
@@ -424,7 +635,16 @@ class FourWAnalyzer:
    - Distinguish symptoms from root causes
    - Consider "why" they're asking for this
 
-Respond with JSON containing action_type, specific_outcome, root_need, surface_request, confidence, and reasoning."""
+IMPORTANT: Respond with ONLY valid JSON in this exact format:
+{
+  "action_type": "INFORMATION",
+  "specific_outcome": "description of what they want to achieve",
+  "root_need": "underlying business need",
+  "confidence": 0.8,
+  "reasoning": "explanation of analysis"
+}
+
+Choose ONE action_type from: INFORMATION, OPERATIONAL, DIAGNOSTIC, PROVISIONING"""
     
     def _build_where_what_prompt(self) -> str:
         """Build system prompt for WHERE/WHAT dimension analysis."""
@@ -440,7 +660,17 @@ Respond with JSON containing action_type, specific_outcome, root_need, surface_r
 3. AFFECTED COMPONENTS: What will be impacted
 4. DEPENDENCIES: What other systems might be affected
 
-Respond with JSON containing target_systems, scope_level, affected_components, dependencies, confidence, and reasoning."""
+IMPORTANT: Respond with ONLY valid JSON in this exact format:
+{
+  "target_systems": ["system1", "system2"],
+  "scope_level": "SINGLE_SYSTEM",
+  "affected_components": ["component1", "component2"],
+  "dependencies": ["dependency1", "dependency2"],
+  "confidence": 0.8,
+  "reasoning": "explanation of analysis"
+}
+
+Choose ONE scope_level from: SINGLE_SYSTEM, CLUSTER, ENVIRONMENT, ORG_WIDE"""
     
     def _build_when_prompt(self) -> str:
         """Build system prompt for WHEN dimension analysis."""
@@ -462,7 +692,19 @@ Respond with JSON containing target_systems, scope_level, affected_components, d
 4. SCHEDULING CONSTRAINTS: Any timing restrictions
 5. BUSINESS HOURS REQUIRED: Whether this needs to be done during business hours
 
-Respond with JSON containing urgency, timeline_type, specific_timeline, scheduling_constraints, business_hours_required, confidence, and reasoning."""
+IMPORTANT: Respond with ONLY valid JSON in this exact format:
+{
+  "urgency": "LOW",
+  "timeline_type": "IMMEDIATE",
+  "specific_timeline": "specific time if mentioned or null",
+  "scheduling_constraints": ["constraint1", "constraint2"],
+  "business_hours_required": true,
+  "confidence": 0.8,
+  "reasoning": "explanation of analysis"
+}
+
+Choose ONE urgency from: LOW, MEDIUM, HIGH, CRITICAL
+Choose ONE timeline_type from: IMMEDIATE, SCHEDULED, MAINTENANCE, FLEXIBLE"""
     
     def _build_how_prompt(self) -> str:
         """Build system prompt for HOW dimension analysis."""
@@ -479,7 +721,18 @@ Respond with JSON containing urgency, timeline_type, specific_timeline, scheduli
 4. ROLLBACK NEEDED: Whether rollback capability is required
 5. TESTING REQUIRED: Whether testing is needed
 
-Respond with JSON containing method_preference, execution_constraints, approval_required, rollback_needed, testing_required, confidence, and reasoning."""
+IMPORTANT: Respond with ONLY valid JSON in this exact format:
+{
+  "method_preference": "AUTOMATED",
+  "execution_constraints": ["constraint1", "constraint2"],
+  "approval_required": false,
+  "rollback_needed": true,
+  "testing_required": false,
+  "confidence": 0.8,
+  "reasoning": "explanation of analysis"
+}
+
+Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
 
     async def _llm_analyze_what(self, message: str, context: Optional[Dict]) -> WhatAnalysis:
         """LLM-powered WHAT analysis using actual LLM intelligence."""
@@ -488,20 +741,29 @@ Respond with JSON containing method_preference, execution_constraints, approval_
         user_prompt = f"Analyze this user request: '{message}'"
         
         # Get LLM response
-        response = await self.llm_engine.generate_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=500,
-            temperature=0.1  # Low temperature for consistent analysis
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response_data = await self.llm_engine.generate(
+            prompt=full_prompt
         )
         
-        # Parse JSON response
-        import json
-        result = json.loads(response)
+        # Parse JSON response using robust extraction
+        result = extract_json_from_llm_response(response_data["generated_text"])
         
-        # Map action type string to enum
-        action_type_str = result.get('action_type', 'OPERATIONAL').upper()
-        action_type = ActionType(action_type_str.lower())
+        if result is None:
+            logger.warning(f"Failed to extract JSON from LLM response for WHAT analysis")
+            logger.debug(f"Raw LLM response: {response_data['generated_text']}")
+            # Fallback to default values
+            result = {
+                "action_type": "INFORMATION",
+                "specific_outcome": "Process user request",
+                "root_need": "Address user inquiry",
+                "confidence": 0.3,
+                "reasoning": "Fallback due to JSON parsing error"
+            }
+        
+        # Map action type string to enum with robust parsing
+        action_type_str = result.get('action_type', 'INFORMATION')
+        action_type = self._parse_action_type(action_type_str)
         
         return WhatAnalysis(
             action_type=action_type,
@@ -519,20 +781,30 @@ Respond with JSON containing method_preference, execution_constraints, approval_
         user_prompt = f"Analyze this user request: '{message}'"
         
         # Get LLM response
-        response = await self.llm_engine.generate_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=500,
-            temperature=0.1  # Low temperature for consistent analysis
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response_data = await self.llm_engine.generate(
+            prompt=full_prompt
         )
         
-        # Parse JSON response
-        import json
-        result = json.loads(response)
+        # Parse JSON response using robust extraction
+        result = extract_json_from_llm_response(response_data["generated_text"])
         
-        # Map scope level string to enum
+        if result is None:
+            logger.warning(f"Failed to extract JSON from LLM response for WHERE/WHAT analysis")
+            logger.debug(f"Raw LLM response: {response_data['generated_text']}")
+            # Fallback to default values
+            result = {
+                "target_systems": [],
+                "scope_level": "SINGLE_SYSTEM",
+                "affected_components": [],
+                "dependencies": [],
+                "confidence": 0.3,
+                "reasoning": "Fallback due to JSON parsing error"
+            }
+        
+        # Map scope level string to enum with robust parsing
         scope_level_str = result.get('scope_level', 'SINGLE_SYSTEM').upper()
-        scope_level = ScopeLevel(scope_level_str.lower())
+        scope_level = self._parse_scope_level(scope_level_str)
         
         return WhereWhatAnalysis(
             target_systems=result.get('target_systems', []),
@@ -550,23 +822,34 @@ Respond with JSON containing method_preference, execution_constraints, approval_
         user_prompt = f"Analyze this user request: '{message}'"
         
         # Get LLM response
-        response = await self.llm_engine.generate_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=500,
-            temperature=0.1  # Low temperature for consistent analysis
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response_data = await self.llm_engine.generate(
+            prompt=full_prompt
         )
         
-        # Parse JSON response
-        import json
-        result = json.loads(response)
+        # Parse JSON response using robust extraction
+        result = extract_json_from_llm_response(response_data["generated_text"])
         
-        # Map enum values
-        urgency_str = result.get('urgency', 'MEDIUM').upper()
-        urgency = UrgencyLevel(urgency_str.lower())
+        if result is None:
+            logger.warning(f"Failed to extract JSON from LLM response for WHEN analysis")
+            logger.debug(f"Raw LLM response: {response_data['generated_text']}")
+            # Fallback to default values
+            result = {
+                "urgency": "MEDIUM",
+                "timeline_type": "FLEXIBLE",
+                "specific_timeline": None,
+                "scheduling_constraints": [],
+                "business_hours_required": False,
+                "confidence": 0.3,
+                "reasoning": "Fallback due to JSON parsing error"
+            }
         
-        timeline_type_str = result.get('timeline_type', 'FLEXIBLE').upper()
-        timeline_type = TimelineType(timeline_type_str.lower())
+        # Map enum values with robust parsing
+        urgency_str = result.get('urgency', 'MEDIUM')
+        urgency = self._parse_urgency_level(urgency_str)
+        
+        timeline_type_str = result.get('timeline_type', 'FLEXIBLE')
+        timeline_type = self._parse_timeline_type(timeline_type_str)
         
         return WhenAnalysis(
             urgency=urgency,
@@ -585,20 +868,31 @@ Respond with JSON containing method_preference, execution_constraints, approval_
         user_prompt = f"Analyze this user request: '{message}'"
         
         # Get LLM response
-        response = await self.llm_engine.generate_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=500,
-            temperature=0.1  # Low temperature for consistent analysis
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        response_data = await self.llm_engine.generate(
+            prompt=full_prompt
         )
         
-        # Parse JSON response
-        import json
-        result = json.loads(response)
+        # Parse JSON response using robust extraction
+        result = extract_json_from_llm_response(response_data["generated_text"])
         
-        # Map method preference string to enum
-        method_str = result.get('method_preference', 'AUTOMATED').upper()
-        method_preference = MethodType(method_str.lower())
+        if result is None:
+            logger.warning(f"Failed to extract JSON from LLM response for HOW analysis")
+            logger.debug(f"Raw LLM response: {response_data['generated_text']}")
+            # Fallback to default values
+            result = {
+                "method_preference": "AUTOMATED",
+                "execution_constraints": [],
+                "approval_required": False,
+                "rollback_needed": False,
+                "testing_required": False,
+                "confidence": 0.3,
+                "reasoning": "Fallback due to JSON parsing error"
+            }
+        
+        # Map method preference string to enum with robust parsing
+        method_str = result.get('method_preference', 'AUTOMATED')
+        method_preference = self._parse_method_type(method_str)
         
         return HowAnalysis(
             method_preference=method_preference,

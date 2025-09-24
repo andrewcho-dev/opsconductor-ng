@@ -140,7 +140,8 @@ class IntentTechnicalBridge:
             
         except Exception as e:
             logger.error(f"Error converting 4W analysis to Technical Brain input: {e}")
-            return self._create_fallback_technical_input(four_w_analysis, str(e))
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"4W to Technical Brain conversion FAILED - NO FALLBACKS ALLOWED: {e}")
     
     def _map_action_to_itil(self, action_type: ActionType) -> str:
         """Map 4W action type to ITIL service type."""
@@ -209,26 +210,7 @@ class IntentTechnicalBridge:
             MethodType.HYBRID: ["hybrid_orchestration", "semi_automated_execution"]
         }
     
-    def _create_fallback_technical_input(self, four_w_analysis: FourWAnalysis, error: str) -> Dict[str, Any]:
-        """Create fallback technical input when conversion fails."""
-        logger.warning(f"Using fallback technical input due to error: {error}")
-        
-        return {
-            "itil_service_type": "service_request",
-            "business_intent": "Process user request",
-            "technical_requirements": ["basic_execution"],
-            "urgency_level": "medium",
-            "scope_level": "single_system",
-            "execution_method_preference": "guided",
-            "resource_complexity": "MEDIUM",
-            "estimated_effort": "HOURS",
-            "overall_confidence": 0.3,
-            "error_info": {
-                "conversion_error": error,
-                "fallback_used": True,
-                "timestamp": datetime.now().isoformat()
-            }
-        }
+
     
     def get_conversion_stats(self) -> Dict[str, Any]:
         """Get statistics about 4W to Technical conversions."""

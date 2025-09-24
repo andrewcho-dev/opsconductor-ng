@@ -320,7 +320,7 @@ Classify the intent and extract relevant information:"""
         
         if not template:
             logger.warning(f"No response template found for intent: {template_key}")
-            return await self._fallback_response(user_request, intent, context)
+            raise Exception(f"No response template found for intent: {template_key} - NO FALLBACKS ALLOWED")
         
         logger.info(f"Using response template: {template_key}")
         
@@ -502,13 +502,3 @@ Respond with JSON only:
             "analysis": analysis_results
         }
     
-    async def _fallback_response(self, user_request: str, intent: IntentClassification,
-                               context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """Fallback response when no template matches"""
-        return {
-            "response_type": "fallback",
-            "status": "template_not_found",
-            "details": f"No response template available for intent: {intent.primary_category.value}.{intent.subcategory.value}",
-            "intent": intent,
-            "recommendation": "Consider adding a response template for this intent pattern"
-        }

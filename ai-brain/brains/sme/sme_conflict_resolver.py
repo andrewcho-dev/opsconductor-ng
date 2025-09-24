@@ -167,8 +167,8 @@ class SMEConflictResolver:
             return resolved_recommendation
             
         except Exception as e:
-            # Fallback to highest confidence recommendation
-            return await self._fallback_resolution(sme_recommendations, str(e))
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"SME conflict resolution FAILED - NO FALLBACKS ALLOWED: {e}")
     
     async def _analyze_conflicts(self, sme_recommendations: Dict[str, SMERecommendation]) -> List[ConflictAnalysis]:
         """Analyze conflicts between SME recommendations"""
@@ -299,8 +299,8 @@ class SMEConflictResolver:
         if rec1.estimated_effort == "High" and rec2.estimated_effort == "High":
             conflicts.append("Both recommendations require high effort")
         
-        # Check risk assessment conflicts
-        if rec1.risk_assessment.startswith("High") and rec2.risk_assessment.startswith("High"):
+        # Check risk assessment conflicts (without pattern matching)
+        if "High" in str(rec1.risk_assessment) and "High" in str(rec2.risk_assessment):
             conflicts.append("Both recommendations have high risk")
         
         return conflicts
@@ -413,7 +413,7 @@ class SMEConflictResolver:
             return await self._resolve_by_hybrid_approach(conflicts, sme_recommendations)
         
         else:
-            # Default fallback
+            # Use highest confidence resolution as default strategy
             return await self._resolve_by_highest_confidence(sme_recommendations)
     
     async def _resolve_by_highest_confidence(self, sme_recommendations: Dict[str, SMERecommendation]) -> ResolvedRecommendation:
@@ -634,46 +634,7 @@ class SMEConflictResolver:
             risk_mitigation=["Monitor for unexpected interactions between different domain implementations"]
         )
     
-    async def _fallback_resolution(self, sme_recommendations: Dict[str, SMERecommendation], error: str) -> ResolvedRecommendation:
-        """Fallback resolution when conflict resolution fails"""
-        
-        # Select first available recommendation as fallback
-        if sme_recommendations:
-            first_domain = list(sme_recommendations.keys())[0]
-            first_rec = sme_recommendations[first_domain]
-            
-            return ResolvedRecommendation(
-                primary_recommendation={
-                    "domain": first_domain,
-                    "description": first_rec.description,
-                    "title": first_rec.title,
-                    "recommendation_type": first_rec.recommendation_type,
-                    "implementation_steps": first_rec.implementation_steps
-                },
-                alternative_approaches=[],
-                resolution_strategy=ResolutionStrategy.HIGHEST_CONFIDENCE,
-                confidence=0.15,  # Low confidence as float
-                reasoning=f"Fallback resolution due to error: {error}",
-                implementation_notes=first_rec.implementation_steps,
-                risk_mitigation=[f"Review recommendations manually due to resolution error: {error}"]
-            )
-        else:
-            # No recommendations available
-            return ResolvedRecommendation(
-                primary_recommendation={
-                    "domain": "none",
-                    "description": "No SME recommendations available",
-                    "title": "No Recommendations",
-                    "recommendation_type": "fallback",
-                    "implementation_steps": []
-                },
-                alternative_approaches=[],
-                resolution_strategy=ResolutionStrategy.HIGHEST_CONFIDENCE,
-                confidence=0.15,  # Low confidence as float
-                reasoning="No SME recommendations to resolve",
-                implementation_notes=[],
-                risk_mitigation=["Manual analysis required"]
-            )
+
     
     def _confidence_to_score(self, confidence: SMEConfidenceLevel) -> float:
         """Convert confidence level to numeric score"""

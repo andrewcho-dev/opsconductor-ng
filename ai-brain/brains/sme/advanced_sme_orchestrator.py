@@ -686,8 +686,8 @@ class AdvancedSMEOrchestrator:
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         
-        # Create fallback resolved recommendation
-        fallback_recommendation = ResolvedRecommendation(
+        # Create error resolved recommendation
+        error_recommendation = ResolvedRecommendation(
             primary_recommendation={
                 "domain": "error_handling",
                 "description": f"Consultation failed: {error}",
@@ -704,7 +704,7 @@ class AdvancedSMEOrchestrator:
         )
         
         return ConsultationResult(
-            resolved_recommendation=fallback_recommendation,
+            resolved_recommendation=error_recommendation,
             consultation_metadata={"error": error, "pattern": request.pattern.value},
             consulted_domains=[],
             consultation_duration=duration,

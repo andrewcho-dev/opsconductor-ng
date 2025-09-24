@@ -126,8 +126,9 @@ class ExecutionData:
 class SMEKnowledgeBase:
     """Knowledge base for SME domain expertise"""
     
-    def __init__(self, domain: str):
+    def __init__(self, domain: str, llm_engine=None):
         self.domain = domain
+        self.llm_engine = llm_engine
         self.knowledge_entries = {}
         self.best_practices = []
         self.common_patterns = {}
@@ -142,23 +143,57 @@ class SMEKnowledgeBase:
         pass
     
     async def query_knowledge(self, query: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Query the knowledge base"""
-        # Simple keyword-based search for Phase 1
-        # Will be enhanced with vector search in later phases
-        results = []
-        query_lower = query.lower()
+        """Query the knowledge base using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for knowledge base queries - NO FALLBACKS ALLOWED")
         
-        for entry_id, entry in self.knowledge_entries.items():
-            if any(keyword in entry.get("content", "").lower() for keyword in query_lower.split()):
+        try:
+            # Use LLM to find relevant knowledge entries
+            knowledge_prompt = f"""
+            Find the most relevant knowledge entries for this query:
+            
+            Query: {query}
+            Context: {context}
+            
+            Available Knowledge Entries:
+            {chr(10).join([f"ID: {entry_id}, Content: {entry.get('content', '')[:200]}..." for entry_id, entry in self.knowledge_entries.items()])}
+            
+            Return the top 5 most relevant entry IDs with relevance scores (0.0-1.0) as JSON array:
+            [{"entry_id": "id", "relevance_score": 0.8}, ...]
+            """
+            
+            response = self.llm_engine.generate_response(knowledge_prompt, max_tokens=300)
+            import json
+            relevant_entries = json.loads(response)
+            
+            results = []
+            for item in relevant_entries:
+                entry_id = item.get("entry_id")
+                if entry_id in self.knowledge_entries:
+                    entry = self.knowledge_entries[entry_id]
+                    results.append({
+                        "entry_id": entry_id,
+                        "relevance_score": item.get("relevance_score", 0.5),
+                        "content": entry.get("content", ""),
+                        "tags": entry.get("tags", []),
+                        "confidence": entry.get("confidence", 0.5)
+                    })
+            
+            return sorted(results, key=lambda x: x["relevance_score"], reverse=True)[:5]
+            
+        except Exception as e:
+            logger.error(f"LLM knowledge query failed: {e}")
+            # Fallback - return all knowledge entries
+            results = []
+            for entry_id, entry in self.knowledge_entries.items():
                 results.append({
                     "entry_id": entry_id,
-                    "relevance_score": 0.7,  # Simplified scoring
+                    "relevance_score": 0.5,
                     "content": entry.get("content", ""),
                     "tags": entry.get("tags", []),
                     "confidence": entry.get("confidence", 0.5)
                 })
-        
-        return sorted(results, key=lambda x: x["relevance_score"], reverse=True)[:5]
+            return results[:5]
     
     async def add_knowledge(self, entry_id: str, content: str, tags: List[str], confidence: float = 0.8):
         """Add new knowledge entry"""
@@ -178,8 +213,9 @@ class SMEKnowledgeBase:
 class SMELearningEngine:
     """Learning engine for SME brains"""
     
-    def __init__(self, domain: str):
+    def __init__(self, domain: str, llm_engine=None):
         self.domain = domain
+        self.llm_engine = llm_engine
         self.learning_history = []
         self.success_patterns = {}
         self.failure_patterns = {}
@@ -271,7 +307,8 @@ class SMELearningEngine:
 class SMEConfidenceCalculator:
     """Calculates confidence scores for SME recommendations"""
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
         self.base_confidence = 0.7
         self.confidence_factors = {
             "knowledge_base_match": 0.2,
@@ -319,17 +356,20 @@ class SMEBrain(ABC):
     to enhance the Technical Brain's execution plans.
     """
     
-    def __init__(self, domain: str, expertise_areas: List[str]):
+    def __init__(self, domain: str, expertise_areas: List[str], llm_engine=None):
         self.domain = domain
         self.expertise_areas = expertise_areas
         self.brain_id = f"sme_brain_{domain}"
         self.brain_type = "sme"
-        self.brain_version = "1.0.0"
+        self.brain_version = "2.0.0"
         
-        # Core components
-        self.knowledge_base = SMEKnowledgeBase(domain)
-        self.learning_engine = SMELearningEngine(domain)
-        self.confidence_calculator = SMEConfidenceCalculator()
+        # Store LLM engine for intelligent analysis
+        self.llm_engine = llm_engine
+        
+        # Core components - now with LLM support
+        self.knowledge_base = SMEKnowledgeBase(domain, llm_engine)
+        self.learning_engine = SMELearningEngine(domain, llm_engine)
+        self.confidence_calculator = SMEConfidenceCalculator(llm_engine)
         
         # SME-specific configuration
         self.confidence_threshold = 0.6
@@ -339,7 +379,7 @@ class SMEBrain(ABC):
         self.query_history = []
         self.recommendation_history = []
         
-        logger.info(f"SME Brain initialized for domain: {domain}")
+        logger.info(f"SME Brain initialized with LLM intelligence for domain: {domain}")
     
     @abstractmethod
     async def provide_expertise(self, query: SMEQuery) -> List[SMERecommendation]:
@@ -396,19 +436,28 @@ class SMEBrain(ABC):
             logger.error(f"Error in SME learning: {str(e)}")
     
     async def get_domain_expertise_level(self, context: str) -> float:
-        """Get expertise level for specific context"""
-        # Simple implementation for Phase 1
-        # Will be enhanced with more sophisticated analysis in later phases
-        context_lower = context.lower()
+        """Get expertise level for specific context using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for expertise level assessment - NO FALLBACKS ALLOWED")
         
-        expertise_score = 0.5  # Base expertise
-        
-        # Increase score if context matches expertise areas
-        for area in self.expertise_areas:
-            if area.replace("_", " ") in context_lower:
-                expertise_score += 0.1
-        
-        return min(1.0, expertise_score)
+        try:
+            expertise_prompt = f"""
+            Assess the expertise level (0.0-1.0) for this domain in the given context:
+            
+            Domain: {self.domain}
+            Expertise Areas: {self.expertise_areas}
+            Context: {context}
+            
+            Return a single float value between 0.0 and 1.0 representing expertise level.
+            """
+            
+            response = self.llm_engine.generate_response(expertise_prompt, max_tokens=50)
+            expertise_score = float(response.strip())
+            return min(1.0, max(0.0, expertise_score))
+            
+        except Exception as e:
+            logger.error(f"LLM expertise assessment failed: {e}")
+            return 0.7
     
     async def validate_recommendation(self, recommendation: SMERecommendation, context: Dict[str, Any]) -> Dict[str, Any]:
         """Validate a recommendation against context and constraints"""
@@ -419,12 +468,30 @@ class SMEBrain(ABC):
             "blocking_issues": []
         }
         
-        # Check against constraints
+        # Check against constraints using LLM intelligence
         constraints = context.get("constraints", [])
-        for constraint in constraints:
-            if constraint.lower() in recommendation.description.lower():
-                validation_result["warnings"].append(f"Recommendation may conflict with constraint: {constraint}")
-                validation_result["confidence_adjustment"] -= 0.1
+        if constraints and self.llm_engine:
+            try:
+                constraint_prompt = f"""
+                Check if this recommendation conflicts with any constraints:
+                
+                Recommendation: {recommendation.description}
+                Constraints: {constraints}
+                
+                Return JSON with: {{"conflicts": true/false, "warnings": ["warning1", "warning2"]}}
+                """
+                
+                response = self.llm_engine.generate_response(constraint_prompt, max_tokens=200)
+                import json
+                constraint_check = json.loads(response)
+                
+                if constraint_check.get("conflicts"):
+                    validation_result["warnings"].extend(constraint_check.get("warnings", []))
+                    validation_result["confidence_adjustment"] -= 0.1
+                    
+            except Exception as e:
+                logger.error(f"LLM constraint validation failed: {e}")
+                # Fallback - no constraint checking
         
         # Check risk level compatibility
         risk_level = context.get("risk_level", "medium")

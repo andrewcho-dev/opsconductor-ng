@@ -632,7 +632,7 @@ Always be helpful, professional, and technically accurate. Use the actual infras
         
         import re
         
-        # Use intent analysis if available, otherwise fall back to pattern matching
+        # Use intent analysis - NO PATTERN MATCHING FALLBACKS
         intent_analysis = intent_analysis or {}
         detected_intent = intent_analysis.get("intent", "unknown")
         intent_confidence = intent_analysis.get("confidence", 0.0)

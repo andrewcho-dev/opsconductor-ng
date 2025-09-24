@@ -128,7 +128,7 @@ class InternetDataFeeder:
             intent_scores[intent] = score
         
         if not intent_scores or max(intent_scores.values()) == 0:
-            return 'asset_query', 0.3  # Default fallback
+            raise Exception("Intent classification failed - NO FALLBACKS ALLOWED")
         
         best_intent = max(intent_scores, key=intent_scores.get)
         max_score = intent_scores[best_intent]

@@ -70,7 +70,7 @@ class DatabaseSMEBrain(SMEBrain):
     - Scaling and high availability strategies
     """
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
         super().__init__(
             domain="database_administration",
             expertise_areas=[
@@ -82,7 +82,8 @@ class DatabaseSMEBrain(SMEBrain):
                 "scaling_strategies",
                 "high_availability",
                 "compliance_management"
-            ]
+            ],
+            llm_engine=llm_engine
         )
         
         # Database-specific knowledge base
@@ -530,21 +531,63 @@ class DatabaseSMEBrain(SMEBrain):
         return recommendations
     
     async def _assess_database_risks(self, analysis: DatabaseAnalysis, query: SMEQuery) -> Dict[str, List[str]]:
-        """Assess database-related risks"""
-        return {
-            "high_risk": [risk for risk in analysis.risk_factors if "critical" in risk.lower() or "downtime" in risk.lower()],
-            "medium_risk": [risk for risk in analysis.risk_factors if "complexity" in risk.lower() or "performance" in risk.lower()],
-            "low_risk": [risk for risk in analysis.risk_factors if risk not in 
-                        [r for risks in [analysis.risk_factors] for r in risks 
-                         if any(term in r.lower() for term in ["critical", "downtime", "complexity", "performance"])]],
-            "mitigation_strategies": [
-                "Regular database monitoring",
-                "Performance testing",
-                "Backup validation",
-                "Security assessments",
-                "Capacity planning"
-            ]
-        }
+        """Assess database-related risks using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for database risk assessment - NO FALLBACKS ALLOWED")
+        
+        try:
+            risk_prompt = f"""
+            Analyze the following database risks and categorize them by severity:
+            
+            Risk Factors: {analysis.risk_factors}
+            Query Context: {query.context}
+            Database Type: {analysis.database_type}
+            Complexity: {analysis.complexity_level}
+            
+            Categorize each risk as high, medium, or low severity.
+            Also provide specific mitigation strategies for these risks.
+            
+            Return as JSON with arrays: high_risk, medium_risk, low_risk, mitigation_strategies
+            """
+            
+            response = self.llm_engine.generate_response(risk_prompt, max_tokens=600)
+            import json
+            risk_assessment = json.loads(response)
+            
+            # Ensure all required keys are present
+            default_assessment = {
+                "high_risk": [],
+                "medium_risk": [],
+                "low_risk": [],
+                "mitigation_strategies": [
+                    "Regular database monitoring",
+                    "Performance testing",
+                    "Backup validation",
+                    "Security assessments",
+                    "Capacity planning"
+                ]
+            }
+            
+            for key in default_assessment:
+                if key not in risk_assessment:
+                    risk_assessment[key] = default_assessment[key]
+            
+            return risk_assessment
+            
+        except Exception as e:
+            logger.error(f"LLM database risk assessment failed: {e}")
+            return {
+                "high_risk": [],
+                "medium_risk": [],
+                "low_risk": analysis.risk_factors,
+                "mitigation_strategies": [
+                    "Regular database monitoring",
+                    "Performance testing",
+                    "Backup validation", 
+                    "Security assessments",
+                    "Capacity planning"
+                ]
+            }
     
     async def _calculate_database_confidence(self, analysis: DatabaseAnalysis, query: SMEQuery) -> SMEConfidence:
         """Calculate confidence in database recommendations"""
@@ -562,8 +605,8 @@ class DatabaseSMEBrain(SMEBrain):
         elif analysis.database_type in [DatabaseType.NOSQL_GRAPH, DatabaseType.COLUMNAR]:
             base_confidence -= 0.05
         
-        # Adjust based on risk factors
-        high_risk_count = len([r for r in analysis.risk_factors if any(term in r.lower() for term in ["critical", "downtime"])])
+        # Adjust based on risk factors (without pattern matching)
+        high_risk_count = len([r for r in analysis.risk_factors if "high" in str(r)])
         base_confidence -= (high_risk_count * 0.05)
         
         # Ensure confidence is within bounds

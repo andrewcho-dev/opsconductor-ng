@@ -330,42 +330,10 @@ class MultiBrainCoordinator:
             
         except Exception as e:
             logger.error(f"Advanced SME consultation failed: {e}")
-            # Fallback to legacy consultation
-            return await self._legacy_sme_consultation(intent_result, technical_result)
+            # NO FALLBACKS ALLOWED - FAIL HARD
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Advanced SME consultation failed: {e}")
     
-    async def _legacy_sme_consultation(self, intent_result: Dict[str, Any],
-                                     technical_result: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-        """Legacy SME consultation method for fallback."""
-        sme_results = {}
-        
-        try:
-            if not self.brain_registry:
-                logger.warning("No brain registry available for SME consultation")
-                return sme_results
-            
-            # Determine which SME brains to consult
-            required_smes = self._identify_required_smes(intent_result, technical_result)
-            
-            # Consult each relevant SME brain
-            for sme_type in required_smes:
-                sme_brain = self.brain_registry.get_brain(f"{sme_type}_sme")
-                if sme_brain:
-                    try:
-                        sme_result = await sme_brain.provide_expertise(intent_result, technical_result)
-                        sme_results[f"{sme_type}_sme"] = sme_result
-                    except Exception as e:
-                        logger.warning(f"SME consultation failed for {sme_type}: {e}")
-                        sme_results[f"{sme_type}_sme"] = {
-                            "error": str(e),
-                            "confidence": 0.0,
-                            "recommendations": []
-                        }
-            
-            return sme_results
-            
-        except Exception as e:
-            logger.error(f"Legacy SME consultation failed: {e}")
-            return sme_results
+
     
     def _identify_required_smes(self, intent_result: Dict[str, Any],
                               technical_result: Optional[Dict[str, Any]]) -> List[str]:

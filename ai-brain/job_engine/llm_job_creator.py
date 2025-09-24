@@ -530,28 +530,9 @@ Job Name:"""
             if len(job_name) > 80:
                 job_name = job_name[:77] + "..."
             
-            # Fallback to a reasonable default if the LLM response is empty or too short
+            # NO FALLBACKS ALLOWED - FAIL HARD if LLM response is inadequate
             if not job_name or len(job_name) < 5:
-                # Create a fallback name based on intent and targets
-                action_map = {
-                    "system_maintenance": "System Maintenance",
-                    "deployment": "Application Deployment", 
-                    "monitoring_setup": "Monitoring Setup",
-                    "security_audit": "Security Audit",
-                    "backup_restore": "Backup & Restore",
-                    "configuration_change": "Configuration Update",
-                    "troubleshooting": "System Troubleshooting",
-                    "service_management": "Service Management",
-                    "automation_request": "Automation Task"
-                }
-                
-                base_name = action_map.get(analysis.intent_type, "Automation Task")
-                
-                if analysis.target_systems:
-                    targets = ', '.join(analysis.target_systems[:2])  # Limit to first 2 targets
-                    job_name = f"{base_name} on {targets}"
-                else:
-                    job_name = base_name
+                raise RuntimeError(f"NO FALLBACKS ALLOWED: LLM failed to generate adequate job name. Response: '{job_name}'")
             
             logger.info(f"Generated intelligent job name: '{job_name}' for request: '{description[:50]}...'")
             return job_name

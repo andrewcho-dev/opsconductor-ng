@@ -63,8 +63,8 @@ class IntentAnalysisResult:
             "action_type": self.four_w_analysis.what_analysis.action_type.value,
             "specific_outcome": self.four_w_analysis.what_analysis.specific_outcome,
             "root_need": self.four_w_analysis.what_analysis.root_need,
-            "target_systems": self.four_w_analysis.where_analysis.target_systems,
-            "scope_level": self.four_w_analysis.where_analysis.scope_level.value,
+            "target_systems": self.four_w_analysis.where_what_analysis.target_systems,
+            "scope_level": self.four_w_analysis.where_what_analysis.scope_level.value,
             "urgency": self.four_w_analysis.when_analysis.urgency.value,
             "timeline_type": self.four_w_analysis.when_analysis.timeline_type.value,
             "method_preference": self.four_w_analysis.how_analysis.method_preference.value,
@@ -284,7 +284,7 @@ class IntentBrain:
     def _generate_intent_summary_from_4w(self, four_w: FourWAnalysis) -> str:
         """Generate a concise summary using ONLY 4W analysis."""
         action_type = four_w.what_analysis.action_type.value.replace('_', ' ').title()
-        scope = four_w.where_analysis.scope_level.value.replace('_', ' ')
+        scope = four_w.where_what_analysis.scope_level.value.replace('_', ' ')
         urgency = four_w.when_analysis.urgency.value
         outcome = four_w.what_analysis.specific_outcome
         
@@ -295,7 +295,7 @@ class IntentBrain:
         """Determine recommended approach using ONLY 4W analysis."""
         action_type = four_w.what_analysis.action_type
         urgency = four_w.when_analysis.urgency
-        scope = four_w.where_analysis.scope_level
+        scope = four_w.where_what_analysis.scope_level
         method = four_w.how_analysis.method_preference
         
         # High-level approach mapping based on 4W dimensions

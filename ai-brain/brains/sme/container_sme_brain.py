@@ -40,10 +40,10 @@ class ContainerSMEBrain(SMEBrain):
         "image_management"
     ]
     
-    def __init__(self):
-        super().__init__(self.domain, self.expertise_areas)
+    def __init__(self, llm_engine=None):
+        super().__init__(self.domain, self.expertise_areas, llm_engine)
         self._load_container_knowledge()
-        logger.info("Container SME Brain initialized")
+        logger.info("Container SME Brain initialized with LLM intelligence")
     
     def _load_container_knowledge(self):
         """Load container-specific knowledge base"""

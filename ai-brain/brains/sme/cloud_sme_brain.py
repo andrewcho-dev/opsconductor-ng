@@ -237,54 +237,60 @@ class CloudSMEBrain(SMEBrain):
             )
     
     async def _analyze_cloud_intent(self, query: SMEQuery) -> Dict[str, Any]:
-        """Analyze the query for cloud-related intent and requirements"""
-        intent_analysis = {
-            "cloud_providers": [],
-            "service_types": [],
-            "optimization_focus": [],
-            "scalability_requirements": {},
-            "security_requirements": [],
-            "cost_constraints": {},
-            "reasoning": ""
-        }
+        """Analyze the query for cloud-related intent and requirements using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for cloud intent analysis - NO FALLBACKS ALLOWED")
         
-        query_text = f"{query.context} {' '.join(query.specific_questions)}".lower()
-        
-        # Detect cloud providers
-        for provider in CloudProvider:
-            if provider.value in query_text or provider.name.lower() in query_text:
-                intent_analysis["cloud_providers"].append(provider)
-        
-        # Detect service types
-        for service_type in CloudServiceType:
-            if service_type.value in query_text:
-                intent_analysis["service_types"].append(service_type)
-        
-        # Detect optimization focus
-        optimization_keywords = {
-            "cost": ["cost", "price", "budget", "expensive", "cheap", "optimize"],
-            "performance": ["performance", "speed", "latency", "throughput"],
-            "scalability": ["scale", "scaling", "elastic", "auto-scale"],
-            "security": ["security", "secure", "compliance", "encryption"]
-        }
-        
-        for focus, keywords in optimization_keywords.items():
-            if any(keyword in query_text for keyword in keywords):
-                intent_analysis["optimization_focus"].append(focus)
-        
-        # Extract scalability requirements
-        if "scale" in query_text:
-            intent_analysis["scalability_requirements"] = {
-                "auto_scaling": "auto" in query_text or "automatic" in query_text,
-                "horizontal": "horizontal" in query_text,
-                "vertical": "vertical" in query_text,
-                "elastic": "elastic" in query_text
+        try:
+            cloud_prompt = f"""
+            Analyze this query for cloud-related intent and requirements:
+            
+            Query Context: {query.context}
+            Specific Questions: {query.specific_questions}
+            
+            Identify:
+            1. Cloud providers mentioned (AWS, Azure, GCP, etc.)
+            2. Service types (compute, storage, database, networking, etc.)
+            3. Optimization focus (cost, performance, scalability, security)
+            4. Scalability requirements
+            5. Security requirements
+            6. Cost constraints
+            
+            Return as JSON with these keys: cloud_providers, service_types, optimization_focus, scalability_requirements, security_requirements, cost_constraints, reasoning
+            """
+            
+            response = self.llm_engine.generate_response(cloud_prompt, max_tokens=600)
+            import json
+            intent_analysis = json.loads(response)
+            
+            # Ensure all required keys are present
+            default_analysis = {
+                "cloud_providers": [],
+                "service_types": [],
+                "optimization_focus": [],
+                "scalability_requirements": {},
+                "security_requirements": [],
+                "cost_constraints": {},
+                "reasoning": ""
             }
-        
-        # Build reasoning
-        intent_analysis["reasoning"] = self._build_analysis_reasoning(intent_analysis)
-        
-        return intent_analysis
+            
+            for key in default_analysis:
+                if key not in intent_analysis:
+                    intent_analysis[key] = default_analysis[key]
+            
+            return intent_analysis
+            
+        except Exception as e:
+            logger.error(f"LLM cloud intent analysis failed: {e}")
+            return {
+                "cloud_providers": [],
+                "service_types": [],
+                "optimization_focus": [],
+                "scalability_requirements": {},
+                "security_requirements": [],
+                "cost_constraints": {},
+                "reasoning": "LLM analysis failed"
+            }
     
     async def _generate_cloud_recommendations(self, analysis: Dict[str, Any], query: SMEQuery) -> Dict[str, Any]:
         """Generate cloud-specific recommendations based on analysis"""

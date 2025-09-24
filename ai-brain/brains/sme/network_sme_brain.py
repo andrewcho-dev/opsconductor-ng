@@ -59,7 +59,7 @@ class NetworkSMEBrain(SMEBrain):
     - Network security and compliance
     """
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
         super().__init__(
             domain="network_infrastructure",
             expertise_areas=[
@@ -71,7 +71,8 @@ class NetworkSMEBrain(SMEBrain):
                 "traffic_analysis",
                 "routing_optimization",
                 "network_monitoring"
-            ]
+            ],
+            llm_engine=llm_engine
         )
         
         # Network-specific knowledge base
@@ -386,9 +387,9 @@ class NetworkSMEBrain(SMEBrain):
                 "Set up QoS policies for critical traffic"
             ])
         
-        # Security recommendations
+        # Security recommendations (without pattern matching)
         recommendations.extend([
-            f"Implement {consideration.lower()}" for consideration in analysis.security_considerations[:3]
+            f"Implement {consideration}" for consideration in analysis.security_considerations[:3]
         ])
         
         # Optimization recommendations
@@ -397,20 +398,60 @@ class NetworkSMEBrain(SMEBrain):
         return recommendations
     
     async def _assess_network_risks(self, analysis: NetworkAnalysis, query: SMEQuery) -> Dict[str, List[str]]:
-        """Assess network-related risks"""
-        return {
-            "high_risk": [risk for risk in analysis.risk_factors if "vulnerability" in risk.lower()],
-            "medium_risk": [risk for risk in analysis.risk_factors if "complexity" in risk.lower()],
-            "low_risk": [risk for risk in analysis.risk_factors if risk not in 
-                        [r for risks in [analysis.risk_factors] for r in risks 
-                         if "vulnerability" in r.lower() or "complexity" in r.lower()]],
-            "mitigation_strategies": [
-                "Implement network monitoring",
-                "Regular security assessments",
-                "Redundancy planning",
-                "Performance testing"
-            ]
-        }
+        """Assess network-related risks using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for network risk assessment - NO FALLBACKS ALLOWED")
+        
+        try:
+            risk_prompt = f"""
+            Analyze the following network risks and categorize them by severity:
+            
+            Risk Factors: {analysis.risk_factors}
+            Query Context: {query.context}
+            Network Topology: {analysis.topology_type}
+            
+            Categorize each risk as high, medium, or low severity.
+            Also provide specific mitigation strategies for these risks.
+            
+            Return as JSON with arrays: high_risk, medium_risk, low_risk, mitigation_strategies
+            """
+            
+            response = self.llm_engine.generate_response(risk_prompt, max_tokens=600)
+            import json
+            risk_assessment = json.loads(response)
+            
+            # Ensure all required keys are present
+            default_assessment = {
+                "high_risk": [],
+                "medium_risk": [],
+                "low_risk": [],
+                "mitigation_strategies": [
+                    "Implement network monitoring",
+                    "Regular security assessments",
+                    "Redundancy planning",
+                    "Performance testing"
+                ]
+            }
+            
+            for key in default_assessment:
+                if key not in risk_assessment:
+                    risk_assessment[key] = default_assessment[key]
+            
+            return risk_assessment
+            
+        except Exception as e:
+            logger.error(f"LLM network risk assessment failed: {e}")
+            return {
+                "high_risk": [],
+                "medium_risk": [],
+                "low_risk": analysis.risk_factors,
+                "mitigation_strategies": [
+                    "Implement network monitoring",
+                    "Regular security assessments",
+                    "Redundancy planning",
+                    "Performance testing"
+                ]
+            }
     
     async def _calculate_network_confidence(self, analysis: NetworkAnalysis, query: SMEQuery) -> SMEConfidence:
         """Calculate confidence in network recommendations"""

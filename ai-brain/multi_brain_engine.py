@@ -107,17 +107,18 @@ class MultiBrainAIEngine:
         
         # Store service clients
         self.asset_client = asset_client
+        self.llm_engine = llm_engine
         
-        # Initialize brain components
+        # Initialize brain components - ALL brains now use LLM for intelligence
         self.intent_brain = IntentBrain(llm_engine)
-        self.technical_brain = TechnicalBrain()
+        self.technical_brain = TechnicalBrain(llm_engine)
         
-        # Initialize SME brains (Phase 2: All SME brains)
+        # Initialize SME brains (Phase 2: All SME brains) - ALL now use LLM for intelligence
         self.sme_brains = {
-            "container_orchestration": ContainerSMEBrain(),
-            "security_and_compliance": SecuritySMEBrain(),
-            "network_infrastructure": NetworkSMEBrain(),
-            "database_administration": DatabaseSMEBrain()
+            "container_orchestration": ContainerSMEBrain(llm_engine),
+            "security_and_compliance": SecuritySMEBrain(llm_engine),
+            "network_infrastructure": NetworkSMEBrain(llm_engine),
+            "database_administration": DatabaseSMEBrain(llm_engine)
         }
         
         # Initialize Brain Communication Protocol
@@ -197,10 +198,47 @@ class MultiBrainAIEngine:
             ip_addresses = re.findall(ip_pattern, query)
             logger.info(f"🔍 Found IP addresses in query: {ip_addresses}")
             
-            # Check if this is a counting or general asset query
-            query_lower = query.lower()
-            is_counting_query = any(phrase in query_lower for phrase in ['how many', 'count of', 'number of', 'total', 'list all', 'show all'])
-            is_general_query = any(phrase in query_lower for phrase in ['assets', 'systems', 'machines', 'devices', 'windows', 'linux', 'ubuntu'])
+            # Use LLM to intelligently determine if this query needs asset data
+            if not self.llm_engine:
+                logger.warning("🔍 No LLM engine available for intelligent query analysis")
+                return None
+            
+            # Ask LLM to analyze if this query needs asset information
+            analysis_prompt = f"""Analyze this user query and determine if it requires asset/system information to answer:
+
+Query: "{query}"
+
+Does this query require information about IT assets, systems, machines, or infrastructure to provide a complete answer?
+Answer with just "YES" or "NO" and a brief reason.
+
+Examples:
+- "How many Windows 11 machines do we have?" -> YES (needs asset data)
+- "What is 192.168.1.100?" -> YES (needs specific asset data)  
+- "How do I configure Docker?" -> NO (general knowledge question)
+- "List all Linux servers" -> YES (needs asset data)
+"""
+
+            try:
+                llm_response = await self.llm_engine.chat(
+                    message=analysis_prompt,
+                    system_prompt="You are an intelligent query analyzer. Determine if queries need asset/infrastructure data."
+                )
+                
+                needs_assets = False
+                if llm_response and 'content' in llm_response:
+                    response_content = llm_response['content'].upper()
+                    needs_assets = 'YES' in response_content
+                    logger.info(f"🧠 LLM determined query needs assets: {needs_assets}")
+                
+                if not needs_assets:
+                    logger.info("🔍 LLM determined query doesn't need asset data")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error in LLM query analysis: {str(e)}")
+                # Fall back to checking for IP addresses only
+                if not ip_addresses:
+                    return None
             
             if ip_addresses:
                 # Look up specific IP addresses
@@ -217,9 +255,9 @@ class MultiBrainAIEngine:
                 logger.info(f"🔍 Asset lookup result: {len(asset_info)} assets found")
                 return asset_info if asset_info else None
                 
-            elif is_counting_query or is_general_query:
-                # Fetch all assets for counting/general queries
-                logger.info("🔍 Fetching all assets for counting/general query")
+            else:
+                # Fetch all assets for intelligent analysis
+                logger.info("🔍 Fetching all assets for intelligent LLM analysis")
                 all_assets = await self.asset_client.get_all_assets()
                 if all_assets:
                     asset_info = {}
@@ -228,132 +266,101 @@ class MultiBrainAIEngine:
                         if ip:
                             asset_info[ip] = asset
                     
-                    logger.info(f"✅ Fetched {len(asset_info)} assets for counting/general query")
+                    logger.info(f"✅ Fetched {len(asset_info)} assets for intelligent analysis")
                     return asset_info if asset_info else None
                 else:
                     logger.warning("❌ No assets found in system")
                     return None
-            else:
-                logger.info("🔍 No IP addresses found and not a counting/general query")
-                return None
             
         except Exception as e:
             logger.error(f"❌ Error looking up asset information: {str(e)}")
             return None
     
-    def _generate_direct_asset_answer(self, query: str, formatted_assets: List[Dict]) -> Optional[str]:
+    async def _generate_intelligent_asset_answer(self, query: str, formatted_assets: List[Dict]) -> Optional[str]:
         """
-        Generate a direct answer for simple informational queries about assets.
+        Generate an intelligent answer for asset queries using LLM analysis.
         
-        This method provides direct answers for basic asset information queries
-        when we have the exact data available, avoiding unnecessary "Execute with human oversight"
-        responses for simple informational requests.
+        Instead of hardcoded pattern matching, this method uses the LLM to intelligently
+        analyze ALL asset data and provide accurate answers based on the actual data.
         
         Args:
             query: The user's query
             formatted_assets: List of formatted asset information
             
         Returns:
-            Direct answer string if applicable, None otherwise
+            Intelligent answer string if applicable, None otherwise
         """
-        if not formatted_assets:
+        if not formatted_assets or not hasattr(self, 'llm_engine') or not self.llm_engine:
             return None
             
-        query_lower = query.lower()
-        
-        # Handle counting queries (how many, count, etc.)
-        if any(phrase in query_lower for phrase in ['how many', 'count of', 'number of', 'total']):
-            # Count assets by OS type
-            if any(phrase in query_lower for phrase in ['windows', 'win', 'microsoft']):
-                windows_assets = [asset for asset in formatted_assets if 'windows' in asset.get('os_type', '').lower()]
-                count = len(windows_assets)
-                if count == 0:
-                    return "There are no Windows assets in the system."
-                elif count == 1:
-                    return f"There is 1 Windows asset in the system: {windows_assets[0].get('name', windows_assets[0].get('ip_address'))}."
-                else:
-                    asset_names = [asset.get('name', asset.get('ip_address')) for asset in windows_assets]
-                    return f"There are {count} Windows assets in the system: {', '.join(asset_names)}."
+        try:
+            # Prepare asset data for LLM analysis
+            asset_data_summary = []
+            for asset in formatted_assets:
+                asset_summary = {
+                    'name': asset.get('name', ''),
+                    'hostname': asset.get('hostname', ''),
+                    'ip_address': asset.get('ip_address', ''),
+                    'os_type': asset.get('os_type', ''),
+                    'os_version': asset.get('os_version', ''),
+                    'description': asset.get('description', ''),
+                    'tags': asset.get('tags', []),
+                    'status': asset.get('status', ''),
+                    'location': asset.get('location', ''),
+                    'environment': asset.get('environment', '')
+                }
+                asset_data_summary.append(asset_summary)
             
-            elif any(phrase in query_lower for phrase in ['linux', 'ubuntu', 'centos', 'redhat', 'debian']):
-                linux_assets = [asset for asset in formatted_assets if any(linux_term in asset.get('os_type', '').lower() for linux_term in ['linux', 'ubuntu', 'centos', 'redhat', 'debian'])]
-                count = len(linux_assets)
-                if count == 0:
-                    return "There are no Linux assets in the system."
-                elif count == 1:
-                    return f"There is 1 Linux asset in the system: {linux_assets[0].get('name', linux_assets[0].get('ip_address'))}."
-                else:
-                    asset_names = [asset.get('name', asset.get('ip_address')) for asset in linux_assets]
-                    return f"There are {count} Linux assets in the system: {', '.join(asset_names)}."
+            # Create intelligent system prompt for asset analysis
+            system_prompt = """You are an intelligent IT asset analyzer. Your job is to analyze asset data and answer user questions accurately.
+
+CRITICAL INSTRUCTIONS:
+1. Examine ALL fields in the asset data (name, hostname, os_type, os_version, description, tags, etc.)
+2. Use your intelligence to determine what each asset is based on ALL available information
+3. For OS version questions, check os_type AND os_version fields primarily, but also consider description, tags, and names
+4. Be precise and accurate - don't guess if the data isn't clear
+5. For counting questions, provide exact counts and list the assets
+6. If you can't determine something from the data, say so clearly
+
+Asset Data Fields Available:
+- name: Asset name
+- hostname: System hostname  
+- ip_address: IP address
+- os_type: Operating system type (e.g., "windows", "linux")
+- os_version: Operating system version (e.g., "10", "11", "20.04")
+- description: Detailed description of the asset
+- tags: List of tags associated with the asset
+- status: Asset status
+- location: Physical location
+- environment: Environment (prod, dev, test, etc.)
+
+Analyze the data intelligently and provide accurate answers."""
+
+            # Create the analysis prompt
+            analysis_prompt = f"""User Question: {query}
+
+Asset Data to Analyze:
+{asset_data_summary}
+
+Please analyze this asset data intelligently and answer the user's question accurately. Look at ALL fields and use your reasoning to determine what each asset is."""
+
+            # Get intelligent analysis from LLM
+            response = await self.llm_engine.chat(
+                message=analysis_prompt,
+                system_prompt=system_prompt
+            )
             
-            elif any(phrase in query_lower for phrase in ['assets', 'systems', 'machines', 'devices']):
-                count = len(formatted_assets)
-                if count == 0:
-                    return "There are no assets in the system."
-                elif count == 1:
-                    return f"There is 1 asset in the system: {formatted_assets[0].get('name', formatted_assets[0].get('ip_address'))}."
-                else:
-                    return f"There are {count} assets in the system."
-        
-        # For single asset queries, use the first asset
-        asset = formatted_assets[0]
-        
-        # Communication method queries
-        if any(phrase in query_lower for phrase in ['communication method', 'default communication', 'how to connect', 'connection method']):
-            method = asset.get('communication_method', 'Unknown')
-            port = asset.get('communication_port', 'Unknown')
-            secure = asset.get('is_secure_connection', False)
-            name = asset.get('name', asset.get('ip_address', 'Unknown'))
-            
-            if method == 'winrm':
-                security_note = " (HTTP - not secure)" if not secure else " (HTTPS - secure)"
-                return f"The default communication method for {name} ({asset.get('ip_address')}) is WinRM (Windows Remote Management) on port {port}{security_note}."
-            elif method == 'ssh':
-                return f"The default communication method for {name} ({asset.get('ip_address')}) is SSH on port {port}."
-            elif method != 'Unknown':
-                return f"The default communication method for {name} ({asset.get('ip_address')}) is {method} on port {port}."
-        
-        # OS type queries
-        if any(phrase in query_lower for phrase in ['operating system', 'os type', 'what os', 'system type', 'os is', 'running on']):
-            os_type = asset.get('os_type', 'Unknown')
-            os_version = asset.get('os_version', '')
-            name = asset.get('name', asset.get('ip_address', 'Unknown'))
-            
-            if os_type != 'Unknown':
-                version_text = f" {os_version}" if os_version else ""
-                return f"{name} ({asset.get('ip_address')}) is running {os_type.title()}{version_text}."
-        
-        # Device type queries
-        if any(phrase in query_lower for phrase in ['device type', 'what type', 'kind of device']):
-            device_type = asset.get('device_type', 'Unknown')
-            name = asset.get('name', asset.get('ip_address', 'Unknown'))
-            
-            if device_type != 'Unknown':
-                return f"{name} ({asset.get('ip_address')}) is a {device_type}."
-        
-        # General asset info queries
-        if any(phrase in query_lower for phrase in ['tell me about', 'information about', 'details about', 'what is']):
-            name = asset.get('name', 'Unknown')
-            ip = asset.get('ip_address', 'Unknown')
-            os_type = asset.get('os_type', 'Unknown')
-            device_type = asset.get('device_type', 'Unknown')
-            method = asset.get('communication_method', 'Unknown')
-            port = asset.get('communication_port', 'Unknown')
-            description = asset.get('description', '')
-            
-            info_parts = [f"{name} ({ip})"]
-            if os_type != 'Unknown':
-                info_parts.append(f"OS: {os_type.title()}")
-            if device_type != 'Unknown':
-                info_parts.append(f"Type: {device_type}")
-            if method != 'Unknown':
-                info_parts.append(f"Communication: {method} on port {port}")
-            if description:
-                info_parts.append(f"Description: {description}")
-            
-            return " | ".join(info_parts)
-        
-        return None
+            if response and 'content' in response:
+                return response['content'].strip()
+            else:
+                logger.warning("LLM response was empty or malformed")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error in intelligent asset analysis: {str(e)}")
+            return None
+
+
     
 
     
@@ -408,10 +415,35 @@ class MultiBrainAIEngine:
                 context['asset_information'] = formatted_assets
                 context['asset_query_context'] = f"The user is asking about assets. Available asset information has been provided for the following IP addresses: {', '.join(asset_info.keys())}. Use this information to answer their question directly."
                 
-                # Add explicit instruction for informational queries
-                if any(word in query.lower() for word in ['what is', 'what are', 'show me', 'tell me', 'how do', 'how many', 'how much', 'which', 'list', 'count']):
-                    context['query_type'] = 'informational'
-                    context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
+                # Use LLM to intelligently determine query type
+                if self.llm_engine:
+                    try:
+                        query_type_prompt = f"""Analyze this query and determine if it's asking for information (vs. asking to perform an action):
+
+Query: "{query}"
+
+Is this query asking for INFORMATION (like "how many", "what is", "show me", "list") or asking to PERFORM AN ACTION (like "deploy", "configure", "install", "restart")?
+
+Answer with just "INFORMATION" or "ACTION"."""
+
+                        type_response = await self.llm_engine.chat(
+                            message=query_type_prompt,
+                            system_prompt="You are a query type classifier. Classify queries as INFORMATION or ACTION requests."
+                        )
+                        
+                        if type_response and 'content' in type_response:
+                            response_content = type_response['content'].upper()
+                            if 'INFORMATION' in response_content:
+                                context['query_type'] = 'informational'
+                                context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
+                                logger.info("🧠 LLM classified query as informational")
+                            else:
+                                logger.info("🧠 LLM classified query as action-based")
+                    except Exception as e:
+                        logger.error(f"Error in LLM query type analysis: {str(e)}")
+                        # Default to informational for asset queries
+                        context['query_type'] = 'informational'
+                        context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
                 
                 logger.info(f"✅ Added asset information to context for {len(asset_info)} assets")
                 print(f"DEBUG: Asset information being passed to AI: {asset_info}")
@@ -433,13 +465,13 @@ class MultiBrainAIEngine:
                 context.get('query_type') == 'informational' and
                 result.execution_strategy == "informational_response"):
                 
-                # Generate a direct answer based on the asset information
-                direct_answer = self._generate_direct_asset_answer(query, formatted_assets)
+                # Generate an intelligent answer based on ALL asset information
+                direct_answer = await self._generate_intelligent_asset_answer(query, formatted_assets)
                 if direct_answer:
                     response_text = direct_answer
-                    confidence = 0.85  # High confidence since we have the exact data
-                    logger.info(f"🎯 Provided direct answer for informational asset query: {direct_answer}")
-                    print(f"DEBUG: Provided direct answer: {direct_answer}")
+                    confidence = 0.90  # High confidence since we have intelligent LLM analysis
+                    logger.info(f"🎯 Provided intelligent answer for informational asset query: {direct_answer}")
+                    print(f"DEBUG: Provided intelligent answer: {direct_answer}")
             
             # Use full multi-brain metadata
             metadata = {
@@ -1250,5 +1282,5 @@ class MultiBrainAIEngine:
                 "success": False,
                 "error": f"Multi-brain job creation failed: {str(e)}",
                 "confidence": 0.0,
-                "fallback_message": "Please try rephrasing your request or use the manual job creation interface"
+                "error_message": "Multi-brain job creation requires LLM intelligence - NO FALLBACKS AVAILABLE"
             }

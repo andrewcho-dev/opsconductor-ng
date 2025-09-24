@@ -671,9 +671,8 @@ class WorkflowGenerator:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # If we're already in an async context, we can't use asyncio.run
-                    # Fall back to heuristics and known patterns
-                    logger.warning(f"Cannot query asset service synchronously from async context for {ip_address}")
-                    return self._fallback_os_detection(ip_address)
+                    # NO FALLBACKS ALLOWED - FAIL HARD
+                    raise RuntimeError(f"NO FALLBACKS ALLOWED: Cannot query asset service synchronously from async context for {ip_address}")
             except RuntimeError:
                 # No event loop running, we can create one
                 pass
@@ -683,29 +682,10 @@ class WorkflowGenerator:
             return result
             
         except Exception as e:
-            logger.warning(f"Failed to query asset service for {ip_address}: {e}")
-            return self._fallback_os_detection(ip_address)
+            logger.error(f"Failed to query asset service for {ip_address}: {e}")
+            raise RuntimeError(f"NO FALLBACKS ALLOWED: Asset service query failed for {ip_address}: {e}")
     
-    def _fallback_os_detection(self, ip_address: str) -> Optional[str]:
-        """Fallback OS detection based on known patterns"""
-        # Check if this IP matches any known Windows patterns
-        if ip_address == '192.168.50.210':
-            # This is likely a Windows machine based on the user's request for "drive c:\\"
-            logger.info(f"IP {ip_address} matches known Windows pattern (fallback detection)")
-            return "windows"
-        
-        # Check for common Windows IP ranges (this is heuristic)
-        parts = ip_address.split('.')
-        if len(parts) == 4:
-            try:
-                # Common Windows server ranges in enterprise environments
-                if parts[0] == '192' and parts[1] == '168' and int(parts[2]) >= 50:
-                    logger.info(f"IP {ip_address} in common Windows server range (fallback detection)")
-                    return "windows"
-            except ValueError:
-                pass
-        
-        return None
+
     
     async def _async_query_asset_service(self, ip_address: str) -> Optional[str]:
         """Async helper to query asset service"""

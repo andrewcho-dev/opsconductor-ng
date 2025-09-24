@@ -40,8 +40,8 @@ class SecuritySMEBrain(SMEBrain):
         "data_protection"
     ]
     
-    def __init__(self):
-        super().__init__(self.domain, self.expertise_areas)
+    def __init__(self, llm_engine=None):
+        super().__init__(self.domain, self.expertise_areas, llm_engine)
         self._load_security_knowledge()
         logger.info("Security SME Brain initialized")
     
@@ -114,21 +114,8 @@ class SecuritySMEBrain(SMEBrain):
             # Analyze security context
             security_analysis = await self._analyze_security_context(query)
             
-            # Generate recommendations based on context
-            if "access" in query.context.lower() or "authentication" in query.context.lower():
-                recommendations.extend(await self._recommend_access_controls(query, security_analysis))
-            
-            if "encryption" in query.context.lower() or "data protection" in query.context.lower():
-                recommendations.extend(await self._recommend_encryption_config(query, security_analysis))
-            
-            if "vulnerability" in query.context.lower() or "scanning" in query.context.lower():
-                recommendations.extend(await self._recommend_vulnerability_management(query, security_analysis))
-            
-            if "compliance" in query.context.lower() or "audit" in query.context.lower():
-                recommendations.extend(await self._recommend_compliance_measures(query, security_analysis))
-            
-            if "incident" in query.context.lower() or "response" in query.context.lower():
-                recommendations.extend(await self._recommend_incident_response(query, security_analysis))
+            # Generate recommendations using LLM intelligence
+            recommendations.extend(await self._generate_intelligent_recommendations(query, security_analysis))
             
             # Always include general security recommendations for high-risk operations
             if query.risk_level == "high" or security_analysis["threat_level"] == "high":
@@ -470,37 +457,117 @@ class SecuritySMEBrain(SMEBrain):
         
         return recommendations
     
+    async def _generate_intelligent_recommendations(self, query: SMEQuery, security_analysis: Dict[str, Any]) -> List[SMERecommendation]:
+        """Generate security recommendations using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for security recommendations - NO FALLBACKS ALLOWED")
+        
+        try:
+            recommendation_prompt = f"""
+            Based on the following security query and analysis, generate specific security recommendations:
+            
+            Query Context: {query.context}
+            Risk Level: {query.risk_level}
+            Security Analysis: {security_analysis}
+            
+            Generate recommendations for the following security areas as applicable:
+            1. Access Controls & Authentication
+            2. Encryption & Data Protection
+            3. Vulnerability Management
+            4. Compliance & Audit
+            5. Incident Response
+            
+            For each recommendation, provide:
+            - Title
+            - Description
+            - Implementation steps
+            - Priority (low/medium/high)
+            - Validation criteria
+            
+            Return as JSON array with these fields for each recommendation.
+            """
+            
+            response = self.llm_engine.generate_response(recommendation_prompt, max_tokens=1000)
+            import json
+            recommendations_data = json.loads(response)
+            
+            recommendations = []
+            for rec_data in recommendations_data:
+                recommendation = await self._create_recommendation(
+                    query=query,
+                    recommendation_type=SMERecommendationType.SECURITY_REQUIREMENT,
+                    title=rec_data.get("title", "Security Recommendation"),
+                    description=rec_data.get("description", ""),
+                    rationale="LLM-generated security recommendation",
+                    implementation_steps=rec_data.get("implementation_steps", []),
+                    priority=rec_data.get("priority", "medium"),
+                    validation_criteria=rec_data.get("validation_criteria", []),
+                    risks_if_ignored=["Security vulnerability if not implemented"],
+                    dependencies=[],
+                    tags=["llm_generated", "security"]
+                )
+                recommendations.append(recommendation)
+            
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"LLM recommendation generation failed: {e}")
+            return []
+    
     async def _perform_stride_analysis(self, technical_plan: Dict[str, Any], intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Perform STRIDE threat modeling analysis"""
-        stride_analysis = {
-            "spoofing": [],
-            "tampering": [],
-            "repudiation": [],
-            "information_disclosure": [],
-            "denial_of_service": [],
-            "elevation_of_privilege": []
-        }
+        """Perform STRIDE threat modeling analysis using LLM intelligence"""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for STRIDE analysis - NO FALLBACKS ALLOWED")
         
-        plan_text = str(technical_plan).lower()
-        
-        # Analyze for STRIDE threats
-        if "authentication" in plan_text or "login" in plan_text:
-            stride_analysis["spoofing"].append("Authentication bypass risk")
-        
-        if "database" in plan_text or "data" in plan_text:
-            stride_analysis["tampering"].append("Data modification risk")
-            stride_analysis["information_disclosure"].append("Data exposure risk")
-        
-        if "admin" in plan_text or "privileged" in plan_text:
-            stride_analysis["elevation_of_privilege"].append("Privilege escalation risk")
-        
-        if "network" in plan_text or "service" in plan_text:
-            stride_analysis["denial_of_service"].append("Service disruption risk")
-        
-        if "log" not in plan_text:
-            stride_analysis["repudiation"].append("Insufficient audit logging")
-        
-        return stride_analysis
+        try:
+            stride_prompt = f"""
+            Perform a STRIDE threat modeling analysis on the following technical plan:
+            
+            Technical Plan: {technical_plan}
+            Intent Analysis: {intent_analysis}
+            
+            Analyze for the following STRIDE threat categories:
+            1. Spoofing - Identity spoofing threats
+            2. Tampering - Data or system tampering threats
+            3. Repudiation - Non-repudiation threats (audit/logging issues)
+            4. Information Disclosure - Data exposure threats
+            5. Denial of Service - Availability threats
+            6. Elevation of Privilege - Authorization bypass threats
+            
+            For each category, identify specific threats present in this plan.
+            Return as JSON with arrays for each STRIDE category containing threat descriptions.
+            """
+            
+            response = self.llm_engine.generate_response(stride_prompt, max_tokens=800)
+            import json
+            stride_analysis = json.loads(response)
+            
+            # Ensure all STRIDE categories are present
+            default_stride = {
+                "spoofing": [],
+                "tampering": [],
+                "repudiation": [],
+                "information_disclosure": [],
+                "denial_of_service": [],
+                "elevation_of_privilege": []
+            }
+            
+            for category in default_stride:
+                if category not in stride_analysis:
+                    stride_analysis[category] = []
+            
+            return stride_analysis
+            
+        except Exception as e:
+            logger.error(f"LLM STRIDE analysis failed: {e}")
+            return {
+                "spoofing": [],
+                "tampering": [],
+                "repudiation": [],
+                "information_disclosure": [],
+                "denial_of_service": [],
+                "elevation_of_privilege": []
+            }
     
     async def _assess_vulnerabilities(self, technical_plan: Dict[str, Any]) -> Dict[str, Any]:
         """Assess potential vulnerabilities in technical plan"""

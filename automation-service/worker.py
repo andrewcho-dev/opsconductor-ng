@@ -517,24 +517,9 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                                 'target_system': target_system
                             }
                         else:
-                            # Local execution (fallback)
-                            print(f"Executing command locally: {command}")
-                            result = _execute_local_command(command)
+                            # NO FALLBACKS ALLOWED - FAIL HARD
                             execution_time = time.time() - start_time
-                            
-                            # Determine status based on return code
-                            status = 'completed' if result['returncode'] == 0 else 'failed'
-                            
-                            step_result = {
-                                'step_id': step_id,
-                                'step_name': step_name,
-                                'status': status,
-                                'command': command,
-                                'returncode': result['returncode'],
-                                'stdout': result['stdout'],
-                                'stderr': result['stderr'],
-                                'execution_time': execution_time
-                            }
+                            raise RuntimeError(f"NO FALLBACKS ALLOWED: No target systems specified for command execution: {command}")
                     except Exception as e:
                         execution_time = time.time() - start_time
                         error_output = {
@@ -678,13 +663,9 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 asyncio.run(update_job_execution_status(job_id, execution_id, db_status, error_message))
                 print(f"Updated job execution {execution_id} to {db_status} status")
             except Exception as e:
-                print(f"Warning: Failed to update job execution completion status: {e}")
-                # Try one more time with a simpler update
-                try:
-                    asyncio.run(update_job_execution_status(job_id, execution_id, 'failed', f'Job completed but status update failed: {str(e)}'))
-                    print(f"Fallback: Updated job execution {execution_id} to failed status")
-                except Exception as e2:
-                    print(f"Critical: Failed to update job execution status even with fallback: {e2}")
+                print(f"Critical: Failed to update job execution completion status: {e}")
+                # NO FALLBACKS ALLOWED - FAIL HARD
+                raise RuntimeError(f"NO FALLBACKS ALLOWED: Job execution status update failed: {e}")
         
         return final_results
         
