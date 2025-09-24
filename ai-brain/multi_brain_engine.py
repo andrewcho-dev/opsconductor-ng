@@ -136,14 +136,99 @@ class MultiBrainAIEngine:
             "average_confidence": 0.0
         }
         
-        # Initialize communication protocol with brains
-        asyncio.create_task(self._initialize_communication_protocol())
-        
-        # Initialize learning systems
-        asyncio.create_task(self._initialize_learning_systems())
+        # Mark initialization flags (async initialization will happen in initialize() method)
+        self._communication_initialized = False
+        self._learning_initialized = False
         
         logger.info(f"Multi-Brain AI Engine initialized - Phase 2 with {len(self.sme_brains)} SME brains")
     
+    async def initialize(self) -> bool:
+        """
+        Initialize async components of the Multi-Brain AI Engine
+        
+        Returns:
+            bool: True if initialization successful, False otherwise
+        """
+        try:
+            # Initialize communication protocol with brains
+            if not self._communication_initialized:
+                await self._initialize_communication_protocol()
+                self._communication_initialized = True
+                logger.info("Communication protocol initialized")
+            
+            # Initialize learning systems
+            if not self._learning_initialized:
+                await self._initialize_learning_systems()
+                self._learning_initialized = True
+                logger.info("Learning systems initialized")
+            
+            logger.info("Multi-Brain AI Engine async initialization completed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Multi-Brain AI Engine: {str(e)}")
+            return False
+    
+    async def process_query(self, query: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Process a user query using multi-brain architecture (compatibility method)
+        
+        This method provides compatibility with the existing interface while using
+        the advanced multi-brain processing capabilities.
+        
+        Args:
+            query: The user's natural language query
+            user_context: Optional user context information
+            
+        Returns:
+            Dict containing the AI response and metadata
+        """
+        try:
+            # Convert user_context to the format expected by process_request
+            context = {}
+            if user_context:
+                if isinstance(user_context, str):
+                    context['user_id'] = user_context
+                elif isinstance(user_context, dict):
+                    context.update(user_context)
+            
+            # Process through multi-brain architecture
+            result = await self.process_request(query, context)
+            
+            # Convert MultiBrainProcessingResult to legacy format
+            response_text = result.recommended_actions[0] if result.recommended_actions else "Analysis completed successfully"
+            return {
+                "response": response_text,
+                "confidence": result.overall_confidence,
+                "intent": result.intent_analysis.intent_type if hasattr(result.intent_analysis, 'intent_type') else "multi_brain_analysis",
+                "metadata": {
+                    "engine": "multi_brain_ai_engine",
+                    "version": "2.0.0",
+                    "processing_time": result.processing_time,
+                    "brains_consulted": result.brains_consulted,
+                    "intent_analysis": result.intent_analysis.to_dict() if hasattr(result.intent_analysis, 'to_dict') else str(result.intent_analysis),
+                    "technical_plan": result.technical_plan.to_dict() if hasattr(result.technical_plan, 'to_dict') else str(result.technical_plan),
+                    "sme_consultations": result.sme_consultations,
+                    "execution_strategy": result.execution_strategy,
+                    "risk_assessment": result.risk_assessment,
+                    "success": True
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Multi-brain query processing failed: {str(e)}")
+            return {
+                "response": f"I encountered an issue processing your request: {str(e)}. Please try again.",
+                "confidence": 0.3,
+                "intent": "error",
+                "metadata": {
+                    "engine": "multi_brain_ai_engine",
+                    "version": "2.0.0",
+                    "error": str(e),
+                    "success": False
+                }
+            }
+
     async def process_request(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> MultiBrainProcessingResult:
         """
         Process user request through multi-brain architecture
@@ -162,6 +247,11 @@ class MultiBrainAIEngine:
         
         try:
             logger.info(f"Processing multi-brain request: {request_id}")
+            
+            # Ensure async components are initialized
+            if not (self._communication_initialized and self._learning_initialized):
+                logger.warning("Multi-brain components not fully initialized, initializing now...")
+                await self.initialize()
             
             # Step 1: Intent Brain Analysis
             logger.info("Step 1: Intent Brain analysis")
@@ -677,6 +767,41 @@ class MultiBrainAIEngine:
         except Exception as e:
             logger.error(f"Error getting learning insights: {str(e)}")
             return {"success": False, "error": str(e)}
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get the health status of the Multi-Brain AI Engine.
+        
+        Returns:
+            Dict containing health status information
+        """
+        return {
+            "status": "healthy",
+            "service": "ai-brain",
+            "engine_type": "multi_brain_ai_engine",
+            "engine_version": self.engine_version,
+            "phase": self.phase,
+            "components": {
+                "intent_brain": hasattr(self, 'intent_brain') and self.intent_brain is not None,
+                "technical_brain": hasattr(self, 'technical_brain') and self.technical_brain is not None,
+                "sme_brains": {
+                    "count": len(self.sme_brains),
+                    "active_domains": list(self.sme_brains.keys())
+                },
+                "communication_protocol": self._communication_initialized,
+                "learning_systems": self._learning_initialized,
+                "continuous_learning": hasattr(self, 'continuous_learning_system'),
+                "quality_assurance": hasattr(self, 'learning_quality_assurance'),
+                "confidence_engine": hasattr(self, 'multibrain_confidence_engine')
+            },
+            "performance_metrics": self.performance_metrics,
+            "configuration": {
+                "confidence_threshold": self.confidence_threshold,
+                "max_processing_time": self.max_processing_time
+            },
+            "architecture": "multi_brain_phase_2",
+            "timestamp": datetime.utcnow().isoformat()
+        }
     
     # Legacy compatibility methods for gradual migration
     async def process_message(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

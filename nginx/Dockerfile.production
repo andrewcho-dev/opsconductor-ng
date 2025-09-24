@@ -1,0 +1,21 @@
+# Production Nginx Dockerfile
+FROM nginx:alpine
+
+# Install additional tools
+RUN apk add --no-cache curl openssl
+
+# Copy production configuration
+COPY production/nginx.production.conf /etc/nginx/nginx.conf
+
+# Create log directory
+RUN mkdir -p /var/log/nginx
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:80/health || exit 1
+
+# Expose ports
+EXPOSE 80 443
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

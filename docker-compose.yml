@@ -406,8 +406,9 @@ services:
       - ./ai-brain/main.py:/app/main.py
       - ./ai-brain/brain_engine.py:/app/brain_engine.py
       - ./ai-brain/llm_conversation_handler.py:/app/llm_conversation_handler.py
+      - ./ai-brain/multi_brain_engine.py:/app/multi_brain_engine.py
       
-      # New AI modules
+      # AI modules
       - ./ai-brain/system_model:/app/system_model
       - ./ai-brain/knowledge_engine:/app/knowledge_engine
       - ./ai-brain/intent_engine:/app/intent_engine
@@ -418,6 +419,15 @@ services:
       - ./ai-brain/analytics:/app/analytics
       - ./ai-brain/capabilities:/app/capabilities
       - ./ai-brain/engines:/app/engines
+      
+      # Multi-brain system directories (CRITICAL - these were missing!)
+      - ./ai-brain/brains:/app/brains
+      - ./ai-brain/coordination:/app/coordination
+      - ./ai-brain/communication:/app/communication
+      - ./ai-brain/confidence:/app/confidence
+      - ./ai-brain/learning:/app/learning
+      - ./ai-brain/orchestration:/app/orchestration
+      - ./ai-brain/taxonomy:/app/taxonomy
       
       # Shared libraries
       - ./shared:/app/shared

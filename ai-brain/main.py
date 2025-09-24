@@ -15,7 +15,14 @@ else:
 from base_service import BaseService
 
 # Import the new Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)
-from multi_brain_engine import MultiBrainAIEngine
+try:
+    from multi_brain_engine import MultiBrainAIEngine
+    MULTI_BRAIN_AVAILABLE = True
+except ImportError as e:
+    print(f"Multi-Brain Engine not available: {e}")
+    MULTI_BRAIN_AVAILABLE = False
+    MultiBrainAIEngine = None
+
 # Legacy compatibility import
 from brain_engine import AIBrainEngine as LegacyAIBrainEngine
 
@@ -75,12 +82,15 @@ app.include_router(learning_router)
 service = AIService()
 
 # Initialize Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)
-multi_brain_enabled = os.getenv("MULTI_BRAIN_ENABLED", "true").lower() == "true"
+multi_brain_enabled = os.getenv("MULTI_BRAIN_ENABLED", "true").lower() == "true" and MULTI_BRAIN_AVAILABLE
 if multi_brain_enabled:
     logger.info("🧠 Initializing Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)")
     ai_engine = MultiBrainAIEngine()
 else:
-    logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain disabled)")
+    if not MULTI_BRAIN_AVAILABLE:
+        logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain not available)")
+    else:
+        logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain disabled)")
     ai_engine = LegacyAIBrainEngine()
 
 workflow_generator = WorkflowGenerator()
