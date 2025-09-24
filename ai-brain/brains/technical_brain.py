@@ -443,7 +443,8 @@ class ExecutionPlanGenerator:
 class SMEBrainOrchestrator:
     """Orchestrates consultations with SME brains"""
     
-    def __init__(self):
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
         self.active_sme_brains = {}
         self.consultation_queue = asyncio.Queue()
         self.conflict_resolver = SMEConflictResolver()
@@ -493,6 +494,9 @@ class SMEConflictResolver:
 class TechnicalFeasibilityAnalyzer:
     """Analyzes technical feasibility of execution plans"""
     
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
+    
     async def analyze_feasibility(self, technical_plan: TechnicalPlan) -> Dict[str, Any]:
         """Analyze technical feasibility"""
         return {
@@ -505,6 +509,9 @@ class TechnicalFeasibilityAnalyzer:
 
 class TechnicalLearningEngine:
     """Learning engine for Technical Brain"""
+    
+    def __init__(self, llm_engine=None):
+        self.llm_engine = llm_engine
     
     async def learn_from_execution(self, execution_result: Dict[str, Any]):
         """Learn from execution results"""

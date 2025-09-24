@@ -178,7 +178,7 @@ class AIRouter:
     
     def __init__(self, redis_client: Optional[redis.Redis] = None):
         self.redis_client = redis_client
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(timeout=60.0)  # Increased for pure LLM intelligence
         self.load_balancers: Dict[AIServiceType, LoadBalancer] = {}
         
         # Initialize service endpoints
@@ -336,7 +336,7 @@ class AIRouter:
             response = await self.http_client.post(
                 url,
                 json=request_data,
-                timeout=25.0
+                timeout=60.0  # Increased timeout for pure LLM intelligence processing
             )
             
             if response.status_code == 200:
