@@ -197,23 +197,45 @@ class MultiBrainAIEngine:
             ip_addresses = re.findall(ip_pattern, query)
             logger.info(f"🔍 Found IP addresses in query: {ip_addresses}")
             
-            if not ip_addresses:
-                logger.info("🔍 No IP addresses found in query")
-                return None
+            # Check if this is a counting or general asset query
+            query_lower = query.lower()
+            is_counting_query = any(phrase in query_lower for phrase in ['how many', 'count of', 'number of', 'total', 'list all', 'show all'])
+            is_general_query = any(phrase in query_lower for phrase in ['assets', 'systems', 'machines', 'devices', 'windows', 'linux', 'ubuntu'])
             
-            # Look up each IP address in the asset database
-            asset_info = {}
-            for ip in ip_addresses:
-                logger.info(f"🔍 Looking up asset information for IP: {ip}")
-                asset = await self.asset_client.get_asset_by_ip(ip)
-                if asset:
-                    asset_info[ip] = asset
-                    logger.info(f"✅ Found asset information for IP {ip}: {asset.get('name', 'Unknown')} ({asset.get('os_type', 'Unknown OS')})")
+            if ip_addresses:
+                # Look up specific IP addresses
+                asset_info = {}
+                for ip in ip_addresses:
+                    logger.info(f"🔍 Looking up asset information for IP: {ip}")
+                    asset = await self.asset_client.get_asset_by_ip(ip)
+                    if asset:
+                        asset_info[ip] = asset
+                        logger.info(f"✅ Found asset information for IP {ip}: {asset.get('name', 'Unknown')} ({asset.get('os_type', 'Unknown OS')})")
+                    else:
+                        logger.warning(f"❌ No asset found for IP {ip}")
+                
+                logger.info(f"🔍 Asset lookup result: {len(asset_info)} assets found")
+                return asset_info if asset_info else None
+                
+            elif is_counting_query or is_general_query:
+                # Fetch all assets for counting/general queries
+                logger.info("🔍 Fetching all assets for counting/general query")
+                all_assets = await self.asset_client.get_all_assets()
+                if all_assets:
+                    asset_info = {}
+                    for asset in all_assets:
+                        ip = asset.get('ip_address')
+                        if ip:
+                            asset_info[ip] = asset
+                    
+                    logger.info(f"✅ Fetched {len(asset_info)} assets for counting/general query")
+                    return asset_info if asset_info else None
                 else:
-                    logger.warning(f"❌ No asset found for IP {ip}")
-            
-            logger.info(f"🔍 Asset lookup result: {len(asset_info)} assets found")
-            return asset_info if asset_info else None
+                    logger.warning("❌ No assets found in system")
+                    return None
+            else:
+                logger.info("🔍 No IP addresses found and not a counting/general query")
+                return None
             
         except Exception as e:
             logger.error(f"❌ Error looking up asset information: {str(e)}")
@@ -238,7 +260,43 @@ class MultiBrainAIEngine:
             return None
             
         query_lower = query.lower()
-        asset = formatted_assets[0]  # For single asset queries
+        
+        # Handle counting queries (how many, count, etc.)
+        if any(phrase in query_lower for phrase in ['how many', 'count of', 'number of', 'total']):
+            # Count assets by OS type
+            if any(phrase in query_lower for phrase in ['windows', 'win', 'microsoft']):
+                windows_assets = [asset for asset in formatted_assets if 'windows' in asset.get('os_type', '').lower()]
+                count = len(windows_assets)
+                if count == 0:
+                    return "There are no Windows assets in the system."
+                elif count == 1:
+                    return f"There is 1 Windows asset in the system: {windows_assets[0].get('name', windows_assets[0].get('ip_address'))}."
+                else:
+                    asset_names = [asset.get('name', asset.get('ip_address')) for asset in windows_assets]
+                    return f"There are {count} Windows assets in the system: {', '.join(asset_names)}."
+            
+            elif any(phrase in query_lower for phrase in ['linux', 'ubuntu', 'centos', 'redhat', 'debian']):
+                linux_assets = [asset for asset in formatted_assets if any(linux_term in asset.get('os_type', '').lower() for linux_term in ['linux', 'ubuntu', 'centos', 'redhat', 'debian'])]
+                count = len(linux_assets)
+                if count == 0:
+                    return "There are no Linux assets in the system."
+                elif count == 1:
+                    return f"There is 1 Linux asset in the system: {linux_assets[0].get('name', linux_assets[0].get('ip_address'))}."
+                else:
+                    asset_names = [asset.get('name', asset.get('ip_address')) for asset in linux_assets]
+                    return f"There are {count} Linux assets in the system: {', '.join(asset_names)}."
+            
+            elif any(phrase in query_lower for phrase in ['assets', 'systems', 'machines', 'devices']):
+                count = len(formatted_assets)
+                if count == 0:
+                    return "There are no assets in the system."
+                elif count == 1:
+                    return f"There is 1 asset in the system: {formatted_assets[0].get('name', formatted_assets[0].get('ip_address'))}."
+                else:
+                    return f"There are {count} assets in the system."
+        
+        # For single asset queries, use the first asset
+        asset = formatted_assets[0]
         
         # Communication method queries
         if any(phrase in query_lower for phrase in ['communication method', 'default communication', 'how to connect', 'connection method']):
@@ -351,7 +409,7 @@ class MultiBrainAIEngine:
                 context['asset_query_context'] = f"The user is asking about assets. Available asset information has been provided for the following IP addresses: {', '.join(asset_info.keys())}. Use this information to answer their question directly."
                 
                 # Add explicit instruction for informational queries
-                if any(word in query.lower() for word in ['what is', 'what are', 'show me', 'tell me', 'how do', 'which']):
+                if any(word in query.lower() for word in ['what is', 'what are', 'show me', 'tell me', 'how do', 'how many', 'how much', 'which', 'list', 'count']):
                     context['query_type'] = 'informational'
                     context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
                 
