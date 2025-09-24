@@ -26,47 +26,41 @@ logger = logging.getLogger(__name__)
 async def test_intent_brain():
     """Test Intent Brain functionality."""
     try:
-        logger.info("🧠 Testing Intent Brain - ITIL Classification and Business Intent Analysis")
+        logger.info("🧠 Testing Intent Brain - 4W Framework Analysis (NO ITIL GARBAGE)")
         
         # Import Intent Brain components
         from brains.intent_brain import IntentBrain
-        from brains.intent_brain.itil_classifier import ITILClassifier
-        from brains.intent_brain.business_intent_analyzer import BusinessIntentAnalyzer
+        from brains.intent_brain.four_w_analyzer import FourWAnalyzer
         
         # Initialize Intent Brain
         intent_brain = IntentBrain()
         
-        # Test cases covering different ITIL service types and business intents
+        # Test cases for 4W Framework Analysis - NO ITIL GARBAGE
         test_cases = [
             {
                 "message": "The web server is down and customers can't access our website",
-                "expected_service": "incident_management",
-                "expected_priority": "critical"
+                "expected_action": "diagnostic",
+                "expected_urgency": "critical"
             },
             {
                 "message": "I need to install Docker on the new development server",
-                "expected_service": "service_request",
-                "expected_priority": "medium"
+                "expected_action": "provisioning",
+                "expected_urgency": "medium"
             },
             {
-                "message": "We need to update the database to the latest version for security patches",
-                "expected_service": "change_management",
-                "expected_priority": "high"
+                "message": "How many servers are currently running?",
+                "expected_action": "information",
+                "expected_urgency": "low"
             },
             {
-                "message": "Set up monitoring alerts for CPU usage on all production servers",
-                "expected_service": "monitoring_management",
-                "expected_priority": "medium"
+                "message": "Show me the network status",
+                "expected_action": "information",
+                "expected_urgency": "low"
             },
             {
-                "message": "Configure firewall rules to block unauthorized access to the database",
-                "expected_service": "security_management",
-                "expected_priority": "high"
-            },
-            {
-                "message": "The application is running slowly and we need to optimize performance",
-                "expected_service": "incident_management",
-                "expected_outcome": "performance_improvement"
+                "message": "Restart the database service immediately",
+                "expected_action": "operational",
+                "expected_urgency": "high"
             }
         ]
         
@@ -78,34 +72,35 @@ async def test_intent_brain():
             # Analyze intent
             result = await intent_brain.analyze_intent(test_case["message"])
             
-            # Display results
-            logger.info(f"✅ Intent Analysis Results:")
+            # Display 4W Framework results
+            logger.info(f"✅ 4W Framework Analysis Results:")
             logger.info(f"   📊 Overall Confidence: {result.overall_confidence:.2%}")
             logger.info(f"   📋 Intent Summary: {result.intent_summary}")
-            logger.info(f"   🏷️  ITIL Service Type: {result.itil_classification.service_type.value}")
-            logger.info(f"   ⚡ Priority: {result.itil_classification.priority.value}")
-            logger.info(f"   📈 Business Outcome: {result.business_intent.primary_outcome.value}")
-            logger.info(f"   💼 Business Priority: {result.business_intent.business_priority.value}")
+            logger.info(f"   🎯 WHAT - Action Type: {result.four_w_analysis.what_analysis.action_type.value}")
+            logger.info(f"   🎯 WHAT - Specific Outcome: {result.four_w_analysis.what_analysis.specific_outcome}")
+            logger.info(f"   📍 WHERE - Scope Level: {result.four_w_analysis.where_what_analysis.scope_level.value}")
+            logger.info(f"   ⏰ WHEN - Urgency: {result.four_w_analysis.when_analysis.urgency.value}")
+            logger.info(f"   🔧 HOW - Method: {result.four_w_analysis.how_analysis.method_preference.value}")
             logger.info(f"   ⚠️  Risk Level: {result.risk_level}")
             logger.info(f"   🔧 Technical Requirements: {len(result.technical_requirements)} items")
             logger.info(f"   ⏱️  Processing Time: {result.processing_time:.3f}s")
             
-            # Validate expectations
-            if "expected_service" in test_case:
-                actual_service = result.itil_classification.service_type.value
-                if actual_service == test_case["expected_service"]:
-                    logger.info(f"   ✅ Service type classification: CORRECT ({actual_service})")
+            # Validate 4W Framework expectations
+            if "expected_action" in test_case:
+                actual_action = result.four_w_analysis.what_analysis.action_type.value
+                if actual_action == test_case["expected_action"]:
+                    logger.info(f"   ✅ Action type: CORRECT ({actual_action})")
                 else:
-                    logger.warning(f"   ⚠️  Service type classification: Expected {test_case['expected_service']}, got {actual_service}")
+                    logger.warning(f"   ⚠️  Action type: Expected {test_case['expected_action']}, got {actual_action}")
             
-            if "expected_priority" in test_case:
-                actual_priority = result.itil_classification.priority.value
-                if actual_priority == test_case["expected_priority"]:
-                    logger.info(f"   ✅ Priority classification: CORRECT ({actual_priority})")
+            if "expected_urgency" in test_case:
+                actual_urgency = result.four_w_analysis.when_analysis.urgency.value
+                if actual_urgency == test_case["expected_urgency"]:
+                    logger.info(f"   ✅ Urgency: CORRECT ({actual_urgency})")
                 else:
-                    logger.warning(f"   ⚠️  Priority classification: Expected {test_case['expected_priority']}, got {actual_priority}")
+                    logger.warning(f"   ⚠️  Urgency: Expected {test_case['expected_urgency']}, got {actual_urgency}")
         
-        logger.info(f"\n🎉 Intent Brain testing completed successfully!")
+        logger.info(f"\n🎉 Intent Brain 4W Framework testing completed successfully!")
         return True
         
     except Exception as e:

@@ -226,180 +226,30 @@ class FourWAnalyzer:
             raise Exception(f"4W Framework analysis FAILED - NO FALLBACK ALLOWED: {e}")
     
     async def _analyze_what(self, message: str, context: Optional[Dict]) -> WhatAnalysis:
-        """Analyze the WHAT dimension - action type and root need."""
-        if self.llm_engine:
-            return await self._llm_analyze_what(message, context)
-        else:
-            return self._heuristic_analyze_what(message)
+        """Analyze the WHAT dimension - action type and root need using LLM intelligence."""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for 4W analysis - NO FALLBACKS ALLOWED")
+        return await self._llm_analyze_what(message, context)
     
     async def _analyze_where_what(self, message: str, context: Optional[Dict]) -> WhereWhatAnalysis:
-        """Analyze the WHERE/WHAT dimension - targets and scope."""
-        if self.llm_engine:
-            return await self._llm_analyze_where_what(message, context)
-        else:
-            return self._heuristic_analyze_where_what(message)
+        """Analyze the WHERE/WHAT dimension - targets and scope using LLM intelligence."""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for 4W analysis - NO FALLBACKS ALLOWED")
+        return await self._llm_analyze_where_what(message, context)
     
     async def _analyze_when(self, message: str, context: Optional[Dict]) -> WhenAnalysis:
-        """Analyze the WHEN dimension - timing and urgency."""
-        if self.llm_engine:
-            return await self._llm_analyze_when(message, context)
-        else:
-            return self._heuristic_analyze_when(message)
+        """Analyze the WHEN dimension - timing and urgency using LLM intelligence."""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for 4W analysis - NO FALLBACKS ALLOWED")
+        return await self._llm_analyze_when(message, context)
     
     async def _analyze_how(self, message: str, context: Optional[Dict]) -> HowAnalysis:
-        """Analyze the HOW dimension - execution method and constraints."""
-        if self.llm_engine:
-            return await self._llm_analyze_how(message, context)
-        else:
-            return self._heuristic_analyze_how(message)
+        """Analyze the HOW dimension - execution method and constraints using LLM intelligence."""
+        if not self.llm_engine:
+            raise Exception("LLM engine required for 4W analysis - NO FALLBACKS ALLOWED")
+        return await self._llm_analyze_how(message, context)
     
-    def _heuristic_analyze_what(self, message: str) -> WhatAnalysis:
-        """Heuristic-based WHAT analysis when no LLM available."""
-        message_lower = message.lower()
-        
-        # Determine action type based on keywords
-        if any(word in message_lower for word in ['status', 'check', 'show', 'list', 'what', 'how many']):
-            action_type = ActionType.INFORMATION
-            specific_outcome = "Get information or status"
-        elif any(word in message_lower for word in ['install', 'create', 'provision', 'deploy', 'setup']):
-            action_type = ActionType.PROVISIONING
-            specific_outcome = "Create or provision new resources"
-        elif any(word in message_lower for word in ['fix', 'broken', 'error', 'issue', 'problem', 'troubleshoot', 'investigate', 'slow', 'debug', 'analyze', 'diagnose']):
-            action_type = ActionType.DIAGNOSTIC
-            specific_outcome = "Diagnose and resolve issues"
-        else:
-            action_type = ActionType.OPERATIONAL
-            specific_outcome = "Perform operational task"
-        
-        # Simple root cause analysis
-        root_need = self._infer_root_need(message_lower, action_type)
-        
-        return WhatAnalysis(
-            action_type=action_type,
-            specific_outcome=specific_outcome,
-            root_need=root_need,
-            surface_request=message,
-            confidence=0.6,  # Lower confidence for heuristic analysis
-            reasoning="Heuristic analysis based on keyword matching"
-        )
-    
-    def _heuristic_analyze_where_what(self, message: str) -> WhereWhatAnalysis:
-        """Heuristic-based WHERE/WHAT analysis."""
-        message_lower = message.lower()
-        
-        # Extract potential system names
-        target_systems = []
-        system_keywords = ['server', 'database', 'web', 'api', 'service', 'app']
-        for word in message.split():
-            if any(keyword in word.lower() for keyword in system_keywords):
-                target_systems.append(word)
-        
-        # Determine scope
-        if any(word in message_lower for word in ['all', 'every', 'entire', 'organization']):
-            scope_level = ScopeLevel.ORG_WIDE
-        elif any(word in message_lower for word in ['environment', 'prod', 'staging', 'dev']):
-            scope_level = ScopeLevel.ENVIRONMENT
-        elif any(word in message_lower for word in ['cluster', 'group', 'multiple']):
-            scope_level = ScopeLevel.CLUSTER
-        else:
-            scope_level = ScopeLevel.SINGLE_SYSTEM
-        
-        return WhereWhatAnalysis(
-            target_systems=target_systems,
-            scope_level=scope_level,
-            affected_components=[],
-            dependencies=[],
-            confidence=0.5,
-            reasoning="Heuristic analysis based on keyword detection"
-        )
-    
-    def _heuristic_analyze_when(self, message: str) -> WhenAnalysis:
-        """Heuristic-based WHEN analysis."""
-        message_lower = message.lower()
-        
-        # Determine urgency
-        if any(word in message_lower for word in ['urgent', 'asap', 'immediately', 'emergency', 'critical']):
-            urgency = UrgencyLevel.CRITICAL
-        elif any(word in message_lower for word in ['soon', 'quickly', 'priority', 'important']):
-            urgency = UrgencyLevel.HIGH
-        elif any(word in message_lower for word in ['when convenient', 'flexible', 'whenever']):
-            urgency = UrgencyLevel.LOW
-        else:
-            urgency = UrgencyLevel.MEDIUM
-        
-        # Determine timeline type
-        if any(word in message_lower for word in ['now', 'immediately', 'right away']):
-            timeline_type = TimelineType.IMMEDIATE
-        elif any(word in message_lower for word in ['maintenance', 'window', 'downtime']):
-            timeline_type = TimelineType.MAINTENANCE
-        elif any(word in message_lower for word in ['schedule', 'at', 'on', 'by']):
-            timeline_type = TimelineType.SCHEDULED
-        else:
-            timeline_type = TimelineType.FLEXIBLE
-        
-        return WhenAnalysis(
-            urgency=urgency,
-            timeline_type=timeline_type,
-            specific_timeline=None,
-            scheduling_constraints=[],
-            business_hours_required=True,
-            confidence=0.6,
-            reasoning="Heuristic analysis based on urgency keywords"
-        )
-    
-    def _heuristic_analyze_how(self, message: str) -> HowAnalysis:
-        """Heuristic-based HOW analysis."""
-        message_lower = message.lower()
-        
-        # Determine method preference
-        if any(word in message_lower for word in ['automatically', 'auto', 'script']):
-            method_preference = MethodType.AUTOMATED
-        elif any(word in message_lower for word in ['manually', 'hand', 'step by step']):
-            method_preference = MethodType.MANUAL
-        elif any(word in message_lower for word in ['guide', 'help', 'assist']):
-            method_preference = MethodType.GUIDED
-        else:
-            method_preference = MethodType.HYBRID
-        
-        # Determine constraints
-        constraints = []
-        if 'no downtime' in message_lower:
-            constraints.append("Zero downtime required")
-        if 'rollback' in message_lower:
-            constraints.append("Rollback capability needed")
-        if 'test' in message_lower:
-            constraints.append("Testing required")
-        
-        return HowAnalysis(
-            method_preference=method_preference,
-            execution_constraints=constraints,
-            approval_required=False,
-            rollback_needed='rollback' in message_lower,
-            testing_required='test' in message_lower,
-            confidence=0.5,
-            reasoning="Heuristic analysis based on method keywords"
-        )
-    
-    def _infer_root_need(self, message_lower: str, action_type: ActionType) -> str:
-        """Infer the root need behind the surface request."""
-        if action_type == ActionType.INFORMATION:
-            if 'status' in message_lower:
-                return "Need visibility into system health or progress"
-            elif 'performance' in message_lower:
-                return "Need to understand system performance characteristics"
-            else:
-                return "Need information for decision making"
-        elif action_type == ActionType.DIAGNOSTIC:
-            return "Need to restore normal system operation"
-        elif action_type == ActionType.PROVISIONING:
-            if 'monitoring' in message_lower:
-                return "Need visibility and alerting capabilities"
-            elif 'backup' in message_lower:
-                return "Need data protection and recovery capabilities"
-            else:
-                return "Need additional capacity or capabilities"
-        else:
-            return "Need to maintain or improve system operations"
+
     
     def _calculate_overall_confidence(self, what_conf: float, where_conf: float, 
                                     when_conf: float, how_conf: float) -> float:
@@ -632,25 +482,130 @@ Respond with JSON containing urgency, timeline_type, specific_timeline, scheduli
 Respond with JSON containing method_preference, execution_constraints, approval_required, rollback_needed, testing_required, confidence, and reasoning."""
 
     async def _llm_analyze_what(self, message: str, context: Optional[Dict]) -> WhatAnalysis:
-        """LLM-powered WHAT analysis."""
-        # This would use the LLM engine to analyze the WHAT dimension
-        # For now, fall back to heuristic analysis
-        return self._heuristic_analyze_what(message)
+        """LLM-powered WHAT analysis using actual LLM intelligence."""
+        # Build the analysis prompt
+        system_prompt = self._build_what_prompt()
+        user_prompt = f"Analyze this user request: '{message}'"
+        
+        # Get LLM response
+        response = await self.llm_engine.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=500,
+            temperature=0.1  # Low temperature for consistent analysis
+        )
+        
+        # Parse JSON response
+        import json
+        result = json.loads(response)
+        
+        # Map action type string to enum
+        action_type_str = result.get('action_type', 'OPERATIONAL').upper()
+        action_type = ActionType(action_type_str.lower())
+        
+        return WhatAnalysis(
+            action_type=action_type,
+            specific_outcome=result.get('specific_outcome', 'Perform requested action'),
+            root_need=result.get('root_need', 'Address user requirement'),
+            surface_request=message,
+            confidence=float(result.get('confidence', 0.8)),
+            reasoning=result.get('reasoning', 'LLM-based analysis')
+        )
     
     async def _llm_analyze_where_what(self, message: str, context: Optional[Dict]) -> WhereWhatAnalysis:
-        """LLM-powered WHERE/WHAT analysis."""
-        # This would use the LLM engine to analyze the WHERE/WHAT dimension
-        # For now, fall back to heuristic analysis
-        return self._heuristic_analyze_where_what(message)
+        """LLM-powered WHERE/WHAT analysis using actual LLM intelligence."""
+        # Build the analysis prompt
+        system_prompt = self._build_where_what_prompt()
+        user_prompt = f"Analyze this user request: '{message}'"
+        
+        # Get LLM response
+        response = await self.llm_engine.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=500,
+            temperature=0.1  # Low temperature for consistent analysis
+        )
+        
+        # Parse JSON response
+        import json
+        result = json.loads(response)
+        
+        # Map scope level string to enum
+        scope_level_str = result.get('scope_level', 'SINGLE_SYSTEM').upper()
+        scope_level = ScopeLevel(scope_level_str.lower())
+        
+        return WhereWhatAnalysis(
+            target_systems=result.get('target_systems', []),
+            scope_level=scope_level,
+            affected_components=result.get('affected_components', []),
+            dependencies=result.get('dependencies', []),
+            confidence=float(result.get('confidence', 0.8)),
+            reasoning=result.get('reasoning', 'LLM-based analysis')
+        )
     
     async def _llm_analyze_when(self, message: str, context: Optional[Dict]) -> WhenAnalysis:
-        """LLM-powered WHEN analysis."""
-        # This would use the LLM engine to analyze the WHEN dimension
-        # For now, fall back to heuristic analysis
-        return self._heuristic_analyze_when(message)
+        """LLM-powered WHEN analysis using actual LLM intelligence."""
+        # Build the analysis prompt
+        system_prompt = self._build_when_prompt()
+        user_prompt = f"Analyze this user request: '{message}'"
+        
+        # Get LLM response
+        response = await self.llm_engine.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=500,
+            temperature=0.1  # Low temperature for consistent analysis
+        )
+        
+        # Parse JSON response
+        import json
+        result = json.loads(response)
+        
+        # Map enum values
+        urgency_str = result.get('urgency', 'MEDIUM').upper()
+        urgency = UrgencyLevel(urgency_str.lower())
+        
+        timeline_type_str = result.get('timeline_type', 'FLEXIBLE').upper()
+        timeline_type = TimelineType(timeline_type_str.lower())
+        
+        return WhenAnalysis(
+            urgency=urgency,
+            timeline_type=timeline_type,
+            specific_timeline=result.get('specific_timeline'),
+            scheduling_constraints=result.get('scheduling_constraints', []),
+            business_hours_required=result.get('business_hours_required', False),
+            confidence=float(result.get('confidence', 0.8)),
+            reasoning=result.get('reasoning', 'LLM-based analysis')
+        )
     
     async def _llm_analyze_how(self, message: str, context: Optional[Dict]) -> HowAnalysis:
-        """LLM-powered HOW analysis."""
-        # This would use the LLM engine to analyze the HOW dimension
-        # For now, fall back to heuristic analysis
-        return self._heuristic_analyze_how(message)
+        """LLM-powered HOW analysis using actual LLM intelligence."""
+        # Build the analysis prompt
+        system_prompt = self._build_how_prompt()
+        user_prompt = f"Analyze this user request: '{message}'"
+        
+        # Get LLM response
+        response = await self.llm_engine.generate_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=500,
+            temperature=0.1  # Low temperature for consistent analysis
+        )
+        
+        # Parse JSON response
+        import json
+        result = json.loads(response)
+        
+        # Map method preference string to enum
+        method_str = result.get('method_preference', 'AUTOMATED').upper()
+        method_preference = MethodType(method_str.lower())
+        
+        return HowAnalysis(
+            method_preference=method_preference,
+            execution_constraints=result.get('execution_constraints', []),
+            approval_required=result.get('approval_required', False),
+            rollback_needed=result.get('rollback_needed', False),
+            testing_required=result.get('testing_required', False),
+            confidence=float(result.get('confidence', 0.8)),
+            reasoning=result.get('reasoning', 'LLM-based analysis')
+        )

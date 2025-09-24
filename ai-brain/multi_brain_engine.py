@@ -564,6 +564,55 @@ class MultiBrainAIEngine:
             processing_time = (end_time - start_time).total_seconds()
             
             # Create minimal result for error case
+            from brains.intent_brain.four_w_analyzer import FourWAnalysis, WhatAnalysis, WhereWhatAnalysis, WhenAnalysis, HowAnalysis, ActionType, ScopeLevel, UrgencyLevel, TimelineType, MethodType
+            # Create minimal 4W analysis for error case
+            error_four_w = FourWAnalysis(
+                what_analysis=WhatAnalysis(
+                    action_type=ActionType.INFORMATION,
+                    specific_outcome="Error processing request",
+                    root_need="System error resolution",
+                    surface_request=user_message,
+                    confidence=0.0,
+                    reasoning="Error in processing"
+                ),
+                where_what_analysis=WhereWhatAnalysis(
+                    target_systems=[],
+                    scope_level=ScopeLevel.SINGLE_SYSTEM,
+                    affected_components=[],
+                    dependencies=[],
+                    confidence=0.0,
+                    reasoning="Error in processing"
+                ),
+                when_analysis=WhenAnalysis(
+                    urgency=UrgencyLevel.MEDIUM,
+                    timeline_type=TimelineType.FLEXIBLE,
+                    specific_timeline=None,
+                    scheduling_constraints=[],
+                    business_hours_required=False,
+                    confidence=0.0,
+                    reasoning="Error in processing"
+                ),
+                how_analysis=HowAnalysis(
+                    method_preference=MethodType.MANUAL,
+                    execution_constraints=[],
+                    approval_required=True,
+                    rollback_needed=False,
+                    testing_required=False,
+                    confidence=0.0,
+                    reasoning="Error in processing"
+                ),
+                overall_confidence=0.0,
+                missing_information=["Error occurred during analysis"],
+                clarifying_questions=["Please try your request again"],
+                resource_complexity="LOW",
+                estimated_effort="Unknown",
+                required_capabilities=[],
+                risk_level="HIGH",
+                risk_factors=["Processing error"],
+                analysis_timestamp=start_time,
+                processing_time=processing_time
+            )
+            
             error_result = MultiBrainProcessingResult(
                 request_id=request_id,
                 user_message=user_message,
@@ -572,17 +621,16 @@ class MultiBrainAIEngine:
                     intent_id=request_id,
                     user_message=user_message,
                     timestamp=start_time,
-                    itil_classification=None,
-                    business_intent=None,
+                    four_w_analysis=error_four_w,
                     overall_confidence=0.0,
                     intent_summary="Error in processing",
                     recommended_approach="Manual review required",
                     technical_requirements=[],
                     resource_requirements=[],
-                    risk_level="high",
+                    risk_level="HIGH",
                     risk_factors=["Processing error"],
                     processing_time=processing_time,
-                    brain_version="1.0.0"
+                    brain_version="2.0.0"
                 ),
                 technical_plan=None,
                 sme_consultations={},

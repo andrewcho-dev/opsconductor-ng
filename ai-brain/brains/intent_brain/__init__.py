@@ -7,7 +7,6 @@ and desired outcomes.
 """
 
 from .intent_brain import IntentBrain
-from .itil_classifier import ITILOperationsClassifier
-from .business_intent_analyzer import BusinessIntentAnalyzer
+from .four_w_analyzer import FourWAnalyzer
 
-__all__ = ['IntentBrain', 'ITILOperationsClassifier', 'BusinessIntentAnalyzer']
+__all__ = ['IntentBrain', 'FourWAnalyzer']
