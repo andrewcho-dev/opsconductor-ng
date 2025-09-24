@@ -14,6 +14,7 @@ This replaces the legacy keyword-based system with intelligent multi-brain reaso
 
 import logging
 import asyncio
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -92,16 +93,20 @@ class MultiBrainAIEngine:
     7. Quality Assurance: Validates learning updates
     """
     
-    def __init__(self, llm_engine=None):
+    def __init__(self, llm_engine=None, asset_client=None):
         """
         Initialize Multi-Brain AI Engine
         
         Args:
             llm_engine: Optional LLM engine for enhanced analysis
+            asset_client: Optional asset service client for asset database access
         """
         self.engine_id = "multi_brain_ai_engine"
         self.engine_version = "2.0.0"
         self.phase = "phase_2"
+        
+        # Store service clients
+        self.asset_client = asset_client
         
         # Initialize brain components
         self.intent_brain = IntentBrain(llm_engine)
@@ -169,6 +174,131 @@ class MultiBrainAIEngine:
             logger.error(f"Failed to initialize Multi-Brain AI Engine: {str(e)}")
             return False
     
+    async def _lookup_asset_information(self, query: str) -> Optional[Dict[str, Any]]:
+        """
+        Look up asset information from the asset database if IP addresses are mentioned
+        
+        Args:
+            query: The user's query to analyze for IP addresses
+            
+        Returns:
+            Dict containing asset information if found, None otherwise
+        """
+        logger.info(f"🔍 Asset lookup called for query: '{query}'")
+        print(f"DEBUG: Asset lookup called for query: '{query}'")
+        
+        if not self.asset_client:
+            logger.warning("🔍 No asset client available for asset lookup")
+            return None
+            
+        try:
+            # Look for IP addresses in the query
+            ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
+            ip_addresses = re.findall(ip_pattern, query)
+            logger.info(f"🔍 Found IP addresses in query: {ip_addresses}")
+            
+            if not ip_addresses:
+                logger.info("🔍 No IP addresses found in query")
+                return None
+            
+            # Look up each IP address in the asset database
+            asset_info = {}
+            for ip in ip_addresses:
+                logger.info(f"🔍 Looking up asset information for IP: {ip}")
+                asset = await self.asset_client.get_asset_by_ip(ip)
+                if asset:
+                    asset_info[ip] = asset
+                    logger.info(f"✅ Found asset information for IP {ip}: {asset.get('name', 'Unknown')} ({asset.get('os_type', 'Unknown OS')})")
+                else:
+                    logger.warning(f"❌ No asset found for IP {ip}")
+            
+            logger.info(f"🔍 Asset lookup result: {len(asset_info)} assets found")
+            return asset_info if asset_info else None
+            
+        except Exception as e:
+            logger.error(f"❌ Error looking up asset information: {str(e)}")
+            return None
+    
+    def _generate_direct_asset_answer(self, query: str, formatted_assets: List[Dict]) -> Optional[str]:
+        """
+        Generate a direct answer for simple informational queries about assets.
+        
+        This method provides direct answers for basic asset information queries
+        when we have the exact data available, avoiding unnecessary "Execute with human oversight"
+        responses for simple informational requests.
+        
+        Args:
+            query: The user's query
+            formatted_assets: List of formatted asset information
+            
+        Returns:
+            Direct answer string if applicable, None otherwise
+        """
+        if not formatted_assets:
+            return None
+            
+        query_lower = query.lower()
+        asset = formatted_assets[0]  # For single asset queries
+        
+        # Communication method queries
+        if any(phrase in query_lower for phrase in ['communication method', 'default communication', 'how to connect', 'connection method']):
+            method = asset.get('communication_method', 'Unknown')
+            port = asset.get('communication_port', 'Unknown')
+            secure = asset.get('is_secure_connection', False)
+            name = asset.get('name', asset.get('ip_address', 'Unknown'))
+            
+            if method == 'winrm':
+                security_note = " (HTTP - not secure)" if not secure else " (HTTPS - secure)"
+                return f"The default communication method for {name} ({asset.get('ip_address')}) is WinRM (Windows Remote Management) on port {port}{security_note}."
+            elif method == 'ssh':
+                return f"The default communication method for {name} ({asset.get('ip_address')}) is SSH on port {port}."
+            elif method != 'Unknown':
+                return f"The default communication method for {name} ({asset.get('ip_address')}) is {method} on port {port}."
+        
+        # OS type queries
+        if any(phrase in query_lower for phrase in ['operating system', 'os type', 'what os', 'system type', 'os is', 'running on']):
+            os_type = asset.get('os_type', 'Unknown')
+            os_version = asset.get('os_version', '')
+            name = asset.get('name', asset.get('ip_address', 'Unknown'))
+            
+            if os_type != 'Unknown':
+                version_text = f" {os_version}" if os_version else ""
+                return f"{name} ({asset.get('ip_address')}) is running {os_type.title()}{version_text}."
+        
+        # Device type queries
+        if any(phrase in query_lower for phrase in ['device type', 'what type', 'kind of device']):
+            device_type = asset.get('device_type', 'Unknown')
+            name = asset.get('name', asset.get('ip_address', 'Unknown'))
+            
+            if device_type != 'Unknown':
+                return f"{name} ({asset.get('ip_address')}) is a {device_type}."
+        
+        # General asset info queries
+        if any(phrase in query_lower for phrase in ['tell me about', 'information about', 'details about', 'what is']):
+            name = asset.get('name', 'Unknown')
+            ip = asset.get('ip_address', 'Unknown')
+            os_type = asset.get('os_type', 'Unknown')
+            device_type = asset.get('device_type', 'Unknown')
+            method = asset.get('communication_method', 'Unknown')
+            port = asset.get('communication_port', 'Unknown')
+            description = asset.get('description', '')
+            
+            info_parts = [f"{name} ({ip})"]
+            if os_type != 'Unknown':
+                info_parts.append(f"OS: {os_type.title()}")
+            if device_type != 'Unknown':
+                info_parts.append(f"Type: {device_type}")
+            if method != 'Unknown':
+                info_parts.append(f"Communication: {method} on port {port}")
+            if description:
+                info_parts.append(f"Description: {description}")
+            
+            return " | ".join(info_parts)
+        
+        return None
+    
+
+    
     async def process_query(self, query: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Process a user query using multi-brain architecture (compatibility method)
@@ -184,6 +314,12 @@ class MultiBrainAIEngine:
             Dict containing the AI response and metadata
         """
         try:
+            logger.info(f"🧠 Processing query: '{query}'")
+            
+            # First, check if this query involves asset information
+            asset_info = await self._lookup_asset_information(query)
+            logger.info(f"🧠 Asset lookup completed, found: {asset_info is not None}")
+            
             # Convert user_context to the format expected by process_request
             context = {}
             if user_context:
@@ -192,27 +328,80 @@ class MultiBrainAIEngine:
                 elif isinstance(user_context, dict):
                     context.update(user_context)
             
+            # Add asset information to context if found
+            if asset_info:
+                # Format asset information in a way that's clear for the AI
+                formatted_assets = []
+                for ip, asset in asset_info.items():
+                    asset_summary = {
+                        'ip_address': ip,
+                        'name': asset.get('name', 'Unknown'),
+                        'hostname': asset.get('hostname', ip),
+                        'os_type': asset.get('os_type', 'Unknown'),
+                        'os_version': asset.get('os_version', 'Unknown'),
+                        'device_type': asset.get('device_type', 'Unknown'),
+                        'communication_method': asset.get('service_type', 'Unknown'),
+                        'communication_port': asset.get('port', 'Unknown'),
+                        'is_secure_connection': asset.get('is_secure', False),
+                        'description': asset.get('description', 'No description available')
+                    }
+                    formatted_assets.append(asset_summary)
+                
+                context['asset_information'] = formatted_assets
+                context['asset_query_context'] = f"The user is asking about assets. Available asset information has been provided for the following IP addresses: {', '.join(asset_info.keys())}. Use this information to answer their question directly."
+                
+                # Add explicit instruction for informational queries
+                if any(word in query.lower() for word in ['what is', 'what are', 'show me', 'tell me', 'how do', 'which']):
+                    context['query_type'] = 'informational'
+                    context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
+                
+                logger.info(f"✅ Added asset information to context for {len(asset_info)} assets")
+                print(f"DEBUG: Asset information being passed to AI: {asset_info}")
+                print(f"DEBUG: Formatted asset context: {formatted_assets}")
+            
+            # ALWAYS use Multi-Brain AI processing - no bypassing allowed!
+            logger.info("🧠 Using multi-brain analysis path (ALWAYS - no keyword matching)")
+            print("DEBUG: Using multi-brain analysis path (ALWAYS - no keyword matching)")
+            
             # Process through multi-brain architecture
             result = await self.process_request(query, context)
-            
-            # Convert MultiBrainProcessingResult to legacy format
             response_text = result.recommended_actions[0] if result.recommended_actions else "Analysis completed successfully"
+            confidence = result.overall_confidence
+            intent = result.intent_analysis.intent_type if hasattr(result.intent_analysis, 'intent_type') else "multi_brain_analysis"
+            
+            # Post-process: If this is a simple informational query about assets and we have the data,
+            # provide a direct answer with the specific asset information
+            if (asset_info and 
+                context.get('query_type') == 'informational' and
+                result.execution_strategy == "informational_response"):
+                
+                # Generate a direct answer based on the asset information
+                direct_answer = self._generate_direct_asset_answer(query, formatted_assets)
+                if direct_answer:
+                    response_text = direct_answer
+                    confidence = 0.85  # High confidence since we have the exact data
+                    logger.info(f"🎯 Provided direct answer for informational asset query: {direct_answer}")
+                    print(f"DEBUG: Provided direct answer: {direct_answer}")
+            
+            # Use full multi-brain metadata
+            metadata = {
+                "engine": "multi_brain_ai_engine",
+                "version": "2.0.0",
+                "processing_time": result.processing_time,
+                "brains_consulted": result.brains_consulted,
+                "intent_analysis": result.intent_analysis.to_dict() if hasattr(result.intent_analysis, 'to_dict') else str(result.intent_analysis),
+                "technical_plan": result.technical_plan.to_dict() if hasattr(result.technical_plan, 'to_dict') else str(result.technical_plan),
+                "sme_consultations": result.sme_consultations,
+                "execution_strategy": result.execution_strategy,
+                "risk_assessment": result.risk_assessment,
+                "success": True
+            }
+            
             return {
                 "response": response_text,
-                "confidence": result.overall_confidence,
-                "intent": result.intent_analysis.intent_type if hasattr(result.intent_analysis, 'intent_type') else "multi_brain_analysis",
-                "metadata": {
-                    "engine": "multi_brain_ai_engine",
-                    "version": "2.0.0",
-                    "processing_time": result.processing_time,
-                    "brains_consulted": result.brains_consulted,
-                    "intent_analysis": result.intent_analysis.to_dict() if hasattr(result.intent_analysis, 'to_dict') else str(result.intent_analysis),
-                    "technical_plan": result.technical_plan.to_dict() if hasattr(result.technical_plan, 'to_dict') else str(result.technical_plan),
-                    "sme_consultations": result.sme_consultations,
-                    "execution_strategy": result.execution_strategy,
-                    "risk_assessment": result.risk_assessment,
-                    "success": True
-                }
+                "confidence": confidence,
+                "intent": intent,
+                "metadata": metadata
             }
             
         except Exception as e:
@@ -427,6 +616,13 @@ class MultiBrainAIEngine:
     async def _determine_execution_strategy(self, overall_confidence: float, technical_plan: TechnicalPlan, intent_analysis: IntentAnalysisResult) -> str:
         """Determine execution strategy based on confidence and risk"""
         try:
+            # Check if this is an informational query
+            if (hasattr(intent_analysis, 'four_w_analysis') and 
+                hasattr(intent_analysis.four_w_analysis, 'what_analysis') and
+                hasattr(intent_analysis.four_w_analysis.what_analysis, 'action_type') and
+                intent_analysis.four_w_analysis.what_analysis.action_type.value == 'information'):
+                return "informational_response"
+            
             # High confidence and low risk: Automated execution
             if overall_confidence >= 0.8 and intent_analysis.risk_level == "low":
                 return "automated_execution"
@@ -452,6 +648,12 @@ class MultiBrainAIEngine:
         recommendations = []
         
         try:
+            # Check if this is an informational query that should provide direct answers
+            if execution_strategy == "informational_response":
+                recommendations.append("Information provided based on available data")
+                recommendations.append("No further action required")
+                return recommendations
+            
             # Add strategy-specific recommendations
             if execution_strategy == "automated_execution":
                 recommendations.append("Execute plan automatically with monitoring")
@@ -463,7 +665,7 @@ class MultiBrainAIEngine:
                 recommendations.append("Manual review required before execution")
                 recommendations.append("Consider breaking down into smaller steps")
             else:  # assisted_execution
-                recommendations.append("Execute with human oversight")
+                recommendations.append("Review the analysis and proceed with appropriate action")
                 recommendations.append("Validate each step before proceeding")
             
             # Add technical recommendations
@@ -819,3 +1021,128 @@ class MultiBrainAIEngine:
             "processing_time": result.processing_time,
             "multi_brain_result": result.to_dict()  # Full result for modern clients
         }
+    
+    async def create_job_from_natural_language(self, description: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
+        """
+        Create an executable job from natural language description using Multi-Brain Architecture.
+        
+        This method leverages the multi-brain system to:
+        1. INTENT BRAIN: Understand what the user wants to accomplish
+        2. TECHNICAL BRAIN: Plan the technical execution steps
+        3. SME BRAINS: Provide domain-specific expertise and validation
+        4. CONFIDENCE ENGINE: Assess overall feasibility and risk
+        5. JOB CREATION: Generate executable workflow
+        
+        Args:
+            description: Natural language description of the desired job
+            user_context: Optional user context information
+            
+        Returns:
+            Dict containing the created job or error information
+        """
+        try:
+            logger.info(f"🧠 Multi-Brain job creation requested: {description[:50]}...")
+            
+            # Process through multi-brain architecture
+            result = await self.process_request(description, user_context or {})
+            
+            # Check if we have sufficient confidence to create a job
+            if result.overall_confidence < self.confidence_threshold:
+                return {
+                    "success": False,
+                    "error": f"Insufficient confidence ({result.overall_confidence:.2%}) to create job safely",
+                    "confidence": result.overall_confidence,
+                    "threshold": self.confidence_threshold,
+                    "clarification_needed": True,
+                    "intent_analysis": result.intent_analysis.to_dict() if result.intent_analysis else None,
+                    "risk_assessment": result.risk_assessment,
+                    "recommended_actions": result.recommended_actions
+                }
+            
+            # Generate job workflow from technical plan
+            if not result.technical_plan or not result.technical_plan.steps:
+                return {
+                    "success": False,
+                    "error": "Unable to generate technical execution plan",
+                    "confidence": result.overall_confidence,
+                    "intent_analysis": result.intent_analysis.to_dict() if result.intent_analysis else None
+                }
+            
+            # Create job structure
+            job_id = f"mb_job_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{len(self.request_history)}"
+            
+            # Convert technical plan to executable workflow
+            workflow = {
+                "job_id": job_id,
+                "name": result.intent_analysis.intent_summary if result.intent_analysis else "Multi-Brain Generated Job",
+                "description": description,
+                "steps": [],
+                "metadata": {
+                    "created_by": "multi_brain_ai_engine",
+                    "engine_version": self.engine_version,
+                    "confidence": result.overall_confidence,
+                    "intent_analysis": result.intent_analysis.to_dict() if result.intent_analysis else None,
+                    "technical_plan": result.technical_plan.to_dict() if result.technical_plan else None,
+                    "sme_consultations": result.sme_consultations,
+                    "risk_assessment": result.risk_assessment,
+                    "processing_time": result.processing_time
+                }
+            }
+            
+            # Convert technical plan steps to workflow steps
+            for i, step in enumerate(result.technical_plan.steps):
+                workflow_step = {
+                    "step_id": f"step_{i+1}",
+                    "name": step.get("name", f"Step {i+1}"),
+                    "description": step.get("description", ""),
+                    "action": step.get("action", "manual"),
+                    "parameters": step.get("parameters", {}),
+                    "dependencies": step.get("dependencies", []),
+                    "estimated_duration": step.get("estimated_duration", 300),  # 5 minutes default
+                    "risk_level": step.get("risk_level", "medium"),
+                    "validation_criteria": step.get("validation_criteria", []),
+                    "rollback_steps": step.get("rollback_steps", [])
+                }
+                workflow["steps"].append(workflow_step)
+            
+            # Add SME recommendations as validation steps
+            for domain, consultation in result.sme_consultations.items():
+                if isinstance(consultation, dict) and consultation.get("recommendations"):
+                    for rec in consultation["recommendations"][:2]:  # Limit to top 2 recommendations
+                        validation_step = {
+                            "step_id": f"validation_{domain}_{len(workflow['steps'])+1}",
+                            "name": f"{domain.replace('_', ' ').title()} Validation",
+                            "description": rec.get("description", "SME validation step"),
+                            "action": "validation",
+                            "parameters": {
+                                "domain": domain,
+                                "validation_type": rec.get("recommendation_type", "best_practice"),
+                                "criteria": rec.get("validation_criteria", [])
+                            },
+                            "estimated_duration": 60,  # 1 minute for validation
+                            "risk_level": "low"
+                        }
+                        workflow["steps"].append(validation_step)
+            
+            logger.info(f"✅ Multi-Brain job created successfully: {job_id} with {len(workflow['steps'])} steps")
+            
+            return {
+                "success": True,
+                "job_id": job_id,
+                "workflow": workflow,
+                "confidence": result.overall_confidence,
+                "execution_strategy": result.execution_strategy,
+                "estimated_duration": sum(step.get("estimated_duration", 300) for step in workflow["steps"]),
+                "risk_assessment": result.risk_assessment,
+                "multi_brain_analysis": result.to_dict(),
+                "message": f"Job '{workflow['name']}' created successfully using Multi-Brain Architecture with {result.overall_confidence:.1%} confidence"
+            }
+            
+        except Exception as e:
+            logger.error(f"Multi-brain job creation failed: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Multi-brain job creation failed: {str(e)}",
+                "confidence": 0.0,
+                "fallback_message": "Please try rephrasing your request or use the manual job creation interface"
+            }

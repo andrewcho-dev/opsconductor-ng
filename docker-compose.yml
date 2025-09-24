@@ -404,21 +404,13 @@ services:
       
       # Core files
       - ./ai-brain/main.py:/app/main.py
-      - ./ai-brain/brain_engine.py:/app/brain_engine.py
       - ./ai-brain/llm_conversation_handler.py:/app/llm_conversation_handler.py
       - ./ai-brain/multi_brain_engine.py:/app/multi_brain_engine.py
       
-      # AI modules
-      - ./ai-brain/system_model:/app/system_model
-      - ./ai-brain/knowledge_engine:/app/knowledge_engine
-      - ./ai-brain/intent_engine:/app/intent_engine
+      # AI modules (ONLY what Multi-Brain AI Engine needs)
       - ./ai-brain/job_engine:/app/job_engine
       - ./ai-brain/integrations:/app/integrations
-      - ./ai-brain/processing:/app/processing
       - ./ai-brain/api:/app/api
-      - ./ai-brain/analytics:/app/analytics
-      - ./ai-brain/capabilities:/app/capabilities
-      - ./ai-brain/engines:/app/engines
       
       # Multi-brain system directories (CRITICAL - these were missing!)
       - ./ai-brain/brains:/app/brains

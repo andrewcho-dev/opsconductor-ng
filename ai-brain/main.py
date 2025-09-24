@@ -23,8 +23,10 @@ except ImportError as e:
     MULTI_BRAIN_AVAILABLE = False
     MultiBrainAIEngine = None
 
-# Legacy compatibility import
-from brain_engine import AIBrainEngine as LegacyAIBrainEngine
+# Legacy brain engine COMPLETELY REMOVED - NO FALLBACKS ALLOWED
+
+# LLM Engine import
+from integrations.llm_client import LLMEngine
 
 # PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
 
@@ -32,9 +34,7 @@ from brain_engine import AIBrainEngine as LegacyAIBrainEngine
 from api.knowledge_router import knowledge_router  # Re-enabled - working properly
 from api.learning_router import learning_router  # Re-enabled - working properly
 
-# Modern Analytics and Processing (Phase 3A)
-from analytics.system_analytics import system_analytics
-from processing.intent_processor import intent_processor
+# Legacy analytics and processing REMOVED - Multi-Brain AI Engine handles all processing
 
 # Job Engine imports
 from job_engine.workflow_generator import WorkflowGenerator
@@ -81,52 +81,69 @@ app.include_router(learning_router)
 # Initialize service components
 service = AIService()
 
+# Initialize LLM Engine
+ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
+llm_engine = LLMEngine(ollama_host, default_model)
+
 # Initialize Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)
-multi_brain_enabled = os.getenv("MULTI_BRAIN_ENABLED", "true").lower() == "true" and MULTI_BRAIN_AVAILABLE
-if multi_brain_enabled:
-    logger.info("🧠 Initializing Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)")
-    ai_engine = MultiBrainAIEngine()
-else:
-    if not MULTI_BRAIN_AVAILABLE:
-        logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain not available)")
-    else:
-        logger.info("🧠 Using Legacy AI Brain Engine (Multi-Brain disabled)")
-    ai_engine = LegacyAIBrainEngine()
+# NO FALLBACKS ALLOWED - MULTI-BRAIN OR NOTHING!
+if not MULTI_BRAIN_AVAILABLE:
+    raise Exception("❌ MULTI-BRAIN AI ENGINE NOT AVAILABLE - SYSTEM CANNOT FUNCTION WITHOUT IT")
 
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
 
+logger.info("🧠 Initializing Multi-Brain AI Engine (Phase 1: Intent Brain Foundation)")
+ai_engine = MultiBrainAIEngine(llm_engine, asset_client)
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI engine on startup"""
-    engine_type = "Multi-Brain AI Engine" if multi_brain_enabled else "Legacy AI Brain Engine"
-    logger.info(f"Initializing {engine_type}...")
     try:
+        print("🚀 STARTUP EVENT CALLED!")
+        logger.info("🚀 STARTUP EVENT CALLED!")
+        logger.info("Initializing Multi-Brain AI Engine...")
+        
+        print(f"🔗 About to initialize LLM engine: {llm_engine}")
+        logger.info(f"🔗 About to initialize LLM engine: {llm_engine}")
+        
+        # Initialize LLM engine first
+        logger.info("🔗 Initializing LLM engine...")
+        llm_success = await llm_engine.initialize()
+        if llm_success:
+            logger.info("🚀 LLM engine initialized successfully")
+        else:
+            logger.error("❌ Failed to initialize LLM engine")
+            return
+        
+        # Initialize AI engine
         success = await ai_engine.initialize()
         if success:
-            logger.info(f"🚀 {engine_type} initialized successfully")
-            if multi_brain_enabled:
-                logger.info("🧠 Phase 1: Intent Brain Foundation is now active")
-                logger.info("🔮 Features: ITIL Classification, Business Intent Analysis, Continuous Learning")
+            logger.info("🚀 Multi-Brain AI Engine initialized successfully")
+            logger.info("🧠 Phase 1: Intent Brain Foundation is now active")
+            logger.info("🔮 Features: ITIL Classification, Business Intent Analysis, Continuous Learning")
         else:
-            logger.error(f"❌ Failed to initialize {engine_type}")
+            logger.error("❌ Failed to initialize Multi-Brain AI Engine")
     except Exception as e:
-        logger.error(f"❌ Exception during {engine_type} initialization: {e}")
+        print(f"❌ STARTUP EXCEPTION: {e}")
+        logger.error(f"❌ Exception during startup: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup AI engine on shutdown"""
-    engine_type = "Multi-Brain AI Engine" if multi_brain_enabled else "Legacy AI Brain Engine"
-    logger.info(f"Shutting down {engine_type}...")
+    logger.info("Shutting down Multi-Brain AI Engine...")
     try:
-        if multi_brain_enabled and hasattr(ai_engine, 'cleanup'):
+        if hasattr(ai_engine, 'cleanup'):
             await ai_engine.cleanup()
-            logger.info(f"🧠 {engine_type} cleanup completed")
+            logger.info("🧠 Multi-Brain AI Engine cleanup completed")
         else:
-            logger.info(f"🧠 {engine_type} shutdown completed")
+            logger.info("🧠 Multi-Brain AI Engine shutdown completed")
     except Exception as e:
-        logger.error(f"❌ Exception during {engine_type} shutdown: {e}")
+        logger.error(f"❌ Exception during Multi-Brain AI Engine shutdown: {e}")
 
 # PURE LLM CHAT FUNCTION - INTELLIGENT ROUTING BETWEEN CONVERSATION AND JOB CREATION
 async def pure_llm_chat_endpoint(request, ai_engine):
@@ -208,20 +225,11 @@ async def pure_llm_chat_endpoint(request, ai_engine):
 async def _analyze_user_intent_with_llm(message: str, ai_engine) -> Dict[str, Any]:
     """Use LLM to analyze if the user wants to create a job or have a conversation"""
     try:
-        # Get LLM engine from ai_engine (AIBrainEngine)
-        if not hasattr(ai_engine, 'llm_engine') or ai_engine.llm_engine is None:
-            logger.warning("🔍 LLM engine not available, using fallback keyword analysis")
-            # Fallback analysis based on keywords
-            job_keywords = ["create", "run", "execute", "deploy", "restart", "start", "stop", "install", "configure", "backup", "monitor", "automate"]
-            is_job = any(keyword in message.lower() for keyword in job_keywords)
-            logger.info(f"🔍 Fallback keyword analysis result: is_job={is_job}, message='{message.lower()}'")
-            return {
-                "is_job_request": is_job,
-                "confidence": 0.8 if is_job else 0.3,
-                "reasoning": "Fallback keyword analysis - LLM engine not available",
-                "job_type": "automation" if is_job else None,
-                "conversation_type": "general" if not is_job else None
-            }
+        # Use the global LLM engine
+        if llm_engine is None:
+            logger.error("🔍 LLM engine not available - NO FALLBACK ALLOWED")
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception("LLM engine not available - SYSTEM CANNOT FUNCTION WITHOUT AI INTENT ANALYSIS")
         
         analysis_prompt = f"""Analyze this user message and determine if they want to create an automation job or just have a conversation.
 
@@ -257,7 +265,7 @@ Examples:
 - "deploy application to production" → JOB REQUEST (action: deploy, target: application)
 - "what is the status of server1?" → CONVERSATION (information request)"""
 
-        llm_response = await ai_engine.llm_engine.generate(analysis_prompt)
+        llm_response = await llm_engine.generate(analysis_prompt)
         logger.info(f"🔍 LLM intent analysis response: {llm_response}")
         
         # Extract the generated text from the LLM response
@@ -274,28 +282,14 @@ Examples:
             logger.info(f"🔍 Parsed intent analysis: {analysis}")
             return analysis
         except json.JSONDecodeError as e:
-            logger.warning(f"🔍 JSON parsing failed: {e}, falling back to keyword analysis")
-            # Fallback analysis based on keywords
-            job_keywords = ["create", "run", "execute", "deploy", "restart", "start", "stop", "install", "configure", "backup", "monitor", "automate"]
-            is_job = any(keyword in message.lower() for keyword in job_keywords)
-            logger.info(f"🔍 Keyword analysis result: is_job={is_job}, message='{message.lower()}'")
-            return {
-                "is_job_request": is_job,
-                "confidence": 0.8 if is_job else 0.3,
-                "reasoning": "Fallback keyword analysis",
-                "job_type": "automation" if is_job else None,
-                "conversation_type": "general" if not is_job else None
-            }
+            logger.error(f"🔍 JSON parsing failed: {e} - NO FALLBACK ALLOWED")
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"LLM response parsing FAILED - NO FALLBACK ALLOWED: {e}")
             
     except Exception as e:
         logger.error(f"❌ Intent analysis failed: {e}")
-        # Conservative fallback - treat as conversation
-        return {
-            "is_job_request": False,
-            "confidence": 0.5,
-            "reasoning": f"Analysis failed: {str(e)}",
-            "conversation_type": "general"
-        }
+        # NO FALLBACK - FAIL HARD AS REQUESTED
+        raise Exception(f"Intent analysis COMPLETELY FAILED - NO FALLBACK ALLOWED: {e}")
 
 async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
     """Handle job creation requests using the LLM job creator"""
@@ -312,6 +306,45 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
         job_result = await ai_engine.create_job_from_natural_language(request.message, user_context)
         
         if job_result.get("success"):
+            # Extract Multi-Brain debug information for job creation
+            multi_brain_data = job_result.get("multi_brain_result", {})
+            intent_analysis_data = multi_brain_data.get("intent_analysis", {})
+            technical_plan_data = multi_brain_data.get("technical_plan", {})
+            sme_consultations = multi_brain_data.get("sme_consultations", {})
+            risk_assessment = multi_brain_data.get("risk_assessment", {})
+            
+            intent_classification = {
+                "intent_type": "job_creation",
+                "confidence": job_result.get("confidence", 0.9),
+                "method": "multi_brain_job_creator",
+                "alternatives": [],
+                "entities": intent_analysis_data.get("entities", []) if isinstance(intent_analysis_data, dict) else job_result.get("entities", []),
+                "context_analysis": {
+                    "confidence_score": job_result.get("confidence", 0.9),
+                    "risk_level": risk_assessment.get("overall_risk_level", "MEDIUM").upper(),
+                    "requirements_count": len(intent_analysis_data.get("requirements", [])) if isinstance(intent_analysis_data, dict) else 0,
+                    "recommendations": risk_assessment.get("recommendations", ["Multi-Brain job creation completed"])
+                },
+                "reasoning": intent_analysis_data.get("reasoning", "Processed using Multi-Brain job creation pipeline") if isinstance(intent_analysis_data, dict) else "Processed using Multi-Brain job creation pipeline",
+                "metadata": {
+                    "engine": "multi_brain_job_creator",
+                    "version": "2.0.0",
+                    "success": True,
+                    "job_type": intent_analysis.get("job_type", "automation"),
+                    "processing_time": multi_brain_data.get("processing_time", 0.0),
+                    "brains_consulted": multi_brain_data.get("brains_consulted", []),
+                    "sme_consultations": sme_consultations,
+                    "technical_plan": technical_plan_data,
+                    "execution_strategy": multi_brain_data.get("execution_strategy", {}),
+                    "risk_assessment": risk_assessment,
+                    "job_details": {
+                        "job_id": job_result.get("job_id"),
+                        "automation_job_id": job_result.get("automation_job_id"),
+                        "workflow_steps": len(job_result.get("workflow", {}).get("steps", [])) if job_result.get("workflow") else 0
+                    }
+                }
+            }
+            
             return {
                 "response": job_result.get("response", "I've created the automation job for you."),
                 "conversation_id": request.conversation_id,
@@ -322,24 +355,11 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
                 "automation_job_id": job_result.get("automation_job_id"),
                 "workflow": job_result.get("workflow"),
                 "execution_started": job_result.get("execution_started", False),
-                "intent_classification": {
-                    "intent_type": "job_creation",
-                    "confidence": job_result.get("confidence", 0.9),
-                    "method": "pure_llm_job_creator",
-                    "alternatives": [],
-                    "entities": job_result.get("entities", []),
-                    "context_analysis": job_result.get("analysis", {}),
-                    "reasoning": "Processed using pure LLM job creation pipeline",
-                    "metadata": {
-                        "engine": "llm_job_creator",
-                        "success": True,
-                        "job_type": intent_analysis.get("job_type", "automation")
-                    }
-                },
+                "intent_classification": intent_classification,
                 "timestamp": datetime.utcnow().isoformat(),
                 "_routing": {
-                    "service_type": "pure_llm_job_creator", 
-                    "response_time": 0.0,
+                    "service_type": "multi_brain_job_creator", 
+                    "response_time": multi_brain_data.get("processing_time", 0.0),
                     "cached": False
                 }
             }
@@ -425,39 +445,56 @@ async def _handle_conversation_request(request, ai_engine, intent_analysis) -> D
         
         response = await ai_engine.process_query(request.message, user_context)
         
+        # Extract Multi-Brain debug information if available
+        multi_brain_metadata = response.get("metadata", {})
+        intent_analysis_data = multi_brain_metadata.get("intent_analysis", {})
+        technical_plan_data = multi_brain_metadata.get("technical_plan", {})
+        sme_consultations = multi_brain_metadata.get("sme_consultations", {})
+        risk_assessment = multi_brain_metadata.get("risk_assessment", {})
+        
+        # Build comprehensive intent classification with Multi-Brain data
+        intent_classification = {
+            "intent_type": response.get("intent", "conversation"),
+            "confidence": response.get("confidence", intent_analysis.get("confidence", 0.9)),
+            "method": "multi_brain_ai_engine",
+            "alternatives": [],
+            "entities": intent_analysis_data.get("entities", []) if isinstance(intent_analysis_data, dict) else [],
+            "context_analysis": {
+                "confidence_score": response.get("confidence", intent_analysis.get("confidence", 0.9)),
+                "risk_level": risk_assessment.get("overall_risk_level", "LOW").upper(),
+                "requirements_count": len(intent_analysis_data.get("requirements", [])) if isinstance(intent_analysis_data, dict) else 0,
+                "recommendations": risk_assessment.get("recommendations", ["Multi-Brain analysis completed"])
+            },
+            "reasoning": intent_analysis_data.get("reasoning", "Processed using Multi-Brain AI Engine") if isinstance(intent_analysis_data, dict) else "Processed using Multi-Brain AI Engine",
+            "metadata": {
+                "engine": "multi_brain_ai_engine",
+                "version": "2.0.0",
+                "success": response.get("success", True),
+                "conversation_type": intent_analysis.get("conversation_type", "general"),
+                "processing_time": multi_brain_metadata.get("processing_time", 0.0),
+                "brains_consulted": multi_brain_metadata.get("brains_consulted", []),
+                "sme_consultations": sme_consultations,
+                "technical_plan": technical_plan_data,
+                "execution_strategy": multi_brain_metadata.get("execution_strategy", {}),
+                "risk_assessment": risk_assessment
+            }
+        }
+        
         return {
             "response": response.get("response", "I'm here to help with your questions."),
             "conversation_id": response.get("conversation_id", request.conversation_id),
-            "intent": "conversation",
-            "confidence": intent_analysis.get("confidence", 0.9),
+            "intent": response.get("intent", "conversation"),
+            "confidence": response.get("confidence", intent_analysis.get("confidence", 0.9)),
             "job_id": None,  # Conversations don't create jobs
             "execution_id": None,
             "automation_job_id": None,
             "workflow": None,
             "execution_started": False,
-            "intent_classification": {
-                "intent_type": "conversation",
-                "confidence": intent_analysis.get("confidence", 0.9),
-                "method": "pure_llm_conversation",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {
-                    "confidence_score": intent_analysis.get("confidence", 0.9),
-                    "risk_level": "NONE",
-                    "requirements_count": 0,
-                    "recommendations": ["Using pure LLM conversation"]
-                },
-                "reasoning": "Processed using pure LLM conversation handler",
-                "metadata": {
-                    "engine": "llm_conversation_handler",
-                    "success": response.get("success", True),
-                    "conversation_type": intent_analysis.get("conversation_type", "general")
-                }
-            },
+            "intent_classification": intent_classification,
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
-                "service_type": "pure_llm_conversation_handler", 
-                "response_time": 0.0,
+                "service_type": "multi_brain_conversation_handler", 
+                "response_time": multi_brain_metadata.get("processing_time", 0.0),
                 "cached": False
             }
         }

@@ -561,6 +561,127 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             </div>
           )}
 
+          {/* Multi-Brain Consultations Section */}
+          {intent?.metadata?.brains_consulted && intent.metadata.brains_consulted.length > 0 && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Brain className="debug-section-icon" />
+                  Multi-Brain Consultations
+                </div>
+              </div>
+              
+              <div className="brains-consulted-list">
+                {intent.metadata.brains_consulted.map((brain: string, index: number) => (
+                  <div key={index} className="brain-consulted-item">
+                    <span className="brain-name">{brain}</span>
+                    <span className="brain-status">✓ Consulted</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* SME Consultations Section */}
+          {intent?.metadata?.sme_consultations && Object.keys(intent.metadata.sme_consultations).length > 0 && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Shield className="debug-section-icon" />
+                  SME Brain Consultations
+                </div>
+              </div>
+              
+              <div className="sme-consultations-list">
+                {Object.entries(intent.metadata.sme_consultations).map(([domain, consultation]: [string, any], index: number) => (
+                  <div key={index} className="sme-consultation-item">
+                    <div className="sme-domain">{domain.replace(/_/g, ' ').toUpperCase()}</div>
+                    <div className="sme-details">
+                      {consultation.confidence && (
+                        <span className={`sme-confidence ${getConfidenceClass(consultation.confidence)}`}>
+                          {formatConfidence(consultation.confidence)}
+                        </span>
+                      )}
+                      {consultation.recommendations && consultation.recommendations.length > 0 && (
+                        <div className="sme-recommendations">
+                          {consultation.recommendations.slice(0, 2).map((rec: string, recIndex: number) => (
+                            <div key={recIndex} className="sme-recommendation">{rec}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Technical Plan Section */}
+          {intent?.metadata?.technical_plan && Object.keys(intent.metadata.technical_plan).length > 0 && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Target className="debug-section-icon" />
+                  Technical Plan
+                </div>
+              </div>
+              
+              <div className="technical-plan-details">
+                {intent.metadata.technical_plan.confidence_score && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Plan Confidence</span>
+                    <span className="debug-field-value">{formatConfidence(intent.metadata.technical_plan.confidence_score)}</span>
+                  </div>
+                )}
+                {intent.metadata.technical_plan.complexity_level && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Complexity</span>
+                    <span className="debug-field-value">{intent.metadata.technical_plan.complexity_level}</span>
+                  </div>
+                )}
+                {intent.metadata.technical_plan.estimated_duration && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Est. Duration</span>
+                    <span className="debug-field-value">{intent.metadata.technical_plan.estimated_duration}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Job Details Section (for job creation) */}
+          {intent?.metadata?.job_details && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Zap className="debug-section-icon" />
+                  Job Creation Details
+                </div>
+              </div>
+              
+              <div className="job-details">
+                {intent.metadata.job_details.job_id && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Job ID</span>
+                    <span className="debug-field-value code">{intent.metadata.job_details.job_id}</span>
+                  </div>
+                )}
+                {intent.metadata.job_details.automation_job_id && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Automation Job ID</span>
+                    <span className="debug-field-value">{intent.metadata.job_details.automation_job_id}</span>
+                  </div>
+                )}
+                {intent.metadata.job_details.workflow_steps !== undefined && (
+                  <div className="debug-field">
+                    <span className="debug-field-label">Workflow Steps</span>
+                    <span className="debug-field-value">{intent.metadata.job_details.workflow_steps}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Raw Response Section */}
           {message.debugInfo.raw_response && (
             <div className="debug-section" style={{ gridColumn: '1 / -1' }}>
@@ -909,6 +1030,10 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             overflow-x: auto;
             max-height: 200px;
             overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--neutral-800);
+            line-height: 1.4;
           }
           
           .confidence-indicator {
@@ -933,6 +1058,350 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           .confidence-low {
             background: var(--danger-red-light);
             color: var(--danger-red);
+          }
+          
+          /* Multi-Brain Debug Styles */
+          .brains-consulted-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+          }
+          
+          .brain-consulted-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--primary-blue-light);
+            border: 1px solid var(--primary-blue);
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 10px;
+          }
+          
+          .brain-name {
+            font-weight: bold;
+            color: var(--primary-blue-dark);
+          }
+          
+          .brain-status {
+            color: var(--success-green);
+            font-size: 9px;
+          }
+          
+          .sme-consultations-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 6px;
+          }
+          
+          .sme-consultation-item {
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+            padding: 6px;
+          }
+          
+          .sme-domain {
+            font-weight: bold;
+            color: var(--primary-blue-dark);
+            font-size: 10px;
+            margin-bottom: 4px;
+          }
+          
+          .sme-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+          }
+          
+          .sme-confidence {
+            align-self: flex-start;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: bold;
+          }
+          
+          .sme-recommendations {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+          }
+          
+          .sme-recommendation {
+            font-size: 9px;
+            color: var(--neutral-600);
+            padding: 2px 4px;
+            background: var(--warning-orange-light);
+            border-radius: 3px;
+          }
+          
+          .technical-plan-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 6px;
+          }
+          
+          .job-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 6px;
+          }
+          
+          .debug-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--neutral-300);
+          }
+          
+          .debug-panel-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            color: var(--primary-blue-dark);
+            font-size: 12px;
+          }
+          
+          .debug-panel-badge {
+            background: var(--primary-blue);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: bold;
+          }
+          
+          .debug-sections-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+          }
+          
+          .debug-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+          }
+          
+          .debug-section-title {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-weight: bold;
+            color: var(--primary-blue);
+            font-size: 11px;
+          }
+          
+          .debug-section-icon {
+            width: 12px;
+            height: 12px;
+          }
+          
+          .debug-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
+          }
+          
+          .debug-field-label {
+            font-size: 10px;
+            color: var(--neutral-600);
+            font-weight: normal;
+          }
+          
+          .debug-field-value {
+            font-size: 10px;
+            color: var(--neutral-800);
+            font-weight: bold;
+          }
+          
+          .debug-field-value.code {
+            font-family: 'Courier New', monospace;
+            background: var(--neutral-100);
+            padding: 1px 3px;
+            border-radius: 2px;
+          }
+          
+          .confidence-bar {
+            width: 100%;
+            height: 4px;
+            background: var(--neutral-200);
+            border-radius: 2px;
+            margin: 4px 0;
+            overflow: hidden;
+          }
+          
+          .confidence-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+          }
+          
+          .confidence-fill.high {
+            background: var(--success-green);
+          }
+          
+          .confidence-fill.medium {
+            background: var(--warning-orange);
+          }
+          
+          .confidence-fill.low {
+            background: var(--danger-red);
+          }
+          
+          .risk-indicator {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: bold;
+          }
+          
+          .risk-high {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
+          
+          .risk-medium {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange-dark);
+          }
+          
+          .risk-low {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+          }
+          
+          .alternatives-list {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-top: 6px;
+          }
+          
+          .alternative-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 3px 6px;
+            background: var(--neutral-50);
+            border-radius: 3px;
+          }
+          
+          .alternative-name {
+            font-size: 10px;
+            color: var(--neutral-700);
+          }
+          
+          .alternative-confidence {
+            font-size: 9px;
+            color: var(--neutral-500);
+            font-weight: bold;
+          }
+          
+          .entities-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 6px;
+          }
+          
+          .entity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 6px;
+            background: var(--neutral-50);
+            border: 1px solid var(--neutral-200);
+            border-radius: 4px;
+          }
+          
+          .entity-details {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+          }
+          
+          .entity-value {
+            font-size: 10px;
+            font-weight: bold;
+            color: var(--neutral-800);
+          }
+          
+          .entity-type {
+            font-size: 9px;
+            color: var(--neutral-500);
+            text-transform: uppercase;
+          }
+          
+          .entity-confidence {
+            font-size: 9px;
+            color: var(--neutral-600);
+            font-weight: bold;
+          }
+          
+          .performance-metrics {
+            display: flex;
+            gap: 12px;
+            margin-top: 6px;
+            margin-bottom: 6px;
+          }
+          
+          .metric-item {
+            text-align: center;
+          }
+          
+          .metric-value {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--primary-blue);
+          }
+          
+          .metric-label {
+            font-size: 9px;
+            color: var(--neutral-600);
+            margin-top: 2px;
+          }
+          
+          .recommendations-list {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-top: 6px;
+          }
+          
+          .recommendation-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+            padding: 3px 6px;
+            background: var(--warning-orange-light);
+            border-radius: 3px;
+          }
+          
+          .recommendation-icon {
+            width: 10px;
+            height: 10px;
+            color: var(--warning-orange);
+            margin-top: 1px;
+            flex-shrink: 0;
+          }
+          
+          .recommendation-text {
+            font-size: 9px;
+            color: var(--warning-orange-dark);
+            line-height: 1.2;
           }
         `}
       </style>

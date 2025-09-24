@@ -98,71 +98,7 @@ class AIContext:
         self.user_context = data.get("user_context", {})
         self.system_context = data.get("system_context", {})
 
-def classify_intent(query: str) -> Tuple[Intent, float]:
-    """
-    Classify user query into an intent with confidence score
-    Returns: (Intent, confidence_score)
-    """
-    query_lower = query.lower()
-    
-    # Infrastructure patterns
-    if any(word in query_lower for word in ["list", "show", "get all", "display"]):
-        if any(word in query_lower for word in ["target", "server", "host", "asset"]):
-            return Intent.LIST_TARGETS, 0.9
-        elif any(word in query_lower for word in ["job", "task", "automation"]):
-            return Intent.LIST_JOBS, 0.9
-    
-    if any(word in query_lower for word in ["create", "add", "new", "setup"]):
-        if any(word in query_lower for word in ["target", "server", "host"]):
-            return Intent.CREATE_TARGET, 0.85
-        elif any(word in query_lower for word in ["workflow", "automation", "process"]):
-            return Intent.CREATE_WORKFLOW, 0.85
-        elif any(word in query_lower for word in ["template", "notification"]):
-            return Intent.CREATE_TEMPLATE, 0.85
-    
-    if any(word in query_lower for word in ["update", "modify", "change", "edit"]):
-        if any(word in query_lower for word in ["target", "server", "host"]):
-            return Intent.UPDATE_TARGET, 0.85
-    
-    if any(word in query_lower for word in ["delete", "remove", "destroy"]):
-        if any(word in query_lower for word in ["target", "server", "host"]):
-            return Intent.DELETE_TARGET, 0.85
-    
-    # Automation patterns
-    if any(word in query_lower for word in ["run", "execute", "start", "trigger"]):
-        if any(word in query_lower for word in ["job", "task", "workflow", "automation"]):
-            return Intent.RUN_JOB, 0.9
-    
-    if any(word in query_lower for word in ["schedule", "cron", "recurring"]):
-        return Intent.SCHEDULE_JOB, 0.85
-    
-    if any(word in query_lower for word in ["check", "status", "monitor"]):
-        if any(word in query_lower for word in ["execution", "job", "run"]):
-            return Intent.CHECK_EXECUTION, 0.85
-        elif any(word in query_lower for word in ["service", "application"]):
-            return Intent.CHECK_SERVICE, 0.85
-        elif any(word in query_lower for word in ["alert", "notification"]):
-            return Intent.CHECK_ALERTS, 0.85
-        elif any(word in query_lower for word in ["health", "system"]):
-            return Intent.CHECK_HEALTH, 0.85
-    
-    # Communication patterns
-    if any(word in query_lower for word in ["send", "notify", "alert", "email"]):
-        return Intent.SEND_NOTIFICATION, 0.85
-    
-    # Metrics and troubleshooting
-    if any(word in query_lower for word in ["metric", "performance", "usage", "statistics"]):
-        return Intent.GET_METRICS, 0.85
-    
-    if any(word in query_lower for word in ["troubleshoot", "debug", "fix", "problem", "issue"]):
-        return Intent.TROUBLESHOOT, 0.9
-    
-    # Help
-    if any(word in query_lower for word in ["help", "how to", "guide", "tutorial"]):
-        return Intent.HELP, 0.9
-    
-    # Default
-    return Intent.GENERAL_QUERY, 0.5
+
 
 def extract_entities(query: str) -> Dict[str, Any]:
     """

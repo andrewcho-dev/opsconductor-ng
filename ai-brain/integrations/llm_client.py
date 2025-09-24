@@ -62,8 +62,8 @@ class LLMEngine:
             if not self.client:
                 return []
             
-            # Use synchronous call since ollama client is synchronous
-            models_response = self.client.list()
+            # Run synchronous ollama call in thread pool to avoid blocking
+            models_response = await asyncio.to_thread(self.client.list)
             models = [model.model for model in models_response.models]
             self.available_models = models
             logger.info(f"Available models: {models}")
@@ -80,7 +80,8 @@ class LLMEngine:
                 return False
             
             logger.info(f"Pulling model: {model_name}")
-            self.client.pull(model_name)
+            # Run synchronous ollama call in thread pool to avoid blocking
+            await asyncio.to_thread(self.client.pull, model_name)
             
             # Refresh available models list
             await self.get_available_models()

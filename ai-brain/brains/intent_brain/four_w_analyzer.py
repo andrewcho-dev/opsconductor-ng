@@ -222,7 +222,8 @@ class FourWAnalyzer:
             
         except Exception as e:
             logger.error(f"4W analysis failed: {e}")
-            return self._create_fallback_analysis(user_message, start_time, str(e))
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"4W Framework analysis FAILED - NO FALLBACK ALLOWED: {e}")
     
     async def _analyze_what(self, message: str, context: Optional[Dict]) -> WhatAnalysis:
         """Analyze the WHAT dimension - action type and root need."""
@@ -554,65 +555,7 @@ class FourWAnalyzer:
         
         return risk_level, risk_factors
     
-    def _create_fallback_analysis(self, message: str, start_time: datetime, error: str) -> FourWAnalysis:
-        """Create fallback analysis when main analysis fails."""
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        # Create minimal analysis
-        what_analysis = WhatAnalysis(
-            action_type=ActionType.OPERATIONAL,
-            specific_outcome="Unable to determine specific outcome",
-            root_need="Analysis failed - manual review needed",
-            surface_request=message,
-            confidence=0.1,
-            reasoning=f"Fallback analysis due to error: {error}"
-        )
-        
-        where_what_analysis = WhereWhatAnalysis(
-            target_systems=[],
-            scope_level=ScopeLevel.SINGLE_SYSTEM,
-            affected_components=[],
-            dependencies=[],
-            confidence=0.1,
-            reasoning="Fallback analysis - no target identification"
-        )
-        
-        when_analysis = WhenAnalysis(
-            urgency=UrgencyLevel.MEDIUM,
-            timeline_type=TimelineType.FLEXIBLE,
-            specific_timeline=None,
-            scheduling_constraints=[],
-            business_hours_required=True,
-            confidence=0.1,
-            reasoning="Fallback analysis - default timing"
-        )
-        
-        how_analysis = HowAnalysis(
-            method_preference=MethodType.MANUAL,
-            execution_constraints=[],
-            approval_required=True,
-            rollback_needed=True,
-            testing_required=True,
-            confidence=0.1,
-            reasoning="Fallback analysis - conservative approach"
-        )
-        
-        return FourWAnalysis(
-            what_analysis=what_analysis,
-            where_what_analysis=where_what_analysis,
-            when_analysis=when_analysis,
-            how_analysis=how_analysis,
-            overall_confidence=0.1,
-            missing_information=["Complete analysis failed - manual review required"],
-            clarifying_questions=["Could you please rephrase your request? The system had trouble understanding it."],
-            resource_complexity="HIGH",
-            estimated_effort="UNKNOWN",
-            required_capabilities=["Manual analysis and planning"],
-            risk_level="HIGH",
-            risk_factors=["Analysis failure indicates complex or ambiguous request"],
-            analysis_timestamp=start_time,
-            processing_time=processing_time
-        )
+    # FALLBACK METHOD REMOVED - NO FALLBACKS ALLOWED
     
     def _build_what_prompt(self) -> str:
         """Build system prompt for WHAT dimension analysis."""

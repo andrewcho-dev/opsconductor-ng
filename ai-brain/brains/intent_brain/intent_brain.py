@@ -279,10 +279,8 @@ class IntentBrain:
             logger.error(f"Intent Brain analysis failed: {e}")
             processing_time = (datetime.now() - start_time).total_seconds()
             
-            # Return fallback result
-            return self._create_fallback_result(
-                intent_id, user_message, start_time, processing_time, str(e)
-            )
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"Intent Brain analysis FAILED - NO FALLBACK ALLOWED: {e}")
     
     def _calculate_overall_confidence(self, intent_confidence: float, 
                                     business_confidence: float) -> float:
@@ -611,47 +609,7 @@ class IntentBrain:
         
         return list(set(requirements))  # Remove duplicates
     
-    def _create_fallback_result(self, intent_id: str, user_message: str,
-                              start_time: datetime, processing_time: float,
-                              error: str) -> IntentAnalysisResult:
-        """Create a fallback result when analysis fails."""
-        from .business_intent_analyzer import BusinessOutcome, BusinessPriority, BusinessIntent
-        
-        # Create fallback 4W analysis using the analyzer's fallback method
-        fallback_four_w = self.four_w_analyzer._create_fallback_analysis(
-            user_message, start_time, error
-        )
-        
-        # Create fallback business intent
-        fallback_business = BusinessIntent(
-            primary_outcome=BusinessOutcome.OPERATIONAL_EFFICIENCY,
-            secondary_outcomes=[],
-            business_priority=BusinessPriority.OPERATIONAL,
-            value_proposition="Standard IT operational support",
-            success_criteria=["Request completed successfully"],
-            stakeholders=["IT Operations"],
-            business_risk="Low operational risk",
-            roi_indicators=["Operational continuity"],
-            confidence=0.3,
-            reasoning=f"Fallback analysis due to error: {error}"
-        )
-        
-        return IntentAnalysisResult(
-            intent_id=intent_id,
-            user_message=user_message,
-            timestamp=start_time,
-            four_w_analysis=fallback_four_w,
-            business_intent=fallback_business,
-            overall_confidence=0.1,
-            intent_summary="Analysis failed - manual review required",
-            recommended_approach="Manual analysis and processing required",
-            technical_requirements=["Manual analysis required"],
-            resource_requirements=["Technical staff review"],
-            risk_level="HIGH",
-            risk_factors=["Analysis failure requires manual review"],
-            processing_time=processing_time,
-            brain_version=self.version
-        )
+    # FALLBACK METHOD REMOVED - NO FALLBACKS ALLOWED
     
     def get_technical_brain_input(self, intent_result: IntentAnalysisResult) -> Dict[str, Any]:
         """
@@ -694,23 +652,8 @@ class IntentBrain:
             
         except Exception as e:
             logger.error(f"Error generating Technical Brain input: {e}")
-            # Return fallback technical input
-            return {
-                "itil_service_type": "service_request",
-                "business_intent": intent_result.intent_summary,
-                "technical_requirements": intent_result.technical_requirements,
-                "urgency_level": "medium",
-                "scope_level": "single_system",
-                "execution_method_preference": "guided",
-                "resource_complexity": "MEDIUM",
-                "estimated_effort": "HOURS",
-                "overall_confidence": intent_result.overall_confidence,
-                "error_info": {
-                    "bridge_error": str(e),
-                    "fallback_used": True,
-                    "timestamp": datetime.now().isoformat()
-                }
-            }
+            # NO FALLBACK - FAIL HARD AS REQUESTED
+            raise Exception(f"Technical Brain input generation FAILED - NO FALLBACK ALLOWED: {e}")
     
     def get_bridge_stats(self) -> Dict[str, Any]:
         """Get statistics from the Intent-to-Technical Bridge."""
