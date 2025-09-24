@@ -153,7 +153,7 @@ class APIGateway:
         
         # Initialize HTTP client
         self.http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
+            timeout=httpx.Timeout(120.0),  # Increased timeout for AI processing
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100)
         )
         

@@ -190,28 +190,31 @@ class DatabaseSMEBrain(SMEBrain):
             # Calculate confidence
             confidence = await self._calculate_database_confidence(db_analysis, query)
             
-            return SMERecommendation(
-                sme_domain=self.domain,
-                confidence=confidence,
-                recommendations=recommendations,
-                risk_assessment=risk_assessment,
-                implementation_notes=await self._generate_implementation_notes(db_analysis),
-                alternative_approaches=await self._suggest_alternative_approaches(db_analysis),
-                dependencies=await self._identify_database_dependencies(db_analysis),
-                validation_criteria=await self._define_validation_criteria(db_analysis)
+            return await self._create_recommendation(
+                query=query,
+                recommendation_type=SMERecommendationType.BEST_PRACTICE,
+                title="Database Configuration Recommendations",
+                description=f"Database analysis and recommendations based on requirements",
+                rationale="Optimized database configuration for performance and security",
+                implementation_steps=recommendations,
+                priority="medium",
+                validation_criteria=await self._define_validation_criteria(db_analysis),
+                dependencies=await self._identify_database_dependencies(db_analysis)
             )
             
         except Exception as e:
             # Return low-confidence recommendation on error
-            return SMERecommendation(
-                sme_domain=self.domain,
-                confidence=SMEConfidence(score=0.2, reasoning=f"Error in database analysis: {str(e)}"),
-                recommendations=[f"Unable to provide database expertise due to: {str(e)}"],
-                risk_assessment={"high_risk": ["Database analysis failed"]},
-                implementation_notes=["Manual database review required"],
-                alternative_approaches=["Consult database specialist"],
+            return await self._create_recommendation(
+                query=query,
+                recommendation_type=SMERecommendationType.TROUBLESHOOTING_STEP,
+                title="Database Analysis Error",
+                description=f"Unable to provide database expertise due to: {str(e)}",
+                rationale="Error occurred during database analysis",
+                implementation_steps=["Manual database review required"],
+                priority="low",
+                validation_criteria=["Manual database validation"],
                 dependencies=["Database analysis tools"],
-                validation_criteria=["Manual database validation"]
+                risks_if_ignored=["Database analysis failed"]
             )
     
     async def _analyze_database_requirements(self, query: SMEQuery) -> DatabaseAnalysis:
@@ -550,9 +553,10 @@ class DatabaseSMEBrain(SMEBrain):
             Return as JSON with arrays: high_risk, medium_risk, low_risk, mitigation_strategies
             """
             
-            response = self.llm_engine.generate_response(risk_prompt, max_tokens=600)
             import json
-            risk_assessment = json.loads(response)
+            response = await self.llm_engine.generate(risk_prompt, max_tokens=600)
+            response_text = response["generated_text"]
+            risk_assessment = json.loads(response_text)
             
             # Ensure all required keys are present
             default_assessment = {

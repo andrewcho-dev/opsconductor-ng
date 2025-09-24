@@ -11,11 +11,14 @@ This SME brain provides specialized knowledge and recommendations for:
 
 from typing import Dict, List, Any, Optional
 import asyncio
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
-from ..base_sme_brain import SMEBrain, SMEQuery, SMERecommendation, SMEConfidence, SMEConfidenceCalculator
+from ..base_sme_brain import SMEBrain, SMEQuery, SMERecommendation, SMERecommendationType, SMEConfidence, SMEConfidenceCalculator
+
+logger = logging.getLogger(__name__)
 
 
 class NetworkComplexity(Enum):
@@ -133,28 +136,31 @@ class NetworkSMEBrain(SMEBrain):
             # Calculate confidence
             confidence = await self._calculate_network_confidence(network_analysis, query)
             
-            return SMERecommendation(
-                sme_domain=self.domain,
-                confidence=confidence,
-                recommendations=recommendations,
-                risk_assessment=risk_assessment,
-                implementation_notes=await self._generate_implementation_notes(network_analysis),
-                alternative_approaches=await self._suggest_alternative_approaches(network_analysis),
-                dependencies=await self._identify_network_dependencies(network_analysis),
-                validation_criteria=await self._define_validation_criteria(network_analysis)
+            return await self._create_recommendation(
+                query=query,
+                recommendation_type=SMERecommendationType.BEST_PRACTICE,
+                title="Network Infrastructure Recommendations",
+                description=f"Network analysis and recommendations based on requirements",
+                rationale="Optimized network configuration for performance and security",
+                implementation_steps=recommendations,
+                priority="medium",
+                validation_criteria=await self._define_validation_criteria(network_analysis),
+                dependencies=await self._identify_network_dependencies(network_analysis)
             )
             
         except Exception as e:
             # Return low-confidence recommendation on error
-            return SMERecommendation(
-                sme_domain=self.domain,
-                confidence=SMEConfidence(score=0.2, reasoning=f"Error in network analysis: {str(e)}"),
-                recommendations=[f"Unable to provide network expertise due to: {str(e)}"],
-                risk_assessment={"high_risk": ["Network analysis failed"]},
-                implementation_notes=["Manual network review required"],
-                alternative_approaches=["Consult network specialist"],
+            return await self._create_recommendation(
+                query=query,
+                recommendation_type=SMERecommendationType.TROUBLESHOOTING_STEP,
+                title="Network Analysis Error",
+                description=f"Unable to provide network expertise due to: {str(e)}",
+                rationale="Error occurred during network analysis",
+                implementation_steps=["Manual network review required"],
+                priority="low",
+                validation_criteria=["Manual network validation"],
                 dependencies=["Network analysis tools"],
-                validation_criteria=["Manual network validation"]
+                risks_if_ignored=["Network analysis failed"]
             )
     
     async def _analyze_network_requirements(self, query: SMEQuery) -> NetworkAnalysis:
@@ -416,9 +422,10 @@ class NetworkSMEBrain(SMEBrain):
             Return as JSON with arrays: high_risk, medium_risk, low_risk, mitigation_strategies
             """
             
-            response = self.llm_engine.generate_response(risk_prompt, max_tokens=600)
             import json
-            risk_assessment = json.loads(response)
+            response = await self.llm_engine.generate(risk_prompt, max_tokens=600)
+            response_text = response["generated_text"]
+            risk_assessment = json.loads(response_text)
             
             # Ensure all required keys are present
             default_assessment = {
@@ -574,7 +581,14 @@ class NetworkSMEBrain(SMEBrain):
             }
             
             # Perform network analysis
-            network_analysis = await self.analyze_network_requirements(network_requirements)
+            network_analysis_query = SMEQuery(
+                query_id=f"network_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                domain="network_infrastructure",
+                context=f"Technical plan analysis for {technical_plan.get('deployment_type', 'application')}",
+                technical_plan=technical_plan,
+                intent_analysis=intent_analysis
+            )
+            network_analysis = await self._analyze_network_requirements(network_analysis_query)
             
             # Generate network-specific recommendations
             recommendations = await self.provide_expertise(SMEQuery(
@@ -594,11 +608,22 @@ class NetworkSMEBrain(SMEBrain):
                 intent_analysis=intent_analysis
             ))
             
+            # Calculate confidence based on analysis
+            analysis_confidence = await self._calculate_network_confidence(network_analysis, network_analysis_query)
+            
             return {
                 "domain": "network_infrastructure",
-                "analysis_confidence": network_analysis.confidence,
-                "network_analysis": network_analysis.to_dict(),
-                "recommendations": [rec.to_dict() for rec in recommendations],
+                "analysis_confidence": analysis_confidence,
+                "network_analysis": {
+                    "topology_type": network_analysis.topology_type.value,
+                    "complexity_level": network_analysis.complexity_level.value,
+                    "bandwidth_requirements": network_analysis.bandwidth_requirements,
+                    "load_balancing_strategy": network_analysis.load_balancing_strategy,
+                    "security_considerations": network_analysis.security_considerations,
+                    "optimization_opportunities": network_analysis.optimization_opportunities,
+                    "risk_factors": network_analysis.risk_factors
+                },
+                "recommendations": [recommendations.to_dict()] if hasattr(recommendations, 'to_dict') else [],
                 "risk_assessment": risk_assessment,
                 "implementation_priority": "high" if network_analysis.complexity_level in [NetworkComplexity.COMPLEX, NetworkComplexity.ENTERPRISE] else "medium",
                 "estimated_effort": "high" if network_analysis.complexity_level == NetworkComplexity.ENTERPRISE else "medium"

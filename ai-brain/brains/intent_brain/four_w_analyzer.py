@@ -144,7 +144,10 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
     
     # Strategy 1: Try parsing the entire response as JSON
     try:
-        return json.loads(response_text.strip())
+        parsed = json.loads(response_text.strip())
+        # Only return dictionaries, not lists
+        if isinstance(parsed, dict):
+            return parsed
     except json.JSONDecodeError:
         pass
     
@@ -160,7 +163,10 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
         matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
         for match in matches:
             try:
-                return json.loads(match.strip())
+                parsed = json.loads(match.strip())
+                # Only return dictionaries, not lists
+                if isinstance(parsed, dict):
+                    return parsed
             except json.JSONDecodeError:
                 continue
     
@@ -184,7 +190,10 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
                 # Remove comments (/* */ style)
                 cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
                 
-                return json.loads(cleaned)
+                parsed = json.loads(cleaned)
+                # Only return dictionaries, not lists
+                if isinstance(parsed, dict):
+                    return parsed
             except json.JSONDecodeError:
                 continue
     

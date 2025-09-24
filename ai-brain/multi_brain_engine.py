@@ -225,8 +225,8 @@ Examples:
                 )
                 
                 needs_assets = False
-                if llm_response and 'content' in llm_response:
-                    response_content = llm_response['content'].upper()
+                if llm_response and 'response' in llm_response:
+                    response_content = llm_response['response'].upper()
                     needs_assets = 'YES' in response_content
                     logger.info(f"🧠 LLM determined query needs assets: {needs_assets}")
                 
@@ -350,8 +350,8 @@ Please analyze this asset data intelligently and answer the user's question accu
                 system_prompt=system_prompt
             )
             
-            if response and 'content' in response:
-                return response['content'].strip()
+            if response and 'response' in response:
+                return response['response'].strip()
             else:
                 logger.warning("LLM response was empty or malformed")
                 return None
@@ -360,8 +360,296 @@ Please analyze this asset data intelligently and answer the user's question accu
             logger.error(f"Error in intelligent asset analysis: {str(e)}")
             return None
 
+    async def _synthesize_final_response(self, query: str, multi_brain_result, asset_analysis: Optional[str] = None) -> str:
+        """
+        RESTORE THE ORIGINAL INTENT: Synthesize ALL brain intelligence into one authoritative answer
+        
+        This method combines:
+        - Multi-brain strategic analysis
+        - SME expert consultations  
+        - Technical brain insights
+        - Intelligent asset analysis
+        - Intent analysis
+        
+        Into one comprehensive, authoritative response that uses ALL the intelligence
+        instead of throwing it away like the broken implementation was doing.
+        
+        Args:
+            query: The user's original query
+            multi_brain_result: The complete multi-brain processing result
+            asset_analysis: Optional intelligent asset analysis
+            
+        Returns:
+            Synthesized final response that combines ALL intelligence
+        """
+        logger.info("🚀 SYNTHESIS METHOD CALLED - Starting final response synthesis")
+        print("DEBUG: SYNTHESIS METHOD CALLED - Starting final response synthesis")
+        
+        if not hasattr(self, 'llm_engine') or not self.llm_engine:
+            logger.warning("No LLM engine available for synthesis - falling back to multi-brain response")
+            return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
+        
+        try:
+            # Extract all the intelligence that was being WASTED
+            synthesis_components = []
+            
+            logger.info(f"🔍 DEBUG: Starting synthesis with multi_brain_result type: {type(multi_brain_result)}")
+            logger.info(f"🔍 DEBUG: SME consultations type: {type(multi_brain_result.sme_consultations) if hasattr(multi_brain_result, 'sme_consultations') else 'None'}")
+            if hasattr(multi_brain_result, 'sme_consultations') and multi_brain_result.sme_consultations:
+                # SME consultations is a dictionary, not a list
+                first_key = next(iter(multi_brain_result.sme_consultations.keys())) if multi_brain_result.sme_consultations else None
+                if first_key:
+                    logger.info(f"🔍 DEBUG: First SME consultation type: {type(multi_brain_result.sme_consultations[first_key])}")
+                else:
+                    logger.info("🔍 DEBUG: SME consultations dictionary is empty")
+            
+            # 1. Multi-brain strategic analysis
+            if multi_brain_result.recommended_actions:
+                synthesis_components.append({
+                    'type': 'strategic_analysis',
+                    'content': multi_brain_result.recommended_actions[0],
+                    'confidence': multi_brain_result.overall_confidence,
+                    'source': 'multi_brain_orchestrator'
+                })
+            
+            # 2. SME expert consultations (STOP WASTING THESE!)
+            if hasattr(multi_brain_result, 'sme_consultations') and multi_brain_result.sme_consultations:
+                try:
+                    logger.info(f"🔍 DEBUG: Processing {len(multi_brain_result.sme_consultations)} SME consultations")
+                    for domain, sme in multi_brain_result.sme_consultations.items():
+                        logger.info(f"🔍 DEBUG: SME domain {domain} type: {type(sme)}")
+                        # Handle both dict and string formats
+                        if isinstance(sme, dict):
+                            # Extract recommendations from the SME consultation
+                            recommendations = sme.get('recommendations', [])
+                            if recommendations:
+                                # If recommendations is a list, process each one
+                                if isinstance(recommendations, list):
+                                    for rec in recommendations:
+                                        if isinstance(rec, dict):
+                                            synthesis_components.append({
+                                                'type': 'expert_consultation',
+                                                'content': rec.get('description', rec.get('title', str(rec))),
+                                                'expertise': domain,
+                                                'reasoning': rec.get('rationale', ''),
+                                                'confidence': rec.get('confidence', 0.5),
+                                                'source': 'sme_brain'
+                                            })
+                                        else:
+                                            synthesis_components.append({
+                                                'type': 'expert_consultation',
+                                                'content': str(rec),
+                                                'expertise': domain,
+                                                'reasoning': '',
+                                                'confidence': 0.5,
+                                                'source': 'sme_brain'
+                                            })
+                                else:
+                                    # If recommendations is not a list, treat as single recommendation
+                                    synthesis_components.append({
+                                        'type': 'expert_consultation',
+                                        'content': str(recommendations),
+                                        'expertise': domain,
+                                        'reasoning': '',
+                                        'confidence': 0.5,
+                                        'source': 'sme_brain'
+                                    })
+                            else:
+                                # No specific recommendations, use general content
+                                synthesis_components.append({
+                                    'type': 'expert_consultation',
+                                    'content': str(sme),
+                                    'expertise': domain,
+                                    'reasoning': '',
+                                    'confidence': 0.5,
+                                    'source': 'sme_brain'
+                                })
+                        elif isinstance(sme, str):
+                            synthesis_components.append({
+                                'type': 'expert_consultation',
+                                'content': sme,
+                                'expertise': domain,
+                                'reasoning': '',
+                                'confidence': 0.5,
+                                'source': 'sme_brain'
+                            })
+                        else:
+                            # Handle other formats by converting to string
+                            synthesis_components.append({
+                                'type': 'expert_consultation',
+                                'content': str(sme),
+                                'expertise': domain,
+                                'reasoning': '',
+                                'confidence': 0.5,
+                                'source': 'sme_brain'
+                            })
+                except Exception as sme_error:
+                    logger.error(f"Error processing SME consultations: {sme_error}")
+                    # Continue without SME data
+            
+            # 3. Technical analysis insights
+            if hasattr(multi_brain_result, 'technical_plan') and multi_brain_result.technical_plan:
+                tech_plan = multi_brain_result.technical_plan
+                if hasattr(tech_plan, 'to_dict'):
+                    tech_dict = tech_plan.to_dict()
+                else:
+                    tech_dict = {'analysis': str(tech_plan)}
+                
+                synthesis_components.append({
+                    'type': 'technical_analysis',
+                    'content': tech_dict.get('analysis', str(tech_plan)),
+                    'recommendations': tech_dict.get('recommendations', []),
+                    'source': 'technical_brain'
+                })
+            
+            # 4. Intent analysis
+            if hasattr(multi_brain_result, 'intent_analysis') and multi_brain_result.intent_analysis:
+                intent = multi_brain_result.intent_analysis
+                if hasattr(intent, 'to_dict'):
+                    intent_dict = intent.to_dict()
+                else:
+                    intent_dict = {'intent_type': str(intent)}
+                
+                synthesis_components.append({
+                    'type': 'intent_analysis',
+                    'content': intent_dict.get('analysis', ''),
+                    'intent_type': intent_dict.get('intent_type', 'unknown'),
+                    'source': 'intent_brain'
+                })
+            
+            # 5. Intelligent asset analysis (if available)
+            if asset_analysis:
+                synthesis_components.append({
+                    'type': 'asset_analysis',
+                    'content': asset_analysis,
+                    'confidence': 0.9,
+                    'source': 'asset_intelligence'
+                })
+            
+            # Determine if this is a simple information query or complex operational task
+            is_simple_information_query = False
+            if hasattr(multi_brain_result, 'intent_analysis') and multi_brain_result.intent_analysis:
+                intent_dict = multi_brain_result.intent_analysis.to_dict() if hasattr(multi_brain_result.intent_analysis, 'to_dict') else {}
+                action_type = intent_dict.get('action_type', '').lower()
+                is_simple_information_query = action_type == 'information'
+                logger.info(f"🔍 Intent action type: {action_type}, Simple info query: {is_simple_information_query}")
+            
+            # Create different synthesis prompts based on query type
+            if is_simple_information_query:
+                system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
 
-    
+This is a SIMPLE INFORMATION QUERY that requires a direct, concise answer.
+
+CRITICAL INSTRUCTIONS FOR INFORMATION QUERIES:
+1. Focus ONLY on providing the specific information requested
+2. Use asset analysis data as the primary source of truth
+3. Give a direct, factual answer without unnecessary elaboration
+4. IGNORE irrelevant SME recommendations about security, networking, etc. unless directly related to the question
+5. Keep the response brief and to the point
+6. Only include technical details if they directly answer the user's question
+
+RESPONSE FORMAT:
+- Start with the direct answer to the question
+- Include relevant asset details if helpful
+- Avoid unrelated recommendations or analysis
+
+Your goal is to provide a CLEAR, DIRECT ANSWER to the information request."""
+            else:
+                system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
+
+Your job is to combine ALL the intelligence from multiple AI brains into ONE comprehensive, authoritative answer.
+
+CRITICAL INSTRUCTIONS:
+1. You are receiving the output from multiple specialized AI brains - USE ALL OF IT
+2. Each brain provides different expertise - SYNTHESIZE their insights
+3. DO NOT ignore any brain's analysis - they all provide value
+4. Create a comprehensive answer that leverages ALL the intelligence
+5. If there are conflicts between brains, acknowledge them and provide balanced synthesis
+6. Prioritize accuracy and completeness over brevity
+7. Make the final answer authoritative and actionable
+
+BRAIN TYPES YOU'RE SYNTHESIZING:
+- Strategic Analysis: High-level multi-brain orchestration insights
+- Expert Consultations: SME domain expertise and recommendations  
+- Technical Analysis: Technical implementation details and plans
+- Intent Analysis: Understanding of user intent and context
+- Asset Analysis: Data-driven analysis of specific assets/infrastructure
+
+Your goal is to create the BEST POSSIBLE ANSWER by combining all this intelligence."""
+
+            # Format the synthesis data
+            synthesis_prompt = f"""User Query: {query}
+
+INTELLIGENCE TO SYNTHESIZE:
+"""
+            
+            for i, component in enumerate(synthesis_components, 1):
+                synthesis_prompt += f"""
+{i}. {component['type'].upper()} (Source: {component['source']})
+   Content: {component['content']}
+"""
+                if 'expertise' in component:
+                    synthesis_prompt += f"   Expertise Area: {component['expertise']}\n"
+                if 'reasoning' in component:
+                    synthesis_prompt += f"   Reasoning: {component['reasoning']}\n"
+                if 'confidence' in component:
+                    synthesis_prompt += f"   Confidence: {component['confidence']}\n"
+
+            # Add different synthesis task instructions based on query type
+            if is_simple_information_query:
+                synthesis_prompt += """
+SYNTHESIS TASK:
+Provide a direct, concise answer to the user's information request:
+1. Focus on the ASSET ANALYSIS data as the primary source of truth
+2. Give the specific information requested (e.g., count, list, status)
+3. IGNORE unrelated SME recommendations unless they directly answer the question
+4. Keep the response brief and factual
+5. Only include additional context if it directly helps answer the question
+
+Provide a CLEAR, DIRECT ANSWER without unnecessary elaboration."""
+            else:
+                synthesis_prompt += """
+SYNTHESIS TASK:
+Combine ALL the above intelligence into one comprehensive, authoritative answer that:
+1. Uses insights from ALL brains (don't waste any intelligence)
+2. Provides a complete response to the user's query
+3. Includes relevant technical details, expert recommendations, and data analysis
+4. Is actionable and authoritative
+5. Acknowledges the multi-brain analysis that went into the response
+
+Create the BEST POSSIBLE ANSWER by synthesizing all this intelligence."""
+
+            # Get the synthesis from LLM
+            logger.info("🎯 Performing final LLM synthesis of ALL brain intelligence")
+            logger.info(f"🔍 DEBUG: Synthesis prompt length: {len(synthesis_prompt)}")
+            logger.info(f"🔍 DEBUG: System prompt length: {len(system_prompt)}")
+            
+            response = await self.llm_engine.chat(
+                message=synthesis_prompt,
+                system_prompt=system_prompt
+            )
+            
+            logger.info(f"🔍 DEBUG: LLM response type: {type(response)}")
+            logger.info(f"🔍 DEBUG: LLM response content: {response}")
+            
+            if response and 'response' in response:
+                synthesized_answer = response['response'].strip()
+                logger.info(f"✅ Final synthesis completed - combined {len(synthesis_components)} intelligence sources")
+                logger.info(f"🔍 DEBUG: Synthesized answer: {synthesized_answer[:200]}...")
+                return synthesized_answer
+            else:
+                logger.warning(f"LLM synthesis failed - response format invalid: {response}")
+                logger.warning("Falling back to multi-brain response")
+                return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
+                
+        except Exception as e:
+            logger.error(f"Error in final synthesis: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error details: {repr(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Fallback to multi-brain response
+            return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
 
     
     async def process_query(self, query: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
@@ -431,8 +719,8 @@ Answer with just "INFORMATION" or "ACTION"."""
                             system_prompt="You are a query type classifier. Classify queries as INFORMATION or ACTION requests."
                         )
                         
-                        if type_response and 'content' in type_response:
-                            response_content = type_response['content'].upper()
+                        if type_response and 'response' in type_response:
+                            response_content = type_response['response'].upper()
                             if 'INFORMATION' in response_content:
                                 context['query_type'] = 'informational'
                                 context['instruction'] = 'This is an informational query. Provide a direct answer using the available asset information. Do not require human oversight for simple information requests.'
@@ -455,23 +743,46 @@ Answer with just "INFORMATION" or "ACTION"."""
             
             # Process through multi-brain architecture
             result = await self.process_request(query, context)
-            response_text = result.recommended_actions[0] if result.recommended_actions else "Analysis completed successfully"
             confidence = result.overall_confidence
             intent = result.intent_analysis.intent_type if hasattr(result.intent_analysis, 'intent_type') else "multi_brain_analysis"
             
-            # Post-process: If this is a simple informational query about assets and we have the data,
-            # provide a direct answer with the specific asset information
-            if (asset_info and 
-                context.get('query_type') == 'informational' and
-                result.execution_strategy == "informational_response"):
-                
-                # Generate an intelligent answer based on ALL asset information
-                direct_answer = await self._generate_intelligent_asset_answer(query, formatted_assets)
-                if direct_answer:
-                    response_text = direct_answer
-                    confidence = 0.90  # High confidence since we have intelligent LLM analysis
-                    logger.info(f"🎯 Provided intelligent answer for informational asset query: {direct_answer}")
-                    print(f"DEBUG: Provided intelligent answer: {direct_answer}")
+            # RESTORE ORIGINAL INTENT: SYNTHESIZE ALL INTELLIGENCE
+            # Instead of throwing away multi-brain analysis, COMBINE it with asset intelligence
+            
+            # Generate intelligent asset analysis if we have asset data
+            asset_analysis = None
+            if asset_info and context.get('query_type') == 'informational':
+                asset_analysis = await self._generate_intelligent_asset_answer(query, formatted_assets)
+                if asset_analysis:
+                    logger.info("🎯 Generated intelligent asset analysis for synthesis")
+                    print(f"DEBUG: Generated asset analysis: {asset_analysis}")
+            
+            # FINAL LLM SYNTHESIS: Combine ALL brain intelligence
+            logger.info("🧠 Performing final synthesis of ALL brain intelligence")
+            print("DEBUG: Synthesizing multi-brain analysis + asset intelligence + SME consultations")
+            
+            try:
+                response_text = await self._synthesize_final_response(
+                    query=query,
+                    multi_brain_result=result,
+                    asset_analysis=asset_analysis
+                )
+                logger.info("✅ Synthesis completed successfully")
+            except Exception as synthesis_error:
+                logger.error(f"Error in final synthesis: {synthesis_error}")
+                print(f"DEBUG: Synthesis failed with error: {synthesis_error}")
+                # Fallback to multi-brain response
+                response_text = result.recommended_actions[0] if result.recommended_actions else "Analysis completed successfully"
+            
+            # Update confidence based on synthesis quality
+            has_sme_consultations = hasattr(result, 'sme_consultations') and result.sme_consultations
+            if asset_analysis and has_sme_consultations:
+                confidence = min(0.95, confidence + 0.1)  # Boost confidence when we have multiple intelligence sources
+            elif asset_analysis or has_sme_consultations:
+                confidence = min(0.90, confidence + 0.05)  # Slight boost for additional intelligence
+            
+            logger.info(f"✅ Final synthesis completed with confidence: {confidence}")
+            print(f"DEBUG: Final synthesized response: {response_text[:200]}...")
             
             # Use full multi-brain metadata
             metadata = {
@@ -723,12 +1034,25 @@ Answer with just "INFORMATION" or "ACTION"."""
             # SME confidence (average of all consultations)
             sme_confidences = []
             for domain, consultation in sme_consultations.items():
-                if "error" not in consultation:
-                    # Extract confidence from SME recommendations
-                    recommendations = consultation.get("recommendations", [])
-                    if recommendations:
-                        avg_sme_confidence = sum(rec.get("confidence", 0.5) for rec in recommendations) / len(recommendations)
-                        sme_confidences.append(avg_sme_confidence)
+                # Handle different consultation formats safely
+                if isinstance(consultation, dict):
+                    if "error" not in consultation:
+                        # Extract confidence from SME recommendations
+                        recommendations = consultation.get("recommendations", [])
+                        if recommendations:
+                            for rec in recommendations:
+                                if isinstance(rec, dict):
+                                    avg_sme_confidence = rec.get("confidence", 0.5)
+                                    sme_confidences.append(avg_sme_confidence)
+                                else:
+                                    # If recommendation is not a dict, use default confidence
+                                    sme_confidences.append(0.5)
+                elif isinstance(consultation, str):
+                    # If consultation is a string, use default confidence
+                    sme_confidences.append(0.5)
+                else:
+                    # For any other format, use default confidence
+                    sme_confidences.append(0.5)
             
             sme_confidence = sum(sme_confidences) / len(sme_confidences) if sme_confidences else 0.5
             

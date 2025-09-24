@@ -673,7 +673,7 @@ class MultibrainOrchestrator:
     def _generate_primary_response(self, brain_responses: List[BrainResponse],
                                  consensus_data: Dict[str, Any],
                                  external_knowledge_used: bool) -> Dict[str, Any]:
-        """Generate the primary response from brain outputs"""
+        """Generate the primary response from brain outputs using SYNTHESIS"""
         
         if not brain_responses:
             return {
@@ -682,17 +682,59 @@ class MultibrainOrchestrator:
                 'confidence': 0.0
             }
         
-        # Find highest confidence response
+        # ORIGINAL INTENT: SYNTHESIZE ALL BRAIN INTELLIGENCE
+        # Instead of picking one "winner", combine ALL brain insights
+        
+        # Collect all brain insights for synthesis
+        brain_insights = {}
+        sme_consultations = []
+        technical_analysis = []
+        intent_analysis = []
+        
+        for response in brain_responses:
+            brain_type = response.brain_type
+            response_data = response.response_data
+            
+            # Categorize brain outputs for synthesis
+            if brain_type == "sme":
+                sme_consultations.append({
+                    'expertise': response_data.get('expertise_area', 'General'),
+                    'recommendation': response_data.get('recommendation', ''),
+                    'confidence': response.confidence,
+                    'reasoning': response_data.get('reasoning', '')
+                })
+            elif brain_type == "technical":
+                technical_analysis.append({
+                    'analysis': response_data.get('analysis', ''),
+                    'recommendations': response_data.get('recommendations', []),
+                    'confidence': response.confidence,
+                    'technical_details': response_data.get('technical_details', {})
+                })
+            elif brain_type == "intent":
+                intent_analysis.append({
+                    'intent_type': response_data.get('intent_type', ''),
+                    'analysis': response_data.get('analysis', ''),
+                    'confidence': response.confidence,
+                    'context': response_data.get('context', {})
+                })
+            
+            brain_insights[brain_type] = response_data
+        
+        # Find highest confidence response for fallback
         best_response = max(brain_responses, key=lambda r: r.confidence)
         
+        # Create comprehensive response with ALL intelligence
         primary_response = {
-            'message': 'Request processed successfully',
+            'message': 'Multi-brain analysis completed - synthesis ready',
             'action_type': best_response.response_data.get('action_type', 'analysis'),
-            'primary_brain': best_response.brain_type,
-            'confidence': best_response.confidence,
-            'brain_outputs': {
-                response.brain_type: response.response_data 
-                for response in brain_responses
+            'primary_brain': 'synthesized',  # Indicates this is a synthesis
+            'confidence': self.confidence_engine.calculate_combined_confidence(brain_responses),
+            'brain_outputs': brain_insights,
+            'synthesis_data': {
+                'sme_consultations': sme_consultations,
+                'technical_analysis': technical_analysis,
+                'intent_analysis': intent_analysis,
+                'requires_synthesis': True  # Flag for final LLM synthesis
             }
         }
         

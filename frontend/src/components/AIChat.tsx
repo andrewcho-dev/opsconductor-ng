@@ -474,7 +474,9 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                     {intent.context_analysis.recommendations.map((rec, index) => (
                       <div key={index} className="recommendation-item">
                         <AlertTriangle className="recommendation-icon" />
-                        <span className="recommendation-text">{rec}</span>
+                        <span className="recommendation-text">
+                          {typeof rec === 'string' ? rec : (rec?.title || rec?.description || JSON.stringify(rec))}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -604,8 +606,10 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                       )}
                       {consultation.recommendations && consultation.recommendations.length > 0 && (
                         <div className="sme-recommendations">
-                          {consultation.recommendations.slice(0, 2).map((rec: string, recIndex: number) => (
-                            <div key={recIndex} className="sme-recommendation">{rec}</div>
+                          {consultation.recommendations.slice(0, 2).map((rec: any, recIndex: number) => (
+                            <div key={recIndex} className="sme-recommendation">
+                              {typeof rec === 'string' ? rec : (rec?.title || rec?.description || JSON.stringify(rec))}
+                            </div>
                           ))}
                         </div>
                       )}

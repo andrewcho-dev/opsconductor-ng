@@ -259,9 +259,10 @@ class CloudSMEBrain(SMEBrain):
             Return as JSON with these keys: cloud_providers, service_types, optimization_focus, scalability_requirements, security_requirements, cost_constraints, reasoning
             """
             
-            response = self.llm_engine.generate_response(cloud_prompt, max_tokens=600)
             import json
-            intent_analysis = json.loads(response)
+            response = await self.llm_engine.generate(cloud_prompt, max_tokens=600)
+            response_text = response["generated_text"]
+            intent_analysis = json.loads(response_text)
             
             # Ensure all required keys are present
             default_analysis = {

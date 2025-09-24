@@ -487,9 +487,10 @@ class SecuritySMEBrain(SMEBrain):
             Return as JSON array with these fields for each recommendation.
             """
             
-            response = self.llm_engine.generate_response(recommendation_prompt, max_tokens=1000)
             import json
-            recommendations_data = json.loads(response)
+            response = await self.llm_engine.generate(recommendation_prompt, max_tokens=1000)
+            response_text = response["generated_text"]
+            recommendations_data = json.loads(response_text)
             
             recommendations = []
             for rec_data in recommendations_data:
@@ -538,9 +539,10 @@ class SecuritySMEBrain(SMEBrain):
             Return as JSON with arrays for each STRIDE category containing threat descriptions.
             """
             
-            response = self.llm_engine.generate_response(stride_prompt, max_tokens=800)
             import json
-            stride_analysis = json.loads(response)
+            response = await self.llm_engine.generate(stride_prompt, max_tokens=800)
+            response_text = response["generated_text"]
+            stride_analysis = json.loads(response_text)
             
             # Ensure all STRIDE categories are present
             default_stride = {

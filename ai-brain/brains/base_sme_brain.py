@@ -162,9 +162,10 @@ class SMEKnowledgeBase:
             [{"entry_id": "id", "relevance_score": 0.8}, ...]
             """
             
-            response = self.llm_engine.generate_response(knowledge_prompt, max_tokens=300)
             import json
-            relevant_entries = json.loads(response)
+            response = await self.llm_engine.generate(knowledge_prompt, max_tokens=300)
+            response_text = response["generated_text"]
+            relevant_entries = json.loads(response_text)
             
             results = []
             for item in relevant_entries:
@@ -448,12 +449,22 @@ class SMEBrain(ABC):
             Expertise Areas: {self.expertise_areas}
             Context: {context}
             
-            Return a single float value between 0.0 and 1.0 representing expertise level.
+            Return ONLY a single float value between 0.0 and 1.0. Do not include any explanation or text.
+            Example: 0.75
             """
             
-            response = self.llm_engine.generate_response(expertise_prompt, max_tokens=50)
-            expertise_score = float(response.strip())
-            return min(1.0, max(0.0, expertise_score))
+            response = await self.llm_engine.generate(expertise_prompt, max_tokens=50)
+            response_text = response["generated_text"].strip()
+            
+            # Try to extract a float from the response
+            import re
+            float_match = re.search(r'(\d+\.?\d*)', response_text)
+            if float_match:
+                expertise_score = float(float_match.group(1))
+                return min(1.0, max(0.0, expertise_score))
+            else:
+                logger.warning(f"Could not extract float from LLM response: {response_text}")
+                return 0.7
             
         except Exception as e:
             logger.error(f"LLM expertise assessment failed: {e}")
@@ -481,9 +492,10 @@ class SMEBrain(ABC):
                 Return JSON with: {{"conflicts": true/false, "warnings": ["warning1", "warning2"]}}
                 """
                 
-                response = self.llm_engine.generate_response(constraint_prompt, max_tokens=200)
                 import json
-                constraint_check = json.loads(response)
+                response = await self.llm_engine.generate(constraint_prompt, max_tokens=200)
+                response_text = response["generated_text"]
+                constraint_check = json.loads(response_text)
                 
                 if constraint_check.get("conflicts"):
                     validation_result["warnings"].extend(constraint_check.get("warnings", []))

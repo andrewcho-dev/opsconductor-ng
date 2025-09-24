@@ -147,16 +147,16 @@ Select the most appropriate methods for this intent. Return as a JSON array of m
                 system_prompt="You are a technical method selector. Analyze intent and select appropriate technical methods."
             )
             
-            if response and 'content' in response:
+            if response and 'response' in response:
                 try:
                     # Try to parse JSON response
                     import json
-                    methods = json.loads(response['content'])
+                    methods = json.loads(response['response'])
                     if isinstance(methods, list):
                         return methods
                 except:
                     # Fallback: extract method names from text
-                    content = response['content'].lower()
+                    content = response['response'].lower()
                     methods = []
                     available_methods = [
                         "diagnostic_analysis", "service_restoration", "root_cause_analysis",
@@ -204,10 +204,10 @@ class ExecutionPlanGenerator:
             estimated_duration = sum(step.estimated_duration for step in steps)
             
             # Perform risk assessment
-            risk_assessment = self._assess_risks(steps, intent_analysis)
+            risk_assessment = await self._assess_risks(steps, intent_analysis)
             
             # Determine SME consultations needed
-            sme_consultations = self._determine_sme_consultations(technical_methods, intent_analysis)
+            sme_consultations = await self._determine_sme_consultations(technical_methods, intent_analysis)
             
             # Calculate confidence
             confidence_score = self._calculate_confidence(steps, risk_assessment, intent_analysis)
@@ -292,7 +292,7 @@ class ExecutionPlanGenerator:
             resources.update(step.required_resources)
         return list(resources)
     
-    def _assess_risks(self, steps: List[TechnicalStep], intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    async def _assess_risks(self, steps: List[TechnicalStep], intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Assess risks of the execution plan using LLM intelligence"""
         if not self.llm_engine:
             raise Exception("LLM engine required for risk assessment - NO FALLBACKS ALLOWED")
@@ -315,8 +315,9 @@ class ExecutionPlanGenerator:
         """
         
         try:
-            risk_analysis = self.llm_engine.generate_response(risk_prompt, max_tokens=500)
             import json
+            risk_response = await self.llm_engine.generate(risk_prompt, max_tokens=500)
+            risk_analysis = risk_response["generated_text"]
             risk_data = json.loads(risk_analysis)
             
             high_risk_steps = [step for step in steps if step.risk_level == "high"]
@@ -327,7 +328,7 @@ class ExecutionPlanGenerator:
             
             return risk_data
         except Exception as e:
-            self.logger.warning(f"LLM risk assessment failed: {e}")
+            logger.warning(f"LLM risk assessment failed: {e}")
             high_risk_steps = [step for step in steps if step.risk_level == "high"]
             return {
                 "overall_risk": "high" if high_risk_steps else "medium",
@@ -341,7 +342,7 @@ class ExecutionPlanGenerator:
                 ]
             }
     
-    def _determine_sme_consultations(self, methods: List[str], intent_analysis: Dict[str, Any]) -> List[str]:
+    async def _determine_sme_consultations(self, methods: List[str], intent_analysis: Dict[str, Any]) -> List[str]:
         """Determine which SME brains should be consulted using LLM intelligence"""
         if not self.llm_engine:
             raise Exception("LLM engine required for SME consultation selection - NO FALLBACKS ALLOWED")
@@ -361,19 +362,42 @@ class ExecutionPlanGenerator:
         - cloud_services
         - observability_monitoring
         
-        Return only the relevant SME domain names as a JSON array.
+        IMPORTANT GUIDELINES:
+        - For simple INFORMATION queries (like "how many X do we have?", "what is the status of Y?"), return an empty array [] - no SME consultation needed
+        - For DIAGNOSTIC queries, include relevant troubleshooting domains
+        - For PROVISIONING queries, include infrastructure and security domains
+        - For OPERATIONAL queries, include only directly relevant domains
+        - Only include SME domains that are DIRECTLY relevant to the technical task
+        - When in doubt, include fewer domains rather than more
+        
+        Return only the relevant SME domain names as a JSON array, or [] if no SME consultation is needed.
         """
         
         try:
-            sme_response = self.llm_engine.generate_response(sme_prompt, max_tokens=200)
             import json
-            sme_domains = json.loads(sme_response)
+            sme_response = await self.llm_engine.generate(sme_prompt, max_tokens=200)
+            sme_response_text = sme_response["generated_text"]
+            sme_domains = json.loads(sme_response_text)
             return sme_domains if isinstance(sme_domains, list) else []
         except Exception as e:
-            self.logger.warning(f"LLM SME consultation determination failed: {e}")
-            # Fallback - return all available SME domains
-            return ["database_administration", "network_infrastructure", "security_and_compliance", 
-                   "container_orchestration", "cloud_services", "observability_monitoring"]
+            logger.warning(f"LLM SME consultation determination failed: {e}")
+            
+            # Intelligent fallback based on intent type
+            action_type = intent_analysis.get("action_type", "").lower()
+            
+            if action_type == "information":
+                # For simple information queries, don't consult any SME domains
+                logger.info("Information query detected - no SME consultations needed")
+                return []
+            elif action_type == "diagnostic":
+                # For diagnostic queries, consult security and observability
+                return ["security_and_compliance", "observability_monitoring"]
+            elif action_type == "provisioning":
+                # For provisioning, consult relevant infrastructure domains
+                return ["container_orchestration", "network_infrastructure", "security_and_compliance"]
+            else:
+                # For operational tasks, consult security only as a safe default
+                return ["security_and_compliance"]
     
     def _calculate_confidence(self, steps: List[TechnicalStep], risk_assessment: Dict[str, Any], intent_analysis: Dict[str, Any]) -> float:
         """Calculate confidence score for the plan"""
