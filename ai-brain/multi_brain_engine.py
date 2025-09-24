@@ -193,64 +193,54 @@ class MultiBrainAIEngine:
             return None
             
         try:
-            # Look for IP addresses in the query
+            # Look for IP addresses, hostnames, and asset-related keywords in the query
             ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
             ip_addresses = re.findall(ip_pattern, query)
-            logger.info(f"🔍 Found IP addresses in query: {ip_addresses}")
             
-            # Use LLM to intelligently determine if this query needs asset data
-            if not self.llm_engine:
-                logger.warning("🔍 No LLM engine available for intelligent query analysis")
+            # Look for hostname patterns (common server naming conventions)
+            hostname_pattern = r'\b(?:server|host|node|vm|machine|workstation|pc|desktop|laptop)[-_]?\w*\b'
+            hostnames = re.findall(hostname_pattern, query.lower())
+            
+            # Look for asset-related keywords that indicate we should check the database
+            asset_keywords = [
+                'asset', 'machine', 'server', 'host', 'system', 'device', 'computer',
+                'workstation', 'desktop', 'laptop', 'vm', 'virtual', 'node',
+                'credential', 'password', 'username', 'login', 'access', 'connect',
+                'communication', 'port', 'service', 'protocol', 'ssh', 'rdp', 'winrm',
+                'windows', 'linux', 'ubuntu', 'centos', 'debian', 'os', 'operating',
+                'how many', 'count', 'list', 'show', 'what', 'which', 'where'
+            ]
+            
+            has_asset_keywords = any(keyword in query.lower() for keyword in asset_keywords)
+            
+            logger.info(f"🔍 Found IP addresses: {ip_addresses}")
+            logger.info(f"🔍 Found hostnames: {hostnames}")  
+            logger.info(f"🔍 Has asset keywords: {has_asset_keywords}")
+            
+            # ALWAYS check assets if we have IP addresses or asset-related content
+            should_check_assets = bool(ip_addresses) or bool(hostnames) or has_asset_keywords
+            
+            if not should_check_assets:
+                logger.info("🔍 Query doesn't appear to be asset-related")
                 return None
             
-            # Ask LLM to analyze if this query needs asset information
-            analysis_prompt = f"""Analyze this user query and determine if it requires asset/system information to answer:
-
-Query: "{query}"
-
-Does this query require information about IT assets, systems, machines, or infrastructure to provide a complete answer?
-Answer with just "YES" or "NO" and a brief reason.
-
-Examples:
-- "How many Windows 11 machines do we have?" -> YES (needs asset data)
-- "What is 192.168.1.100?" -> YES (needs specific asset data)  
-- "How do I configure Docker?" -> NO (general knowledge question)
-- "List all Linux servers" -> YES (needs asset data)
-"""
-
-            try:
-                llm_response = await self.llm_engine.chat(
-                    message=analysis_prompt,
-                    system_prompt="You are an intelligent query analyzer. Determine if queries need asset/infrastructure data."
-                )
-                
-                needs_assets = False
-                if llm_response and 'response' in llm_response:
-                    response_content = llm_response['response'].upper()
-                    needs_assets = 'YES' in response_content
-                    logger.info(f"🧠 LLM determined query needs assets: {needs_assets}")
-                
-                if not needs_assets:
-                    logger.info("🔍 LLM determined query doesn't need asset data")
-                    return None
-                    
-            except Exception as e:
-                logger.error(f"Error in LLM query analysis: {str(e)}")
-                # Fall back to checking for IP addresses only
-                if not ip_addresses:
-                    return None
+            logger.info("🔍 Query appears to be asset-related - checking database")
             
             if ip_addresses:
                 # Look up specific IP addresses
                 asset_info = {}
                 for ip in ip_addresses:
                     logger.info(f"🔍 Looking up asset information for IP: {ip}")
+                    print(f"DEBUG: Looking up asset information for IP: {ip}")
                     asset = await self.asset_client.get_asset_by_ip(ip)
+                    print(f"DEBUG: Asset result for {ip}: {asset}")
                     if asset:
                         asset_info[ip] = asset
                         logger.info(f"✅ Found asset information for IP {ip}: {asset.get('name', 'Unknown')} ({asset.get('os_type', 'Unknown OS')})")
+                        print(f"DEBUG: ✅ Found asset information for IP {ip}: {asset.get('name', 'Unknown')} ({asset.get('os_type', 'Unknown OS')})")
                     else:
                         logger.warning(f"❌ No asset found for IP {ip}")
+                        print(f"DEBUG: ❌ No asset found for IP {ip}")
                 
                 logger.info(f"🔍 Asset lookup result: {len(asset_info)} assets found")
                 return asset_info if asset_info else None
@@ -290,65 +280,94 @@ Examples:
         Returns:
             Intelligent answer string if applicable, None otherwise
         """
-        if not formatted_assets or not hasattr(self, 'llm_engine') or not self.llm_engine:
+        if not formatted_assets:
+            logger.warning("No formatted assets provided for intelligent analysis")
+            return None
+            
+        if not hasattr(self, 'llm_engine') or not self.llm_engine:
+            logger.error("LLM engine not available for intelligent asset analysis")
             return None
             
         try:
-            # Prepare asset data for LLM analysis
-            asset_data_summary = []
-            for asset in formatted_assets:
-                asset_summary = {
-                    'name': asset.get('name', ''),
-                    'hostname': asset.get('hostname', ''),
-                    'ip_address': asset.get('ip_address', ''),
-                    'os_type': asset.get('os_type', ''),
-                    'os_version': asset.get('os_version', ''),
-                    'description': asset.get('description', ''),
-                    'tags': asset.get('tags', []),
-                    'status': asset.get('status', ''),
-                    'location': asset.get('location', ''),
-                    'environment': asset.get('environment', '')
-                }
-                asset_data_summary.append(asset_summary)
+            # Pass ALL asset data directly to the AI - no manual field mapping needed!
+            # The AI can understand field meanings from their names and context
+            asset_data_summary = formatted_assets
             
             # Create intelligent system prompt for asset analysis
-            system_prompt = """You are an intelligent IT asset analyzer. Your job is to analyze asset data and answer user questions accurately.
+            system_prompt = """You are an intelligent IT asset analyzer with comprehensive database schema knowledge. 
 
-CRITICAL INSTRUCTIONS:
-1. Examine ALL fields in the asset data (name, hostname, os_type, os_version, description, tags, etc.)
-2. Use your intelligence to determine what each asset is based on ALL available information
-3. For OS version questions, check os_type AND os_version fields primarily, but also consider description, tags, and names
-4. Be precise and accurate - don't guess if the data isn't clear
-5. For counting questions, provide exact counts and list the assets
-6. If you can't determine something from the data, say so clearly
+CORE PRINCIPLE: You have access to complete asset data with ALL database fields. Use your natural language understanding to interpret field meanings from their names and context - no manual translation needed!
 
-Asset Data Fields Available:
-- name: Asset name
-- hostname: System hostname  
-- ip_address: IP address
-- os_type: Operating system type (e.g., "windows", "linux")
-- os_version: Operating system version (e.g., "10", "11", "20.04")
-- description: Detailed description of the asset
-- tags: List of tags associated with the asset
-- status: Asset status
-- location: Physical location
-- environment: Environment (prod, dev, test, etc.)
+AVAILABLE DATABASE SCHEMA (understand these field meanings naturally):
 
-Analyze the data intelligently and provide accurate answers."""
+BASIC ASSET INFORMATION:
+- id, name, hostname, ip_address, description, tags
 
+OPERATING SYSTEM:
+- os_type, os_version
+
+HARDWARE/DEVICE:
+- device_type, hardware_make, hardware_model, serial_number
+
+LOCATION:
+- physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates
+
+PRIMARY SERVICE:
+- service_type, port, is_secure, credential_type, username, domain, has_credentials
+
+ADDITIONAL SERVICES:
+- additional_services (JSON array), additional_services_count
+
+DATABASE SPECIFIC:
+- database_type, database_name
+
+SECONDARY SERVICES:
+- secondary_service_type, secondary_port, ftp_type, secondary_username
+
+STATUS & MANAGEMENT:
+- is_active, connection_status, last_tested_at, status, environment, criticality, owner, support_contact, contract_number, notes
+
+AUDIT:
+- created_by, updated_by, created_at, updated_at
+
+INSTRUCTIONS:
+1. EXAMINE ALL FIELDS - every piece of data can be relevant
+2. UNDERSTAND FIELD MEANINGS from their names (e.g., "hardware_make" = manufacturer, "criticality" = business importance)
+3. USE YOUR INTELLIGENCE - don't require explicit mappings for obvious field meanings
+4. BE COMPREHENSIVE - consider location, hardware, services, management data, etc.
+5. BE PRECISE - provide exact counts, specific details, and clear answers
+6. CROSS-REFERENCE - use multiple fields to build complete understanding
+7. STATE LIMITATIONS - if data is missing or unclear, say so
+
+Your goal: Provide intelligent, comprehensive answers using ALL available asset data."""
+
+            # Convert asset data summary to readable format for LLM
+            asset_data_text = ""
+            for i, asset in enumerate(asset_data_summary, 1):
+                asset_data_text += f"\nAsset {i}:\n"
+                for key, value in asset.items():
+                    if value:  # Only include non-empty values
+                        asset_data_text += f"  {key}: {value}\n"
+            
+            logger.info(f"Asset data being sent to LLM: {asset_data_text}")
+            
             # Create the analysis prompt
             analysis_prompt = f"""User Question: {query}
 
 Asset Data to Analyze:
-{asset_data_summary}
+{asset_data_text}
 
 Please analyze this asset data intelligently and answer the user's question accurately. Look at ALL fields and use your reasoning to determine what each asset is."""
 
+            logger.info(f"Sending analysis prompt to LLM: {analysis_prompt[:200]}...")
+            
             # Get intelligent analysis from LLM
             response = await self.llm_engine.chat(
                 message=analysis_prompt,
                 system_prompt=system_prompt
             )
+            
+            logger.info(f"LLM response received: {response}")
             
             if response and 'response' in response:
                 return response['response'].strip()
@@ -526,56 +545,34 @@ Please analyze this asset data intelligently and answer the user's question accu
                     'source': 'asset_intelligence'
                 })
             
-            # Determine if this is a simple information query or complex operational task
-            is_simple_information_query = False
-            if hasattr(multi_brain_result, 'intent_analysis') and multi_brain_result.intent_analysis:
-                intent_dict = multi_brain_result.intent_analysis.to_dict() if hasattr(multi_brain_result.intent_analysis, 'to_dict') else {}
-                action_type = intent_dict.get('action_type', '').lower()
-                is_simple_information_query = action_type == 'information'
-                logger.info(f"🔍 Intent action type: {action_type}, Simple info query: {is_simple_information_query}")
-            
-            # Create different synthesis prompts based on query type
-            if is_simple_information_query:
-                system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
+            # Create intelligent synthesis system prompt
+            system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
 
-This is a SIMPLE INFORMATION QUERY that requires a direct, concise answer.
+Your job is to intelligently synthesize ALL the intelligence from multiple AI brains into ONE comprehensive, authoritative answer that directly addresses the user's original query.
 
-CRITICAL INSTRUCTIONS FOR INFORMATION QUERIES:
-1. Focus ONLY on providing the specific information requested
-2. Use asset analysis data as the primary source of truth
-3. Give a direct, factual answer without unnecessary elaboration
-4. IGNORE irrelevant SME recommendations about security, networking, etc. unless directly related to the question
-5. Keep the response brief and to the point
-6. Only include technical details if they directly answer the user's question
+CRITICAL SYNTHESIS PRINCIPLES:
 
-RESPONSE FORMAT:
-- Start with the direct answer to the question
-- Include relevant asset details if helpful
-- Avoid unrelated recommendations or analysis
+1. UNDERSTAND THE ORIGINAL INTENT: Carefully analyze what the user is actually asking for
+2. IDENTIFY OVERLAPPING INFORMATION: Recognize when different sources are referring to the same entities/assets
+3. RESOLVE CONFLICTS INTELLIGENTLY: When sources disagree, determine which is most accurate and relevant
+4. SYNTHESIZE RELEVANT INSIGHTS: Combine the most pertinent information from all sources
+5. SANITY CHECK: Ensure your final response directly and accurately answers the user's question
 
-Your goal is to provide a CLEAR, DIRECT ANSWER to the information request."""
-            else:
-                system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
-
-Your job is to combine ALL the intelligence from multiple AI brains into ONE comprehensive, authoritative answer.
-
-CRITICAL INSTRUCTIONS:
-1. You are receiving the output from multiple specialized AI brains - USE ALL OF IT
-2. Each brain provides different expertise - SYNTHESIZE their insights
-3. DO NOT ignore any brain's analysis - they all provide value
-4. Create a comprehensive answer that leverages ALL the intelligence
-5. If there are conflicts between brains, acknowledge them and provide balanced synthesis
-6. Prioritize accuracy and completeness over brevity
-7. Make the final answer authoritative and actionable
-
-BRAIN TYPES YOU'RE SYNTHESIZING:
+INTELLIGENCE SOURCES YOU'RE SYNTHESIZING:
 - Strategic Analysis: High-level multi-brain orchestration insights
 - Expert Consultations: SME domain expertise and recommendations  
 - Technical Analysis: Technical implementation details and plans
 - Intent Analysis: Understanding of user intent and context
 - Asset Analysis: Data-driven analysis of specific assets/infrastructure
 
-Your goal is to create the BEST POSSIBLE ANSWER by combining all this intelligence."""
+SYNTHESIS APPROACH:
+- For factual queries (counts, lists, status): Prioritize asset analysis data as most authoritative
+- For operational tasks: Combine technical analysis with SME recommendations
+- For strategic decisions: Leverage strategic analysis with expert consultations
+- Always cross-reference information between sources to identify the same entities
+- When sources conflict, explain why you chose one interpretation over another
+
+Your goal is to create the MOST ACCURATE AND RELEVANT ANSWER by intelligently synthesizing all available intelligence."""
 
             # Format the synthesis data
             synthesis_prompt = f"""User Query: {query}
@@ -595,29 +592,24 @@ INTELLIGENCE TO SYNTHESIZE:
                 if 'confidence' in component:
                     synthesis_prompt += f"   Confidence: {component['confidence']}\n"
 
-            # Add different synthesis task instructions based on query type
-            if is_simple_information_query:
-                synthesis_prompt += """
+            # Add intelligent synthesis task instructions
+            synthesis_prompt += """
 SYNTHESIS TASK:
-Provide a direct, concise answer to the user's information request:
-1. Focus on the ASSET ANALYSIS data as the primary source of truth
-2. Give the specific information requested (e.g., count, list, status)
-3. IGNORE unrelated SME recommendations unless they directly answer the question
-4. Keep the response brief and factual
-5. Only include additional context if it directly helps answer the question
+Intelligently analyze ALL the above intelligence sources and create the most accurate, relevant response to the user's query:
 
-Provide a CLEAR, DIRECT ANSWER without unnecessary elaboration."""
-            else:
-                synthesis_prompt += """
-SYNTHESIS TASK:
-Combine ALL the above intelligence into one comprehensive, authoritative answer that:
-1. Uses insights from ALL brains (don't waste any intelligence)
-2. Provides a complete response to the user's query
-3. Includes relevant technical details, expert recommendations, and data analysis
-4. Is actionable and authoritative
-5. Acknowledges the multi-brain analysis that went into the response
+1. ANALYZE THE USER'S INTENT: What exactly is the user asking for?
+2. IDENTIFY RELEVANT INFORMATION: Which intelligence sources contain information that directly addresses the query?
+3. CROSS-REFERENCE DATA: Are different sources talking about the same entities? Look for overlaps and correlations.
+4. RESOLVE CONFLICTS: If sources disagree, determine which is most accurate based on:
+   - Data source reliability (asset analysis is typically most factual for infrastructure queries)
+   - Relevance to the specific question asked
+   - Consistency with other corroborating information
+5. SYNTHESIZE INTELLIGENTLY: Combine the most relevant and accurate information from all sources
+6. SANITY CHECK: Does your final answer directly and accurately address what the user asked?
 
-Create the BEST POSSIBLE ANSWER by synthesizing all this intelligence."""
+IMPORTANT: Do not simply ignore sources or blindly combine conflicting information. Use your intelligence to determine what information is most relevant and accurate for answering the user's specific question.
+
+Create a response that demonstrates intelligent synthesis of all available information."""
 
             # Get the synthesis from LLM
             logger.info("🎯 Performing final LLM synthesis of ALL brain intelligence")
@@ -696,7 +688,11 @@ Create the BEST POSSIBLE ANSWER by synthesizing all this intelligence."""
                         'communication_method': asset.get('service_type', 'Unknown'),
                         'communication_port': asset.get('port', 'Unknown'),
                         'is_secure_connection': asset.get('is_secure', False),
-                        'description': asset.get('description', 'No description available')
+                        'has_credentials': asset.get('has_credentials', False),
+                        'description': asset.get('description', 'No description available'),
+                        'tags': asset.get('tags', []),
+                        'status': asset.get('connection_status', 'Unknown'),
+                        'is_active': asset.get('is_active', False)
                     }
                     formatted_assets.append(asset_summary)
                 

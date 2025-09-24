@@ -100,6 +100,16 @@ class LLMEngine:
             start_time = time.time()
             model_to_use = model or self.default_model
             
+            # Check if client is initialized
+            if not self.client:
+                logger.error("LLM client not initialized. Call initialize() first.")
+                return {
+                    "response": "LLM engine not initialized. Please try again later.",
+                    "model_used": model_to_use,
+                    "confidence": 0.0,
+                    "processing_time": time.time() - start_time
+                }
+            
             # Refresh available models if list is empty
             if not self.available_models:
                 await self.get_available_models()
@@ -191,6 +201,16 @@ class LLMEngine:
         try:
             start_time = time.time()
             model_to_use = model or self.default_model
+            
+            # Check if client is initialized
+            if not self.client:
+                logger.error("LLM client not initialized. Call initialize() first.")
+                return {
+                    "response": "LLM engine not initialized. Please try again later.",
+                    "model_used": model_to_use,
+                    "confidence": 0.0,
+                    "processing_time": time.time() - start_time
+                }
             
             # Refresh available models if list is empty
             if not self.available_models:

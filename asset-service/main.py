@@ -172,33 +172,76 @@ class AssetUpdate(BaseModel):
     notes: Optional[str] = None
 
 class AssetSummary(BaseModel):
-    """Model for asset list view"""
+    """Model for asset list view - includes ALL database fields for AI analysis"""
+    # Primary Key
     id: int
+    
+    # Basic Asset Information
     name: str
     hostname: str
     ip_address: Optional[str]
-    os_type: str
-    os_version: Optional[str]
     description: Optional[str]
     tags: List[str]
     
-    # Device type for grid display
-    device_type: Optional[str]
+    # Operating System Information
+    os_type: str
+    os_version: Optional[str]
     
-    # Primary service info
+    # Device/Hardware Information
+    device_type: Optional[str]
+    hardware_make: Optional[str]
+    hardware_model: Optional[str]
+    serial_number: Optional[str]
+    
+    # Location Information
+    physical_address: Optional[str]
+    data_center: Optional[str]
+    building: Optional[str]
+    room: Optional[str]
+    rack_position: Optional[str]
+    rack_location: Optional[str]
+    gps_coordinates: Optional[str]
+    
+    # Primary Connection Service
     service_type: str
     port: int
     is_secure: bool
+    
+    # Primary Service Credentials
+    credential_type: Optional[str]
+    username: Optional[str]
+    domain: Optional[str]
     has_credentials: bool
     
-    # Additional services count
+    # Additional Services
+    additional_services: List[dict] = []
     additional_services_count: int
     
-    # Status
+    # Database-specific fields
+    database_type: Optional[str]
+    database_name: Optional[str]
+    
+    # Secondary Service fields
+    secondary_service_type: Optional[str]
+    secondary_port: Optional[int]
+    ftp_type: Optional[str]
+    secondary_username: Optional[str]
+    
+    # Status and Management Information
     is_active: bool
     connection_status: Optional[str]
     last_tested_at: Optional[str]
+    status: Optional[str]
+    environment: Optional[str]
+    criticality: Optional[str]
+    owner: Optional[str]
+    support_contact: Optional[str]
+    contract_number: Optional[str]
+    notes: Optional[str]
     
+    # Audit Fields
+    created_by: Optional[int]
+    updated_by: Optional[int]
     created_at: str
     updated_at: Optional[str]
 
@@ -475,13 +518,21 @@ class ConsolidatedAssetService(BaseService):
                 limit_param = param_count + 2
                 
                 async with self.db.pool.acquire() as conn:
-                    # Get assets
+                    # Get assets - SELECT ALL FIELDS for comprehensive AI analysis
                     query = f"""
-                        SELECT id, name, hostname, ip_address, os_type, os_version, description, tags,
-                               device_type, service_type, port, is_secure, credential_type, username, password_encrypted,
-                               private_key_encrypted, api_key_encrypted, bearer_token_encrypted,
-                               certificate_encrypted, additional_services, is_active, connection_status,
-                               last_tested_at, created_at, updated_at
+                        SELECT id, name, hostname, ip_address, description, tags,
+                               os_type, os_version,
+                               device_type, hardware_make, hardware_model, serial_number,
+                               physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates,
+                               service_type, port, is_secure,
+                               credential_type, username, domain, password_encrypted, private_key_encrypted, 
+                               api_key_encrypted, bearer_token_encrypted, certificate_encrypted,
+                               additional_services,
+                               database_type, database_name,
+                               secondary_service_type, secondary_port, ftp_type, secondary_username, secondary_password_encrypted,
+                               is_active, connection_status, last_tested_at,
+                               status, environment, criticality, owner, support_contact, contract_number, notes,
+                               created_by, updated_by, created_at, updated_at
                         FROM assets.assets
                         {where_clause}
                         ORDER BY created_at DESC
@@ -516,23 +567,75 @@ class ConsolidatedAssetService(BaseService):
                             additional_services = json.loads(additional_services)
                         
                         asset_list.append(AssetSummary(
+                            # Primary Key
                             id=asset['id'],
+                            
+                            # Basic Asset Information
                             name=asset['name'],
                             hostname=asset['hostname'],
                             ip_address=asset['ip_address'],
-                            os_type=asset['os_type'],
-                            os_version=asset['os_version'],
                             description=asset['description'],
                             tags=tags,
+                            
+                            # Operating System Information
+                            os_type=asset['os_type'],
+                            os_version=asset['os_version'],
+                            
+                            # Device/Hardware Information
                             device_type=asset['device_type'],
+                            hardware_make=asset['hardware_make'],
+                            hardware_model=asset['hardware_model'],
+                            serial_number=asset['serial_number'],
+                            
+                            # Location Information
+                            physical_address=asset['physical_address'],
+                            data_center=asset['data_center'],
+                            building=asset['building'],
+                            room=asset['room'],
+                            rack_position=asset['rack_position'],
+                            rack_location=asset['rack_location'],
+                            gps_coordinates=asset['gps_coordinates'],
+                            
+                            # Primary Connection Service
                             service_type=asset['service_type'],
                             port=asset['port'],
                             is_secure=asset['is_secure'],
+                            
+                            # Primary Service Credentials
+                            credential_type=asset['credential_type'],
+                            username=asset['username'],
+                            domain=asset['domain'],
                             has_credentials=has_credentials,
+                            
+                            # Additional Services
+                            additional_services=additional_services,
                             additional_services_count=len(additional_services),
+                            
+                            # Database-specific fields
+                            database_type=asset['database_type'],
+                            database_name=asset['database_name'],
+                            
+                            # Secondary Service fields
+                            secondary_service_type=asset['secondary_service_type'],
+                            secondary_port=asset['secondary_port'],
+                            ftp_type=asset['ftp_type'],
+                            secondary_username=asset['secondary_username'],
+                            
+                            # Status and Management Information
                             is_active=asset['is_active'],
                             connection_status=asset['connection_status'],
                             last_tested_at=asset['last_tested_at'].isoformat() if asset['last_tested_at'] else None,
+                            status=asset['status'],
+                            environment=asset['environment'],
+                            criticality=asset['criticality'],
+                            owner=asset['owner'],
+                            support_contact=asset['support_contact'],
+                            contract_number=asset['contract_number'],
+                            notes=asset['notes'],
+                            
+                            # Audit Fields
+                            created_by=asset['created_by'],
+                            updated_by=asset['updated_by'],
                             created_at=asset['created_at'].isoformat(),
                             updated_at=asset['updated_at'].isoformat() if asset['updated_at'] else None
                         ))
