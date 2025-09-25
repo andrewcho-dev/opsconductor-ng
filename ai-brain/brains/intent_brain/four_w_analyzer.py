@@ -126,15 +126,16 @@ class FourWAnalysis:
     processing_time: float
 
 
-def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any]]:
+async def extract_json_from_llm_response(response_text: str, llm_engine=None) -> Optional[Dict[str, Any]]:
     """
-    Extract and parse JSON from LLM response text.
+    Extract and parse JSON from LLM response text using LLM intelligence.
     
-    LLMs often return JSON wrapped in explanatory text or with formatting issues.
-    This function attempts multiple strategies to extract valid JSON.
+    Instead of using primitive regex pattern matching, this function uses the LLM
+    to intelligently extract and fix JSON from responses.
     
     Args:
         response_text: Raw text response from LLM
+        llm_engine: LLM engine for intelligent JSON extraction
         
     Returns:
         Parsed JSON dict if successful, None if no valid JSON found
@@ -145,140 +146,52 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
     # Log the raw response for debugging JSON parsing issues
     logger.debug(f"Attempting to parse LLM response: {response_text[:500]}...")
     
-    # Strategy 1: Try parsing the entire response as JSON
+    # Strategy 1: Try parsing the entire response as JSON first
     try:
         parsed = json.loads(response_text.strip())
-        # Only return dictionaries, not lists
         if isinstance(parsed, dict):
             logger.debug("Successfully parsed entire response as JSON")
             return parsed
-    except json.JSONDecodeError as e:
-        logger.debug(f"Failed to parse entire response as JSON: {e}")
-        pass
+    except json.JSONDecodeError:
+        logger.debug("Response is not pure JSON, using LLM for extraction")
     
-    # Strategy 2: Look for JSON blocks between ```json and ``` or ``` and ```
-    json_block_patterns = [
-        r'```json\s*(\{.*?\})\s*```',
-        r'```\s*(\{.*?\})\s*```',
-        r'```json\s*(\[.*?\])\s*```',
-        r'```\s*(\[.*?\])\s*```'
-    ]
-    
-    for pattern in json_block_patterns:
-        matches = re.findall(pattern, response_text, re.DOTALL | re.IGNORECASE)
-        for match in matches:
-            try:
-                parsed = json.loads(match.strip())
-                # Only return dictionaries, not lists
-                if isinstance(parsed, dict):
-                    logger.debug("Successfully parsed JSON from code block")
-                    return parsed
-            except json.JSONDecodeError as e:
-                logger.debug(f"Failed to parse JSON from code block: {e}")
-                continue
-    
-    # Strategy 3: Find JSON objects/arrays in the text with enhanced cleaning
-    json_patterns = [
-        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Simple nested objects
-        r'\{.*?\}',  # Any object (greedy)
-        r'\[.*?\]'   # Any array (greedy)
-    ]
-    
-    for pattern in json_patterns:
-        matches = re.findall(pattern, response_text, re.DOTALL)
-        for match in matches:
-            try:
-                # Enhanced cleaning for common LLM JSON issues
-                cleaned = match.strip()
+    # Strategy 2: Use LLM intelligence to extract and fix JSON
+    if llm_engine:
+        try:
+            extraction_prompt = f"""
+You are a JSON extraction specialist. Your task is to extract valid JSON from the following text and fix any formatting issues.
+
+RULES:
+1. Extract ONLY the JSON object/dictionary from the text
+2. Fix any JSON syntax errors (missing quotes, trailing commas, etc.)
+3. Return ONLY the corrected JSON, no explanations or markdown
+4. If multiple JSON objects exist, return the most complete one
+5. If no valid JSON can be extracted, return an empty object: {{}}
+
+TEXT TO EXTRACT JSON FROM:
+{response_text}
+
+EXTRACTED JSON:"""
+
+            response = await llm_engine.generate_response(extraction_prompt)
+            if response and "generated_text" in response:
+                extracted_text = response["generated_text"].strip()
                 
-                # Remove trailing commas before closing braces/brackets
-                cleaned = re.sub(r',(\s*[}\]])', r'\1', cleaned)
-                
-                # Remove comments (// style)
-                cleaned = re.sub(r'//.*?$', '', cleaned, flags=re.MULTILINE)
-                
-                # Remove comments (/* */ style)
-                cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
-                
-                # Fix common LLM mistakes: missing quotes around keys
-                cleaned = re.sub(r'(\w+)(\s*:\s*)', r'"\1"\2', cleaned)
-                
-                # Fix single quotes to double quotes
-                cleaned = re.sub(r"'([^']*)'", r'"\1"', cleaned)
-                
-                # Fix boolean values
-                cleaned = re.sub(r'\btrue\b', 'true', cleaned, flags=re.IGNORECASE)
-                cleaned = re.sub(r'\bfalse\b', 'false', cleaned, flags=re.IGNORECASE)
-                cleaned = re.sub(r'\bnull\b', 'null', cleaned, flags=re.IGNORECASE)
-                
-                # Remove any remaining non-JSON text before/after the JSON
-                cleaned = re.sub(r'^[^{]*(\{.*\})[^}]*$', r'\1', cleaned, flags=re.DOTALL)
-                
-                logger.debug(f"Attempting to parse cleaned JSON: {cleaned[:200]}...")
-                parsed = json.loads(cleaned)
-                # Only return dictionaries, not lists
-                if isinstance(parsed, dict):
-                    logger.debug("Successfully parsed JSON after cleaning")
-                    return parsed
-            except json.JSONDecodeError as e:
-                logger.debug(f"Failed to parse cleaned JSON: {e}")
-                continue
-    
-    # Strategy 4: Try to extract key-value pairs and build JSON
-    try:
-        # Look for patterns like "key": "value" or 'key': 'value'
-        kv_pattern = r'["\']([^"\']+)["\']\s*:\s*["\']([^"\']+)["\']'
-        matches = re.findall(kv_pattern, response_text)
-        if matches:
-            result = {}
-            for key, value in matches:
-                # Try to convert numeric values
+                # Try to parse the LLM-extracted JSON
                 try:
-                    if '.' in value:
-                        result[key] = float(value)
-                    else:
-                        result[key] = int(value)
-                except ValueError:
-                    # Keep as string if not numeric
-                    result[key] = value
-            if result:
-                logger.debug("Successfully extracted key-value pairs")
-                return result
-    except Exception as e:
-        logger.debug(f"Failed to extract key-value pairs: {e}")
-        pass
+                    parsed = json.loads(extracted_text)
+                    if isinstance(parsed, dict):
+                        logger.debug("Successfully extracted JSON using LLM intelligence")
+                        return parsed
+                except json.JSONDecodeError as e:
+                    logger.debug(f"LLM extraction failed to produce valid JSON: {e}")
+                    
+        except Exception as e:
+            logger.debug(f"LLM-based JSON extraction failed: {e}")
     
-    # Strategy 5: Last resort - try to fix common JSON syntax errors
-    try:
-        # Look for the most likely JSON structure in the response
-        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
-        if json_match:
-            potential_json = json_match.group(0)
-            
-            # Apply aggressive fixes
-            fixed_json = potential_json
-            
-            # Fix missing commas between key-value pairs
-            fixed_json = re.sub(r'"\s*\n\s*"', '",\n"', fixed_json)
-            
-            # Fix missing quotes around string values
-            fixed_json = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', fixed_json)
-            
-            # Fix array syntax issues
-            fixed_json = re.sub(r'\[\s*([^"\[\]]+)\s*\]', r'["\1"]', fixed_json)
-            
-            logger.debug(f"Attempting to parse aggressively fixed JSON: {fixed_json[:200]}...")
-            parsed = json.loads(fixed_json)
-            if isinstance(parsed, dict):
-                logger.debug("Successfully parsed aggressively fixed JSON")
-                return parsed
-                
-    except Exception as e:
-        logger.debug(f"Failed to parse aggressively fixed JSON: {e}")
-        pass
-    
-    logger.warning(f"All JSON parsing strategies failed for response: {response_text[:200]}...")
-    return None
+    # NO FALLBACKS! If LLM fails, the system fails!
+    logger.error(f"LLM-powered JSON extraction FAILED for response: {response_text[:200]}...")
+    raise Exception("JSON extraction FAILED - LLM could not extract valid JSON and NO FALLBACKS are allowed!")
 
 
 class FourWAnalyzer:
@@ -617,7 +530,7 @@ class FourWAnalyzer:
             )
             
             # Generate clarifying questions
-            clarifying_questions = self._generate_clarifying_questions(
+            clarifying_questions = await self._generate_clarifying_questions(
                 what_analysis, where_what_analysis, when_analysis, how_analysis, missing_information
             )
             
@@ -710,34 +623,39 @@ Current analysis results:
 - WHEN: {when.timeline_type} - {when.specific_timeline} (confidence: {when.confidence}) - {when.reasoning}
 - HOW: {how.method_preference} (confidence: {how.confidence}) - {how.reasoning}
 
-Determine if any of these dimensions are truly missing or unclear from the original request. Only flag something as missing if it's genuinely needed and not derivable from context.
+IMPORTANT RULES:
+1. DO NOT be pedantic - if the user provides reasonable information, accept it
+2. "every day" is sufficient timing - don't ask for specific times
+3. "critical" is sufficient threshold - don't ask for exact percentages
+4. "windows machines" is sufficient target - don't ask for specific hostnames
+5. Only flag something as missing if it's IMPOSSIBLE to proceed without it
+6. Default to EMPTY missing information list unless truly critical info is absent
 
-For example:
-- "every day" clearly specifies timing
-- "critical" clearly specifies a threshold condition  
-- "disk space" clearly specifies what to monitor
-- "windows machines" clearly specifies target systems
+Examples of what is NOT missing:
+- "every day" = sufficient timing (don't need exact time)
+- "critical" = sufficient threshold (don't need exact percentage)
+- "disk space" = sufficient metric (don't need exact details)
+- "windows machines" = sufficient target (don't need hostnames)
+- "warns" = sufficient action (don't need exact notification method)
 
 Respond with JSON only:
 {{
-    "missing_information": [
-        // Only include items that are genuinely missing and needed
-        // Format: "DIMENSION: specific missing detail"
-    ],
-    "reasoning": "brief explanation of what is/isn't missing"
+    "missing_information": [],
+    "reasoning": "brief explanation - default to proceeding unless truly impossible"
 }}"""
 
                 response_data = await self.llm_engine.generate(analysis_prompt)
                 response = response_data.get("generated_text", "")
                 
-                import json
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    analysis = json.loads(json_match.group())
+                # Use robust JSON extraction
+                analysis = await extract_json_from_llm_response(response, self.llm_engine)
+                if analysis:
                     missing = analysis.get("missing_information", [])
                     logger.info(f"🧠 LLM missing info analysis: {analysis.get('reasoning', 'No reasoning')}")
                     return missing
+                else:
+                    logger.error(f"🧠 Failed to extract JSON from LLM response: {response}")
+                    raise Exception("Failed to extract valid JSON from LLM response")
                     
             except Exception as e:
                 logger.error(f"🧠 LLM missing info analysis FAILED: {e} - NO FALLBACKS ALLOWED")
@@ -746,55 +664,56 @@ Respond with JSON only:
         # If we get here, LLM engine is not available
         raise Exception("LLM engine required for missing information analysis - NO FALLBACKS ALLOWED")
     
-    def _generate_clarifying_questions(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
+    async def _generate_clarifying_questions(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
                                      when: WhenAnalysis, how: HowAnalysis, 
                                      missing: List[str]) -> List[str]:
-        """Generate clarifying questions based on missing information with enhanced specificity."""
-        questions = []
+        """PURE LLM-powered clarifying question generation - NO HARDCODED IF-THEN LOGIC!"""
         
-        # Questions based on missing information
-        for missing_item in missing:
-            if "WHAT:" in missing_item:
-                if "outcome" in missing_item:
-                    questions.append("Could you clarify what specific outcome you're trying to achieve?")
-                elif "Monitoring criteria" in missing_item:
-                    questions.append("What specific values should be monitored and what thresholds should trigger alerts?")
-                elif "Monitoring thresholds" in missing_item:
-                    questions.append("What are the acceptable ranges for the values you want to monitor? When should I alert you?")
-            elif "WHERE:" in missing_item and "Target systems" in missing_item:
-                questions.append("Which specific systems or services should this apply to?")
-            elif "WHERE:" in missing_item and "Scope" in missing_item:
-                questions.append("What's the scope of this request - single system, environment, or organization-wide?")
-            elif "WHEN:" in missing_item:
-                if "Recurrence interval" in missing_item:
-                    questions.append("How often should this recurring job run? (e.g., every hour, every 30 minutes, daily)")
-                elif "timeline" in missing_item:
-                    questions.append("When do you need this completed? Do you have a specific deadline?")
-                elif "Timing requirements" in missing_item:
-                    questions.append("When should this be executed? Is this urgent or can it be scheduled?")
-            elif "HOW:" in missing_item:
-                questions.append("Do you have any preferences for how this should be executed (automated vs manual)?")
+        # If there's no missing information, don't ask questions
+        if not missing:
+            return []
         
-        # Additional context-specific questions
-        if what.action_type == ActionType.DIAGNOSTIC and not where_what.target_systems:
-            questions.append("What symptoms or errors are you experiencing, and on which systems?")
-        
-        if what.action_type == ActionType.PROVISIONING and when.urgency == UrgencyLevel.LOW:
-            questions.append("Are there any specific requirements or constraints for the new resources?")
-        
-        # Enhanced questions for monitoring/recurring tasks
-        if ("recurring" in what.reasoning.lower() or 
-            "monitor" in what.reasoning.lower() or 
-            "check" in what.reasoning.lower()):
+        # Use LLM to intelligently generate clarifying questions
+        prompt = f"""Based on the following analysis of a user request, generate ONLY the most essential clarifying questions needed to proceed. 
+
+ANALYSIS RESULTS:
+- Action Type: {what.action_type.value}
+- Specific Outcome: {what.specific_outcome}
+- Target Systems: {where_what.target_systems}
+- Scope: {where_what.scope_level.value}
+- Urgency: {when.urgency.value}
+- Method Preference: {how.method_preference.value}
+
+MISSING INFORMATION:
+{chr(10).join(missing) if missing else "None"}
+
+RULES:
+1. ONLY ask questions if the missing information is CRITICAL to execution
+2. Do NOT ask questions if the user request is already clear enough to proceed
+3. Maximum 2 questions total
+4. Focus on the most important gaps only
+5. If the request is clear enough to execute, return an empty list
+
+Respond with JSON only:
+{{
+    "questions": ["question1", "question2"] or []
+}}"""
+
+        try:
+            response_data = await self.llm_engine.generate(prompt=prompt)
+            result = await extract_json_from_llm_response(response_data["generated_text"], self.llm_engine)
             
-            # SFP monitoring specific questions
-            if ("sfp" in what.reasoning.lower() or 
-                "rx" in what.reasoning.lower() or 
-                "tx" in what.reasoning.lower()):
-                questions.append("What are the acceptable dBm ranges for RX and TX power levels? At what point should I alert you?")
-                questions.append("Should I alert on any specific conditions like high error rates or signal degradation?")
-        
-        return list(set(questions))  # Remove duplicates
+            if result and "questions" in result:
+                return result["questions"]
+            else:
+                # If LLM fails, return empty list - NO FALLBACK LOGIC
+                logger.warning("LLM failed to generate clarifying questions - proceeding without questions")
+                return []
+                
+        except Exception as e:
+            logger.error(f"LLM clarifying question generation failed: {e}")
+            # NO FALLBACK - just proceed without questions
+            return []
     
     def _derive_resource_requirements(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
                                     when: WhenAnalysis, how: HowAnalysis) -> Tuple[str, str, List[str]]:
@@ -1042,7 +961,7 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         )
         
         # Parse JSON response using robust extraction
-        result = extract_json_from_llm_response(response_data["generated_text"])
+        result = await extract_json_from_llm_response(response_data["generated_text"], self.llm_engine)
         
         if result is None:
             logger.error(f"Failed to extract JSON from LLM response for WHAT analysis - NO FALLBACKS ALLOWED")
@@ -1075,7 +994,7 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         )
         
         # Parse JSON response using robust extraction
-        result = extract_json_from_llm_response(response_data["generated_text"])
+        result = await extract_json_from_llm_response(response_data["generated_text"], self.llm_engine)
         
         if result is None:
             logger.error(f"Failed to extract JSON from LLM response for WHERE/WHAT analysis - NO FALLBACKS ALLOWED")
@@ -1108,7 +1027,7 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         )
         
         # Parse JSON response using robust extraction
-        result = extract_json_from_llm_response(response_data["generated_text"])
+        result = await extract_json_from_llm_response(response_data["generated_text"], self.llm_engine)
         
         if result is None:
             logger.error(f"Failed to extract JSON from LLM response for WHEN analysis - NO FALLBACKS ALLOWED")
@@ -1145,7 +1064,7 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         )
         
         # Parse JSON response using robust extraction
-        result = extract_json_from_llm_response(response_data["generated_text"])
+        result = await extract_json_from_llm_response(response_data["generated_text"], self.llm_engine)
         
         if result is None:
             logger.error(f"Failed to extract JSON from LLM response for HOW analysis - NO FALLBACKS ALLOWED")

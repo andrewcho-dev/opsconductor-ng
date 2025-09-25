@@ -313,11 +313,8 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
         intent_analysis_result = await ai_engine.intent_brain.analyze_intent(request.message, user_context)
         
         # Check if clarifying questions are needed
-        if (hasattr(intent_analysis_result, 'four_w_analysis') and 
-            intent_analysis_result.four_w_analysis.clarifying_questions and 
-            len(intent_analysis_result.four_w_analysis.clarifying_questions) > 0):
-            
-            logger.info(f"🤔 Clarifying questions needed: {intent_analysis_result.four_w_analysis.clarifying_questions}")
+        if intent_analysis_result.needs_clarification and intent_analysis_result.clarifying_questions:
+            logger.info(f"🤔 Clarifying questions needed: {intent_analysis_result.clarifying_questions}")
             return await _handle_clarification_needed(request, intent_analysis_result, ai_engine)
         
         # Create a human-readable interpretation of what the AI thinks the user wants
@@ -330,33 +327,33 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
         
         # Build comprehensive intent classification with Intent Brain data
         intent_classification = {
-            "intent_type": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'job_creation',
-            "confidence": intent_analysis_result.overall_confidence,
+            "intent_type": "job_creation",  # Simple classification
+            "confidence": 1.0,  # We understood what they want
             "method": "intent_brain_direct",
             "alternatives": [],
-            "entities": getattr(intent_analysis_result, 'entities', []),
+            "entities": [],
             "context_analysis": {
-                "confidence_score": intent_analysis_result.overall_confidence,
-                "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
-                "requirements_count": len(getattr(intent_analysis_result, 'requirements', [])),
+                "confidence_score": 1.0,
+                "risk_level": "LOW",
+                "requirements_count": 0,
                 "recommendations": ["Intent analysis completed - job creation disabled"]
             },
-            "reasoning": getattr(intent_analysis_result, 'intent_summary', 'Intent analysis performed'),
+            "reasoning": intent_analysis_result.user_intent,
             "metadata": {
                 "engine": "intent_brain_direct",
-                "version": "2.0.0",
+                "version": "3.0.0",
                 "success": True,
-                "processing_time": 0.0,  # Direct intent brain call
+                "processing_time": intent_analysis_result.processing_time,
                 "brains_consulted": ["intent_brain"],
-                "intent_details": intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result)
+                "intent_details": intent_analysis_result.to_dict()
             }
         }
         
         return {
             "response": f"🎯 JOB INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Job creation disabled - intent analysis only mode]",
             "conversation_id": request.conversation_id,
-            "intent": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'job_creation',
-            "confidence": intent_analysis_result.overall_confidence,
+            "intent": "job_creation",
+            "confidence": 1.0,
             "job_id": None,  # Job creation disabled
             "execution_id": None,
             "automation_job_id": None,
@@ -410,9 +407,9 @@ async def _handle_clarification_needed(request, intent_analysis_result, ai_engin
     try:
         logger.info("🤔 Generating clarification response for user")
         
-        # Get the clarifying questions from the 4W analysis
-        clarifying_questions = intent_analysis_result.four_w_analysis.clarifying_questions
-        missing_info = intent_analysis_result.four_w_analysis.missing_information
+        # Get the clarifying questions from the intent analysis
+        clarifying_questions = intent_analysis_result.clarifying_questions
+        missing_info = []  # Not used in simplified version
         
         # Generate a user-friendly clarification message
         clarification_message = await _generate_clarification_message(
@@ -437,7 +434,7 @@ async def _handle_clarification_needed(request, intent_analysis_result, ai_engin
             "response": clarification_message,
             "conversation_id": request.conversation_id,
             "intent": "clarification_needed",
-            "confidence": intent_analysis_result.overall_confidence,
+            "confidence": 1.0,
             "job_id": None,
             "execution_id": None,
             "automation_job_id": None,
