@@ -373,7 +373,6 @@ class SMEBrain(ABC):
         self.confidence_calculator = SMEConfidenceCalculator(llm_engine)
         
         # SME-specific configuration
-        self.confidence_threshold = 0.6
         self.max_recommendations_per_query = 5
         
         # Tracking
@@ -523,7 +522,7 @@ class SMEBrain(ABC):
             "brain_version": self.brain_version,
             "domain": self.domain,
             "expertise_areas": self.expertise_areas,
-            "confidence_threshold": self.confidence_threshold,
+
             "status": "active",
             "knowledge_base_size": len(self.knowledge_base.knowledge_entries),
             "query_count": len(self.query_history),
