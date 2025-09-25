@@ -1,0 +1,14 @@
+🚨 HARDCODED LOGIC VIOLATIONS DETECTED:
+
+📁 /home/opsconductor/opsconductor-ng/ai-brain/startup_hardcoded_check.py:
+   🚨 HARDCODED PATTERN in /home/opsconductor/opsconductor-ng/ai-brain/startup_hardcoded_check.py:119: service_mappings = {' in content and 'asset-service' in content and 'automation-service
+
+📁 /home/opsconductor/opsconductor-ng/ai-brain/hardcoded_logic_prevention.py:
+   🚨 HARDCODED PATTERN in /home/opsconductor/opsconductor-ng/ai-brain/hardcoded_logic_prevention.py:107: for pattern in FORBIDDEN_PATTERNS:
+
+📁 /home/opsconductor/opsconductor-ng/ai-brain/brains/intent_brain/intent_analyzer.py:
+   🚨 HARDCODED PATTERN in /home/opsconductor/opsconductor-ng/ai-brain/brains/intent_brain/intent_analyzer.py:127: if line.endswith('?')
+
+🚨 TOTAL VIOLATIONS: 3
+🚨 ALL VIOLATIONS MUST BE FIXED BEFORE SYSTEM CAN OPERATE
+🚨 REPLACE ALL HARDCODED LOGIC WITH LLM DECISION-MAKING

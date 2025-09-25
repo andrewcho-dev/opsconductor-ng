@@ -159,6 +159,10 @@ class FulfillmentOrchestrator:
             result.end_time = datetime.now()
             result.steps_completed = execution_result.steps_completed
             
+            # Transfer job details from execution result
+            if hasattr(execution_result, 'job_details') and execution_result.job_details:
+                result.job_details = execution_result.job_details
+            
             logger.info(f"Fulfillment orchestration completed for request {fulfillment_id}: {result.status.value}")
             
         except Exception as e:

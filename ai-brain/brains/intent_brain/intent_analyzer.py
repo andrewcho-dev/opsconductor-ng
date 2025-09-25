@@ -81,19 +81,30 @@ What does this user want?"""
         if context:
             context_str = f"\nContext: {context}"
         
-        prompt = f"""You are an expert at understanding user requests and determining when clarification is needed.
+        prompt = f"""You are an expert at understanding automation and job creation requests.
 
-Look at this user request and determine: Can we understand what they want, or do we need to ask questions?
+Look at this user request and determine: Is this a clear automation request that can be executed?
 
-IMPORTANT: Only ask for clarification if it's IMPOSSIBLE to proceed without more information.
-- "every day" is clear enough (don't ask for exact times)
-- "critical disk space" is clear enough (don't ask for exact percentages)  
-- "windows machines" is clear enough (don't ask for specific hostnames)
-- "send alerts" is clear enough (don't ask for exact notification methods)
+AUTOMATION REQUESTS ARE CLEAR when they contain:
+- A clear action (ping, monitor, check, backup, etc.)
+- A target (IP address, hostname, service, etc.)
+- Basic parameters (frequency, thresholds, etc.)
+
+EXAMPLES OF CLEAR REQUESTS:
+- "create a job that pings 192.168.50.210 every 10 seconds" → CLEAR
+- "monitor disk space on server1" → CLEAR  
+- "check if nginx is running every 5 minutes" → CLEAR
+- "backup database daily at 2am" → CLEAR
+- "alert me when CPU usage exceeds 80%" → CLEAR
+
+ONLY ask for clarification if:
+- The action is completely unclear ("do something")
+- No target is specified ("monitor something")
+- The request is genuinely ambiguous
 
 User request: "{user_message}"{context_str}
 
-Can you understand what this user wants? If yes, respond with "CLEAR".
+Is this a clear automation request? If yes, respond with "CLEAR".
 If you need clarification, respond with "UNCLEAR" followed by 1-2 specific questions that are absolutely necessary."""
 
         try:

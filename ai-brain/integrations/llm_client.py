@@ -281,41 +281,95 @@ class LLMEngine:
             
             if analysis_type == "sentiment":
                 prompt = f"""Analyze the sentiment of the following text. 
-                Respond with a JSON object containing 'sentiment' (positive/negative/neutral) and 'score' (0-1):
+                Please tell me:
+                1. What is the sentiment? (positive/negative/neutral)
+                2. How strong is it? (high/medium/low)
 
-                {text}
+                Text: {text}
 
-                Analysis:"""
+                Please explain your analysis in natural language."""
             
             elif analysis_type == "intent":
                 prompt = f"""Analyze the intent of the following text in the context of IT operations. 
-                Respond with a JSON object containing 'intent' (automation/question/support/other) and 'confidence' (0-1):
+                Please tell me:
+                1. What is the intent? (automation/question/support/other)
+                2. How confident are you? (high/medium/low)
 
-                {text}
+                Text: {text}
 
-                Analysis:"""
+                Please explain your analysis in natural language."""
             
             elif analysis_type == "complexity":
                 prompt = f"""Analyze the complexity of the following text/request. 
-                Respond with a JSON object containing 'complexity' (low/medium/high) and 'factors' (list of complexity factors):
+                Please tell me:
+                1. What is the complexity level? (low/medium/high)
+                2. What factors make it complex?
 
-                {text}
+                Text: {text}
 
-                Analysis:"""
+                Please explain your analysis in natural language."""
             
             else:
                 raise Exception(f"Unsupported analysis type: {analysis_type}")
             
             response = await self.generate(prompt, model=model_to_use)
             
-            # Try to parse JSON response
-            try:
-                result = json.loads(response["generated_text"].strip())
-                confidence = result.get("confidence", result.get("score", 0.5))
-            except json.JSONDecodeError:
-                # Fallback if JSON parsing fails
-                result = {"raw_response": response["generated_text"]}
-                confidence = 0.3
+            # Parse natural language response
+            response_text = response["generated_text"].strip().lower()
+            result = {"raw_response": response["generated_text"]}
+            confidence = 0.5  # Default
+            
+            if analysis_type == "sentiment":
+                if any(word in response_text for word in ["positive", "good", "happy", "satisfied"]):
+                    result["sentiment"] = "positive"
+                elif any(word in response_text for word in ["negative", "bad", "angry", "frustrated"]):
+                    result["sentiment"] = "negative"
+                else:
+                    result["sentiment"] = "neutral"
+                    
+                if any(word in response_text for word in ["high", "strong", "very"]):
+                    confidence = 0.8
+                elif any(word in response_text for word in ["medium", "moderate"]):
+                    confidence = 0.6
+                else:
+                    confidence = 0.4
+                result["score"] = confidence
+                    
+            elif analysis_type == "intent":
+                if any(word in response_text for word in ["automation", "automate", "execute", "run"]):
+                    result["intent"] = "automation"
+                elif any(word in response_text for word in ["question", "ask", "what", "how"]):
+                    result["intent"] = "question"
+                elif any(word in response_text for word in ["support", "help", "assist"]):
+                    result["intent"] = "support"
+                else:
+                    result["intent"] = "other"
+                    
+                if any(word in response_text for word in ["high confidence", "very confident", "certain"]):
+                    confidence = 0.9
+                elif any(word in response_text for word in ["medium", "somewhat"]):
+                    confidence = 0.6
+                else:
+                    confidence = 0.4
+                result["confidence"] = confidence
+                    
+            elif analysis_type == "complexity":
+                if any(word in response_text for word in ["low", "simple", "easy"]):
+                    result["complexity"] = "low"
+                elif any(word in response_text for word in ["high", "complex", "difficult"]):
+                    result["complexity"] = "high"
+                else:
+                    result["complexity"] = "medium"
+                    
+                # Extract factors mentioned
+                factors = []
+                if "multiple" in response_text:
+                    factors.append("multiple components")
+                if "system" in response_text:
+                    factors.append("system complexity")
+                if "network" in response_text:
+                    factors.append("network complexity")
+                result["factors"] = factors
             
             return {
                 "result": result,

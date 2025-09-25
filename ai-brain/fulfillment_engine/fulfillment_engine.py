@@ -55,10 +55,14 @@ class FulfillmentResult:
     end_time: Optional[datetime] = None
     error_message: Optional[str] = None
     execution_logs: List[str] = None
+    job_details: List[Dict[str, Any]] = None
+    estimated_duration: Optional[int] = None
     
     def __post_init__(self):
         if self.execution_logs is None:
             self.execution_logs = []
+        if self.job_details is None:
+            self.job_details = []
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary format"""
@@ -74,7 +78,9 @@ class FulfillmentResult:
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "duration_seconds": (self.end_time - self.start_time).total_seconds() if self.start_time and self.end_time else None,
             "error_message": self.error_message,
-            "execution_logs": self.execution_logs
+            "execution_logs": self.execution_logs,
+            "job_details": self.job_details,
+            "estimated_duration": self.estimated_duration
         }
 
 

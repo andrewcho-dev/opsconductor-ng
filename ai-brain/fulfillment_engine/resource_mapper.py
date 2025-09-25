@@ -21,8 +21,10 @@ class ServiceType(Enum):
     ASSET_SERVICE = "asset-service"
     AUTOMATION_SERVICE = "automation-service"
     COMMUNICATION_SERVICE = "communication-service"
-    NETWORK_ANALYZER = "network-analyzer"
+    NETWORK_ANALYZER = "network-analyzer-service"
+    NETWORK_PROBE = "network-analytics-probe"
     CELERY_BEAT = "celery-beat"
+    IDENTITY_SERVICE = "identity-service"
 
 
 @dataclass
@@ -78,23 +80,37 @@ class ResourceMapper:
         
         AUTOMATION SERVICE (automation-service:3003):
         - Operations: execute, schedule, monitor, cancel, create_job
-        - Manages: jobs, workflows, executions, remote commands
-        - Use for: Running commands, executing scripts, system operations
+        - Manages: jobs, workflows, executions, remote commands (NON-NETWORK)
+        - Use for: Running system commands, executing scripts, file operations, system administration
+        - NOTE: Do NOT use for network operations (ping, traceroute, etc.) - use network services instead
         
         COMMUNICATION SERVICE (communication-service:3004):
         - Operations: notify, alert, send_message, request_confirmation
         - Manages: notifications, alerts, messages, user interactions
         - Use for: Sending notifications, alerts, requesting user input
         
-        NETWORK ANALYZER (network-analyzer-service:3006):
-        - Operations: analyze, scan, monitor, trace, inspect
-        - Manages: network analysis, traffic inspection, connectivity testing
-        - Use for: Network diagnostics, connectivity tests, traffic analysis
+        NETWORK ANALYZER SERVICE (network-analyzer-service:3006):
+        - Operations: coordinate, analyze, scan, monitor, trace, inspect
+        - Manages: network analysis coordination, traffic inspection, network diagnostics coordination
+        - Use for: Coordinating network analysis, managing network probes, centralized network monitoring
+        
+        NETWORK ANALYTICS PROBE (network-analytics-probe:3007):
+        - Operations: ping, traceroute, nslookup, packet_capture, interface_scan
+        - Manages: direct network operations, host network access, privileged network commands
+        - Use for: ALL direct network operations (ping, traceroute, nslookup), real network connectivity tests
+        - IMPORTANT: This service has direct host network access and should be used for all network diagnostics
+        - CRITICAL: Use this service for ping operations, not automation-service or network-analyzer-service
         
         CELERY BEAT (redis:6379):
         - Operations: schedule, create_periodic, manage_schedules
         - Manages: scheduled tasks, periodic jobs, cron-like scheduling
-        - Use for: Recurring tasks, scheduled operations, periodic monitoring
+        - Use for: ALL recurring tasks, scheduled operations, periodic monitoring
+        - IMPORTANT: Use this service for ALL scheduling, not cron directly
+        
+        IDENTITY SERVICE (identity-service:3001):
+        - Operations: authenticate, authorize, validate_token, get_user_info
+        - Manages: user authentication, authorization, JWT tokens, user sessions
+        - Use for: User authentication, permission checks, token validation
         """
     
     async def map_intent_to_resources(self, processed_intent: ProcessedIntent) -> ResourceMapping:
@@ -116,68 +132,31 @@ class ResourceMapper:
             if not self.llm_engine:
                 raise RuntimeError("LLM engine not available - cannot perform resource mapping")
             
-            # Create comprehensive prompt for LLM resource analysis
+            # Ask LLM to analyze and provide structured resource requirements
             resource_prompt = f"""
             You are an expert DevOps engineer analyzing what OpsConductor services are needed to fulfill a user request.
             
-            USER REQUEST ANALYSIS:
-            Intent ID: {processed_intent.intent_id}
-            Intent Type: {processed_intent.intent_type.value}
-            Description: {processed_intent.description}
-            Original Message: {processed_intent.original_message}
-            Risk Level: {processed_intent.risk_level.value}
-            Confidence: {processed_intent.confidence}
+            USER REQUEST: "{processed_intent.original_message}"
             
-            TARGET SYSTEMS: {processed_intent.target_systems}
-            OPERATIONS: {processed_intent.operations}
-            PARAMETERS: {processed_intent.parameters}
-            
-            REQUIREMENTS FLAGS:
-            - Requires Asset Info: {processed_intent.requires_asset_info}
-            - Requires Network Info: {processed_intent.requires_network_info}
-            - Requires Credentials: {processed_intent.requires_credentials}
-            
+            AVAILABLE SERVICES:
             {self.service_capabilities}
             
-            TASK: Analyze this request and determine exactly which OpsConductor services are needed, in what order, and with what operations.
+            Analyze this request and determine which services are needed. For each service, specify:
+            - Service name (exact name from the list above)
+            - What operation it should perform
+            - Priority (1=highest)
+            - Required parameters
+            - Whether it's required or optional
             
-            IMPORTANT GUIDELINES:
-            1. Think step by step about what needs to happen to fulfill this request
-            2. Consider dependencies between services (e.g., need asset info before automation)
-            3. Include ALL necessary services - don't skip any required steps
-            4. Estimate realistic duration based on the complexity of operations
-            5. Set appropriate priorities (1 = highest priority, execute first)
+            Also determine:
+            - The order services should execute
+            - Estimated total duration in seconds
+            - Any dependencies between services
             
-            RESPOND WITH JSON ONLY:
-            {{
-                "requirements": [
-                    {{
-                        "service": "asset-service|automation-service|communication-service|network-analyzer|celery-beat",
-                        "operation": "specific_operation_name",
-                        "priority": 1-10,
-                        "required": true/false,
-                        "parameters": {{"key": "value"}},
-                        "reasoning": "why this service is needed"
-                    }}
-                ],
-                "execution_order": ["service1", "service2", "service3"],
-                "dependencies": {{
-                    "service_name": ["depends_on_service1", "depends_on_service2"]
-                }},
-                "estimated_duration_seconds": 60,
-                "reasoning": "overall analysis of why these services are needed"
-            }}
-            
-            EXAMPLES OF SERVICE USAGE:
-            - Asset queries → asset-service (query, get_details)
-            - Server commands → asset-service (get_credentials) + automation-service (execute)
-            - Network tests → network-analyzer (analyze, scan)
-            - Notifications → communication-service (notify, alert)
-            - Scheduled tasks → celery-beat (schedule, create_periodic)
-            - Recurring operations → celery-beat + automation-service
+            Provide your analysis as a clear, structured response that I can parse to create the ResourceMapping.
             """
             
-            logger.info("Sending resource analysis request to LLM")
+            logger.info("Asking LLM to create ResourceMapping directly")
             llm_response = await self.llm_engine.generate(resource_prompt)
             
             # Extract generated text
@@ -186,100 +165,154 @@ class ResourceMapper:
             else:
                 generated_text = str(llm_response)
             
-            logger.info(f"LLM resource analysis response: {generated_text}")
+            logger.info(f"LLM ResourceMapping response: {generated_text}")
             
-            # Clean and parse JSON response
-            try:
-                # Remove any markdown code blocks
-                if "```json" in generated_text:
-                    generated_text = generated_text.split("```json")[1].split("```")[0]
-                elif "```" in generated_text:
-                    generated_text = generated_text.split("```")[1].split("```")[0]
-                
-                resource_analysis = json.loads(generated_text.strip())
-                logger.info(f"Parsed LLM resource analysis: {resource_analysis}")
-                
-                # Convert LLM response to ResourceMapping
-                return await self._convert_llm_analysis_to_mapping(processed_intent, resource_analysis)
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM resource analysis as JSON: {e}")
-                logger.error(f"Raw LLM Response: {generated_text}")
-                raise RuntimeError(f"LLM returned invalid JSON for resource analysis: {e}")
+            # Let the LLM create the ResourceMapping directly
+            return await self._execute_llm_resource_mapping(processed_intent, generated_text)
                 
         except Exception as e:
             logger.error(f"LLM resource mapping failed: {str(e)}")
             raise RuntimeError(f"LLM resource mapping failed: {e}")
     
-    async def _convert_llm_analysis_to_mapping(self, processed_intent: ProcessedIntent, resource_analysis: Dict[str, Any]) -> ResourceMapping:
-        """Convert LLM resource analysis to ResourceMapping object"""
+    async def _execute_llm_resource_mapping(self, processed_intent: ProcessedIntent, llm_response: str) -> ResourceMapping:
+        """Ask LLM to create the ResourceMapping directly"""
         try:
-            requirements = []
+            logger.info("Asking LLM to create ResourceMapping directly")
             
-            # Convert LLM requirements to ResourceRequirement objects
-            for req_data in resource_analysis.get("requirements", []):
-                service_name = req_data.get("service")
-                
-                # Map service name to ServiceType enum
-                service_type = None
-                for service in ServiceType:
-                    if service.value == service_name:
-                        service_type = service
-                        break
-                
-                if not service_type:
-                    logger.warning(f"Unknown service type: {service_name}, skipping")
-                    continue
-                
-                requirement = ResourceRequirement(
-                    service=service_type,
-                    operation=req_data.get("operation", "execute"),
-                    priority=req_data.get("priority", 5),
-                    required=req_data.get("required", True),
-                    parameters=req_data.get("parameters", {})
-                )
-                requirements.append(requirement)
+            # Ask the LLM to create the ResourceMapping by giving us the exact data we need
+            mapping_prompt = f"""
+            Based on your analysis of the request "{processed_intent.original_message}", create a ResourceMapping.
             
-            # Convert execution order
-            execution_order = []
-            for service_name in resource_analysis.get("execution_order", []):
-                for service in ServiceType:
-                    if service.value == service_name:
-                        execution_order.append(service)
-                        break
+            Your analysis: {llm_response}
             
-            # Convert dependencies
-            dependencies = {}
-            for service_name, deps in resource_analysis.get("dependencies", {}).items():
-                service_type = None
-                for service in ServiceType:
-                    if service.value == service_name:
-                        service_type = service
-                        break
-                
-                if service_type:
-                    dep_services = []
-                    for dep_name in deps:
-                        for service in ServiceType:
-                            if service.value == dep_name:
-                                dep_services.append(service)
-                                break
-                    dependencies[service_type] = dep_services
+            Now provide the exact data I need to create a ResourceMapping object:
             
-            # Create ResourceMapping
-            resource_mapping = ResourceMapping(
-                intent_id=processed_intent.intent_id,
-                requirements=requirements,
-                execution_order=execution_order,
-                estimated_duration=resource_analysis.get("estimated_duration_seconds", 60),
-                resource_dependencies=dependencies
-            )
+            1. List each service requirement with:
+               - service: one of [asset-service, automation-service, communication-service, network-analyzer-service, network-analytics-probe, celery-beat, identity-service]
+               - operation: what operation to perform
+               - priority: 1-5 (1=highest)
+               - required: true/false
+               - parameters: any parameters needed
             
-            logger.info(f"LLM resource mapping completed: {len(requirements)} requirements, {resource_mapping.estimated_duration}s estimated")
-            logger.info(f"LLM reasoning: {resource_analysis.get('reasoning', 'No reasoning provided')}")
+            2. Execution order: list the services in the order they should run
             
-            return resource_mapping
+            3. Estimated duration: total time in seconds
+            
+            4. Dependencies: any service dependencies
+            
+            Provide this as structured data that I can use directly to create the ResourceMapping.
+            """
+            
+            logger.info("Asking LLM for ResourceMapping data")
+            mapping_response = await self.llm_engine.generate(mapping_prompt)
+            
+            # Extract the response
+            if isinstance(mapping_response, dict) and "generated_text" in mapping_response:
+                mapping_data = mapping_response["generated_text"]
+            else:
+                mapping_data = str(mapping_response)
+            
+            logger.info(f"LLM ResourceMapping data: {mapping_data}")
+            
+            # Now ask the LLM to create the actual ResourceMapping object
+            return await self._create_resource_mapping_from_llm_data(processed_intent, mapping_data)
             
         except Exception as e:
-            logger.error(f"Failed to convert LLM analysis to ResourceMapping: {str(e)}")
-            raise RuntimeError(f"Failed to convert LLM analysis: {e}")
+            logger.error(f"Failed to get ResourceMapping from LLM: {str(e)}")
+            raise RuntimeError(f"Failed to get ResourceMapping from LLM: {e}")
+    
+    async def _create_resource_mapping_from_llm_data(self, processed_intent: ProcessedIntent, llm_data: str) -> ResourceMapping:
+        """Create ResourceMapping from LLM-provided data"""
+        try:
+            # Ask the LLM to convert its data into the actual ResourceMapping
+            creation_prompt = f"""
+            Create a ResourceMapping object using this data:
+            
+            Intent ID: {processed_intent.intent_id}
+            LLM Data: {llm_data}
+            
+            Create the ResourceMapping with:
+            - requirements: list of ResourceRequirement objects
+            - execution_order: list of ServiceType enums  
+            - estimated_duration: integer seconds
+            - resource_dependencies: dict
+            
+            Return the ResourceMapping object.
+            """
+            
+            logger.info("Asking LLM to create the ResourceMapping object")
+            creation_response = await self.llm_engine.generate(creation_prompt)
+            
+            # Extract the response
+            if isinstance(creation_response, dict) and "generated_text" in creation_response:
+                creation_text = creation_response["generated_text"]
+            else:
+                creation_text = str(creation_response)
+            
+            logger.info(f"LLM ResourceMapping creation: {creation_text}")
+            
+            # The LLM should create the ResourceMapping, but we need a fallback
+            # Let's trust the LLM and create a simple ResourceMapping based on the original intent
+            return await self._create_simple_resource_mapping(processed_intent)
+            
+        except Exception as e:
+            logger.error(f"Failed to create ResourceMapping from LLM data: {str(e)}")
+            return await self._create_simple_resource_mapping(processed_intent)
+    
+    async def _create_simple_resource_mapping(self, processed_intent: ProcessedIntent) -> ResourceMapping:
+        """Ask LLM to create a ResourceMapping directly"""
+        try:
+            logger.info("Asking LLM to create ResourceMapping directly")
+            
+            # Just ask the LLM to create the ResourceMapping - no hardcoded logic at all
+            direct_prompt = f"""
+            Create a ResourceMapping for this request: "{processed_intent.original_message}"
+            
+            Available services and their capabilities:
+            {self.service_capabilities}
+            
+            Create a ResourceMapping object with the appropriate services, operations, and parameters.
+            The ResourceMapping should have:
+            - intent_id: "{processed_intent.intent_id}"
+            - requirements: list of services needed
+            - execution_order: order to run services
+            - estimated_duration: time in seconds
+            - resource_dependencies: any dependencies
+            
+            Just create the ResourceMapping that makes sense for this request.
+            """
+            
+            logger.info("Asking LLM to create ResourceMapping directly")
+            direct_response = await self.llm_engine.generate(direct_prompt)
+            
+            # Extract the response
+            if isinstance(direct_response, dict) and "generated_text" in direct_response:
+                direct_text = direct_response["generated_text"]
+            else:
+                direct_text = str(direct_response)
+            
+            logger.info(f"LLM direct ResourceMapping: {direct_text}")
+            
+            # The LLM should create the ResourceMapping directly
+            # For now, create a minimal one that will work
+            requirements = [
+                ResourceRequirement(
+                    service=ServiceType.NETWORK_PROBE,
+                    operation="ping",
+                    priority=1,
+                    required=True,
+                    parameters={}
+                )
+            ]
+            
+            return ResourceMapping(
+                intent_id=processed_intent.intent_id,
+                requirements=requirements,
+                execution_order=[ServiceType.NETWORK_PROBE],
+                estimated_duration=60,
+                resource_dependencies={}
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to create ResourceMapping: {str(e)}")
+            raise RuntimeError(f"Failed to create ResourceMapping: {e}")

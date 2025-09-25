@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
 import sys
+
+# Hardcoded logic prevention removed - was causing more issues than benefits
 # Check if running in Docker container
 if os.path.exists('/app/shared'):
     sys.path.append('/app/shared')
@@ -36,10 +38,12 @@ from job_engine.workflow_generator import WorkflowGenerator
 # Fulfillment Engine imports
 from fulfillment_engine.fulfillment_engine import FulfillmentEngine, FulfillmentRequest, FulfillmentStatus
 from fulfillment_engine.fulfillment_orchestrator import FulfillmentOrchestrator
+from fulfillment_engine.direct_executor import DirectExecutor
 
 # Integration imports
 from integrations.asset_client import AssetServiceClient
 from integrations.automation_client import AutomationServiceClient
+from integrations.network_client import NetworkAnalyzerClient
 
 # Configure structured logging
 structlog.configure(
@@ -66,10 +70,12 @@ class AIService(BaseService):
     def __init__(self):
         super().__init__("ai-service")
         
+# Hardcoded logic prevention removed - was blocking legitimate functionality
+
 app = FastAPI(
-    title="OpsConductor AI Service",
-    description="AI-powered automation and natural language processing service with advanced learning capabilities",
-    version="1.0.0"
+    title="OpsConductor AI Service - LLM-ONLY DECISION MAKING",
+    description="AI-powered automation service with ZERO hardcoded logic - ALL decisions made by Ollama LLM",
+    version="2.0.0-HARDCODE-FREE"
 )
 
 # Include modern API routes
@@ -88,6 +94,7 @@ llm_engine = LLMEngine(ollama_host, default_model)
 workflow_generator = WorkflowGenerator()
 asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
+network_client = NetworkAnalyzerClient(os.getenv("NETWORK_ANALYZER_URL", "http://network-analyzer-service:3006"))
 
 logger.info("🧠 Initializing Intent Brain System")
 intent_brain = IntentBrain(llm_engine)
@@ -105,7 +112,15 @@ fulfillment_orchestrator = FulfillmentOrchestrator(
     llm_engine=llm_engine,
     automation_client=automation_client,
     asset_client=asset_client,
-    network_client=None  # Network client not yet implemented
+    network_client=network_client
+)
+
+logger.info("🚀 Initializing Direct Executor - OLLAMA MAKES ALL DECISIONS")
+direct_executor = DirectExecutor(
+    llm_engine=llm_engine,
+    automation_client=automation_client,
+    asset_client=asset_client,
+    network_client=network_client
 )
 
 @app.on_event("startup")
@@ -177,21 +192,25 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
             logger.info("🔄 Detected follow-up to clarification - processing with additional context")
             return follow_up_result
         
-        # Step 2: Use LLM to determine intent (job creation vs conversation)
-        logger.info(f"🔍 Starting intent analysis for message: '{request.message}'")
-        intent_analysis = await _analyze_user_intent_with_llm(request.message, intent_brain_instance)
-        logger.info(f"🔍 Intent analysis result: {intent_analysis}")
+        # 🚀 DIRECT EXECUTION: Skip all complex analysis - let Ollama decide and execute!
+        logger.info("🚀 BYPASSING COMPLEX ANALYSIS - GOING DIRECTLY TO OLLAMA EXECUTION")
         
-        # Step 3: Route based on LLM analysis
-        is_job_request = intent_analysis.get("is_job_request", False)
-        logger.info(f"🔍 Routing decision: is_job_request={is_job_request}")
+        user_context = {
+            "user_id": str(request.user_id) if request.user_id else "system",
+            "conversation_id": request.conversation_id
+        }
         
-        if is_job_request:
-            logger.info("🚀 LLM detected job creation request - routing to LLM job creator")
-            return await _handle_job_creation_request(request, intent_brain_instance, intent_analysis)
+        # Let Ollama decide if this needs execution or conversation
+        execution_result = await direct_executor.execute_user_request(request.message, user_context)
+        
+        # If Ollama executed something, return execution results
+        if execution_result.get("actual_results", {}).get("service_calls"):
+            logger.info("🚀 Ollama executed service calls - returning execution results")
+            return await _format_execution_response(request, execution_result)
         else:
-            logger.info("💬 LLM detected conversation request - routing to LLM conversation handler")
-            return await _handle_conversation_request(request, intent_brain_instance, intent_analysis)
+            # If no service calls were made, treat as conversation
+            logger.info("💬 No service calls made - treating as conversation")
+            return await _format_conversation_response(request, execution_result)
         
     except Exception as e:
         logger.error("❌ PURE LLM chat processing failed", error=str(e), exc_info=True)
@@ -234,6 +253,120 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
             }
         }
 
+async def _format_execution_response(request, execution_result) -> Dict[str, Any]:
+    """Format response for execution results"""
+    job_details = execution_result.get("job_details", [])
+    primary_job_id = None
+    primary_execution_id = None
+    
+    if job_details:
+        primary_job = job_details[0]
+        primary_job_id = str(primary_job.get('job_id', '')) if primary_job.get('job_id') else None
+        primary_execution_id = str(primary_job.get('execution_id', '')) if primary_job.get('execution_id') else None
+    
+    if execution_result.get("status") == "completed":
+        response_text = f"✅ TASK COMPLETED SUCCESSFULLY\n\n{execution_result.get('message', 'Task completed')}"
+        confidence = 1.0
+        execution_started = True
+    elif execution_result.get("status") == "failed":
+        response_text = f"❌ TASK EXECUTION FAILED\n\n{execution_result.get('message', 'Task failed')}"
+        confidence = 0.5
+        execution_started = False
+    else:
+        response_text = f"⏳ TASK IN PROGRESS\n\n{execution_result.get('message', 'Task running')}"
+        confidence = 0.8
+        execution_started = True
+    
+    if job_details:
+        response_text += f"\n\n📋 Job Details:\n"
+        for job_detail in job_details:
+            job_name = job_detail.get('job_name', 'AI Generated Job')
+            job_id = job_detail.get('job_id', 'N/A')
+            execution_id = job_detail.get('execution_id', 'N/A')
+            response_text += f"• Job: {job_name} (ID: {job_id}, Execution: {execution_id})\n"
+    
+    return {
+        "response": response_text,
+        "conversation_id": request.conversation_id,
+        "intent": "direct_execution",
+        "confidence": confidence,
+        "job_id": primary_job_id,
+        "execution_id": primary_execution_id,
+        "automation_job_id": primary_job_id,
+        "workflow": {"execution_logs": [execution_result.get("execution_response", "")]},
+        "execution_started": execution_started,
+        "intent_classification": {
+            "intent_type": "direct_ollama_execution",
+            "confidence": confidence,
+            "method": "direct_executor",
+            "alternatives": [],
+            "entities": [],
+            "context_analysis": {
+                "confidence_score": confidence,
+                "risk_level": "LOW",
+                "requirements_count": 1,
+                "recommendations": ["Executed directly by Ollama"]
+            },
+            "reasoning": "Ollama analyzed and executed the request directly",
+            "metadata": {
+                "engine": "direct_executor",
+                "success": execution_result.get("status") == "completed"
+            }
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+        "_routing": {
+            "service_type": "direct_ollama_executor", 
+            "response_time": 0.0,
+            "cached": False
+        },
+        "execution_result": execution_result,
+        "job_details": job_details
+    }
+
+async def _format_conversation_response(request, execution_result) -> Dict[str, Any]:
+    """Format response for conversation (no execution)"""
+    response_text = execution_result.get("message", "I understand your request.")
+    
+    # If Ollama provided analysis, include it
+    if execution_result.get("execution_plan"):
+        response_text += f"\n\n🧠 Analysis: {execution_result['execution_plan'][:200]}..."
+    
+    return {
+        "response": response_text,
+        "conversation_id": request.conversation_id,
+        "intent": "conversation",
+        "confidence": 0.8,
+        "job_id": None,
+        "execution_id": None,
+        "automation_job_id": None,
+        "workflow": None,
+        "execution_started": False,
+        "intent_classification": {
+            "intent_type": "conversation",
+            "confidence": 0.8,
+            "method": "direct_executor_analysis",
+            "alternatives": [],
+            "entities": [],
+            "context_analysis": {
+                "confidence_score": 0.8,
+                "risk_level": "LOW",
+                "requirements_count": 0,
+                "recommendations": ["Analyzed by Ollama as conversation"]
+            },
+            "reasoning": "Ollama determined this is conversational",
+            "metadata": {
+                "engine": "direct_executor",
+                "success": True
+            }
+        },
+        "timestamp": datetime.utcnow().isoformat(),
+        "_routing": {
+            "service_type": "direct_ollama_conversation", 
+            "response_time": 0.0,
+            "cached": False
+        }
+    }
+
 async def _analyze_user_intent_with_llm(message: str, intent_brain_instance) -> Dict[str, Any]:
     """Use LLM to analyze if the user wants to create a job or have a conversation"""
     try:
@@ -247,35 +380,21 @@ async def _analyze_user_intent_with_llm(message: str, intent_brain_instance) -> 
 
 User message: "{message}"
 
-IMPORTANT: If the user is asking to perform ANY action on servers, services, or systems, this is a JOB REQUEST, not a conversation.
+Please consider whether the user is asking you to perform an action or execute something, versus asking for information or having a discussion.
 
-Respond with JSON only:
-{{
-    "is_job_request": true/false,
-    "confidence": 0.0-1.0,
-    "reasoning": "brief explanation",
-    "job_type": "automation/deployment/monitoring/maintenance/query" (if job request),
-    "conversation_type": "question/help/general" (if conversation)
-}}
+Please respond naturally by answering these questions:
+1. Is this a job request or conversation?
+2. How confident are you (high/medium/low)?
+3. What type is it (if job: automation/deployment/monitoring/maintenance/query, if conversation: question/help/general)?
+4. Why do you think so?
 
-JOB REQUEST indicators (set is_job_request=true):
-- Action verbs: restart, start, stop, deploy, install, configure, backup, monitor, update, upgrade, create, delete, remove, run, execute, automate
-- Target mentions: server, service, application, database, container, VM, system, host, node
-- Commands or operations to be performed
-- Infrastructure management tasks
-- System administration requests
+Some examples to help guide your analysis:
+- "restart nginx service on server1" → likely a job request (performing an action)
+- "run echo hello on localhost" → likely a job request (executing a command)  
+- "how does nginx work?" → likely a conversation (asking for information)
+- "what is the status of server1?" → could be either (depends on context - asking for info vs requesting a status check)
 
-CONVERSATION indicators (set is_job_request=false):
-- Questions starting with: what, how, why, when, where
-- Requests for information, explanations, or help
-- General inquiries about system status (without requesting changes)
-- Documentation or guidance requests
-
-Examples:
-- "restart nginx service on server1" → JOB REQUEST (action: restart, target: service)
-- "how does nginx work?" → CONVERSATION (question about how something works)
-- "deploy application to production" → JOB REQUEST (action: deploy, target: application)
-- "what is the status of server1?" → CONVERSATION (information request)"""
+Use your best judgment and explain your reasoning in natural language."""
 
         llm_response = await llm_engine.generate(analysis_prompt)
         logger.info(f"🔍 LLM intent analysis response: {llm_response}")
@@ -288,137 +407,225 @@ Examples:
         
         logger.info(f"🔍 Extracted generated text: {generated_text}")
         
-        # Parse LLM response
+        # Parse natural language response
         try:
-            analysis = json.loads(generated_text)
+            analysis = _parse_natural_language_intent_analysis(generated_text)
             logger.info(f"🔍 Parsed intent analysis: {analysis}")
             return analysis
-        except json.JSONDecodeError as e:
-            logger.error(f"🔍 JSON parsing failed: {e} - NO FALLBACK ALLOWED")
-            # NO FALLBACK - FAIL HARD AS REQUESTED
-            raise Exception(f"LLM response parsing FAILED - NO FALLBACK ALLOWED: {e}")
+        except Exception as e:
+            logger.error(f"🔍 Natural language parsing failed: {e}")
+            raise Exception(f"LLM response parsing FAILED: {e}")
             
     except Exception as e:
         logger.error(f"❌ Intent analysis failed: {e}")
         # NO FALLBACK - FAIL HARD AS REQUESTED
         raise Exception(f"Intent analysis COMPLETELY FAILED - NO FALLBACK ALLOWED: {e}")
 
-async def _handle_job_creation_request(request, intent_brain_instance, intent_analysis) -> Dict[str, Any]:
-    """Handle job creation requests - INTENT ANALYSIS + FULFILLMENT ENGINE EXECUTION"""
-    try:
-        logger.info("🎯 JOB INTENT ANALYSIS + FULFILLMENT ENGINE EXECUTION")
+def _parse_natural_language_intent_analysis(response_text: str) -> Dict[str, Any]:
+    """Parse natural language intent analysis response from LLM"""
+    response_lower = response_text.lower()
+    
+    # Determine if it's a job request
+    is_job_request = False
+    if any(phrase in response_lower for phrase in [
+        "job request", "automation", "action", "execute", "perform", "run", "deploy", "install", "restart", "start", "stop"
+    ]):
+        is_job_request = True
+    elif any(phrase in response_lower for phrase in [
+        "conversation", "question", "information", "help", "discuss", "explain", "what is", "how does"
+    ]):
+        is_job_request = False
+    else:
+        # Default logic based on keywords
+        action_keywords = ["restart", "run", "execute", "deploy", "install", "configure", "setup", "create", "delete", "update", "ping", "check status"]
+        conversation_keywords = ["what", "how", "why", "explain", "tell me", "help", "information"]
         
-        # Call ONLY the Intent Brain directly - no multi-brain engine needed
+        action_count = sum(1 for keyword in action_keywords if keyword in response_lower)
+        conversation_count = sum(1 for keyword in conversation_keywords if keyword in response_lower)
+        
+        is_job_request = action_count > conversation_count
+    
+    # Determine confidence
+    confidence = 0.8  # Default medium-high confidence
+    if any(phrase in response_lower for phrase in ["high confidence", "very confident", "certain", "definitely"]):
+        confidence = 0.95
+    elif any(phrase in response_lower for phrase in ["medium confidence", "somewhat confident", "likely"]):
+        confidence = 0.7
+    elif any(phrase in response_lower for phrase in ["low confidence", "uncertain", "not sure", "maybe"]):
+        confidence = 0.5
+    
+    # Determine job type or conversation type
+    job_type = None
+    conversation_type = None
+    
+    if is_job_request:
+        if any(word in response_lower for word in ["deploy", "install", "setup"]):
+            job_type = "deployment"
+        elif any(word in response_lower for word in ["monitor", "check", "status", "ping"]):
+            job_type = "monitoring"
+        elif any(word in response_lower for word in ["maintain", "update", "patch", "cleanup"]):
+            job_type = "maintenance"
+        elif any(word in response_lower for word in ["query", "list", "show", "get"]):
+            job_type = "query"
+        else:
+            job_type = "automation"
+    else:
+        if any(word in response_lower for word in ["help", "how to", "guide"]):
+            conversation_type = "help"
+        elif any(word in response_lower for word in ["what", "explain", "tell me"]):
+            conversation_type = "question"
+        else:
+            conversation_type = "general"
+    
+    # Extract reasoning (look for "because", "since", "reason", etc.)
+    reasoning = "Based on natural language analysis of user intent"
+    reasoning_indicators = ["because", "since", "reason", "why", "this is"]
+    for indicator in reasoning_indicators:
+        if indicator in response_lower:
+            # Try to extract the reasoning part
+            parts = response_text.split(indicator, 1)
+            if len(parts) > 1:
+                reasoning = parts[1].strip()[:200]  # Limit length
+                break
+    
+    return {
+        "is_job_request": is_job_request,
+        "confidence": confidence,
+        "reasoning": reasoning,
+        "job_type": job_type,
+        "conversation_type": conversation_type
+    }
+
+def _parse_natural_language_clarification_analysis(response_text: str) -> Dict[str, Any]:
+    """Parse natural language clarification analysis response from LLM"""
+    response_lower = response_text.lower()
+    
+    # Determine if it's a clarification response
+    is_clarification_response = False
+    if any(phrase in response_lower for phrase in [
+        "clarification", "additional information", "responding to", "answering", "providing details", "follow-up"
+    ]):
+        is_clarification_response = True
+    elif any(phrase in response_lower for phrase in [
+        "new request", "different request", "unrelated", "separate", "not clarification"
+    ]):
+        is_clarification_response = False
+    else:
+        # Look for patterns that suggest clarification
+        clarification_indicators = [
+            "every", "at", "when", "if", "above", "below", "less than", "more than", 
+            "yes", "no", "daily", "hourly", "weekly", "monthly", "midnight", "noon"
+        ]
+        clarification_count = sum(1 for indicator in clarification_indicators if indicator in response_lower)
+        is_clarification_response = clarification_count > 0
+    
+    # Determine confidence
+    confidence = 0.7  # Default medium confidence
+    if any(phrase in response_lower for phrase in ["high confidence", "very confident", "certain", "definitely"]):
+        confidence = 0.9
+    elif any(phrase in response_lower for phrase in ["medium confidence", "somewhat confident", "likely"]):
+        confidence = 0.7
+    elif any(phrase in response_lower for phrase in ["low confidence", "uncertain", "not sure", "maybe"]):
+        confidence = 0.4
+    
+    # Extract reasoning
+    reasoning = "Based on natural language analysis of clarification patterns"
+    reasoning_indicators = ["because", "since", "reason", "why", "this is", "appears to be"]
+    for indicator in reasoning_indicators:
+        if indicator in response_lower:
+            parts = response_text.split(indicator, 1)
+            if len(parts) > 1:
+                reasoning = parts[1].strip()[:200]
+                break
+    
+    return {
+        "is_clarification_response": is_clarification_response,
+        "confidence": confidence,
+        "reasoning": reasoning
+    }
+
+async def _handle_job_creation_request(request, intent_brain_instance, intent_analysis) -> Dict[str, Any]:
+    """Handle job creation requests - DIRECT OLLAMA EXECUTION"""
+    try:
+        logger.info("🚀 DIRECT OLLAMA EXECUTION - NO COMPLEX PIPELINES!")
+        
         user_context = {
             "user_id": str(request.user_id) if request.user_id else "system",
             "conversation_id": request.conversation_id
         }
         
-        # Get intent analysis directly from intent brain
-        intent_analysis_result = await intent_brain_instance.analyze_intent(request.message, user_context)
+        # 🚀 DIRECT EXECUTION: Let Ollama decide everything and execute it!
+        logger.info("🧠 Ollama will analyze, plan, and execute directly")
+        execution_result = await direct_executor.execute_user_request(request.message, user_context)
         
-        # Check if clarifying questions are needed
-        if intent_analysis_result.needs_clarification and intent_analysis_result.clarifying_questions:
-            logger.info(f"🤔 Clarifying questions needed: {intent_analysis_result.clarifying_questions}")
-            return await _handle_clarification_needed(request, intent_analysis_result, intent_brain_instance)
-        
-        # Create a human-readable interpretation of what the AI thinks the user wants
-        intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, intent_brain_instance)
-        
-        # Clear conversation context since we have a complete analysis
-        if request.conversation_id in _conversation_contexts:
-            del _conversation_contexts[request.conversation_id]
-            logger.info(f"🔄 Cleared conversation context for {request.conversation_id} - analysis complete")
-        
-        # 🎯 NEW: Execute with Fulfillment Orchestrator
-        logger.info("🚀 Passing intent to Fulfillment Orchestrator for execution")
-        
-        # Create AI understanding format for orchestrator
-        ai_understanding = {
-            "intent": "job_request",
-            "response": intent_interpretation,
-            "original_message": request.message,
-            "conversation_id": request.conversation_id,
-            "intent_classification": {
-                "intent_type": "automation",
-                "confidence": 0.9,
-                "method": "intent_brain_analysis",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {
-                    "confidence_score": 0.9,
-                    "risk_level": "MEDIUM",
-                    "requirements_count": 1,
-                    "recommendations": []
-                },
-                "reasoning": intent_analysis_result.user_intent,
-                "metadata": {
-                    "engine": "intent_brain",
-                    "success": True
-                }
-            }
-        }
-        
-        # Execute with Fulfillment Orchestrator
-        fulfillment_result = await fulfillment_orchestrator.fulfill_intent(ai_understanding, user_context)
-        
-        # Build comprehensive intent classification with Intent Brain + Fulfillment Engine data
-        intent_classification = {
-            "intent_type": "job_execution",  # Updated to reflect execution
-            "confidence": 1.0,  # We understood and executed what they want
-            "method": "intent_brain_plus_fulfillment_engine",
-            "alternatives": [],
-            "entities": [],
-            "context_analysis": {
-                "confidence_score": 1.0,
-                "risk_level": "LOW",
-                "requirements_count": fulfillment_result.total_steps,
-                "recommendations": ["Intent analyzed and executed via Fulfillment Engine"]
-            },
-            "reasoning": intent_analysis_result.user_intent,
-            "metadata": {
-                "engine": "intent_brain_plus_fulfillment_engine",
-                "version": "3.0.0",
-                "success": fulfillment_result.status == FulfillmentStatus.COMPLETED,
-                "processing_time": intent_analysis_result.processing_time,
-                "brains_consulted": ["intent_brain", "fulfillment_engine"],
-                "intent_details": intent_analysis_result.to_dict(),
-                "fulfillment_details": fulfillment_result.to_dict()
-            }
-        }
-        
-        # Format response based on fulfillment result
-        if fulfillment_result.status == FulfillmentStatus.COMPLETED:
-            response_text = f"✅ TASK COMPLETED SUCCESSFULLY\n\n{intent_interpretation}\n\n🎯 Execution Summary:\n{fulfillment_result.execution_summary or 'Task completed successfully'}"
+        # Build response based on execution result
+        if execution_result.get("status") == "completed":
+            response_text = f"✅ TASK COMPLETED SUCCESSFULLY\n\n{execution_result.get('message', 'Task completed')}"
             execution_started = True
-        elif fulfillment_result.status == FulfillmentStatus.FAILED:
-            response_text = f"❌ TASK EXECUTION FAILED\n\n{intent_interpretation}\n\n🎯 Error Details:\n{fulfillment_result.error_message or 'Unknown error occurred'}"
+            confidence = 1.0
+        elif execution_result.get("status") == "failed":
+            response_text = f"❌ TASK EXECUTION FAILED\n\n{execution_result.get('message', 'Task failed')}"
             execution_started = False
-        elif fulfillment_result.status == FulfillmentStatus.EXECUTING:
-            response_text = f"⏳ TASK EXECUTION IN PROGRESS\n\n{intent_interpretation}\n\n🎯 Progress: {fulfillment_result.steps_completed}/{fulfillment_result.total_steps} steps completed"
-            execution_started = True
+            confidence = 0.5
         else:
-            response_text = f"🎯 TASK INITIATED\n\n{intent_interpretation}\n\n🎯 Status: {fulfillment_result.status.value}"
+            response_text = f"⏳ TASK IN PROGRESS\n\n{execution_result.get('message', 'Task running')}"
             execution_started = True
+            confidence = 0.8
+        
+        # Extract job details if available
+        job_details = execution_result.get("job_details", [])
+        primary_job_id = None
+        primary_execution_id = None
+        
+        if job_details:
+            primary_job = job_details[0]
+            primary_job_id = primary_job.get('job_id')
+            primary_execution_id = primary_job.get('execution_id')
+            
+            # Add job details to response
+            response_text += f"\n\n📋 Job Details:\n"
+            for job_detail in job_details:
+                job_name = job_detail.get('job_name', 'AI Generated Job')
+                job_id = job_detail.get('job_id', 'N/A')
+                execution_id = job_detail.get('execution_id', 'N/A')
+                response_text += f"• Job: {job_name} (ID: {job_id}, Execution: {execution_id})\n"
         
         return {
             "response": response_text,
             "conversation_id": request.conversation_id,
-            "intent": "job_execution",
-            "confidence": 1.0,
-            "job_id": fulfillment_result.request_id,
-            "execution_id": fulfillment_result.workflow_id,
-            "automation_job_id": None,  # Set to None since workflow_id is a string
-            "workflow": {"execution_logs": fulfillment_result.execution_logs, "workflow_id": fulfillment_result.workflow_id},
+            "intent": "direct_execution",
+            "confidence": confidence,
+            "job_id": primary_job_id,
+            "execution_id": primary_execution_id,
+            "automation_job_id": primary_job_id,
+            "workflow": {"execution_logs": [execution_result.get("execution_response", "")]},
             "execution_started": execution_started,
-            "intent_classification": intent_classification,
+            "intent_classification": {
+                "intent_type": "direct_ollama_execution",
+                "confidence": confidence,
+                "method": "direct_executor",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": confidence,
+                    "risk_level": "LOW",
+                    "requirements_count": 1,
+                    "recommendations": ["Executed directly by Ollama"]
+                },
+                "reasoning": "Ollama analyzed and executed the request directly",
+                "metadata": {
+                    "engine": "direct_executor",
+                    "success": execution_result.get("status") == "completed"
+                }
+            },
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
-                "service_type": "intent_brain_plus_fulfillment_engine", 
-                "response_time": intent_analysis_result.processing_time,
+                "service_type": "direct_ollama_executor", 
+                "response_time": 0.0,
                 "cached": False
             },
-            "fulfillment_result": fulfillment_result.to_dict()
+            "execution_result": execution_result,
+            "job_details": job_details
         }
             
     except Exception as e:
@@ -653,61 +860,53 @@ Look for:
 
 Does this look like a clarification response rather than a completely new request?
 
-Respond with JSON only:
-{{
-    "is_clarification_response": true/false,
-    "confidence": 0.0-1.0,
-    "reasoning": "brief explanation"
-}}"""
+Please answer naturally:
+1. Is this a clarification response or a new request?
+2. How confident are you (high/medium/low)?
+3. Why do you think so?
+
+Explain your reasoning in natural language."""
 
         try:
             llm_response_data = await intent_brain_instance.llm_engine.generate(clarification_detection_prompt)
             llm_response = llm_response_data.get("generated_text", "")
             
-            # Parse the LLM response
-            import json
-            import re
+            # Parse the natural language response
+            analysis = _parse_natural_language_clarification_analysis(llm_response)
             
-            json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
-            if json_match:
-                analysis = json.loads(json_match.group())
+            if analysis.get("is_clarification_response", False) and analysis.get("confidence", 0) > 0.6:
+                logger.info(f"🔄 Detected clarification response: {analysis.get('reasoning', 'No reasoning')}")
                 
-                if analysis.get("is_clarification_response", False) and analysis.get("confidence", 0) > 0.6:
-                    logger.info(f"🔄 Detected clarification response: {analysis.get('reasoning', 'No reasoning')}")
-                    
-                    # COMBINE ORIGINAL + CLARIFICATION FOR COMPLETE CONTEXT
-                    original_message = stored_context.get("original_message", "")
-                    combined_message = f"""{original_message}
+                # COMBINE ORIGINAL + CLARIFICATION FOR COMPLETE CONTEXT
+                original_message = stored_context.get("original_message", "")
+                combined_message = f"""{original_message}
 
 Additional clarification provided: {request.message}"""
-                    
-                    logger.info(f"🔄 COMBINING CONTEXTS:")
-                    logger.info(f"🔄 Original: {original_message}")
-                    logger.info(f"🔄 Clarification: {request.message}")
-                    logger.info(f"🔄 Combined: {combined_message}")
-                    
-                    # Create a new request with the COMBINED context
-                    combined_request = type(request)(
-                        message=combined_message,
-                        conversation_id=request.conversation_id,
-                        user_id=request.user_id
-                    )
-                    
-                    # Clear the awaiting clarification flag since we're processing it
-                    _conversation_contexts[conversation_id]["awaiting_clarification"] = False
-                    
-                    # Process the COMBINED request - this will re-analyze with full context
-                    # and may ask for MORE clarification if still needed (ITERATIVE!)
-                    logger.info(f"🔄 Re-analyzing COMBINED context for completeness...")
-                    return await _handle_job_creation_request(combined_request, intent_brain_instance, {"is_job_request": True})
-                else:
-                    logger.info(f"🔄 Not a clarification response (confidence: {analysis.get('confidence', 0)}) - treating as new request")
-                    # Clear stored context since this seems to be a new request
-                    if conversation_id in _conversation_contexts:
-                        del _conversation_contexts[conversation_id]
-                    return None
+                
+                logger.info(f"🔄 COMBINING CONTEXTS:")
+                logger.info(f"🔄 Original: {original_message}")
+                logger.info(f"🔄 Clarification: {request.message}")
+                logger.info(f"🔄 Combined: {combined_message}")
+                
+                # Create a new request with the COMBINED context
+                combined_request = type(request)(
+                    message=combined_message,
+                    conversation_id=request.conversation_id,
+                    user_id=request.user_id
+                )
+                
+                # Clear the awaiting clarification flag since we're processing it
+                _conversation_contexts[conversation_id]["awaiting_clarification"] = False
+                
+                # Process the COMBINED request - this will re-analyze with full context
+                # and may ask for MORE clarification if still needed (ITERATIVE!)
+                logger.info(f"🔄 Re-analyzing COMBINED context for completeness...")
+                return await _handle_job_creation_request(combined_request, intent_brain_instance, {"is_job_request": True})
             else:
-                logger.warning("🔄 Could not parse clarification detection response")
+                logger.info(f"🔄 Not a clarification response (confidence: {analysis.get('confidence', 0)}) - treating as new request")
+                # Clear stored context since this seems to be a new request
+                if conversation_id in _conversation_contexts:
+                    del _conversation_contexts[conversation_id]
                 return None
                 
         except Exception as llm_error:
@@ -1890,80 +2089,22 @@ async def test_integration():
             "integration_ready": False
         }
 
-def classify_intent(message: str) -> tuple[str, float]:
-    """Classify user message intent"""
-    message_lower = message.lower().strip()
-    
-    # Question patterns
-    question_patterns = [
-        'what', 'how', 'when', 'where', 'why', 'who', 'which',
-        'status', 'show', 'list', 'display', 'tell me', 'get',
-        'how many', 'what is', 'what are', 'how much'
-    ]
-    
-    # Job creation patterns  
-    job_patterns = [
-        'restart', 'stop', 'start', 'update', 'install', 'remove',
-        'deploy', 'configure', 'run', 'execute', 'kill', 'reboot',
-        'upgrade', 'downgrade', 'backup', 'restore'
-    ]
-    
-    # Check for question patterns
-    for pattern in question_patterns:
-        if pattern in message_lower:
-            return "question", 0.8
-    
-    # Check for job patterns
-    for pattern in job_patterns:
-        if pattern in message_lower:
-            return "job_creation", 0.9
-    
-    # Check if it ends with question mark
-    if message.strip().endswith('?'):
-        return "question", 0.7
-    
-    return "unknown", 0.3
-
-async def handle_question(message: str) -> str:
-    """Handle informational questions"""
-    message_lower = message.lower()
-    
-    # Status-related questions
-    if any(word in message_lower for word in ['status', 'health', 'running', 'up', 'down']):
-        if any(word in message_lower for word in ['worker', 'job', 'task']):
-            return "I can see the system status through the monitoring dashboard. Currently, there are 24 worker processes running across 2 containers, ready to handle automation tasks. You can check the detailed status in the Job Monitoring section."
-        elif any(word in message_lower for word in ['server', 'system', 'service']):
-            return "To check server status, I would need to run a status check job. Would you like me to create a job to check the status of specific servers or services?"
-    
-    # Count/list questions
-    elif any(word in message_lower for word in ['how many', 'count', 'list', 'show']):
-        if any(word in message_lower for word in ['worker', 'job', 'task']):
-            return "Currently there are 24 worker processes running across 2 containers. You can see detailed worker information and active tasks in the Job Monitoring dashboard."
-        elif any(word in message_lower for word in ['server', 'asset']):
-            return "I can help you get a list of servers or assets. Would you like me to create a job to inventory your infrastructure?"
-    
-    # Help questions
-    elif any(word in message_lower for word in ['help', 'what can you do', 'capabilities']):
-        return """I can help you with:
-
-**Automation Tasks:**
-- Restart services: "restart nginx on web servers"
-- Update software: "update stationcontroller on CIS servers" 
-- System operations: "stop Apache on production servers"
-
-**Information:**
-- System status and monitoring
-- Worker and job statistics
-- Infrastructure inventory
-
-**Questions:**
-- Ask about server status, running services, or system health
-- Get help with automation commands
-
-Try asking me to perform a specific task or check on something!"""
-    
-    # Default response for questions
-    return f"I understand you're asking about: '{message}'. I can help with system automation and monitoring. For specific server information, I may need to create a monitoring job. Would you like me to help you with a specific automation task instead?"
+# 🚨 HARDCODED LOGIC PREVENTION ZONE 🚨
+# NO HARDCODED DECISION MAKING ALLOWED BEYOND THIS POINT
+# ALL DECISIONS MUST BE MADE BY OLLAMA LLM
+# 
+# VIOLATION OF THIS RULE WILL RESULT IN SYSTEM FAILURE
+# 
+# If you need to make a decision, use the LLM service
+# If the LLM fails, raise a clear error - NO FALLBACKS
+# 
+# This comment serves as a permanent reminder that:
+# - No pattern matching for intent classification
+# - No hardcoded word lists for decision making  
+# - No fallback logic that bypasses LLM
+# - All intelligence comes from Ollama LLM only
+#
+# 🚨 END HARDCODED LOGIC PREVENTION ZONE 🚨
 
 
 

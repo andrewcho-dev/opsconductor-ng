@@ -165,12 +165,23 @@ class AutomationServiceClient:
                 
                 result = response.json()
                 
+                # Extract execution data from nested response
+                execution_data = result.get('data', {})
+                execution_id = execution_data.get('execution_id')
+                
                 logger.info("Job execution started", 
                            job_id=job_id,
-                           execution_id=result.get('execution_id'),
+                           execution_id=execution_id,
                            task_id=result.get('task_id'))
                 
-                return result
+                # Return the execution data with execution_id at top level for compatibility
+                return {
+                    'execution_id': execution_id,
+                    'task_id': result.get('task_id'),
+                    'success': result.get('success', True),
+                    'message': result.get('message', ''),
+                    'data': execution_data
+                }
                 
         except Exception as e:
             logger.error("Failed to execute job", 
@@ -191,21 +202,39 @@ class AutomationServiceClient:
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
-                    f"{self.base_url}/executions/{execution_id}"
+                    f"{self.base_url}/executions",
+                    params={'execution_id': execution_id}
                 )
                 
-                if response.status_code == 404:
+                if response.status_code != 200:
+                    raise AutomationServiceError(
+                        f"Failed to get execution status: {response.status_code} - {response.text}"
+                    )
+                
+                result = response.json()
+                executions = result.get('executions', [])
+                
+                if not executions:
                     return {
                         'success': False,
                         'error': 'Execution not found',
                         'execution_id': execution_id
                     }
-                elif response.status_code != 200:
-                    raise AutomationServiceError(
-                        f"Failed to get execution status: {response.status_code} - {response.text}"
-                    )
                 
-                return response.json()
+                # Return the first (and should be only) execution
+                execution = executions[0]
+                return {
+                    'success': True,
+                    'execution_id': execution_id,
+                    'status': execution.get('status'),
+                    'job_id': execution.get('job_id'),
+                    'job_name': execution.get('job_name'),
+                    'error_message': execution.get('error_message'),
+                    'started_at': execution.get('started_at'),
+                    'completed_at': execution.get('completed_at'),
+                    'output_data': execution.get('output_data', {}),
+                    'data': execution  # Include full execution data
+                }
                 
         except Exception as e:
             logger.error("Failed to get execution status", 
@@ -222,25 +251,43 @@ class AutomationServiceClient:
         Get the step execution details for a job execution
         
         Args:
-            execution_id: Execution ID
+            execution_id: Execution ID (UUID)
             
         Returns:
             List of step execution details
         """
         try:
+            # First get the execution status to find the integer ID
+            execution_status = await self.get_execution_status(execution_id)
+            if not execution_status.get('success'):
+                logger.warning("Could not get execution status for steps", 
+                              execution_id=execution_id)
+                return []
+            
+            # Extract the integer ID from the execution data
+            execution_data = execution_status.get('data', {})
+            integer_id = execution_data.get('id')
+            
+            if not integer_id:
+                logger.warning("No integer ID found in execution data", 
+                              execution_id=execution_id)
+                return []
+            
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
-                    f"{self.base_url}/executions/{execution_id}/steps"
+                    f"{self.base_url}/executions/{integer_id}/steps"
                 )
                 
                 if response.status_code != 200:
                     logger.warning("Failed to get execution steps", 
                                   execution_id=execution_id,
+                                  integer_id=integer_id,
                                   status_code=response.status_code)
                     return []
                 
                 result = response.json()
-                return result.get('steps', [])
+                steps_data = result.get('data', {})
+                return steps_data.get('steps', [])
                 
         except Exception as e:
             logger.error("Failed to get execution steps", 

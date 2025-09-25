@@ -267,26 +267,57 @@ class InformationGatherer:
         }
         
         try:
-            # Validate assets
-            for asset in enriched_intent.assets:
-                if asset.status not in ["online", "active", "running"]:
-                    validation_results["assets_valid"] = False
-                    validation_results["validation_errors"].append(f"Asset {asset.hostname} is not online")
+            # 🚨 HARDCODED LOGIC VIOLATION DETECTED 🚨
+            # This validation was using hardcoded status checks instead of LLM analysis
             
-            # Validate network accessibility
-            for network in enriched_intent.network_info:
-                if not network.accessible_hosts:
-                    validation_results["network_accessible"] = False
-                    validation_results["validation_errors"].append(f"Network {network.network_id} has no accessible hosts")
+            # Use LLM to validate the gathered information intelligently
+            validation_prompt = f"""
+            Analyze the following gathered information and determine if it's sufficient and valid for the intended operation:
             
-            # Validate credentials
-            if enriched_intent.original_intent.requires_credentials:
-                for asset in enriched_intent.assets:
-                    if not asset.credentials_available:
-                        validation_results["credentials_available"] = False
-                        validation_results["validation_errors"].append(f"No credentials available for asset {asset.hostname}")
+            Original Intent: {enriched_intent.original_intent.description}
+            Risk Level: {enriched_intent.original_intent.risk_level.value}
             
-            logger.info(f"Validation completed with {len(validation_results['validation_errors'])} errors")
+            Assets: {[{'hostname': a.hostname, 'status': a.status, 'credentials_available': a.credentials_available} for a in enriched_intent.assets]}
+            Network Info: {[{'network_id': n.network_id, 'accessible_hosts': len(n.accessible_hosts)} for n in enriched_intent.network_info]}
+            
+            Respond with JSON:
+            {{
+                "assets_valid": true/false,
+                "network_accessible": true/false, 
+                "credentials_available": true/false,
+                "validation_errors": ["list of specific issues if any"],
+                "reasoning": "explanation of validation decision"
+            }}
+            """
+            
+            from ..llm_service import LLMService
+            llm_service = LLMService()
+            
+            response = await llm_service.generate_response(validation_prompt)
+            
+            if response and isinstance(response, dict) and "generated_text" in response:
+                import json
+                try:
+                    llm_validation = json.loads(response["generated_text"])
+                    
+                    # Use LLM's validation results
+                    validation_results.update({
+                        "assets_valid": llm_validation.get("assets_valid", True),
+                        "network_accessible": llm_validation.get("network_accessible", True),
+                        "credentials_available": llm_validation.get("credentials_available", True),
+                        "validation_errors": llm_validation.get("validation_errors", [])
+                    })
+                    
+                    logger.info(f"LLM validation completed: {llm_validation.get('reasoning', 'No reasoning provided')}")
+                    return validation_results
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"LLM validation response not valid JSON: {e}")
+                    raise RuntimeError(f"LLM validation failed to produce valid JSON: {e}")
+            else:
+                raise RuntimeError("LLM validation service failed to respond")
+                
+            logger.info(f"LLM validation completed with {len(validation_results['validation_errors'])} errors")
             return validation_results
             
         except Exception as e:

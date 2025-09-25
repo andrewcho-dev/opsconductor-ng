@@ -10,6 +10,7 @@ import json
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +101,14 @@ class IntentProcessor:
             if not self.llm_engine:
                 raise RuntimeError("LLM engine not available - cannot process intent")
             
-            # Create comprehensive prompt for LLM intent analysis
+            # Create comprehensive prompt for LLM intent analysis - REQUEST JSON FORMAT
             intent_prompt = f"""
             You are an expert DevOps engineer analyzing user intent to determine how to fulfill their request.
             
             AI UNDERSTANDING DATA:
             {json.dumps(ai_understanding, indent=2)}
             
-            TASK: Analyze this AI understanding and determine the detailed intent processing information.
+            TASK: Analyze this AI understanding and provide a structured JSON response with detailed intent processing information.
             
             IMPORTANT GUIDELINES:
             1. Classify the intent type based on what the user actually wants to do
@@ -117,12 +118,12 @@ class IntentProcessor:
             5. Be thorough and accurate - this drives the entire fulfillment process
             
             INTENT TYPES:
-            - QUERY: Information requests, status checks, read-only operations
-            - AUTOMATION: Running commands, scripts, or automated tasks
-            - DEPLOYMENT: Installing, deploying, or configuring software/services
-            - MONITORING: Setting up monitoring, alerts, or recurring checks
-            - MAINTENANCE: Updates, patches, cleanup, or maintenance tasks
-            - CONVERSATION: General discussion, help requests, non-actionable chat
+            - query: Information requests, status checks, read-only operations
+            - automation: Running commands, scripts, or automated tasks
+            - deployment: Installing, deploying, or configuring software/services
+            - monitoring: Setting up monitoring, alerts, or recurring checks
+            - maintenance: Updates, patches, cleanup, or maintenance tasks
+            - conversation: General discussion, help requests, non-actionable chat
             
             RISK LEVELS:
             - LOW: Read-only operations, safe queries, information gathering
@@ -130,27 +131,25 @@ class IntentProcessor:
             - HIGH: Operations that could affect system availability or data
             - CRITICAL: Operations that could cause system outages or data loss
             
-            RESPOND WITH JSON ONLY:
-            {{
-                "intent_type": "query|automation|deployment|monitoring|maintenance|conversation",
-                "risk_level": "LOW|MEDIUM|HIGH|CRITICAL",
-                "confidence": 0.0-1.0,
-                "description": "clear description of what the user wants to accomplish",
-                "requires_asset_info": true/false,
-                "requires_network_info": true/false,
-                "requires_credentials": true/false,
-                "target_systems": ["system1", "system2"],
-                "operations": ["operation1", "operation2"],
-                "parameters": {{"key": "value"}},
-                "reasoning": "detailed explanation of the analysis and decisions"
-            }}
+            Please analyze and respond naturally by answering these questions:
+            1. What type of intent is this? (automation/query/deployment/monitoring/maintenance/conversation)
+            2. What is the risk level? (LOW/MEDIUM/HIGH/CRITICAL)
+            3. What needs to be done? (clear description)
+            4. How confident are you? (high/medium/low)
+            5. Does this require asset information? (yes/no)
+            6. Does this require network information? (yes/no)
+            7. Does this require credentials? (yes/no)
+            8. What are the target systems? (list them or say "auto-detect")
+            9. What operations need to be performed? (list them)
+            10. What parameters are involved? (describe them)
+            11. Why do you think so? (reasoning)
             
             EXAMPLES:
-            - "check server status" → QUERY, LOW risk, requires_asset_info=true
-            - "restart nginx service" → AUTOMATION, MEDIUM risk, requires_credentials=true
-            - "deploy new application" → DEPLOYMENT, HIGH risk, requires all info
-            - "ping server every 5 minutes" → MONITORING, LOW risk, requires_asset_info=true
-            - "update all packages" → MAINTENANCE, HIGH risk, requires_credentials=true
+            - "check server status" → query intent, LOW risk, requires asset info
+            - "restart nginx service" → automation intent, MEDIUM risk, requires credentials
+            - "ping server every 5 minutes" → automation intent, LOW risk, target systems needed
+            
+            Please explain your analysis in natural language.
             """
             
             logger.info("Sending intent analysis request to LLM")
@@ -164,24 +163,8 @@ class IntentProcessor:
             
             logger.info(f"LLM intent analysis response: {generated_text}")
             
-            # Clean and parse JSON response
-            try:
-                # Remove any markdown code blocks
-                if "```json" in generated_text:
-                    generated_text = generated_text.split("```json")[1].split("```")[0]
-                elif "```" in generated_text:
-                    generated_text = generated_text.split("```")[1].split("```")[0]
-                
-                intent_analysis = json.loads(generated_text.strip())
-                logger.info(f"Parsed LLM intent analysis: {intent_analysis}")
-                
-                # Convert LLM response to ProcessedIntent
-                return await self._convert_llm_analysis_to_intent(ai_understanding, intent_analysis)
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM intent analysis as JSON: {e}")
-                logger.error(f"Raw LLM Response: {generated_text}")
-                raise RuntimeError(f"LLM returned invalid JSON for intent analysis: {e}")
+            # Parse natural language response instead of JSON
+            return await self._parse_natural_language_intent(ai_understanding, generated_text)
                 
         except Exception as e:
             logger.error(f"LLM intent processing failed: {str(e)}")
@@ -235,3 +218,99 @@ class IntentProcessor:
         except Exception as e:
             logger.error(f"Failed to convert LLM analysis to ProcessedIntent: {str(e)}")
             raise RuntimeError(f"Failed to convert LLM analysis: {e}")
+    
+    async def _parse_natural_language_intent(self, ai_understanding: Dict[str, Any], analysis_text: str) -> ProcessedIntent:
+        """Parse natural language LLM response to ProcessedIntent object"""
+        try:
+            logger.info("Parsing natural language intent analysis")
+            
+            analysis_lower = analysis_text.lower()
+            
+            # Parse intent type
+            intent_type = IntentType.CONVERSATION  # Default
+            if any(word in analysis_lower for word in ["automation", "automate", "execute", "run"]):
+                intent_type = IntentType.AUTOMATION
+            elif any(word in analysis_lower for word in ["query", "check", "status", "information", "get"]):
+                intent_type = IntentType.QUERY
+            elif any(word in analysis_lower for word in ["deploy", "install", "setup", "configure"]):
+                intent_type = IntentType.DEPLOYMENT
+            elif any(word in analysis_lower for word in ["monitor", "watch", "alert", "track"]):
+                intent_type = IntentType.MONITORING
+            elif any(word in analysis_lower for word in ["maintain", "update", "patch", "cleanup"]):
+                intent_type = IntentType.MAINTENANCE
+            
+            # Parse risk level
+            risk_level = RiskLevel.MEDIUM  # Default
+            if any(word in analysis_lower for word in ["low risk", "safe", "read-only", "no impact"]):
+                risk_level = RiskLevel.LOW
+            elif any(word in analysis_lower for word in ["high risk", "dangerous", "system impact", "availability"]):
+                risk_level = RiskLevel.HIGH
+            elif any(word in analysis_lower for word in ["critical", "outage", "data loss", "critical risk"]):
+                risk_level = RiskLevel.CRITICAL
+            
+            # Parse confidence
+            confidence = 0.8  # Default
+            if any(word in analysis_lower for word in ["high confidence", "very confident", "certain"]):
+                confidence = 0.95
+            elif any(word in analysis_lower for word in ["medium confidence", "somewhat confident"]):
+                confidence = 0.7
+            elif any(word in analysis_lower for word in ["low confidence", "uncertain", "not sure"]):
+                confidence = 0.5
+            
+            # Parse requirements
+            requires_asset_info = any(word in analysis_lower for word in ["asset", "server", "system", "host", "yes.*asset"])
+            requires_network_info = any(word in analysis_lower for word in ["network", "connectivity", "ip", "port", "yes.*network"])
+            requires_credentials = any(word in analysis_lower for word in ["credential", "password", "auth", "login", "yes.*credential"])
+            
+            # Extract target systems
+            target_systems = []
+            if "target systems" in analysis_lower or "target:" in analysis_lower:
+                # Try to extract systems mentioned after "target"
+                import re
+                target_match = re.search(r'target[^:]*:?\s*([^\n]+)', analysis_text, re.IGNORECASE)
+                if target_match:
+                    targets_text = target_match.group(1)
+                    # Split by common delimiters
+                    target_systems = [t.strip() for t in re.split(r'[,;]', targets_text) if t.strip()]
+            
+            if not target_systems:
+                target_systems = ["auto-detect"]
+            
+            # Extract operations
+            operations = []
+            operation_keywords = ["ping", "restart", "start", "stop", "install", "deploy", "check", "monitor", "update"]
+            for keyword in operation_keywords:
+                if keyword in analysis_lower:
+                    operations.append(keyword)
+            
+            if not operations:
+                operations = ["execute"]
+            
+            # Extract description
+            description = f"Intent analysis for: {ai_understanding.get('original_message', 'unknown request')}"
+            
+            # Create ProcessedIntent
+            intent_id = f"nlp_{int(datetime.now().timestamp())}"
+            
+            processed_intent = ProcessedIntent(
+                intent_id=intent_id,
+                intent_type=intent_type,
+                description=description,
+                original_message=ai_understanding.get("original_message", ""),
+                risk_level=risk_level,
+                confidence=confidence,
+                requires_asset_info=requires_asset_info,
+                requires_network_info=requires_network_info,
+                requires_credentials=requires_credentials,
+                target_systems=target_systems,
+                operations=operations,
+                parameters={},
+                user_context=ai_understanding.get("user_context", {})
+            )
+            
+            logger.info(f"Natural language intent parsing completed: {intent_type.value} with risk {risk_level.value}")
+            return processed_intent
+            
+        except Exception as e:
+            logger.error(f"Failed to parse natural language intent: {str(e)}")
+            raise RuntimeError(f"Failed to parse natural language intent: {e}")

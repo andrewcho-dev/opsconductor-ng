@@ -250,24 +250,38 @@ class ProgressiveIntentLearner:
         else:
             return IntentConfidence.VERY_LOW.value
     
-    def _generate_clarification_suggestions(self, message: str) -> List[str]:
-        """Generate suggestions when intent is unclear"""
-        suggestions = []
-        
-        # Check for partial matches
-        if any(word in message.lower() for word in ["asset", "server", "system", "machine"]):
-            suggestions.append("Are you asking about our asset inventory or a specific system?")
-        
-        if any(word in message.lower() for word in ["create", "make", "automate", "run"]):
-            suggestions.append("Are you looking to create an automation workflow or run a specific task?")
-        
-        if any(word in message.lower() for word in ["fix", "problem", "error", "issue"]):
-            suggestions.append("Are you experiencing a technical issue that needs troubleshooting?")
-        
-        if not suggestions:
-            suggestions.append("Could you provide more details about what you're trying to accomplish?")
-        
-        return suggestions
+    async def _generate_clarification_suggestions(self, message: str) -> List[str]:
+        """Generate LLM-powered clarification suggestions - NO HARDCODED PATTERNS"""
+        try:
+            # Use LLM to generate intelligent clarification suggestions
+            prompt = f"""
+            The user said: "{message}"
+            
+            This message is unclear or ambiguous. Generate 2-3 helpful clarification questions that would help understand what the user wants to accomplish.
+            
+            Focus on:
+            - What specific action they want to take
+            - What systems or resources they're referring to
+            - Any missing context that would help fulfill their request
+            
+            Return only the questions, one per line, without numbering or bullets.
+            """
+            
+            response = await self.llm_service.generate_response(prompt)
+            
+            if response and isinstance(response, dict) and "generated_text" in response:
+                suggestions_text = response["generated_text"].strip()
+                # Split by lines and clean up
+                suggestions = [s.strip() for s in suggestions_text.split('\n') if s.strip()]
+                return suggestions[:3]  # Limit to 3 suggestions
+            else:
+                # If LLM fails, raise clear error - NO FALLBACK
+                raise RuntimeError("LLM failed to generate clarification suggestions")
+                
+        except Exception as e:
+            logger.error(f"Failed to generate LLM clarification suggestions: {e}")
+            # NO HARDCODED FALLBACK - raise clear error
+            raise RuntimeError(f"Unable to generate clarification suggestions: {e}")
     
     async def record_feedback(self, interpretation_id: str, was_correct: bool, 
                             actual_intent: str = None, user_feedback: str = None) -> None:

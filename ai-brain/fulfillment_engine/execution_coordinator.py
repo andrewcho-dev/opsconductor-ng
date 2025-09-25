@@ -38,6 +38,9 @@ class StepExecutionResult:
     output: Optional[str] = None
     error_message: Optional[str] = None
     exit_code: Optional[int] = None
+    execution_id: Optional[str] = None
+    job_id: Optional[int] = None
+    job_name: Optional[str] = None
     
     @property
     def duration_seconds(self) -> Optional[float]:
@@ -59,12 +62,15 @@ class WorkflowExecutionResult:
     summary: Optional[str] = None
     error_message: Optional[str] = None
     logs: List[str] = None
+    job_details: List[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.step_results is None:
             self.step_results = []
         if self.logs is None:
             self.logs = []
+        if self.job_details is None:
+            self.job_details = []
     
     @property
     def success(self) -> bool:
@@ -151,6 +157,16 @@ class ExecutionCoordinator:
                         result.steps_completed += 1
                         result.logs.append(f"Step '{step.name}' completed successfully")
                         
+                        # Collect job details if available
+                        if step_result.job_id or step_result.execution_id:
+                            job_detail = {
+                                "step_name": step.name,
+                                "job_id": step_result.job_id,
+                                "job_name": step_result.job_name,
+                                "execution_id": step_result.execution_id
+                            }
+                            result.job_details.append(job_detail)
+                        
                         # Update progress
                         if progress_callback:
                             progress_callback(result.steps_completed, result.total_steps)
@@ -213,6 +229,11 @@ class ExecutionCoordinator:
             result.output = execution_result.get("output", "")
             result.exit_code = execution_result.get("exit_code", 0)
             
+            # Capture job execution details
+            result.execution_id = execution_result.get("execution_id")
+            result.job_id = execution_result.get("job_id")
+            result.job_name = execution_result.get("job_name")
+            
             if result.exit_code == 0:
                 result.status = ExecutionStatus.COMPLETED
             else:
@@ -237,9 +258,12 @@ class ExecutionCoordinator:
                     "description": step.description,
                     "steps": [
                         {
+                            "id": step.step_id,
                             "name": step.name,
                             "command": step.command,
-                            "timeout": step.timeout_seconds
+                            "type": "command",
+                            "timeout": step.timeout_seconds,
+                            "inputs": {}
                         }
                     ],
                     "target_systems": step.target_systems or ["localhost"]
@@ -344,24 +368,37 @@ class ExecutionCoordinator:
                 execution_id = workflow_result.get("execution_id")
                 logger.info(f"Workflow submitted successfully with execution ID: {execution_id}")
                 
+                # Check if we have a valid execution ID
+                if not execution_id:
+                    logger.error("No execution ID returned from automation service")
+                    return {
+                        "output": "",
+                        "exit_code": 1,
+                        "error": "No execution ID returned from automation service"
+                    }
+                
                 # Wait for workflow completion using the client's built-in method
                 completion_result = await self.automation_client.wait_for_completion(
                     execution_id=execution_id,
-                    timeout_seconds=300  # 5 minutes max
+                    timeout=300  # 5 minutes max
                 )
                 
                 if completion_result:
                     return {
                         "output": completion_result.get("output", "Workflow completed successfully"),
                         "exit_code": 0 if completion_result.get("status") == "completed" else 1,
-                        "execution_id": execution_id
+                        "execution_id": execution_id,
+                        "job_id": workflow_result.get("job_id"),
+                        "job_name": workflow_result.get("job_name")
                     }
                 else:
                     return {
                         "output": "Workflow execution timed out",
                         "exit_code": 1,
                         "error": "Workflow execution timeout",
-                        "execution_id": execution_id
+                        "execution_id": execution_id,
+                        "job_id": workflow_result.get("job_id"),
+                        "job_name": workflow_result.get("job_name")
                     }
             else:
                 error_msg = workflow_result.get("error", "Failed to submit workflow") if workflow_result else "No response from automation service"
