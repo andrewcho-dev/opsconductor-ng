@@ -15,9 +15,9 @@ This replaces the legacy keyword-based system with intelligent multi-brain reaso
 import logging
 import asyncio
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 # Multi-Brain Components
 from brains.intent_brain.intent_brain import IntentBrain, IntentAnalysisResult
@@ -34,27 +34,51 @@ from confidence.multibrain_confidence import MultibrainConfidenceEngine, Aggrega
 logger = logging.getLogger(__name__)
 
 @dataclass
-class MultiBrainProcessingResult:
-    """Complete result from multi-brain processing"""
+class IntentOnlyResult:
+    """Result for intent-only analysis mode"""
     # Request information
     request_id: str
     user_message: str
     timestamp: datetime
     
-    # Brain analysis results
+    # Intent analysis only
     intent_analysis: IntentAnalysisResult
-    technical_plan: TechnicalPlan
-    sme_consultations: Dict[str, Any]
-    
-    # Aggregated results
-    overall_confidence: float
-    execution_strategy: str
-    recommended_actions: List[str]
-    risk_assessment: Dict[str, Any]
     
     # Processing metadata
     processing_time: float
     brains_consulted: List[str]
+    phase: str = "intent_only"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API responses"""
+        return {
+            "request_id": self.request_id,
+            "user_message": self.user_message,
+            "timestamp": self.timestamp.isoformat(),
+            "intent_analysis": self.intent_analysis.to_dict(),
+            "processing_time": self.processing_time,
+            "brains_consulted": self.brains_consulted,
+            "phase": self.phase
+        }
+
+@dataclass
+class MultiBrainProcessingResult:
+    """Complete result from multi-brain processing"""
+    # Request information (required fields first)
+    request_id: str
+    user_message: str
+    timestamp: datetime
+    intent_analysis: IntentAnalysisResult
+    overall_confidence: float
+    execution_strategy: str
+    recommended_actions: List[str]
+    risk_assessment: Dict[str, Any]
+    processing_time: float
+    brains_consulted: List[str]
+    
+    # Optional fields with defaults last
+    technical_plan: Optional[TechnicalPlan] = None
+    sme_consultations: Dict[str, Any] = field(default_factory=dict)
     phase: str = "phase_1"
     
     def to_dict(self) -> Dict[str, Any]:
@@ -64,7 +88,7 @@ class MultiBrainProcessingResult:
             "user_message": self.user_message,
             "timestamp": self.timestamp.isoformat(),
             "intent_analysis": self.intent_analysis.to_dict(),
-            "technical_plan": self.technical_plan.to_dict(),
+            "technical_plan": self.technical_plan.to_dict() if self.technical_plan else None,
             "sme_consultations": self.sme_consultations,
             "overall_confidence": self.overall_confidence,
             "execution_strategy": self.execution_strategy,
@@ -270,12 +294,16 @@ class MultiBrainAIEngine:
         """
         Generate an intelligent answer for asset queries using LLM analysis.
         
-        Instead of hardcoded pattern matching, this method uses the LLM to intelligently
-        analyze ALL asset data and provide accurate answers based on the actual data.
+        This method implements human-like database analysis:
+        1. Examine what data is available (schema discovery)
+        2. Understand field meanings and relationships
+        3. Reason about which fields are relevant to the query
+        4. Formulate an intelligent analysis strategy
+        5. Execute the analysis and provide precise answers
         
         Args:
             query: The user's query
-            formatted_assets: List of formatted asset information
+            formatted_assets: List of complete asset data with all database fields
             
         Returns:
             Intelligent answer string if applicable, None otherwise
@@ -289,77 +317,41 @@ class MultiBrainAIEngine:
             return None
             
         try:
-            # Pass ALL asset data directly to the AI - no manual field mapping needed!
-            # The AI can understand field meanings from their names and context
-            asset_data_summary = formatted_assets
+            # STEP 1: Schema Discovery - Let the AI examine what data is available
+            # Get a sample asset to understand the schema
+            sample_asset = formatted_assets[0] if formatted_assets else {}
+            available_fields = list(sample_asset.keys())
             
-            # Create intelligent system prompt for asset analysis
-            system_prompt = """You are an intelligent IT asset analyzer with comprehensive database schema knowledge. 
-
-CORE PRINCIPLE: You have access to complete asset data with ALL database fields. Use your natural language understanding to interpret field meanings from their names and context - no manual translation needed!
-
-AVAILABLE DATABASE SCHEMA (understand these field meanings naturally):
-
-BASIC ASSET INFORMATION:
-- id, name, hostname, ip_address, description, tags
-
-OPERATING SYSTEM:
-- os_type, os_version
-
-HARDWARE/DEVICE:
-- device_type, hardware_make, hardware_model, serial_number
-
-LOCATION:
-- physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates
-
-PRIMARY SERVICE:
-- service_type, port, is_secure, credential_type, username, domain, has_credentials
-
-ADDITIONAL SERVICES:
-- additional_services (JSON array), additional_services_count
-
-DATABASE SPECIFIC:
-- database_type, database_name
-
-SECONDARY SERVICES:
-- secondary_service_type, secondary_port, ftp_type, secondary_username
-
-STATUS & MANAGEMENT:
-- is_active, connection_status, last_tested_at, status, environment, criticality, owner, support_contact, contract_number, notes
-
-AUDIT:
-- created_by, updated_by, created_at, updated_at
+            # STEP 2: Present raw data to AI for intelligent analysis
+            # No hardcoded formatting - let the AI understand the schema naturally
+            import json
+            raw_asset_data = json.dumps(formatted_assets, indent=2, default=str)
+            
+            # Create intelligent system prompt for human-like database analysis
+            system_prompt = """You are an IT asset database analyst. Provide direct, accurate answers to user queries about the asset database.
 
 INSTRUCTIONS:
-1. EXAMINE ALL FIELDS - every piece of data can be relevant
-2. UNDERSTAND FIELD MEANINGS from their names (e.g., "hardware_make" = manufacturer, "criticality" = business importance)
-3. USE YOUR INTELLIGENCE - don't require explicit mappings for obvious field meanings
-4. BE COMPREHENSIVE - consider location, hardware, services, management data, etc.
-5. BE PRECISE - provide exact counts, specific details, and clear answers
-6. CROSS-REFERENCE - use multiple fields to build complete understanding
-7. STATE LIMITATIONS - if data is missing or unclear, say so
+- Examine the asset data provided
+- Look for assets that match the user's criteria
+- Count the matches carefully
+- Provide a clear, direct answer
 
-Your goal: Provide intelligent, comprehensive answers using ALL available asset data."""
+RESPONSE FORMAT:
+- Give a direct answer in 1-2 sentences
+- Include specific asset names and details when relevant
+- Be precise with counts"""
 
-            # Convert asset data summary to readable format for LLM
-            asset_data_text = ""
-            for i, asset in enumerate(asset_data_summary, 1):
-                asset_data_text += f"\nAsset {i}:\n"
-                for key, value in asset.items():
-                    if value:  # Only include non-empty values
-                        asset_data_text += f"  {key}: {value}\n"
-            
-            logger.info(f"Asset data being sent to LLM: {asset_data_text}")
-            
-            # Create the analysis prompt
+            # Create the analysis prompt with raw data
             analysis_prompt = f"""User Question: {query}
 
-Asset Data to Analyze:
-{asset_data_text}
+Asset Database:
+{raw_asset_data}
 
-Please analyze this asset data intelligently and answer the user's question accurately. Look at ALL fields and use your reasoning to determine what each asset is."""
+Analyze the asset data and answer the user's question directly."""
 
-            logger.info(f"Sending analysis prompt to LLM: {analysis_prompt[:200]}...")
+            logger.info(f"Sending raw asset data to LLM for intelligent schema-aware analysis")
+            logger.info(f"Available fields detected: {available_fields}")
+            logger.info(f"Total assets to analyze: {len(formatted_assets)}")
             
             # Get intelligent analysis from LLM
             response = await self.llm_engine.chat(
@@ -370,10 +362,19 @@ Please analyze this asset data intelligently and answer the user's question accu
             logger.info(f"LLM response received: {response}")
             
             if response and 'response' in response:
-                return response['response'].strip()
+                # Return both the LLM response and the raw asset data for fallback processing
+                return {
+                    'llm_response': response['response'].strip(),
+                    'assets': formatted_assets,
+                    'summary': response['response'].strip()
+                }
             else:
                 logger.warning("LLM response was empty or malformed")
-                return None
+                # Still return asset data for fallback processing
+                return {
+                    'assets': formatted_assets,
+                    'summary': f"Found {len(formatted_assets)} assets in the database."
+                }
                 
         except Exception as e:
             logger.error(f"Error in intelligent asset analysis: {str(e)}")
@@ -404,14 +405,15 @@ Please analyze this asset data intelligently and answer the user's question accu
         logger.info("🚀 SYNTHESIS METHOD CALLED - Starting final response synthesis")
         print("DEBUG: SYNTHESIS METHOD CALLED - Starting final response synthesis")
         
+        # Initialize synthesis_components early to avoid NameError in exception handler
+        synthesis_components = []
+        
         if not hasattr(self, 'llm_engine') or not self.llm_engine:
-            logger.warning("No LLM engine available for synthesis - falling back to multi-brain response")
-            return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
+            logger.warning("No LLM engine available for synthesis - falling back to asset analysis data")
+            return self._create_fallback_response(asset_analysis, synthesis_components)
         
         try:
             # Extract all the intelligence that was being WASTED
-            synthesis_components = []
-            
             logger.info(f"🔍 DEBUG: Starting synthesis with multi_brain_result type: {type(multi_brain_result)}")
             logger.info(f"🔍 DEBUG: SME consultations type: {type(multi_brain_result.sme_consultations) if hasattr(multi_brain_result, 'sme_consultations') else 'None'}")
             if hasattr(multi_brain_result, 'sme_consultations') and multi_brain_result.sme_consultations:
@@ -538,9 +540,15 @@ Please analyze this asset data intelligently and answer the user's question accu
             
             # 5. Intelligent asset analysis (if available)
             if asset_analysis:
+                # Handle both old string format and new dict format
+                if isinstance(asset_analysis, dict):
+                    content = asset_analysis.get('llm_response', asset_analysis.get('summary', str(asset_analysis)))
+                else:
+                    content = str(asset_analysis)
+                
                 synthesis_components.append({
                     'type': 'asset_analysis',
-                    'content': asset_analysis,
+                    'content': content,
                     'confidence': 0.9,
                     'source': 'asset_intelligence'
                 })
@@ -548,31 +556,30 @@ Please analyze this asset data intelligently and answer the user's question accu
             # Create intelligent synthesis system prompt
             system_prompt = """You are the Final Synthesis AI for OpsConductor's multi-brain system.
 
-Your job is to intelligently synthesize ALL the intelligence from multiple AI brains into ONE comprehensive, authoritative answer that directly addresses the user's original query.
+Your job is to provide clean, direct answers to user queries by synthesizing intelligence from multiple AI brains.
 
-CRITICAL SYNTHESIS PRINCIPLES:
-
-1. UNDERSTAND THE ORIGINAL INTENT: Carefully analyze what the user is actually asking for
-2. IDENTIFY OVERLAPPING INFORMATION: Recognize when different sources are referring to the same entities/assets
-3. RESOLVE CONFLICTS INTELLIGENTLY: When sources disagree, determine which is most accurate and relevant
-4. SYNTHESIZE RELEVANT INSIGHTS: Combine the most pertinent information from all sources
-5. SANITY CHECK: Ensure your final response directly and accurately answers the user's question
-
-INTELLIGENCE SOURCES YOU'RE SYNTHESIZING:
-- Strategic Analysis: High-level multi-brain orchestration insights
-- Expert Consultations: SME domain expertise and recommendations  
-- Technical Analysis: Technical implementation details and plans
-- Intent Analysis: Understanding of user intent and context
-- Asset Analysis: Data-driven analysis of specific assets/infrastructure
+CRITICAL REQUIREMENTS:
+- Provide ONLY the final answer - do not show your analysis process
+- Do not use section headers like "Analyze User's Intent", "Identify Relevant Information", etc.
+- Do not explain your synthesis methodology 
+- Do not show step-by-step reasoning
+- Give a direct, professional response that answers the user's question
 
 SYNTHESIS APPROACH:
-- For factual queries (counts, lists, status): Prioritize asset analysis data as most authoritative
-- For operational tasks: Combine technical analysis with SME recommendations
+- For factual queries (counts, lists, status): Use asset analysis as the primary source of truth
+- For operational tasks: Combine technical analysis with expert recommendations  
 - For strategic decisions: Leverage strategic analysis with expert consultations
-- Always cross-reference information between sources to identify the same entities
-- When sources conflict, explain why you chose one interpretation over another
+- Asset analysis is typically most accurate for infrastructure and inventory questions
+- When sources conflict, use the most reliable and relevant source
 
-Your goal is to create the MOST ACCURATE AND RELEVANT ANSWER by intelligently synthesizing all available intelligence."""
+RESPONSE STYLE:
+- Direct and concise
+- Professional tone
+- Include specific details when relevant (names, counts, IPs, etc.)
+- No meta-commentary about your analysis process
+- No section headers or structured breakdowns
+
+Your goal is to provide the MOST ACCURATE ANSWER in a clean, readable format."""
 
             # Format the synthesis data
             synthesis_prompt = f"""User Query: {query}
@@ -594,22 +601,28 @@ INTELLIGENCE TO SYNTHESIZE:
 
             # Add intelligent synthesis task instructions
             synthesis_prompt += """
-SYNTHESIS TASK:
-Intelligently analyze ALL the above intelligence sources and create the most accurate, relevant response to the user's query:
+CRITICAL: You MUST respond in a simple, direct format. Do NOT use any analysis headers or structured breakdowns.
 
-1. ANALYZE THE USER'S INTENT: What exactly is the user asking for?
-2. IDENTIFY RELEVANT INFORMATION: Which intelligence sources contain information that directly addresses the query?
-3. CROSS-REFERENCE DATA: Are different sources talking about the same entities? Look for overlaps and correlations.
-4. RESOLVE CONFLICTS: If sources disagree, determine which is most accurate based on:
-   - Data source reliability (asset analysis is typically most factual for infrastructure queries)
-   - Relevance to the specific question asked
-   - Consistency with other corroborating information
-5. SYNTHESIZE INTELLIGENTLY: Combine the most relevant and accurate information from all sources
-6. SANITY CHECK: Does your final answer directly and accurately address what the user asked?
+FORBIDDEN FORMATS (DO NOT USE):
+- "**ANALYZE THE USER'S INTENT:**"
+- "**IDENTIFY RELEVANT INFORMATION:**"
+- "**CROSS-REFERENCE DATA:**"
+- "**RESOLVE CONFLICTS:**"
+- "**SYNTHESIZE INTELLIGENTLY:**"
+- "**SANITY CHECK:**"
+- "Based on the provided intelligence sources"
+- "Final Synthesis Response"
 
-IMPORTANT: Do not simply ignore sources or blindly combine conflicting information. Use your intelligence to determine what information is most relevant and accurate for answering the user's specific question.
+REQUIRED FORMAT:
+Answer the user's question directly in 1-2 sentences maximum.
 
-Create a response that demonstrates intelligent synthesis of all available information."""
+For the query "how many Windows 11 machines do we have?", respond like this:
+"We have 1 Windows 11 machine: win11-test01 (IP: 192.168.50.214)."
+
+NOT like this:
+"**ANALYZE THE USER'S INTENT:** The user is asking for..."
+
+Use asset analysis data as your primary source for factual queries. Give a direct answer only."""
 
             # Get the synthesis from LLM
             logger.info("🎯 Performing final LLM synthesis of ALL brain intelligence")
@@ -627,12 +640,15 @@ Create a response that demonstrates intelligent synthesis of all available infor
             if response and 'response' in response:
                 synthesized_answer = response['response'].strip()
                 logger.info(f"✅ Final synthesis completed - combined {len(synthesis_components)} intelligence sources")
-                logger.info(f"🔍 DEBUG: Synthesized answer: {synthesized_answer[:200]}...")
+                logger.info(f"🔍 DEBUG: Raw LLM response: '{response['response']}'")
+                logger.info(f"🔍 DEBUG: After strip(): '{synthesized_answer}'")
+                logger.info(f"🔍 DEBUG: Ends with period: {synthesized_answer.endswith('.')}")
+                logger.info(f"🔍 DEBUG: Last 5 chars: '{synthesized_answer[-5:]}'")
                 return synthesized_answer
             else:
                 logger.warning(f"LLM synthesis failed - response format invalid: {response}")
-                logger.warning("Falling back to multi-brain response")
-                return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
+                logger.warning("Falling back to asset analysis data")
+                return self._create_fallback_response(asset_analysis, synthesis_components)
                 
         except Exception as e:
             logger.error(f"Error in final synthesis: {str(e)}")
@@ -640,8 +656,9 @@ Create a response that demonstrates intelligent synthesis of all available infor
             logger.error(f"Error details: {repr(e)}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            # Fallback to multi-brain response
-            return multi_brain_result.recommended_actions[0] if multi_brain_result.recommended_actions else "Analysis completed"
+            # Fallback to asset analysis data
+            logger.warning("Exception occurred - falling back to asset analysis data")
+            return self._create_fallback_response(asset_analysis, synthesis_components)
 
     
     async def process_query(self, query: str, user_context: Optional[Dict] = None) -> Dict[str, Any]:
@@ -767,8 +784,8 @@ Answer with just "INFORMATION" or "ACTION"."""
             except Exception as synthesis_error:
                 logger.error(f"Error in final synthesis: {synthesis_error}")
                 print(f"DEBUG: Synthesis failed with error: {synthesis_error}")
-                # Fallback to multi-brain response
-                response_text = result.recommended_actions[0] if result.recommended_actions else "Analysis completed successfully"
+                # Use proper fallback with asset analysis data
+                response_text = self._create_fallback_response(asset_analysis, [])
             
             # Update confidence based on synthesis quality
             has_sme_consultations = hasattr(result, 'sme_consultations') and result.sme_consultations
@@ -815,75 +832,50 @@ Answer with just "INFORMATION" or "ACTION"."""
                 }
             }
 
-    async def process_request(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> MultiBrainProcessingResult:
+    async def process_request(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> Union[IntentOnlyResult, MultiBrainProcessingResult]:
         """
-        Process user request through multi-brain architecture
+        Process user request through INTENT ANALYSIS ONLY
         
-        This is the main entry point that replaces legacy keyword-based processing.
+        DISABLED: All other brains (technical, SME) for focused intent analysis testing
         
         Args:
             user_message: User's request message
             context: Optional additional context
             
         Returns:
-            MultiBrainProcessingResult: Complete processing result
+            MultiBrainProcessingResult: Intent analysis result only
         """
         start_time = datetime.now()
         request_id = f"mbr_{start_time.strftime('%Y%m%d_%H%M%S')}_{len(self.request_history)}"
         
         try:
-            logger.info(f"Processing multi-brain request: {request_id}")
+            logger.info(f"🎯 INTENT-ONLY Processing: {request_id}")
             
             # Ensure async components are initialized
             if not (self._communication_initialized and self._learning_initialized):
                 logger.warning("Multi-brain components not fully initialized, initializing now...")
                 await self.initialize()
             
-            # Step 1: Intent Brain Analysis
-            logger.info("Step 1: Intent Brain analysis")
+            # ONLY Step 1: Intent Brain Analysis
+            logger.info("🎯 INTENT ANALYSIS ONLY - All other brains DISABLED")
             intent_analysis = await self.intent_brain.analyze_intent(user_message, context or {})
-            logger.info(f"Intent analysis completed with confidence: {intent_analysis.overall_confidence}")
+            logger.info(f"🎯 Intent analysis completed with confidence: {intent_analysis.overall_confidence}")
             
-            # Step 2: Technical Brain Planning
-            logger.info("Step 2: Technical Brain planning")
-            technical_plan = await self.technical_brain.create_execution_plan(intent_analysis.to_dict())
-            logger.info(f"Technical plan created with {len(technical_plan.steps)} steps")
-            
-            # Step 3: SME Brain Consultations
-            logger.info("Step 3: SME Brain consultations")
-            sme_consultations = await self._consult_sme_brains(technical_plan, intent_analysis)
-            logger.info(f"SME consultations completed for {len(sme_consultations)} domains")
-            
-            # Step 4: Aggregate Confidence and Determine Strategy
-            logger.info("Step 4: Confidence aggregation and strategy determination")
-            overall_confidence = await self._aggregate_confidence(intent_analysis, technical_plan, sme_consultations)
-            execution_strategy = await self._determine_execution_strategy(overall_confidence, technical_plan, intent_analysis)
-            
-            # Step 5: Generate Recommendations
-            logger.info("Step 5: Generating recommendations")
-            recommended_actions = await self._generate_recommendations(technical_plan, sme_consultations, execution_strategy)
-            
-            # Step 6: Risk Assessment
-            risk_assessment = await self._aggregate_risk_assessment(technical_plan, sme_consultations, intent_analysis)
+            # DISABLED: All other processing steps
+            logger.info("🚫 DISABLED: Technical Brain, SME Brains, Confidence Aggregation, Strategy, Recommendations")
             
             # Calculate processing time
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
             
-            # Create result
-            result = MultiBrainProcessingResult(
+            # Create intent-only result (no technical plan, no SME consultations)
+            result = IntentOnlyResult(
                 request_id=request_id,
                 user_message=user_message,
                 timestamp=start_time,
                 intent_analysis=intent_analysis,
-                technical_plan=technical_plan,
-                sme_consultations=sme_consultations,
-                overall_confidence=overall_confidence,
-                execution_strategy=execution_strategy,
-                recommended_actions=recommended_actions,
-                risk_assessment=risk_assessment,
                 processing_time=processing_time,
-                brains_consulted=["intent_brain", "technical_brain"] + list(sme_consultations.keys())
+                brains_consulted=["intent_brain_only"]
             )
             
             # Update metrics
@@ -892,7 +884,7 @@ Answer with just "INFORMATION" or "ACTION"."""
             # Store in history
             self.request_history.append(result)
             
-            logger.info(f"Multi-brain processing completed: {request_id} in {processing_time:.2f}s")
+            logger.info(f"🎯 Intent-only processing completed: {request_id} in {processing_time:.2f}s")
             return result
             
         except Exception as e:
@@ -1192,6 +1184,76 @@ Answer with just "INFORMATION" or "ACTION"."""
             logger.error(f"Error aggregating risk assessment: {str(e)}")
             return {"overall_risk_level": "high", "error": str(e)}
     
+    def _create_fallback_response(self, asset_analysis: Optional[Dict[str, Any]], synthesis_components: List[Dict[str, Any]]) -> str:
+        """Create a fallback response using asset analysis data instead of generic recommendations"""
+        try:
+            logger.info("🔄 Creating fallback response from asset analysis data")
+            
+            # First, try to use asset analysis data if available
+            if asset_analysis:
+                logger.info("📊 Using asset analysis data for fallback response")
+                
+                # If we have an LLM response from asset analysis, use it directly
+                if isinstance(asset_analysis, dict) and 'llm_response' in asset_analysis:
+                    llm_response = asset_analysis['llm_response'].strip()
+                    if llm_response and len(llm_response) > 10:
+                        logger.info("🎯 Using LLM asset analysis response directly")
+                        return llm_response
+                
+                # For asset queries, provide direct information
+                if 'assets' in asset_analysis:
+                    assets = asset_analysis['assets']
+                    if isinstance(assets, list) and assets:
+                        # Count-based queries
+                        asset_count = len(assets)
+                        if asset_count == 1:
+                            asset = assets[0]
+                            asset_name = asset.get('name', 'Unknown')
+                            asset_ip = asset.get('ip_address', 'Unknown IP')
+                            fallback_response = f"We have 1 asset: {asset_name} (IP: {asset_ip})."
+                            logger.info(f"🔍 DEBUG: Fallback response created: '{fallback_response}'")
+                            logger.info(f"🔍 DEBUG: Fallback ends with period: {fallback_response.endswith('.')}")
+                            logger.info(f"🔍 DEBUG: Fallback last 5 chars: '{fallback_response[-5:]}'")
+                            return fallback_response
+                        else:
+                            return f"We have {asset_count} assets matching your query."
+                    elif isinstance(assets, dict):
+                        # Single asset response
+                        asset_name = assets.get('name', 'Unknown')
+                        asset_ip = assets.get('ip_address', 'Unknown IP')
+                        return f"Found asset: {asset_name} (IP: {asset_ip})."
+                
+                # For summary data
+                if 'summary' in asset_analysis:
+                    summary = asset_analysis['summary']
+                    if isinstance(summary, str):
+                        return summary
+                    elif isinstance(summary, dict):
+                        # Extract meaningful information from summary
+                        if 'total_count' in summary:
+                            return f"Found {summary['total_count']} items matching your query."
+            
+            # Second, try to use synthesis components with actual data
+            for component in synthesis_components:
+                if component.get('type') == 'asset_analysis' and component.get('content'):
+                    content = component['content']
+                    if isinstance(content, str) and len(content.strip()) > 10:
+                        logger.info("📊 Using asset analysis component for fallback")
+                        return content.strip()
+                elif component.get('type') == 'expert_consultation' and component.get('content'):
+                    content = component['content']
+                    if isinstance(content, str) and len(content.strip()) > 10:
+                        logger.info("👨‍💼 Using expert consultation for fallback")
+                        return content.strip()
+            
+            # Last resort: generic message
+            logger.warning("⚠️ No suitable data found for fallback response")
+            return "Analysis completed. Please check the logs for detailed information."
+            
+        except Exception as e:
+            logger.error(f"Error creating fallback response: {str(e)}")
+            return "Analysis completed with errors. Please check the logs for details."
+    
     async def _update_metrics(self, result: MultiBrainProcessingResult):
         """Update performance metrics"""
         try:
@@ -1473,7 +1535,7 @@ Answer with just "INFORMATION" or "ACTION"."""
             "success": True,
             "confidence": result.overall_confidence,
             "intent": result.intent_analysis.intent_summary,
-            "response": result.recommended_actions[0] if result.recommended_actions else "No action recommended",
+            "response": "Legacy method - use process_query for proper responses",
             "execution_plan": result.technical_plan.to_dict() if result.technical_plan else None,
             "risk_level": result.risk_assessment.get("overall_risk_level", "medium"),
             "processing_time": result.processing_time,

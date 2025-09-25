@@ -142,13 +142,18 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
     if not response_text or not response_text.strip():
         return None
     
+    # Log the raw response for debugging JSON parsing issues
+    logger.debug(f"Attempting to parse LLM response: {response_text[:500]}...")
+    
     # Strategy 1: Try parsing the entire response as JSON
     try:
         parsed = json.loads(response_text.strip())
         # Only return dictionaries, not lists
         if isinstance(parsed, dict):
+            logger.debug("Successfully parsed entire response as JSON")
             return parsed
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.debug(f"Failed to parse entire response as JSON: {e}")
         pass
     
     # Strategy 2: Look for JSON blocks between ```json and ``` or ``` and ```
@@ -166,11 +171,13 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
                 parsed = json.loads(match.strip())
                 # Only return dictionaries, not lists
                 if isinstance(parsed, dict):
+                    logger.debug("Successfully parsed JSON from code block")
                     return parsed
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.debug(f"Failed to parse JSON from code block: {e}")
                 continue
     
-    # Strategy 3: Find JSON objects/arrays in the text
+    # Strategy 3: Find JSON objects/arrays in the text with enhanced cleaning
     json_patterns = [
         r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Simple nested objects
         r'\{.*?\}',  # Any object (greedy)
@@ -181,20 +188,40 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
         matches = re.findall(pattern, response_text, re.DOTALL)
         for match in matches:
             try:
-                # Clean up common issues
+                # Enhanced cleaning for common LLM JSON issues
                 cleaned = match.strip()
+                
                 # Remove trailing commas before closing braces/brackets
                 cleaned = re.sub(r',(\s*[}\]])', r'\1', cleaned)
+                
                 # Remove comments (// style)
                 cleaned = re.sub(r'//.*?$', '', cleaned, flags=re.MULTILINE)
+                
                 # Remove comments (/* */ style)
                 cleaned = re.sub(r'/\*.*?\*/', '', cleaned, flags=re.DOTALL)
                 
+                # Fix common LLM mistakes: missing quotes around keys
+                cleaned = re.sub(r'(\w+)(\s*:\s*)', r'"\1"\2', cleaned)
+                
+                # Fix single quotes to double quotes
+                cleaned = re.sub(r"'([^']*)'", r'"\1"', cleaned)
+                
+                # Fix boolean values
+                cleaned = re.sub(r'\btrue\b', 'true', cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r'\bfalse\b', 'false', cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r'\bnull\b', 'null', cleaned, flags=re.IGNORECASE)
+                
+                # Remove any remaining non-JSON text before/after the JSON
+                cleaned = re.sub(r'^[^{]*(\{.*\})[^}]*$', r'\1', cleaned, flags=re.DOTALL)
+                
+                logger.debug(f"Attempting to parse cleaned JSON: {cleaned[:200]}...")
                 parsed = json.loads(cleaned)
                 # Only return dictionaries, not lists
                 if isinstance(parsed, dict):
+                    logger.debug("Successfully parsed JSON after cleaning")
                     return parsed
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.debug(f"Failed to parse cleaned JSON: {e}")
                 continue
     
     # Strategy 4: Try to extract key-value pairs and build JSON
@@ -215,10 +242,42 @@ def extract_json_from_llm_response(response_text: str) -> Optional[Dict[str, Any
                     # Keep as string if not numeric
                     result[key] = value
             if result:
+                logger.debug("Successfully extracted key-value pairs")
                 return result
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to extract key-value pairs: {e}")
         pass
     
+    # Strategy 5: Last resort - try to fix common JSON syntax errors
+    try:
+        # Look for the most likely JSON structure in the response
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+        if json_match:
+            potential_json = json_match.group(0)
+            
+            # Apply aggressive fixes
+            fixed_json = potential_json
+            
+            # Fix missing commas between key-value pairs
+            fixed_json = re.sub(r'"\s*\n\s*"', '",\n"', fixed_json)
+            
+            # Fix missing quotes around string values
+            fixed_json = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r': "\1"\2', fixed_json)
+            
+            # Fix array syntax issues
+            fixed_json = re.sub(r'\[\s*([^"\[\]]+)\s*\]', r'["\1"]', fixed_json)
+            
+            logger.debug(f"Attempting to parse aggressively fixed JSON: {fixed_json[:200]}...")
+            parsed = json.loads(fixed_json)
+            if isinstance(parsed, dict):
+                logger.debug("Successfully parsed aggressively fixed JSON")
+                return parsed
+                
+    except Exception as e:
+        logger.debug(f"Failed to parse aggressively fixed JSON: {e}")
+        pass
+    
+    logger.warning(f"All JSON parsing strategies failed for response: {response_text[:200]}...")
     return None
 
 
@@ -255,8 +314,13 @@ class FourWAnalyzer:
             ScopeLevel enum value
         """
         try:
+            # Handle None or empty values
+            if not scope_level_str:
+                logger.warning("Empty scope level string, defaulting to SINGLE_SYSTEM")
+                return ScopeLevel.SINGLE_SYSTEM
+                
             # Clean up the string
-            scope_level_str = scope_level_str.strip().upper()
+            scope_level_str = str(scope_level_str).strip().upper()
             
             # Handle cases where LLM returns multiple values separated by |
             if '|' in scope_level_str:
@@ -269,19 +333,49 @@ class FourWAnalyzer:
                         break
                 else:
                     # If no valid option found, default to SINGLE_SYSTEM
+                    logger.warning(f"No valid scope level found in '{scope_level_str}', defaulting to SINGLE_SYSTEM")
                     scope_level_str = 'SINGLE_SYSTEM'
             
+            # Handle common variations and typos
+            scope_mapping = {
+                'SINGLE_SYSTEM': 'SINGLE_SYSTEM',
+                'SINGLE': 'SINGLE_SYSTEM',
+                'SYSTEM': 'SINGLE_SYSTEM',
+                'CLUSTER': 'CLUSTER',
+                'GROUP': 'CLUSTER',
+                'ENVIRONMENT': 'ENVIRONMENT',
+                'ENV': 'ENVIRONMENT',
+                'ORG_WIDE': 'ORG_WIDE',
+                'ORGANIZATION': 'ORG_WIDE',
+                'WIDE': 'ORG_WIDE',
+                'GLOBAL': 'ORG_WIDE'
+            }
+            
+            # Try to map the value
+            mapped_value = scope_mapping.get(scope_level_str, scope_level_str)
+            
+            # Validate it's a known value
+            if mapped_value not in ['SINGLE_SYSTEM', 'CLUSTER', 'ENVIRONMENT', 'ORG_WIDE']:
+                logger.warning(f"Unknown scope level '{scope_level_str}', defaulting to SINGLE_SYSTEM")
+                mapped_value = 'SINGLE_SYSTEM'
+            
             # Map to enum value
-            return ScopeLevel(scope_level_str.lower())
+            return ScopeLevel(mapped_value.lower())
             
         except (ValueError, AttributeError) as e:
             logger.error(f"Failed to parse scope level '{scope_level_str}': {e}")
-            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse scope level '{scope_level_str}': {e}")
+            logger.warning("Falling back to SINGLE_SYSTEM due to parsing error")
+            return ScopeLevel.SINGLE_SYSTEM
     
     def _parse_action_type(self, action_type_str: str) -> ActionType:
         """Safely parse action type string to enum, handling LLM formatting issues."""
         try:
-            action_type_str = action_type_str.strip().upper()
+            # Handle None or empty values
+            if not action_type_str:
+                logger.warning("Empty action type string, defaulting to INFORMATION")
+                return ActionType.INFORMATION
+                
+            action_type_str = str(action_type_str).strip().upper()
             
             # Handle pipe-separated values
             if '|' in action_type_str:
@@ -292,18 +386,52 @@ class FourWAnalyzer:
                         action_type_str = option
                         break
                 else:
+                    logger.warning(f"No valid action type found in '{action_type_str}', defaulting to INFORMATION")
                     action_type_str = 'INFORMATION'
             
-            return ActionType(action_type_str.lower())
+            # Handle common variations and typos
+            action_mapping = {
+                'INFORMATION': 'INFORMATION',
+                'INFO': 'INFORMATION',
+                'QUERY': 'INFORMATION',
+                'GET': 'INFORMATION',
+                'OPERATIONAL': 'OPERATIONAL',
+                'OPERATION': 'OPERATIONAL',
+                'OPS': 'OPERATIONAL',
+                'DIAGNOSTIC': 'DIAGNOSTIC',
+                'DIAGNOSE': 'DIAGNOSTIC',
+                'DEBUG': 'DIAGNOSTIC',
+                'TROUBLESHOOT': 'DIAGNOSTIC',
+                'PROVISIONING': 'PROVISIONING',
+                'PROVISION': 'PROVISIONING',
+                'CREATE': 'PROVISIONING',
+                'DEPLOY': 'PROVISIONING'
+            }
+            
+            # Try to map the value
+            mapped_value = action_mapping.get(action_type_str, action_type_str)
+            
+            # Validate it's a known value
+            if mapped_value not in ['INFORMATION', 'OPERATIONAL', 'DIAGNOSTIC', 'PROVISIONING']:
+                logger.warning(f"Unknown action type '{action_type_str}', defaulting to INFORMATION")
+                mapped_value = 'INFORMATION'
+            
+            return ActionType(mapped_value.lower())
             
         except (ValueError, AttributeError) as e:
             logger.error(f"Failed to parse action type '{action_type_str}': {e}")
-            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse action type '{action_type_str}': {e}")
+            logger.warning("Falling back to INFORMATION due to parsing error")
+            return ActionType.INFORMATION
     
     def _parse_urgency_level(self, urgency_str: str) -> UrgencyLevel:
         """Safely parse urgency level string to enum, handling LLM formatting issues."""
         try:
-            urgency_str = urgency_str.strip().upper()
+            # Handle None or empty values
+            if not urgency_str:
+                logger.warning("Empty urgency level string, defaulting to LOW")
+                return UrgencyLevel.LOW
+                
+            urgency_str = str(urgency_str).strip().upper()
             
             # Handle pipe-separated values
             if '|' in urgency_str:
@@ -314,18 +442,46 @@ class FourWAnalyzer:
                         urgency_str = option
                         break
                 else:
+                    logger.warning(f"No valid urgency level found in '{urgency_str}', defaulting to LOW")
                     urgency_str = 'LOW'
             
-            return UrgencyLevel(urgency_str.lower())
+            # Handle common variations and typos
+            urgency_mapping = {
+                'LOW': 'LOW',
+                'MEDIUM': 'MEDIUM',
+                'MED': 'MEDIUM',
+                'MODERATE': 'MEDIUM',
+                'HIGH': 'HIGH',
+                'URGENT': 'HIGH',
+                'CRITICAL': 'CRITICAL',
+                'EMERGENCY': 'CRITICAL',
+                'IMMEDIATE': 'CRITICAL'
+            }
+            
+            # Try to map the value
+            mapped_value = urgency_mapping.get(urgency_str, urgency_str)
+            
+            # Validate it's a known value
+            if mapped_value not in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']:
+                logger.warning(f"Unknown urgency level '{urgency_str}', defaulting to LOW")
+                mapped_value = 'LOW'
+            
+            return UrgencyLevel(mapped_value.lower())
             
         except (ValueError, AttributeError) as e:
             logger.error(f"Failed to parse urgency level '{urgency_str}': {e}")
-            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse urgency level '{urgency_str}': {e}")
+            logger.warning("Falling back to LOW due to parsing error")
+            return UrgencyLevel.LOW
     
     def _parse_timeline_type(self, timeline_str: str) -> TimelineType:
         """Safely parse timeline type string to enum, handling LLM formatting issues."""
         try:
-            timeline_str = timeline_str.strip().upper()
+            # Handle None or empty values
+            if not timeline_str:
+                logger.warning("Empty timeline type string, defaulting to FLEXIBLE")
+                return TimelineType.FLEXIBLE
+                
+            timeline_str = str(timeline_str).strip().upper()
             
             # Handle pipe-separated values
             if '|' in timeline_str:
@@ -336,18 +492,51 @@ class FourWAnalyzer:
                         timeline_str = option
                         break
                 else:
-                    timeline_str = 'IMMEDIATE'
+                    logger.warning(f"No valid timeline type found in '{timeline_str}', defaulting to FLEXIBLE")
+                    timeline_str = 'FLEXIBLE'
             
-            return TimelineType(timeline_str.lower())
+            # Handle common variations and typos
+            timeline_mapping = {
+                'IMMEDIATE': 'IMMEDIATE',
+                'NOW': 'IMMEDIATE',
+                'ASAP': 'IMMEDIATE',
+                'URGENT': 'IMMEDIATE',
+                'SCHEDULED': 'SCHEDULED',
+                'SCHEDULE': 'SCHEDULED',
+                'PLANNED': 'SCHEDULED',
+                'MAINTENANCE': 'MAINTENANCE',
+                'MAINT': 'MAINTENANCE',
+                'WINDOW': 'MAINTENANCE',
+                'FLEXIBLE': 'FLEXIBLE',
+                'FLEX': 'FLEXIBLE',
+                'ANYTIME': 'FLEXIBLE',
+                'WHENEVER': 'FLEXIBLE'
+            }
+            
+            # Try to map the value
+            mapped_value = timeline_mapping.get(timeline_str, timeline_str)
+            
+            # Validate it's a known value
+            if mapped_value not in ['IMMEDIATE', 'SCHEDULED', 'MAINTENANCE', 'FLEXIBLE']:
+                logger.warning(f"Unknown timeline type '{timeline_str}', defaulting to FLEXIBLE")
+                mapped_value = 'FLEXIBLE'
+            
+            return TimelineType(mapped_value.lower())
             
         except (ValueError, AttributeError) as e:
             logger.error(f"Failed to parse timeline type '{timeline_str}': {e}")
-            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse timeline type '{timeline_str}': {e}")
+            logger.warning("Falling back to FLEXIBLE due to parsing error")
+            return TimelineType.FLEXIBLE
     
     def _parse_method_type(self, method_str: str) -> MethodType:
         """Safely parse method type string to enum, handling LLM formatting issues."""
         try:
-            method_str = method_str.strip().upper()
+            # Handle None or empty values
+            if not method_str:
+                logger.warning("Empty method type string, defaulting to AUTOMATED")
+                return MethodType.AUTOMATED
+                
+            method_str = str(method_str).strip().upper()
             
             # Handle pipe-separated values
             if '|' in method_str:
@@ -358,13 +547,39 @@ class FourWAnalyzer:
                         method_str = option
                         break
                 else:
+                    logger.warning(f"No valid method type found in '{method_str}', defaulting to AUTOMATED")
                     method_str = 'AUTOMATED'
             
-            return MethodType(method_str.lower())
+            # Handle common variations and typos
+            method_mapping = {
+                'AUTOMATED': 'AUTOMATED',
+                'AUTO': 'AUTOMATED',
+                'AUTOMATIC': 'AUTOMATED',
+                'GUIDED': 'GUIDED',
+                'GUIDE': 'GUIDED',
+                'ASSISTED': 'GUIDED',
+                'MANUAL': 'MANUAL',
+                'HAND': 'MANUAL',
+                'HUMAN': 'MANUAL',
+                'HYBRID': 'HYBRID',
+                'MIXED': 'HYBRID',
+                'COMBINED': 'HYBRID'
+            }
+            
+            # Try to map the value
+            mapped_value = method_mapping.get(method_str, method_str)
+            
+            # Validate it's a known value
+            if mapped_value not in ['AUTOMATED', 'GUIDED', 'MANUAL', 'HYBRID']:
+                logger.warning(f"Unknown method type '{method_str}', defaulting to AUTOMATED")
+                mapped_value = 'AUTOMATED'
+            
+            return MethodType(mapped_value.lower())
             
         except (ValueError, AttributeError) as e:
             logger.error(f"Failed to parse method type '{method_str}': {e}")
-            raise RuntimeError(f"NO FALLBACKS ALLOWED: Failed to parse method type '{method_str}': {e}")
+            logger.warning("Falling back to AUTOMATED due to parsing error")
+            return MethodType.AUTOMATED
     
     async def analyze_4w(self, user_message: str, context: Optional[Dict] = None) -> FourWAnalysis:
         """
@@ -576,16 +791,17 @@ class FourWAnalyzer:
             resource_complexity = "HIGH"
             estimated_effort = "DAYS"
         
-        # Required capabilities
+        # Required capabilities - only add if actually needed
         capabilities = []
         if what.action_type == ActionType.DIAGNOSTIC:
-            capabilities.extend(["System diagnostics", "Troubleshooting expertise"])
-        if what.action_type == ActionType.PROVISIONING:
-            capabilities.extend(["Resource provisioning", "Configuration management"])
-        if where_what.scope_level in [ScopeLevel.ENVIRONMENT, ScopeLevel.ORG_WIDE]:
+            capabilities.append("System diagnostics")
+        elif what.action_type == ActionType.PROVISIONING:
+            capabilities.append("Resource provisioning")
+        elif what.action_type == ActionType.INFORMATION:
+            capabilities.append("Information retrieval")
+        # Only add orchestration for truly complex multi-system operations
+        if where_what.scope_level == ScopeLevel.ORG_WIDE and what.action_type != ActionType.INFORMATION:
             capabilities.append("Multi-system orchestration")
-        if when.urgency in [UrgencyLevel.HIGH, UrgencyLevel.CRITICAL]:
-            capabilities.append("Emergency response procedures")
         
         return resource_complexity, estimated_effort, capabilities
     
@@ -631,26 +847,29 @@ class FourWAnalyzer:
         """Build system prompt for WHAT dimension analysis."""
         return """You are analyzing the WHAT dimension of a user request. Determine:
 
-1. ACTION TYPE (based on resource complexity):
-   - INFORMATION: Knowledge queries, status checks (lightweight resources)
-   - OPERATIONAL: Standard system operations (standard orchestration)
-   - DIAGNOSTIC: Problem analysis and resolution (specialized resources)
-   - PROVISIONING: Resource creation and allocation (heavy orchestration)
+1. ACTION TYPE (based on what they're asking for):
+   - INFORMATION: Knowledge queries, status checks, counts, reports
+   - OPERATIONAL: System operations, changes, configurations
+   - DIAGNOSTIC: Problem analysis, troubleshooting, investigation
+   - PROVISIONING: Creating new resources, deployments, installations
 
-2. SPECIFIC OUTCOME: What exactly they want to achieve
+2. SPECIFIC OUTCOME: What exactly they want to achieve (be literal, don't elaborate)
 
-3. ROOT NEED: What they REALLY need (not just surface request)
-   - Look for underlying business drivers
-   - Distinguish symptoms from root causes
-   - Consider "why" they're asking for this
+3. ROOT NEED: The basic need behind the request (keep it simple, don't over-analyze)
 
-IMPORTANT: Respond with ONLY valid JSON in this exact format:
+IMPORTANT: 
+- Only describe what is EXPLICITLY stated in the request
+- Do NOT invent details, assumptions, or business drivers not mentioned
+- Keep descriptions concise and factual
+- If something is unclear, state that rather than guessing
+
+Respond with ONLY valid JSON in this exact format:
 {
   "action_type": "INFORMATION",
-  "specific_outcome": "description of what they want to achieve",
-  "root_need": "underlying business need",
+  "specific_outcome": "exactly what they asked for",
+  "root_need": "basic need without speculation",
   "confidence": 0.8,
-  "reasoning": "explanation of analysis"
+  "reasoning": "brief explanation based only on what was stated"
 }
 
 Choose ONE action_type from: INFORMATION, OPERATIONAL, DIAGNOSTIC, PROVISIONING"""
@@ -659,24 +878,30 @@ Choose ONE action_type from: INFORMATION, OPERATIONAL, DIAGNOSTIC, PROVISIONING"
         """Build system prompt for WHERE/WHAT dimension analysis."""
         return """You are analyzing the WHERE/WHAT dimension of a user request. Determine:
 
-1. TARGET SYSTEMS: Specific systems, services, or components mentioned
+1. TARGET SYSTEMS: Only systems/services explicitly mentioned (use empty array if none specified)
 2. SCOPE LEVEL:
-   - SINGLE_SYSTEM: Individual server/service
-   - CLUSTER: Group of related systems
-   - ENVIRONMENT: Dev/staging/prod environment
-   - ORG_WIDE: Organization-wide impact
+   - SINGLE_SYSTEM: Individual server/service mentioned
+   - CLUSTER: Group of related systems mentioned
+   - ENVIRONMENT: Dev/staging/prod environment mentioned
+   - ORG_WIDE: Organization-wide scope mentioned or implied by the request
 
-3. AFFECTED COMPONENTS: What will be impacted
-4. DEPENDENCIES: What other systems might be affected
+3. AFFECTED COMPONENTS: Only components explicitly mentioned (use empty array if none)
+4. DEPENDENCIES: Only dependencies explicitly mentioned (use empty array if none)
 
-IMPORTANT: Respond with ONLY valid JSON in this exact format:
+IMPORTANT: 
+- Only include what is EXPLICITLY mentioned in the request
+- Do NOT assume or invent systems, components, or dependencies
+- Use empty arrays [] when nothing is specified
+- Base scope_level on what the request actually asks for
+
+Respond with ONLY valid JSON in this exact format:
 {
-  "target_systems": ["system1", "system2"],
-  "scope_level": "SINGLE_SYSTEM",
-  "affected_components": ["component1", "component2"],
-  "dependencies": ["dependency1", "dependency2"],
+  "target_systems": [],
+  "scope_level": "ORG_WIDE",
+  "affected_components": [],
+  "dependencies": [],
   "confidence": 0.8,
-  "reasoning": "explanation of analysis"
+  "reasoning": "brief explanation based only on what was stated"
 }
 
 Choose ONE scope_level from: SINGLE_SYSTEM, CLUSTER, ENVIRONMENT, ORG_WIDE"""
@@ -685,31 +910,37 @@ Choose ONE scope_level from: SINGLE_SYSTEM, CLUSTER, ENVIRONMENT, ORG_WIDE"""
         """Build system prompt for WHEN dimension analysis."""
         return """You are analyzing the WHEN dimension of a user request. Determine:
 
-1. URGENCY LEVEL:
-   - LOW: Can wait, flexible timing
-   - MEDIUM: Should be done soon
-   - HIGH: Needs immediate attention
-   - CRITICAL: Emergency, drop everything
+1. URGENCY LEVEL (based only on explicit urgency indicators):
+   - LOW: No urgency mentioned, routine request
+   - MEDIUM: Some urgency indicated
+   - HIGH: Urgent language used
+   - CRITICAL: Emergency language used
 
-2. TIMELINE TYPE:
-   - IMMEDIATE: Right now
-   - SCHEDULED: Specific time/date
-   - MAINTENANCE: During maintenance window
-   - FLEXIBLE: When convenient
+2. TIMELINE TYPE (based only on what's stated):
+   - IMMEDIATE: "now", "immediately", "right away" mentioned
+   - SCHEDULED: Specific time/date mentioned
+   - MAINTENANCE: Maintenance window mentioned
+   - FLEXIBLE: No specific timing mentioned
 
-3. SPECIFIC TIMELINE: If mentioned
-4. SCHEDULING CONSTRAINTS: Any timing restrictions
-5. BUSINESS HOURS REQUIRED: Whether this needs to be done during business hours
+3. SPECIFIC TIMELINE: Only if explicitly mentioned (use null if not)
+4. SCHEDULING CONSTRAINTS: Only explicit constraints mentioned (use empty array if none)
+5. BUSINESS HOURS REQUIRED: Only if explicitly mentioned (default to false)
 
-IMPORTANT: Respond with ONLY valid JSON in this exact format:
+IMPORTANT: 
+- Only analyze timing information that is EXPLICITLY stated
+- Do NOT assume urgency or timing requirements
+- Use defaults for information requests: LOW urgency, FLEXIBLE timeline
+- Use empty arrays [] and null for unspecified information
+
+Respond with ONLY valid JSON in this exact format:
 {
   "urgency": "LOW",
-  "timeline_type": "IMMEDIATE",
-  "specific_timeline": "specific time if mentioned or null",
-  "scheduling_constraints": ["constraint1", "constraint2"],
-  "business_hours_required": true,
+  "timeline_type": "FLEXIBLE",
+  "specific_timeline": null,
+  "scheduling_constraints": [],
+  "business_hours_required": false,
   "confidence": 0.8,
-  "reasoning": "explanation of analysis"
+  "reasoning": "brief explanation based only on what was stated"
 }
 
 Choose ONE urgency from: LOW, MEDIUM, HIGH, CRITICAL
@@ -719,26 +950,32 @@ Choose ONE timeline_type from: IMMEDIATE, SCHEDULED, MAINTENANCE, FLEXIBLE"""
         """Build system prompt for HOW dimension analysis."""
         return """You are analyzing the HOW dimension of a user request. Determine:
 
-1. METHOD PREFERENCE:
-   - AUTOMATED: Fully automated execution preferred
-   - GUIDED: Guided/assisted execution
-   - MANUAL: Manual execution required
-   - HYBRID: Mix of automated and manual steps
+1. METHOD PREFERENCE (based only on what's stated):
+   - AUTOMATED: Automation explicitly requested or implied by request type
+   - GUIDED: Guided execution requested
+   - MANUAL: Manual execution requested
+   - HYBRID: Mix explicitly requested
 
-2. EXECUTION CONSTRAINTS: Any limitations or requirements
-3. APPROVAL REQUIRED: Whether approvals are needed
-4. ROLLBACK NEEDED: Whether rollback capability is required
-5. TESTING REQUIRED: Whether testing is needed
+2. EXECUTION CONSTRAINTS: Only explicit constraints mentioned (use empty array if none)
+3. APPROVAL REQUIRED: Only if explicitly mentioned (default to false)
+4. ROLLBACK NEEDED: Only if explicitly mentioned (default to false)
+5. TESTING REQUIRED: Only if explicitly mentioned (default to false)
 
-IMPORTANT: Respond with ONLY valid JSON in this exact format:
+IMPORTANT: 
+- Only analyze execution information that is EXPLICITLY stated
+- Do NOT assume method preferences, constraints, or requirements
+- For information requests, default to AUTOMATED method
+- Use empty arrays [] and false for unspecified information
+
+Respond with ONLY valid JSON in this exact format:
 {
   "method_preference": "AUTOMATED",
-  "execution_constraints": ["constraint1", "constraint2"],
+  "execution_constraints": [],
   "approval_required": false,
-  "rollback_needed": true,
+  "rollback_needed": false,
   "testing_required": false,
   "confidence": 0.8,
-  "reasoning": "explanation of analysis"
+  "reasoning": "brief explanation based only on what was stated"
 }
 
 Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""

@@ -171,6 +171,30 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     }
   }, [activeChatId]);
 
+  // Utility functions for confidence and risk display
+  const getConfidenceClass = (confidence?: number) => {
+    if (!confidence) return 'confidence-low';
+    if (confidence >= 0.8) return 'confidence-high';
+    if (confidence >= 0.5) return 'confidence-medium';
+    return 'confidence-low';
+  };
+
+  const formatConfidence = (confidence?: number) => {
+    return confidence ? `${(confidence * 100).toFixed(1)}%` : 'N/A';
+  };
+
+  const getRiskClass = (riskLevel?: string) => {
+    if (!riskLevel) return 'risk-low';
+    const level = riskLevel.toLowerCase();
+    if (level === 'high') return 'risk-high';
+    if (level === 'medium') return 'risk-medium';
+    return 'risk-low';
+  };
+
+  const formatRiskLevel = (riskLevel?: string) => {
+    return riskLevel ? riskLevel.toUpperCase() : 'UNKNOWN';
+  };
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || isChatLoading) return;
@@ -351,29 +375,6 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
 
   const renderDebugInfo = (message: ChatMessage) => {
     if (!debugMode || !message.debugInfo) return null;
-
-    const getConfidenceClass = (confidence?: number) => {
-      if (!confidence) return 'confidence-low';
-      if (confidence >= 0.8) return 'confidence-high';
-      if (confidence >= 0.5) return 'confidence-medium';
-      return 'confidence-low';
-    };
-
-    const getRiskClass = (riskLevel?: string) => {
-      if (!riskLevel) return 'risk-low';
-      const level = riskLevel.toLowerCase();
-      if (level === 'high') return 'risk-high';
-      if (level === 'medium') return 'risk-medium';
-      return 'risk-low';
-    };
-
-    const formatConfidence = (confidence?: number) => {
-      return confidence ? `${(confidence * 100).toFixed(1)}%` : 'N/A';
-    };
-
-    const formatRiskLevel = (riskLevel?: string) => {
-      return riskLevel ? riskLevel.toUpperCase() : 'UNKNOWN';
-    };
 
     const intent = message.debugInfo.intent_classification;
     const routing = message.debugInfo.routing;
@@ -1407,6 +1408,114 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             color: var(--warning-orange-dark);
             line-height: 1.2;
           }
+          
+          /* Intent Analysis Display Styles */
+          .intent-analysis-display {
+            background: linear-gradient(135deg, var(--primary-blue-light) 0%, var(--neutral-50) 100%);
+            border: 2px solid var(--primary-blue);
+            border-radius: 12px;
+            margin: 12px 0;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+          }
+          
+          .intent-analysis-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--primary-blue);
+          }
+          
+          .intent-icon {
+            width: 20px;
+            height: 20px;
+            color: var(--primary-blue);
+          }
+          
+          .intent-title {
+            font-weight: 600;
+            color: var(--primary-blue-dark);
+            font-size: 14px;
+          }
+          
+          .intent-confidence {
+            margin-left: auto;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+          }
+          
+          .intent-analysis-content {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+          
+          .intent-type {
+            font-size: 14px;
+            color: var(--neutral-800);
+          }
+          
+          .intent-reasoning {
+            font-size: 13px;
+            color: var(--neutral-700);
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-blue);
+            line-height: 1.5;
+          }
+          
+          .intent-context {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+          }
+          
+          .context-details {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+          }
+          
+          .context-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--neutral-700);
+          }
+          
+          .risk-badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+          }
+          
+          .risk-low {
+            background: var(--success-green-light);
+            color: var(--success-green-dark);
+          }
+          
+          .risk-medium {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange-dark);
+          }
+          
+          .risk-high {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
+          }
+          
+          .risk-unknown {
+            background: var(--neutral-200);
+            color: var(--neutral-600);
+          }
         `}
       </style>
 
@@ -1458,6 +1567,43 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                   <div className={`chat-bubble chat-bubble-${message.type}`}>
                     {message.type === 'ai' ? formatMessageContent(message.content, message.id) : message.content}
                   </div>
+                  {/* Intent Analysis Display - Always visible for AI messages */}
+                  {message.type === 'ai' && message.debugInfo?.intent_classification && (
+                    <div className="intent-analysis-display">
+                      <div className="intent-analysis-header">
+                        <Brain className="intent-icon" />
+                        <span className="intent-title">AI Intent Understanding</span>
+                        <span className={`intent-confidence ${getConfidenceClass(message.debugInfo.intent_classification.confidence)}`}>
+                          {formatConfidence(message.debugInfo.intent_classification.confidence)}
+                        </span>
+                      </div>
+                      <div className="intent-analysis-content">
+                        <div className="intent-type">
+                          <strong>Intent Type:</strong> {message.debugInfo.intent_classification.intent_type}
+                        </div>
+                        {message.debugInfo.intent_classification.reasoning && (
+                          <div className="intent-reasoning">
+                            <strong>AI Understanding:</strong> {message.debugInfo.intent_classification.reasoning}
+                          </div>
+                        )}
+                        {message.debugInfo.intent_classification.context_analysis && (
+                          <div className="intent-context">
+                            <div className="context-details">
+                              <span className="context-item">
+                                <strong>Risk Level:</strong> 
+                                <span className={`risk-badge risk-${message.debugInfo.intent_classification.context_analysis.risk_level?.toLowerCase()}`}>
+                                  {message.debugInfo.intent_classification.context_analysis.risk_level}
+                                </span>
+                              </span>
+                              <span className="context-item">
+                                <strong>Requirements:</strong> {message.debugInfo.intent_classification.context_analysis.requirements_count}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {renderDebugInfo(message)}
                 </div>
               ))

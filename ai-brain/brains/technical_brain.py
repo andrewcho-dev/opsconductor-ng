@@ -111,6 +111,7 @@ class TechnicalMethodSelector:
     
     async def select_methods(self, intent_analysis: Dict[str, Any]) -> List[str]:
         """Select technical methods using intelligent LLM analysis"""
+        import json
         try:
             if not self.llm_engine:
                 raise Exception("LLM engine required for technical method selection - NO FALLBACKS ALLOWED")
@@ -150,12 +151,13 @@ Select the most appropriate methods for this intent. Return as a JSON array of m
             if response and 'response' in response:
                 try:
                     # Try to parse JSON response
-                    import json
+                    logger.info(f"🔍 DEBUG: LLM response for technical methods: {response['response']}")
                     methods = json.loads(response['response'])
                     if isinstance(methods, list):
                         return methods
-                except:
+                except json.JSONDecodeError as e:
                     # Fallback: extract method names from text
+                    logger.warning(f"JSON parsing failed for technical methods: {e}. Response was: {response['response']}")
                     content = response['response'].lower()
                     methods = []
                     available_methods = [
@@ -294,6 +296,7 @@ class ExecutionPlanGenerator:
     
     async def _assess_risks(self, steps: List[TechnicalStep], intent_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Assess risks of the execution plan using LLM intelligence"""
+        import json
         if not self.llm_engine:
             raise Exception("LLM engine required for risk assessment - NO FALLBACKS ALLOWED")
         
@@ -315,9 +318,9 @@ class ExecutionPlanGenerator:
         """
         
         try:
-            import json
             risk_response = await self.llm_engine.generate(risk_prompt, max_tokens=500)
-            risk_analysis = risk_response["generated_text"]
+            risk_analysis = risk_response.get("response", risk_response.get("generated_text", ""))
+            logger.info(f"🔍 DEBUG: LLM response for risk assessment: {risk_analysis}")
             risk_data = json.loads(risk_analysis)
             
             high_risk_steps = [step for step in steps if step.risk_level == "high"]
@@ -376,7 +379,8 @@ class ExecutionPlanGenerator:
         try:
             import json
             sme_response = await self.llm_engine.generate(sme_prompt, max_tokens=200)
-            sme_response_text = sme_response["generated_text"]
+            sme_response_text = sme_response.get("response", sme_response.get("generated_text", ""))
+            logger.info(f"🔍 DEBUG: LLM response for SME consultation: {sme_response_text}")
             sme_domains = json.loads(sme_response_text)
             return sme_domains if isinstance(sme_domains, list) else []
         except Exception as e:

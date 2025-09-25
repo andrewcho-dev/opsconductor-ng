@@ -31,8 +31,8 @@ from integrations.llm_client import LLMEngine
 # PURE LLM CHAT HANDLER - EMBEDDED TO AVOID IMPORT ISSUES
 
 # Modern API imports (replacing legacy)
-from api.knowledge_router import knowledge_router  # Re-enabled - working properly
-from api.learning_router import learning_router  # Re-enabled - working properly
+# from api.knowledge_router import knowledge_router  # Temporarily disabled - missing knowledge_engine
+# from api.learning_router import learning_router  # Temporarily disabled - missing knowledge_engine
 
 # Legacy analytics and processing REMOVED - Multi-Brain AI Engine handles all processing
 
@@ -75,8 +75,8 @@ app = FastAPI(
 )
 
 # Include modern API routes
-app.include_router(knowledge_router)
-app.include_router(learning_router)
+# app.include_router(knowledge_router)  # Temporarily disabled - missing knowledge_engine
+# app.include_router(learning_router)  # Temporarily disabled - missing knowledge_engine
 
 # Initialize service components
 service = AIService()
@@ -292,200 +292,52 @@ Examples:
         raise Exception(f"Intent analysis COMPLETELY FAILED - NO FALLBACK ALLOWED: {e}")
 
 async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
-    """Handle job creation requests using the LLM job creator"""
+    """Handle job creation requests - INTENT ANALYSIS ONLY MODE"""
     try:
-        logger.info("🚀 Processing job creation request via LLM job creator")
+        logger.info("🎯 JOB INTENT ANALYSIS ONLY - Direct intent brain call")
         
-        # Use the new LLM job creation method
+        # Call ONLY the Intent Brain directly - no multi-brain engine needed
         user_context = {
             "user_id": str(request.user_id) if request.user_id else "system",
-            "conversation_id": request.conversation_id,
-            "intent_analysis": intent_analysis
+            "conversation_id": request.conversation_id
         }
         
-        job_result = await ai_engine.create_job_from_natural_language(request.message, user_context)
+        # Get intent analysis directly from intent brain
+        intent_analysis_result = await ai_engine.intent_brain.analyze_intent(request.message, user_context)
         
-        if job_result.get("success"):
-            # Extract Multi-Brain debug information for job creation
-            multi_brain_data = job_result.get("multi_brain_result", {})
-            intent_analysis_data = multi_brain_data.get("intent_analysis", {})
-            technical_plan_data = multi_brain_data.get("technical_plan", {})
-            sme_consultations = multi_brain_data.get("sme_consultations", {})
-            risk_assessment = multi_brain_data.get("risk_assessment", {})
-            
-            intent_classification = {
-                "intent_type": "job_creation",
-                "confidence": job_result.get("confidence", 0.9),
-                "method": "multi_brain_job_creator",
-                "alternatives": [],
-                "entities": intent_analysis_data.get("entities", []) if isinstance(intent_analysis_data, dict) else job_result.get("entities", []),
-                "context_analysis": {
-                    "confidence_score": job_result.get("confidence", 0.9),
-                    "risk_level": risk_assessment.get("overall_risk_level", "MEDIUM").upper(),
-                    "requirements_count": len(intent_analysis_data.get("requirements", [])) if isinstance(intent_analysis_data, dict) else 0,
-                    "recommendations": risk_assessment.get("recommendations", ["Multi-Brain job creation completed"])
-                },
-                "reasoning": intent_analysis_data.get("reasoning", "Processed using Multi-Brain job creation pipeline") if isinstance(intent_analysis_data, dict) else "Processed using Multi-Brain job creation pipeline",
-                "metadata": {
-                    "engine": "multi_brain_job_creator",
-                    "version": "2.0.0",
-                    "success": True,
-                    "job_type": intent_analysis.get("job_type", "automation"),
-                    "processing_time": multi_brain_data.get("processing_time", 0.0),
-                    "brains_consulted": multi_brain_data.get("brains_consulted", []),
-                    "sme_consultations": sme_consultations,
-                    "technical_plan": technical_plan_data,
-                    "execution_strategy": multi_brain_data.get("execution_strategy", {}),
-                    "risk_assessment": risk_assessment,
-                    "job_details": {
-                        "job_id": job_result.get("job_id"),
-                        "automation_job_id": job_result.get("automation_job_id"),
-                        "workflow_steps": len(job_result.get("workflow", {}).get("steps", [])) if job_result.get("workflow") else 0
-                    }
-                }
-            }
-            
-            return {
-                "response": job_result.get("response", "I've created the automation job for you."),
-                "conversation_id": request.conversation_id,
-                "intent": "job_creation",
-                "confidence": job_result.get("confidence", 0.9),
-                "job_id": str(job_result.get("job_id")) if job_result.get("job_id") is not None else None,
-                "execution_id": job_result.get("execution_id"),
-                "automation_job_id": job_result.get("automation_job_id"),
-                "workflow": job_result.get("workflow"),
-                "execution_started": job_result.get("execution_started", False),
-                "intent_classification": intent_classification,
-                "timestamp": datetime.utcnow().isoformat(),
-                "_routing": {
-                    "service_type": "multi_brain_job_creator", 
-                    "response_time": multi_brain_data.get("processing_time", 0.0),
-                    "cached": False
-                }
-            }
-        else:
-            # Job creation failed, return error
-            return {
-                "response": job_result.get("error", "I couldn't create the job. Please try rephrasing your request."),
-                "conversation_id": request.conversation_id,
-                "intent": "job_creation_failed",
-                "confidence": 0.8,
-                "job_id": None,
-                "execution_id": None,
-                "automation_job_id": None,
-                "workflow": None,
-                "execution_started": False,
-                "intent_classification": {
-                    "intent_type": "job_creation_failed",
-                    "confidence": 0.8,
-                    "method": "pure_llm_job_creator",
-                    "alternatives": [],
-                    "entities": [],
-                    "context_analysis": {"error": job_result.get("error")},
-                    "reasoning": "Job creation failed in LLM pipeline",
-                    "metadata": {
-                        "engine": "llm_job_creator",
-                        "success": False,
-                        "error": job_result.get("error")
-                    }
-                },
-                "timestamp": datetime.utcnow().isoformat(),
-                "_routing": {
-                    "service_type": "pure_llm_job_creator_error", 
-                    "response_time": 0.0,
-                    "cached": False
-                }
-            }
-            
-    except Exception as e:
-        logger.error(f"❌ Job creation handling failed: {e}")
-        return {
-            "response": f"I encountered an error while trying to create your job: {str(e)}",
-            "conversation_id": request.conversation_id,
-            "intent": "job_creation_error",
-            "confidence": 0.7,
-            "job_id": None,
-            "execution_id": None,
-            "automation_job_id": None,
-            "workflow": None,
-            "execution_started": False,
-            "intent_classification": {
-                "intent_type": "job_creation_error",
-                "confidence": 0.7,
-                "method": "pure_llm_job_creator",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {"error": str(e)},
-                "reasoning": "Exception in job creation handling",
-                "metadata": {
-                    "engine": "llm_job_creator",
-                    "success": False,
-                    "error": str(e)
-                }
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "_routing": {
-                "service_type": "pure_llm_job_creator_exception", 
-                "response_time": 0.0,
-                "cached": False
-            }
-        }
-
-async def _handle_conversation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
-    """Handle conversation requests using the LLM conversation handler"""
-    try:
-        logger.info("💬 Processing conversation request via LLM conversation handler")
+        # Create a human-readable interpretation of what the AI thinks the user wants
+        intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, ai_engine)
         
-        # Use the existing process_query method for conversations
-        user_context = {
-            "user_id": str(request.user_id) if request.user_id else "system",
-            "conversation_id": request.conversation_id,
-            "intent_analysis": intent_analysis
-        }
-        
-        response = await ai_engine.process_query(request.message, user_context)
-        
-        # Extract Multi-Brain debug information if available
-        multi_brain_metadata = response.get("metadata", {})
-        intent_analysis_data = multi_brain_metadata.get("intent_analysis", {})
-        technical_plan_data = multi_brain_metadata.get("technical_plan", {})
-        sme_consultations = multi_brain_metadata.get("sme_consultations", {})
-        risk_assessment = multi_brain_metadata.get("risk_assessment", {})
-        
-        # Build comprehensive intent classification with Multi-Brain data
+        # Build comprehensive intent classification with Intent Brain data
         intent_classification = {
-            "intent_type": response.get("intent", "conversation"),
-            "confidence": response.get("confidence", intent_analysis.get("confidence", 0.9)),
-            "method": "multi_brain_ai_engine",
+            "intent_type": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'job_creation',
+            "confidence": intent_analysis_result.overall_confidence,
+            "method": "intent_brain_direct",
             "alternatives": [],
-            "entities": intent_analysis_data.get("entities", []) if isinstance(intent_analysis_data, dict) else [],
+            "entities": getattr(intent_analysis_result, 'entities', []),
             "context_analysis": {
-                "confidence_score": response.get("confidence", intent_analysis.get("confidence", 0.9)),
-                "risk_level": risk_assessment.get("overall_risk_level", "LOW").upper(),
-                "requirements_count": len(intent_analysis_data.get("requirements", [])) if isinstance(intent_analysis_data, dict) else 0,
-                "recommendations": risk_assessment.get("recommendations", ["Multi-Brain analysis completed"])
+                "confidence_score": intent_analysis_result.overall_confidence,
+                "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
+                "requirements_count": len(getattr(intent_analysis_result, 'requirements', [])),
+                "recommendations": ["Intent analysis completed - job creation disabled"]
             },
-            "reasoning": intent_analysis_data.get("reasoning", "Processed using Multi-Brain AI Engine") if isinstance(intent_analysis_data, dict) else "Processed using Multi-Brain AI Engine",
+            "reasoning": getattr(intent_analysis_result, 'intent_summary', 'Intent analysis performed'),
             "metadata": {
-                "engine": "multi_brain_ai_engine",
+                "engine": "intent_brain_direct",
                 "version": "2.0.0",
-                "success": response.get("success", True),
-                "conversation_type": intent_analysis.get("conversation_type", "general"),
-                "processing_time": multi_brain_metadata.get("processing_time", 0.0),
-                "brains_consulted": multi_brain_metadata.get("brains_consulted", []),
-                "sme_consultations": sme_consultations,
-                "technical_plan": technical_plan_data,
-                "execution_strategy": multi_brain_metadata.get("execution_strategy", {}),
-                "risk_assessment": risk_assessment
+                "success": True,
+                "processing_time": 0.0,  # Direct intent brain call
+                "brains_consulted": ["intent_brain"],
+                "intent_details": intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result)
             }
         }
         
         return {
-            "response": response.get("response", "I'm here to help with your questions."),
-            "conversation_id": response.get("conversation_id", request.conversation_id),
-            "intent": response.get("intent", "conversation"),
-            "confidence": response.get("confidence", intent_analysis.get("confidence", 0.9)),
-            "job_id": None,  # Conversations don't create jobs
+            "response": f"🎯 JOB INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Job creation disabled - intent analysis only mode]",
+            "conversation_id": request.conversation_id,
+            "intent": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'job_creation',
+            "confidence": intent_analysis_result.overall_confidence,
+            "job_id": None,  # Job creation disabled
             "execution_id": None,
             "automation_job_id": None,
             "workflow": None,
@@ -493,8 +345,137 @@ async def _handle_conversation_request(request, ai_engine, intent_analysis) -> D
             "intent_classification": intent_classification,
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
-                "service_type": "multi_brain_conversation_handler", 
-                "response_time": multi_brain_metadata.get("processing_time", 0.0),
+                "service_type": "intent_analysis_only", 
+                "response_time": 0.0,  # Direct intent brain call
+                "cached": False
+            }
+        }
+            
+    except Exception as e:
+        logger.error(f"❌ Intent analysis failed: {e}")
+        return {
+            "response": f"🎯 INTENT ANALYSIS ERROR\n\nI encountered an error while analyzing your intent: {str(e)}",
+            "conversation_id": request.conversation_id,
+            "intent": "intent_analysis_error",
+            "confidence": 0.0,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": {
+                "intent_type": "intent_analysis_error",
+                "confidence": 0.0,
+                "method": "multi_brain_intent_analysis",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {"error": str(e)},
+                "reasoning": "Exception in intent analysis",
+                "metadata": {
+                    "engine": "multi_brain_intent_only",
+                    "success": False,
+                    "error": str(e)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "intent_analysis_error", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+
+async def _generate_intent_interpretation(intent_analysis_result, ai_engine) -> str:
+    """Generate a human-readable interpretation of what the AI thinks the user wants"""
+    try:
+        if not hasattr(ai_engine, 'llm_engine') or not ai_engine.llm_engine:
+            return "Intent analysis completed, but unable to generate human interpretation (LLM not available)"
+        
+        # Extract key information from intent analysis
+        intent_data = intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result)
+        
+        interpretation_prompt = f"""Based on this intent analysis, explain in simple, human terms what you think the user wants to accomplish:
+
+Intent Analysis Data:
+{json.dumps(intent_data, indent=2, default=str)}
+
+Provide a clear, conversational explanation that starts with "I understand that you want to..." and explains:
+1. What the user is trying to accomplish
+2. The key details or requirements identified
+3. The confidence level of this understanding
+
+Keep it concise but informative, as if explaining to the user what you understood from their request."""
+
+        interpretation_result = await ai_engine.llm_engine.generate(interpretation_prompt)
+        
+        # Extract the response text from the LLM result
+        if isinstance(interpretation_result, dict):
+            interpretation = interpretation_result.get('response', str(interpretation_result))
+        else:
+            interpretation = str(interpretation_result)
+            
+        return interpretation.strip()
+        
+    except Exception as e:
+        logger.error(f"Failed to generate intent interpretation: {e}")
+        return f"Intent analysis completed. Raw data: {str(intent_analysis_result)[:200]}..."
+
+async def _handle_conversation_request(request, ai_engine, intent_analysis) -> Dict[str, Any]:
+    """Handle conversation requests - INTENT ANALYSIS ONLY MODE"""
+    try:
+        logger.info("🎯 INTENT ANALYSIS ONLY - Direct intent brain call")
+        
+        # Call ONLY the Intent Brain directly - no multi-brain engine needed
+        user_context = {
+            "user_id": str(request.user_id) if request.user_id else "system",
+            "conversation_id": request.conversation_id
+        }
+        
+        # Get intent analysis directly from intent brain
+        intent_analysis_result = await ai_engine.intent_brain.analyze_intent(request.message, user_context)
+        
+        # Create a human-readable interpretation of what the AI thinks the user wants
+        intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, ai_engine)
+        
+        # Build comprehensive intent classification with Multi-Brain data
+        intent_classification = {
+            "intent_type": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'unknown',
+            "confidence": intent_analysis_result.overall_confidence,
+            "method": "intent_brain_direct",
+            "alternatives": [],
+            "entities": getattr(intent_analysis_result, 'entities', []),
+            "context_analysis": {
+                "confidence_score": intent_analysis_result.overall_confidence,
+                "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
+                "requirements_count": len(getattr(intent_analysis_result, 'requirements', [])),
+                "recommendations": ["Intent analysis completed - response generation disabled"]
+            },
+            "reasoning": getattr(intent_analysis_result, 'intent_summary', 'Intent analysis performed'),
+            "metadata": {
+                "engine": "intent_brain_direct",
+                "version": "2.0.0",
+                "success": True,
+                "processing_time": 0.0,  # Direct intent brain call
+                "brains_consulted": ["intent_brain"],
+                "intent_details": intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result)
+            }
+        }
+        
+        return {
+            "response": f"🎯 INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Response generation disabled - intent analysis only mode]",
+            "conversation_id": request.conversation_id,
+            "intent": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'unknown',
+            "confidence": intent_analysis_result.overall_confidence,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "intent_classification": intent_classification,
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "intent_analysis_only", 
+                "response_time": 0.0,  # Direct intent brain call
                 "cached": False
             }
         }
@@ -2028,4 +2009,4 @@ def knowledge_stats():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3005)
+    uvicorn.run(app, host="0.0.0.0", port=3008)
