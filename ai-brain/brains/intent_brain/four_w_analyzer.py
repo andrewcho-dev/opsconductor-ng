@@ -740,19 +740,11 @@ Respond with JSON only:
                     return missing
                     
             except Exception as e:
-                logger.warning(f"🧠 LLM missing info analysis failed: {e}, falling back to confidence-based detection")
+                logger.error(f"🧠 LLM missing info analysis FAILED: {e} - NO FALLBACKS ALLOWED")
+                raise Exception(f"Missing information analysis FAILED - NO FALLBACK ALLOWED: {e}")
         
-        # Fallback to confidence-based detection only
-        if what.confidence < 0.7:
-            missing.append("WHAT: Action type or desired outcome unclear")
-        if not where_what.target_systems and where_what.confidence < 0.7:
-            missing.append("WHERE: Target systems not specified")
-        if when.timeline_type == TimelineType.SCHEDULED and not when.specific_timeline and when.confidence < 0.7:
-            missing.append("WHEN: Specific timeline not provided")
-        if how.confidence < 0.7:
-            missing.append("HOW: Execution method or constraints unclear")
-        
-        return missing
+        # If we get here, LLM engine is not available
+        raise Exception("LLM engine required for missing information analysis - NO FALLBACKS ALLOWED")
     
     def _generate_clarifying_questions(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
                                      when: WhenAnalysis, how: HowAnalysis, 
@@ -1053,16 +1045,9 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         result = extract_json_from_llm_response(response_data["generated_text"])
         
         if result is None:
-            logger.warning(f"Failed to extract JSON from LLM response for WHAT analysis")
+            logger.error(f"Failed to extract JSON from LLM response for WHAT analysis - NO FALLBACKS ALLOWED")
             logger.debug(f"Raw LLM response: {response_data['generated_text']}")
-            # Fallback to default values
-            result = {
-                "action_type": "INFORMATION",
-                "specific_outcome": "Process user request",
-                "root_need": "Address user inquiry",
-                "confidence": 0.3,
-                "reasoning": "Fallback due to JSON parsing error"
-            }
+            raise Exception("WHAT analysis JSON parsing FAILED - NO FALLBACK ALLOWED")
         
         # Map action type string to enum with robust parsing
         action_type_str = result.get('action_type', 'INFORMATION')
@@ -1093,17 +1078,9 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         result = extract_json_from_llm_response(response_data["generated_text"])
         
         if result is None:
-            logger.warning(f"Failed to extract JSON from LLM response for WHERE/WHAT analysis")
+            logger.error(f"Failed to extract JSON from LLM response for WHERE/WHAT analysis - NO FALLBACKS ALLOWED")
             logger.debug(f"Raw LLM response: {response_data['generated_text']}")
-            # Fallback to default values
-            result = {
-                "target_systems": [],
-                "scope_level": "SINGLE_SYSTEM",
-                "affected_components": [],
-                "dependencies": [],
-                "confidence": 0.3,
-                "reasoning": "Fallback due to JSON parsing error"
-            }
+            raise Exception("WHERE/WHAT analysis JSON parsing FAILED - NO FALLBACK ALLOWED")
         
         # Map scope level string to enum with robust parsing
         scope_level_str = result.get('scope_level', 'SINGLE_SYSTEM').upper()
@@ -1134,18 +1111,9 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         result = extract_json_from_llm_response(response_data["generated_text"])
         
         if result is None:
-            logger.warning(f"Failed to extract JSON from LLM response for WHEN analysis")
+            logger.error(f"Failed to extract JSON from LLM response for WHEN analysis - NO FALLBACKS ALLOWED")
             logger.debug(f"Raw LLM response: {response_data['generated_text']}")
-            # Fallback to default values
-            result = {
-                "urgency": "MEDIUM",
-                "timeline_type": "FLEXIBLE",
-                "specific_timeline": None,
-                "scheduling_constraints": [],
-                "business_hours_required": False,
-                "confidence": 0.3,
-                "reasoning": "Fallback due to JSON parsing error"
-            }
+            raise Exception("WHEN analysis JSON parsing FAILED - NO FALLBACK ALLOWED")
         
         # Map enum values with robust parsing
         urgency_str = result.get('urgency', 'MEDIUM')
@@ -1180,18 +1148,9 @@ Choose ONE method_preference from: AUTOMATED, GUIDED, MANUAL, HYBRID"""
         result = extract_json_from_llm_response(response_data["generated_text"])
         
         if result is None:
-            logger.warning(f"Failed to extract JSON from LLM response for HOW analysis")
+            logger.error(f"Failed to extract JSON from LLM response for HOW analysis - NO FALLBACKS ALLOWED")
             logger.debug(f"Raw LLM response: {response_data['generated_text']}")
-            # Fallback to default values
-            result = {
-                "method_preference": "AUTOMATED",
-                "execution_constraints": [],
-                "approval_required": False,
-                "rollback_needed": False,
-                "testing_required": False,
-                "confidence": 0.3,
-                "reasoning": "Fallback due to JSON parsing error"
-            }
+            raise Exception("HOW analysis JSON parsing FAILED - NO FALLBACK ALLOWED")
         
         # Map method preference string to enum with robust parsing
         method_str = result.get('method_preference', 'AUTOMATED')
