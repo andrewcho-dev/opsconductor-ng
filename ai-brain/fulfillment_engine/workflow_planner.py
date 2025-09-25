@@ -6,7 +6,6 @@ that can be processed by the automation service using LLM-powered generation.
 """
 
 import logging
-import json
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -157,30 +156,28 @@ class WorkflowPlanner:
                - Consider both IPv4 and IPv6 if relevant
                - Include connectivity validation
             
-            RESPONSE FORMAT (JSON):
-            {{
-                "workflow_name": "descriptive name",
-                "description": "what this workflow accomplishes",
-                "estimated_duration_minutes": number,
-                "risk_level": "low|medium|high",
-                "requires_approval": boolean,
-                "steps": [
-                    {{
-                        "step_id": "unique_id",
-                        "step_type": "information_gathering|system_analysis|configuration_change|software_installation|service_management|network_operation|security_operation|monitoring_setup|backup_operation|validation",
-                        "name": "step name",
-                        "description": "what this step does",
-                        "command": "actual shell command to execute",
-                        "target_systems": ["system1", "system2"] or ["auto-detect"],
-                        "timeout_seconds": number,
-                        "retry_count": number,
-                        "dependencies": ["step_id1", "step_id2"],
-                        "validation_command": "optional command to validate step success"
-                    }}
-                ]
-            }}
+            RESPONSE FORMAT - Describe the workflow in natural language using this exact structure:
             
-            Generate the workflow now:
+            WORKFLOW NAME: [descriptive name]
+            DESCRIPTION: [what this workflow accomplishes]
+            ESTIMATED DURATION: [number] minutes
+            RISK LEVEL: [low/medium/high]
+            REQUIRES APPROVAL: [yes/no]
+            
+            STEPS:
+            1. STEP: [step name]
+               TYPE: [information_gathering/system_analysis/configuration_change/software_installation/service_management/network_operation/security_operation/monitoring_setup/backup_operation/validation]
+               DESCRIPTION: [what this step does]
+               COMMAND: [actual shell command to execute]
+               TARGET SYSTEMS: [system1, system2] or [auto-detect]
+               TIMEOUT: [number] seconds
+               RETRIES: [number]
+               DEPENDENCIES: [step numbers this depends on, if any]
+               VALIDATION: [optional command to validate step success]
+            
+            2. STEP: [next step...]
+            
+            Provide a clear, structured response following this exact format.
             """
             
             logger.info("Sending prompt to LLM engine")
@@ -188,32 +185,21 @@ class WorkflowPlanner:
             response = llm_response["generated_text"]
             logger.info(f"Received LLM response (length: {len(response)})")
             
-            # Parse the JSON response
-            try:
-                # Clean up the response - sometimes LLM adds extra text
-                response_clean = response.strip()
-                if response_clean.startswith("```json"):
-                    response_clean = response_clean[7:]
-                if response_clean.endswith("```"):
-                    response_clean = response_clean[:-3]
-                response_clean = response_clean.strip()
-                
-                logger.debug(f"Cleaned LLM response: {response_clean[:200]}...")
-                workflow_data = json.loads(response_clean)
-                logger.info("Successfully parsed LLM response as JSON")
-                
-                workflow = self._create_workflow_from_json(workflow_data, user_intent)
-                logger.info(f"Created workflow: {workflow.name} with {len(workflow.steps)} steps")
-                return workflow
-                
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM workflow response as JSON: {e}")
-                logger.error(f"Raw LLM Response: {response}")
-                raise RuntimeError(f"LLM returned invalid JSON: {e}")
+            # Check if response is empty
+            if not response or not response.strip():
+                logger.error("LLM returned empty response")
+                logger.error(f"Full LLM response object: {llm_response}")
+                raise RuntimeError("LLM returned empty response - cannot generate workflow")
+            
+            # Parse the natural language response
+            workflow = self._parse_natural_language_workflow(response, user_intent)
+            logger.info(f"Created workflow: {workflow.name} with {len(workflow.steps)} steps")
+            return workflow
                 
         except Exception as e:
             logger.error(f"LLM workflow generation failed: {str(e)}")
-            raise RuntimeError(f"LLM workflow generation failed: {e}")
+            # NO FALLBACKS - If LLM fails, the system fails gracefully
+            raise RuntimeError(f"LLM workflow generation failed: {e}. System requires LLM to function.")
     
     async def _get_opsconductor_capabilities(self) -> str:
         """Get description of available OpsConductor capabilities"""
@@ -260,35 +246,135 @@ class WorkflowPlanner:
         - Systemd timer management for scheduled operations
         """
     
-    def _create_workflow_from_json(self, workflow_data: Dict, user_intent: str) -> Workflow:
-        """Create Workflow object from JSON data"""
+    def _parse_natural_language_workflow(self, response: str, user_intent: str) -> Workflow:
+        """Parse natural language workflow response from LLM"""
+        import re
+        
         workflow_id = f"llm_{int(datetime.now().timestamp())}"
         
-        # Create workflow steps
-        steps = []
-        for step_data in workflow_data.get("steps", []):
-            step = WorkflowStep(
-                step_id=step_data.get("step_id", f"step_{len(steps)}"),
-                step_type=StepType(step_data.get("step_type", "system_analysis")),
-                name=step_data.get("name", "Unnamed Step"),
-                description=step_data.get("description", ""),
-                command=step_data.get("command"),
-                target_systems=step_data.get("target_systems", []),
-                timeout_seconds=step_data.get("timeout_seconds", 300),
-                retry_count=step_data.get("retry_count", 1),
-                dependencies=step_data.get("dependencies", []),
-                validation_command=step_data.get("validation_command")
-            )
-            steps.append(step)
+        # Extract workflow metadata
+        workflow_name = self._extract_field(response, "WORKFLOW NAME")
+        description = self._extract_field(response, "DESCRIPTION")
+        duration_str = self._extract_field(response, "ESTIMATED DURATION")
+        risk_level = self._extract_field(response, "RISK LEVEL")
+        approval_str = self._extract_field(response, "REQUIRES APPROVAL")
+        
+        # Parse duration (extract number)
+        duration_match = re.search(r'(\d+)', duration_str) if duration_str else None
+        estimated_duration = int(duration_match.group(1)) if duration_match else 10
+        
+        # Parse approval (yes/no to boolean)
+        requires_approval = approval_str.lower().startswith('yes') if approval_str else False
+        
+        # Parse steps
+        steps = self._parse_workflow_steps(response)
         
         return Workflow(
             workflow_id=workflow_id,
-            name=workflow_data.get("workflow_name", "LLM Generated Workflow"),
-            description=workflow_data.get("description", f"Workflow for: {user_intent}"),
+            name=workflow_name or "LLM Generated Workflow",
+            description=description or f"Workflow for: {user_intent}",
             user_intent=user_intent,
             steps=steps,
-            estimated_duration_minutes=workflow_data.get("estimated_duration_minutes", 10),
-            risk_level=workflow_data.get("risk_level", "medium"),
-            requires_approval=workflow_data.get("requires_approval", False)
+            estimated_duration_minutes=estimated_duration,
+            risk_level=risk_level or "medium",
+            requires_approval=requires_approval
         )
+    
+    def _extract_field(self, text: str, field_name: str) -> str:
+        """Extract a field value from natural language response"""
+        import re
+        pattern = rf"{field_name}:\s*(.+?)(?:\n|$)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        return match.group(1).strip() if match else ""
+    
+    def _parse_workflow_steps(self, response: str) -> List[WorkflowStep]:
+        """Parse workflow steps from natural language response"""
+        import re
+        
+        steps = []
+        
+        # Find all step blocks
+        step_pattern = r'(\d+)\.\s*STEP:\s*(.+?)(?=\d+\.\s*STEP:|$)'
+        step_matches = re.findall(step_pattern, response, re.DOTALL | re.IGNORECASE)
+        
+        for step_num, step_content in step_matches:
+            # Extract step details
+            step_name = self._extract_step_field(step_content, "STEP")
+            step_type = self._extract_step_field(step_content, "TYPE")
+            step_description = self._extract_step_field(step_content, "DESCRIPTION")
+            command = self._extract_step_field(step_content, "COMMAND")
+            target_systems = self._extract_step_field(step_content, "TARGET SYSTEMS")
+            timeout_str = self._extract_step_field(step_content, "TIMEOUT")
+            retries_str = self._extract_step_field(step_content, "RETRIES")
+            dependencies_str = self._extract_step_field(step_content, "DEPENDENCIES")
+            validation = self._extract_step_field(step_content, "VALIDATION")
+            
+            # Parse numeric values
+            timeout_match = re.search(r'(\d+)', timeout_str) if timeout_str else None
+            timeout = int(timeout_match.group(1)) if timeout_match else 300
+            
+            retries_match = re.search(r'(\d+)', retries_str) if retries_str else None
+            retries = int(retries_match.group(1)) if retries_match else 1
+            
+            # Parse target systems
+            if target_systems:
+                if "auto-detect" in target_systems.lower():
+                    target_list = ["auto-detect"]
+                else:
+                    target_list = [t.strip() for t in target_systems.split(',')]
+            else:
+                target_list = ["auto-detect"]
+            
+            # Parse dependencies
+            dependencies = []
+            if dependencies_str and dependencies_str.lower() != "none":
+                dep_matches = re.findall(r'(\d+)', dependencies_str)
+                dependencies = [f"step_{dep}" for dep in dep_matches]
+            
+            # Map step type to enum
+            step_type_mapping = {
+                "information_gathering": StepType.INFORMATION_GATHERING,
+                "system_analysis": StepType.SYSTEM_ANALYSIS,
+                "configuration_change": StepType.CONFIGURATION_CHANGE,
+                "software_installation": StepType.SOFTWARE_INSTALLATION,
+                "service_management": StepType.SERVICE_MANAGEMENT,
+                "network_operation": StepType.NETWORK_OPERATION,
+                "security_operation": StepType.SECURITY_OPERATION,
+                "monitoring_setup": StepType.MONITORING_SETUP,
+                "backup_operation": StepType.BACKUP_OPERATION,
+                "validation": StepType.VALIDATION
+            }
+            
+            step_type_enum = step_type_mapping.get(step_type.lower(), StepType.SYSTEM_ANALYSIS)
+            
+            step = WorkflowStep(
+                step_id=f"step_{step_num}",
+                step_type=step_type_enum,
+                name=step_name or f"Step {step_num}",
+                description=step_description or "",
+                command=command,
+                target_systems=target_list,
+                timeout_seconds=timeout,
+                retry_count=retries,
+                dependencies=dependencies,
+                validation_command=validation if validation and validation.lower() != "none" else None
+            )
+            steps.append(step)
+        
+        return steps
+    
+    def _extract_step_field(self, step_content: str, field_name: str) -> str:
+        """Extract a field from step content"""
+        import re
+        
+        # First try to find the field at the beginning of a line
+        pattern = rf"^\s*{field_name}:\s*(.+?)(?:\n\s*[A-Z]+:|$)"
+        match = re.search(pattern, step_content, re.MULTILINE | re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+        
+        # If that fails, try a more flexible pattern
+        pattern = rf"{field_name}:\s*(.+?)(?:\n|$)"
+        match = re.search(pattern, step_content, re.IGNORECASE)
+        return match.group(1).strip() if match else ""
     
