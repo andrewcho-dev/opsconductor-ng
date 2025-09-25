@@ -324,18 +324,53 @@ class ExecutionCoordinator:
     async def _submit_automation_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """Submit a job to the automation service"""
         try:
-            # This would integrate with the actual automation service
-            # For now, simulate the job submission
-            logger.info(f"Submitting automation job: {job_data['name']}")
+            if not self.automation_client:
+                logger.error("No automation client available")
+                return {
+                    "output": "",
+                    "exit_code": 1,
+                    "error": "No automation client configured"
+                }
             
-            # Simulate job execution
-            await asyncio.sleep(2)
+            logger.info(f"Submitting automation job to service: {job_data['name']}")
             
-            return {
-                "output": f"Job '{job_data['name']}' executed successfully",
-                "exit_code": 0,
-                "job_id": f"job_{int(datetime.now().timestamp())}"
-            }
+            # Submit workflow to actual automation service
+            workflow_result = await self.automation_client.submit_ai_workflow(
+                workflow=job_data,
+                job_name=job_data.get("name", "AI Generated Job")
+            )
+            
+            if workflow_result and workflow_result.get("success"):
+                execution_id = workflow_result.get("execution_id")
+                logger.info(f"Workflow submitted successfully with execution ID: {execution_id}")
+                
+                # Wait for workflow completion using the client's built-in method
+                completion_result = await self.automation_client.wait_for_completion(
+                    execution_id=execution_id,
+                    timeout_seconds=300  # 5 minutes max
+                )
+                
+                if completion_result:
+                    return {
+                        "output": completion_result.get("output", "Workflow completed successfully"),
+                        "exit_code": 0 if completion_result.get("status") == "completed" else 1,
+                        "execution_id": execution_id
+                    }
+                else:
+                    return {
+                        "output": "Workflow execution timed out",
+                        "exit_code": 1,
+                        "error": "Workflow execution timeout",
+                        "execution_id": execution_id
+                    }
+            else:
+                error_msg = workflow_result.get("error", "Failed to submit workflow") if workflow_result else "No response from automation service"
+                logger.error(f"Failed to submit workflow: {error_msg}")
+                return {
+                    "output": "",
+                    "exit_code": 1,
+                    "error": error_msg
+                }
             
         except Exception as e:
             logger.error(f"Failed to submit automation job: {str(e)}")
