@@ -165,12 +165,19 @@ async def pure_llm_chat_endpoint(request, ai_engine):
         if not request.conversation_id:
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
-        # Step 1: Use LLM to determine intent (job creation vs conversation)
+        # Step 1: Check if this is a follow-up to a clarification request
+        logger.info(f"🔍 Checking for follow-up clarification context")
+        follow_up_result = await _check_for_clarification_followup(request, ai_engine)
+        if follow_up_result:
+            logger.info("🔄 Detected follow-up to clarification - processing with additional context")
+            return follow_up_result
+        
+        # Step 2: Use LLM to determine intent (job creation vs conversation)
         logger.info(f"🔍 Starting intent analysis for message: '{request.message}'")
         intent_analysis = await _analyze_user_intent_with_llm(request.message, ai_engine)
         logger.info(f"🔍 Intent analysis result: {intent_analysis}")
         
-        # Step 2: Route based on LLM analysis
+        # Step 3: Route based on LLM analysis
         is_job_request = intent_analysis.get("is_job_request", False)
         logger.info(f"🔍 Routing decision: is_job_request={is_job_request}")
         
@@ -305,8 +312,21 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
         # Get intent analysis directly from intent brain
         intent_analysis_result = await ai_engine.intent_brain.analyze_intent(request.message, user_context)
         
+        # Check if clarifying questions are needed
+        if (hasattr(intent_analysis_result, 'four_w_analysis') and 
+            intent_analysis_result.four_w_analysis.clarifying_questions and 
+            len(intent_analysis_result.four_w_analysis.clarifying_questions) > 0):
+            
+            logger.info(f"🤔 Clarifying questions needed: {intent_analysis_result.four_w_analysis.clarifying_questions}")
+            return await _handle_clarification_needed(request, intent_analysis_result, ai_engine)
+        
         # Create a human-readable interpretation of what the AI thinks the user wants
         intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, ai_engine)
+        
+        # Clear conversation context since we have a complete analysis
+        if request.conversation_id in _conversation_contexts:
+            del _conversation_contexts[request.conversation_id]
+            logger.info(f"🔄 Cleared conversation context for {request.conversation_id} - analysis complete")
         
         # Build comprehensive intent classification with Intent Brain data
         intent_classification = {
@@ -384,6 +404,269 @@ async def _handle_job_creation_request(request, ai_engine, intent_analysis) -> D
                 "cached": False
             }
         }
+
+async def _handle_clarification_needed(request, intent_analysis_result, ai_engine) -> Dict[str, Any]:
+    """Handle cases where clarifying questions are needed before proceeding"""
+    try:
+        logger.info("🤔 Generating clarification response for user")
+        
+        # Get the clarifying questions from the 4W analysis
+        clarifying_questions = intent_analysis_result.four_w_analysis.clarifying_questions
+        missing_info = intent_analysis_result.four_w_analysis.missing_information
+        
+        # Generate a user-friendly clarification message
+        clarification_message = await _generate_clarification_message(
+            intent_analysis_result, clarifying_questions, missing_info, ai_engine
+        )
+        
+        # Store the partial analysis for follow-up
+        conversation_context = {
+            "partial_analysis": intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result),
+            "original_message": request.message,
+            "clarifying_questions": clarifying_questions,
+            "missing_information": missing_info,
+            "awaiting_clarification": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Store context globally for iterative clarification (in production, use Redis/database)
+        _conversation_contexts[request.conversation_id] = conversation_context
+        logger.info(f"🔄 Stored conversation context for {request.conversation_id}, awaiting clarification")
+        
+        return {
+            "response": clarification_message,
+            "conversation_id": request.conversation_id,
+            "intent": "clarification_needed",
+            "confidence": intent_analysis_result.overall_confidence,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "clarification_needed": True,
+            "clarifying_questions": clarifying_questions,
+            "missing_information": missing_info,
+            "intent_classification": {
+                "intent_type": "clarification_needed",
+                "confidence": intent_analysis_result.overall_confidence,
+                "method": "intent_brain_clarification",
+                "alternatives": [],
+                "entities": getattr(intent_analysis_result, 'entities', []),
+                "context_analysis": {
+                    "confidence_score": intent_analysis_result.overall_confidence,
+                    "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
+                    "requirements_count": len(missing_info),
+                    "recommendations": clarifying_questions
+                },
+                "reasoning": "Additional information needed to proceed",
+                "metadata": {
+                    "engine": "intent_brain_clarification",
+                    "version": "2.0.0",
+                    "success": True,
+                    "clarification_context": conversation_context
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "clarification_needed", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Clarification handling failed: {e}")
+        return {
+            "response": f"I need more information to proceed, but encountered an error generating clarifying questions: {str(e)}",
+            "conversation_id": request.conversation_id,
+            "intent": "clarification_error",
+            "confidence": 0.0,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "clarification_needed": True,
+            "clarifying_questions": [],
+            "missing_information": [],
+            "intent_classification": {
+                "intent_type": "clarification_error",
+                "confidence": 0.0,
+                "method": "clarification_error",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {"error": str(e)},
+                "reasoning": "Error generating clarification",
+                "metadata": {
+                    "engine": "clarification_error",
+                    "success": False,
+                    "error": str(e)
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "_routing": {
+                "service_type": "clarification_error", 
+                "response_time": 0.0,
+                "cached": False
+            }
+        }
+
+async def _generate_clarification_message(intent_analysis_result, clarifying_questions, missing_info, ai_engine) -> str:
+    """Generate a user-friendly clarification message using LLM"""
+    try:
+        if not hasattr(ai_engine, 'llm_engine') or not ai_engine.llm_engine:
+            # Fallback to simple message if LLM not available
+            questions_text = "\n".join([f"• {q}" for q in clarifying_questions])
+            return f"I need some additional information to proceed:\n\n{questions_text}\n\nPlease provide these details so I can help you better."
+        
+        # Use LLM to generate a natural clarification message
+        clarification_prompt = f"""Generate a friendly, helpful message asking the user for clarification. 
+
+The user's request needs additional information before I can proceed. Here's what I understand so far and what I need:
+
+Missing Information:
+{chr(10).join([f"- {info}" for info in missing_info])}
+
+Specific Questions to Ask:
+{chr(10).join([f"- {q}" for q in clarifying_questions])}
+
+Generate a natural, conversational message that:
+1. Acknowledges what I understand from their request
+2. Explains why I need more information
+3. Asks the clarifying questions in a friendly way
+4. Encourages them to provide the missing details
+
+Keep it concise but helpful. Don't use JSON format - just return the message text."""
+
+        llm_response = await ai_engine.llm_engine.generate(clarification_prompt)
+        
+        # Extract the generated text
+        if isinstance(llm_response, dict) and "generated_text" in llm_response:
+            generated_text = llm_response["generated_text"]
+        else:
+            generated_text = str(llm_response)
+        
+        # Clean up the response
+        clarification_message = generated_text.strip()
+        
+        # Fallback if LLM response is empty or too short
+        if len(clarification_message) < 20:
+            questions_text = "\n".join([f"• {q}" for q in clarifying_questions])
+            clarification_message = f"I need some additional information to proceed:\n\n{questions_text}\n\nPlease provide these details so I can help you better."
+        
+        return clarification_message
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to generate clarification message: {e}")
+        # Fallback to simple message
+        questions_text = "\n".join([f"• {q}" for q in clarifying_questions])
+        return f"I need some additional information to proceed:\n\n{questions_text}\n\nPlease provide these details so I can help you better."
+
+# Global conversation context storage (in production, use Redis/database)
+_conversation_contexts = {}
+
+async def _check_for_clarification_followup(request, ai_engine) -> Optional[Dict[str, Any]]:
+    """Check if this is a clarification response and combine with original context for iterative clarification"""
+    try:
+        conversation_id = request.conversation_id
+        
+        # Check if we have stored context for this conversation
+        if conversation_id not in _conversation_contexts:
+            logger.info(f"🔄 No stored context for conversation {conversation_id} - treating as new request")
+            return None
+            
+        stored_context = _conversation_contexts[conversation_id]
+        
+        # Check if we're awaiting clarification for this conversation
+        if not stored_context.get("awaiting_clarification", False):
+            logger.info(f"🔄 Not awaiting clarification for conversation {conversation_id}")
+            return None
+        
+        logger.info(f"🔄 Found stored context awaiting clarification for conversation {conversation_id}")
+        
+        # Use the LLM to determine if this is likely a clarification response
+        if not hasattr(ai_engine, 'llm_engine') or not ai_engine.llm_engine:
+            logger.warning("🔄 LLM not available for clarification detection - skipping")
+            return None
+        
+        clarification_detection_prompt = f"""Analyze this user message to determine if it appears to be providing additional information or clarification.
+
+User message: "{request.message}"
+
+Previous context: The user was asked clarifying questions about: {stored_context.get('missing_information', [])}
+
+Look for:
+- Timing/scheduling information (every day, hourly, at midnight, etc.)
+- Threshold/alert values (less than 10GB, above 80%, etc.)
+- Configuration details or parameters
+- Short, direct answers that seem to be responding to questions
+
+Does this look like a clarification response rather than a completely new request?
+
+Respond with JSON only:
+{{
+    "is_clarification_response": true/false,
+    "confidence": 0.0-1.0,
+    "reasoning": "brief explanation"
+}}"""
+
+        try:
+            llm_response_data = await ai_engine.llm_engine.generate(clarification_detection_prompt)
+            llm_response = llm_response_data.get("generated_text", "")
+            
+            # Parse the LLM response
+            import json
+            import re
+            
+            json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+            if json_match:
+                analysis = json.loads(json_match.group())
+                
+                if analysis.get("is_clarification_response", False) and analysis.get("confidence", 0) > 0.6:
+                    logger.info(f"🔄 Detected clarification response: {analysis.get('reasoning', 'No reasoning')}")
+                    
+                    # COMBINE ORIGINAL + CLARIFICATION FOR COMPLETE CONTEXT
+                    original_message = stored_context.get("original_message", "")
+                    combined_message = f"""{original_message}
+
+Additional clarification provided: {request.message}"""
+                    
+                    logger.info(f"🔄 COMBINING CONTEXTS:")
+                    logger.info(f"🔄 Original: {original_message}")
+                    logger.info(f"🔄 Clarification: {request.message}")
+                    logger.info(f"🔄 Combined: {combined_message}")
+                    
+                    # Create a new request with the COMBINED context
+                    combined_request = type(request)(
+                        message=combined_message,
+                        conversation_id=request.conversation_id,
+                        user_id=request.user_id
+                    )
+                    
+                    # Clear the awaiting clarification flag since we're processing it
+                    _conversation_contexts[conversation_id]["awaiting_clarification"] = False
+                    
+                    # Process the COMBINED request - this will re-analyze with full context
+                    # and may ask for MORE clarification if still needed (ITERATIVE!)
+                    logger.info(f"🔄 Re-analyzing COMBINED context for completeness...")
+                    return await _handle_job_creation_request(combined_request, ai_engine, {"is_job_request": True})
+                else:
+                    logger.info(f"🔄 Not a clarification response (confidence: {analysis.get('confidence', 0)}) - treating as new request")
+                    # Clear stored context since this seems to be a new request
+                    if conversation_id in _conversation_contexts:
+                        del _conversation_contexts[conversation_id]
+                    return None
+            else:
+                logger.warning("🔄 Could not parse clarification detection response")
+                return None
+                
+        except Exception as llm_error:
+            logger.error(f"🔄 Clarification detection failed: {llm_error}")
+            return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error in clarification follow-up detection: {e}")
+        return None
 
 async def _generate_intent_interpretation(intent_analysis_result, ai_engine) -> str:
     """Generate a human-readable interpretation of what the AI thinks the user wants"""
@@ -571,7 +854,9 @@ class ChatResponse(BaseModel):
     workflow: Optional[Dict[str, Any]] = None
     execution_started: bool = False
     # Enhanced clarification and risk assessment fields
-    clarification_questions: Optional[List[Dict[str, Any]]] = None
+    clarification_needed: Optional[bool] = False
+    clarifying_questions: Optional[List[str]] = None
+    missing_information: Optional[List[str]] = None
     risk_assessment: Optional[Dict[str, Any]] = None
     field_confidence_scores: Optional[Dict[str, Dict[str, Any]]] = None
     validation_issues: Optional[List[Dict[str, Any]]] = None

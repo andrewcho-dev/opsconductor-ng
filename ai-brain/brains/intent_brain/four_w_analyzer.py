@@ -612,8 +612,8 @@ class FourWAnalyzer:
             )
             
             # Identify missing information across all dimensions
-            missing_information = self._identify_missing_information(
-                what_analysis, where_what_analysis, when_analysis, how_analysis
+            missing_information = await self._identify_missing_information(
+                user_message, what_analysis, where_what_analysis, when_analysis, how_analysis
             )
             
             # Generate clarifying questions
@@ -692,28 +692,63 @@ class FourWAnalyzer:
         # Weighted average with emphasis on WHAT (most important)
         return (what_conf * 0.4 + where_conf * 0.25 + when_conf * 0.2 + how_conf * 0.15)
     
-    def _identify_missing_information(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
+    async def _identify_missing_information(self, message: str, what: WhatAnalysis, where_what: WhereWhatAnalysis,
                                     when: WhenAnalysis, how: HowAnalysis) -> List[str]:
-        """Identify missing information across all dimensions."""
+        """Use LLM to intelligently identify missing information instead of hardcoded patterns."""
         missing = []
         
-        # WHAT dimension gaps
+        # Use LLM to analyze if information is truly missing
+        if hasattr(self, 'llm_engine') and self.llm_engine:
+            try:
+                analysis_prompt = f"""Analyze this user request to determine if any critical information is missing for creating an automated job/task.
+
+User request: "{message}"
+
+Current analysis results:
+- WHAT: {what.action_type} (confidence: {what.confidence}) - {what.reasoning}
+- WHERE: {where_what.target_systems} (confidence: {where_what.confidence}) - {where_what.reasoning}  
+- WHEN: {when.timeline_type} - {when.specific_timeline} (confidence: {when.confidence}) - {when.reasoning}
+- HOW: {how.method_preference} (confidence: {how.confidence}) - {how.reasoning}
+
+Determine if any of these dimensions are truly missing or unclear from the original request. Only flag something as missing if it's genuinely needed and not derivable from context.
+
+For example:
+- "every day" clearly specifies timing
+- "critical" clearly specifies a threshold condition  
+- "disk space" clearly specifies what to monitor
+- "windows machines" clearly specifies target systems
+
+Respond with JSON only:
+{{
+    "missing_information": [
+        // Only include items that are genuinely missing and needed
+        // Format: "DIMENSION: specific missing detail"
+    ],
+    "reasoning": "brief explanation of what is/isn't missing"
+}}"""
+
+                response_data = await self.llm_engine.generate(analysis_prompt)
+                response = response_data.get("generated_text", "")
+                
+                import json
+                import re
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    analysis = json.loads(json_match.group())
+                    missing = analysis.get("missing_information", [])
+                    logger.info(f"🧠 LLM missing info analysis: {analysis.get('reasoning', 'No reasoning')}")
+                    return missing
+                    
+            except Exception as e:
+                logger.warning(f"🧠 LLM missing info analysis failed: {e}, falling back to confidence-based detection")
+        
+        # Fallback to confidence-based detection only
         if what.confidence < 0.7:
             missing.append("WHAT: Action type or desired outcome unclear")
-        
-        # WHERE/WHAT dimension gaps
-        if not where_what.target_systems:
+        if not where_what.target_systems and where_what.confidence < 0.7:
             missing.append("WHERE: Target systems not specified")
-        if where_what.confidence < 0.7:
-            missing.append("WHERE: Scope or affected components unclear")
-        
-        # WHEN dimension gaps
-        if when.timeline_type == TimelineType.SCHEDULED and not when.specific_timeline:
+        if when.timeline_type == TimelineType.SCHEDULED and not when.specific_timeline and when.confidence < 0.7:
             missing.append("WHEN: Specific timeline not provided")
-        if when.confidence < 0.7:
-            missing.append("WHEN: Timing requirements unclear")
-        
-        # HOW dimension gaps
         if how.confidence < 0.7:
             missing.append("HOW: Execution method or constraints unclear")
         
@@ -722,19 +757,29 @@ class FourWAnalyzer:
     def _generate_clarifying_questions(self, what: WhatAnalysis, where_what: WhereWhatAnalysis,
                                      when: WhenAnalysis, how: HowAnalysis, 
                                      missing: List[str]) -> List[str]:
-        """Generate clarifying questions based on missing information."""
+        """Generate clarifying questions based on missing information with enhanced specificity."""
         questions = []
         
         # Questions based on missing information
         for missing_item in missing:
             if "WHAT:" in missing_item:
-                questions.append("Could you clarify what specific outcome you're trying to achieve?")
+                if "outcome" in missing_item:
+                    questions.append("Could you clarify what specific outcome you're trying to achieve?")
+                elif "Monitoring criteria" in missing_item:
+                    questions.append("What specific values should be monitored and what thresholds should trigger alerts?")
+                elif "Monitoring thresholds" in missing_item:
+                    questions.append("What are the acceptable ranges for the values you want to monitor? When should I alert you?")
             elif "WHERE:" in missing_item and "Target systems" in missing_item:
                 questions.append("Which specific systems or services should this apply to?")
             elif "WHERE:" in missing_item and "Scope" in missing_item:
                 questions.append("What's the scope of this request - single system, environment, or organization-wide?")
-            elif "WHEN:" in missing_item and "timeline" in missing_item:
-                questions.append("When do you need this completed? Do you have a specific deadline?")
+            elif "WHEN:" in missing_item:
+                if "Recurrence interval" in missing_item:
+                    questions.append("How often should this recurring job run? (e.g., every hour, every 30 minutes, daily)")
+                elif "timeline" in missing_item:
+                    questions.append("When do you need this completed? Do you have a specific deadline?")
+                elif "Timing requirements" in missing_item:
+                    questions.append("When should this be executed? Is this urgent or can it be scheduled?")
             elif "HOW:" in missing_item:
                 questions.append("Do you have any preferences for how this should be executed (automated vs manual)?")
         
@@ -744,6 +789,18 @@ class FourWAnalyzer:
         
         if what.action_type == ActionType.PROVISIONING and when.urgency == UrgencyLevel.LOW:
             questions.append("Are there any specific requirements or constraints for the new resources?")
+        
+        # Enhanced questions for monitoring/recurring tasks
+        if ("recurring" in what.reasoning.lower() or 
+            "monitor" in what.reasoning.lower() or 
+            "check" in what.reasoning.lower()):
+            
+            # SFP monitoring specific questions
+            if ("sfp" in what.reasoning.lower() or 
+                "rx" in what.reasoning.lower() or 
+                "tx" in what.reasoning.lower()):
+                questions.append("What are the acceptable dBm ranges for RX and TX power levels? At what point should I alert you?")
+                questions.append("Should I alert on any specific conditions like high error rates or signal degradation?")
         
         return list(set(questions))  # Remove duplicates
     
