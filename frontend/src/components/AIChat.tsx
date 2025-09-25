@@ -12,6 +12,8 @@ interface ChatMessage {
   confidence?: number;
   status?: 'pending' | 'success' | 'error';
   conversationId?: string;
+  fulfillmentId?: string;
+  fulfillmentStatus?: 'planning' | 'gathering_info' | 'ready' | 'executing' | 'completed' | 'failed' | 'cancelled';
   debugInfo?: {
     intent_classification?: {
       intent_type: string;
@@ -60,6 +62,10 @@ interface ChatResponse {
   automation_job_id?: number;
   workflow?: any;
   execution_started?: boolean;
+  fulfillment_id?: string;
+  fulfillment_status?: string;
+  execution_plan?: any;
+  estimated_duration?: number;
   _routing?: {
     service: string;
     service_type: string;
@@ -254,6 +260,8 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
         jobId: data.job_id,
         executionId: data.execution_id,
         conversationId: data.conversation_id,
+        fulfillmentId: data.fulfillment_id,
+        fulfillmentStatus: data.fulfillment_status,
         status: data.execution_started ? 'pending' : undefined,
         debugInfo: {
           intent_classification: data.intent_classification,
@@ -684,6 +692,48 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Fulfillment Status Section */}
+          {(message.fulfillmentId || message.fulfillmentStatus) && (
+            <div className="debug-section">
+              <div className="debug-section-header">
+                <div className="debug-section-title">
+                  <Zap className="debug-section-icon" />
+                  Fulfillment Status
+                </div>
+                <span className={`fulfillment-status-indicator ${message.fulfillmentStatus || 'unknown'}`}>
+                  {message.fulfillmentStatus?.toUpperCase() || 'UNKNOWN'}
+                </span>
+              </div>
+
+              {message.fulfillmentId && (
+                <div className="debug-field">
+                  <span className="debug-field-label">Fulfillment ID</span>
+                  <span className="debug-field-value code">{message.fulfillmentId}</span>
+                </div>
+              )}
+
+              {message.fulfillmentStatus && (
+                <div className="debug-field">
+                  <span className="debug-field-label">Status</span>
+                  <span className="debug-field-value">{message.fulfillmentStatus}</span>
+                </div>
+              )}
+
+              {/* Fulfillment Progress Bar */}
+              {message.fulfillmentStatus && ['executing', 'completed'].includes(message.fulfillmentStatus) && (
+                <div className="fulfillment-progress">
+                  <div className="progress-label">Execution Progress</div>
+                  <div className="progress-bar">
+                    <div 
+                      className={`progress-fill ${message.fulfillmentStatus === 'completed' ? 'completed' : 'executing'}`}
+                      style={{ width: message.fulfillmentStatus === 'completed' ? '100%' : '75%' }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -2048,3 +2048,118 @@ tr.focused-row .rg-cell.rg-cell-focus,
   background-color: var(--neutral-50) !important;
   border-color: inherit !important;
 }
+
+/* ============================================================================
+   FULFILLMENT STATUS STYLES
+   ============================================================================ */
+
+/* Fulfillment Status Indicators */
+.fulfillment-status-indicator {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fulfillment-status-indicator.planning {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+
+.fulfillment-status-indicator.gathering_info {
+  background-color: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #8b5cf6;
+}
+
+.fulfillment-status-indicator.ready {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #22c55e;
+}
+
+.fulfillment-status-indicator.executing {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #3b82f6;
+  animation: pulse 2s infinite;
+}
+
+.fulfillment-status-indicator.completed {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #16a34a;
+}
+
+.fulfillment-status-indicator.failed {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #ef4444;
+}
+
+.fulfillment-status-indicator.cancelled {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #9ca3af;
+}
+
+.fulfillment-status-indicator.unknown {
+  background-color: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+/* Fulfillment Progress Bar */
+.fulfillment-progress {
+  margin-top: var(--space-3);
+}
+
+.progress-label {
+  font-size: 12px;
+  color: var(--neutral-600);
+  margin-bottom: var(--space-1);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--neutral-200);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.executing {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  animation: progress-shimmer 2s infinite;
+}
+
+.progress-fill.completed {
+  background: linear-gradient(90deg, #16a34a, #15803d);
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}

@@ -35,6 +35,7 @@ from job_engine.workflow_generator import WorkflowGenerator
 
 # Fulfillment Engine imports
 from fulfillment_engine.fulfillment_engine import FulfillmentEngine, FulfillmentRequest, FulfillmentStatus
+from fulfillment_engine.fulfillment_orchestrator import FulfillmentOrchestrator
 
 # Integration imports
 from integrations.asset_client import AssetServiceClient
@@ -91,12 +92,20 @@ automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", 
 logger.info("🧠 Initializing Intent Brain System")
 intent_brain = IntentBrain(llm_engine)
 
-# Initialize Fulfillment Engine
+# Initialize Fulfillment Engine and Orchestrator
 logger.info("🎯 Initializing Fulfillment Engine")
 fulfillment_engine = FulfillmentEngine(
     llm_engine=llm_engine,
     automation_client=automation_client,
     asset_client=asset_client
+)
+
+logger.info("🎯 Initializing Fulfillment Orchestrator")
+fulfillment_orchestrator = FulfillmentOrchestrator(
+    llm_engine=llm_engine,
+    automation_client=automation_client,
+    asset_client=asset_client,
+    network_client=None  # Network client not yet implemented
 )
 
 @app.on_event("startup")
@@ -321,20 +330,37 @@ async def _handle_job_creation_request(request, intent_brain_instance, intent_an
             del _conversation_contexts[request.conversation_id]
             logger.info(f"🔄 Cleared conversation context for {request.conversation_id} - analysis complete")
         
-        # 🎯 NEW: Execute with Fulfillment Engine
-        logger.info("🚀 Passing intent to Fulfillment Engine for execution")
+        # 🎯 NEW: Execute with Fulfillment Orchestrator
+        logger.info("🚀 Passing intent to Fulfillment Orchestrator for execution")
         
-        # Create fulfillment request
-        fulfillment_request = FulfillmentRequest(
-            request_id=f"fulfill_{int(datetime.utcnow().timestamp())}",
-            user_intent=intent_analysis_result.user_intent,
-            user_message=request.message,
-            user_id=str(request.user_id) if request.user_id else "system",
-            context={**user_context, "conversation_id": request.conversation_id}
-        )
+        # Create AI understanding format for orchestrator
+        ai_understanding = {
+            "intent": "job_request",
+            "response": intent_interpretation,
+            "original_message": request.message,
+            "conversation_id": request.conversation_id,
+            "intent_classification": {
+                "intent_type": "automation",
+                "confidence": 0.9,
+                "method": "intent_brain_analysis",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": 0.9,
+                    "risk_level": "MEDIUM",
+                    "requirements_count": 1,
+                    "recommendations": []
+                },
+                "reasoning": intent_analysis_result.user_intent,
+                "metadata": {
+                    "engine": "intent_brain",
+                    "success": True
+                }
+            }
+        }
         
-        # Execute with Fulfillment Engine
-        fulfillment_result = await fulfillment_engine.fulfill_intent(fulfillment_request)
+        # Execute with Fulfillment Orchestrator
+        fulfillment_result = await fulfillment_orchestrator.fulfill_intent(ai_understanding, user_context)
         
         # Build comprehensive intent classification with Intent Brain + Fulfillment Engine data
         intent_classification = {
@@ -2264,6 +2290,113 @@ def knowledge_stats():
             },
             "timestamp": datetime.utcnow().isoformat()
         }
+
+# ============================================================================
+# FULFILLMENT ENGINE API ENDPOINTS
+# ============================================================================
+
+@app.post("/fulfillment/start")
+async def start_fulfillment(request: Dict[str, Any]):
+    """Start fulfillment process"""
+    try:
+        logger.info("Starting fulfillment process via API")
+        
+        # Create AI understanding format from request
+        ai_understanding = {
+            "intent": request.get("intent", "job_request"),
+            "response": request.get("description", ""),
+            "original_message": request.get("message", ""),
+            "conversation_id": request.get("conversation_id", f"api_{uuid.uuid4()}"),
+            "intent_classification": {
+                "intent_type": request.get("intent_type", "automation"),
+                "confidence": request.get("confidence", 0.8),
+                "method": "api_request",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": request.get("confidence", 0.8),
+                    "risk_level": request.get("risk_level", "MEDIUM"),
+                    "requirements_count": 1,
+                    "recommendations": []
+                },
+                "reasoning": request.get("description", "API fulfillment request"),
+                "metadata": {
+                    "engine": "api_fulfillment",
+                    "success": True
+                }
+            }
+        }
+        
+        user_context = {
+            "user_id": request.get("user_id", "api_user"),
+            "conversation_id": request.get("conversation_id")
+        }
+        
+        # Execute with Fulfillment Orchestrator
+        fulfillment_result = await fulfillment_orchestrator.fulfill_intent(ai_understanding, user_context)
+        
+        return fulfillment_result.to_dict()
+        
+    except Exception as e:
+        logger.error(f"Failed to start fulfillment: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start fulfillment: {str(e)}")
+
+@app.get("/fulfillment/{fulfillment_id}/status")
+async def get_fulfillment_status(fulfillment_id: str):
+    """Get fulfillment status"""
+    try:
+        result = await fulfillment_orchestrator.get_fulfillment_status(fulfillment_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Fulfillment not found")
+        
+        return result.to_dict()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get fulfillment status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get fulfillment status: {str(e)}")
+
+@app.post("/fulfillment/{fulfillment_id}/cancel")
+async def cancel_fulfillment(fulfillment_id: str):
+    """Cancel fulfillment execution"""
+    try:
+        success = await fulfillment_orchestrator.cancel_fulfillment(fulfillment_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Fulfillment not found or cannot be cancelled")
+        
+        return {"success": True, "message": f"Fulfillment {fulfillment_id} cancelled"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cancel fulfillment: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel fulfillment: {str(e)}")
+
+@app.get("/fulfillment/active")
+async def list_active_fulfillments():
+    """List active fulfillments"""
+    try:
+        active_fulfillments = await fulfillment_orchestrator.list_active_fulfillments()
+        return {
+            "active_fulfillments": [result.to_dict() for result in active_fulfillments],
+            "count": len(active_fulfillments)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list active fulfillments: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list active fulfillments: {str(e)}")
+
+@app.get("/fulfillment/health")
+async def get_fulfillment_health():
+    """Get fulfillment orchestrator health"""
+    try:
+        health = await fulfillment_orchestrator.get_orchestrator_health()
+        return health
+        
+    except Exception as e:
+        logger.error(f"Failed to get fulfillment health: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get fulfillment health: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
