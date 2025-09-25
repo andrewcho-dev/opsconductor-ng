@@ -33,6 +33,9 @@ from integrations.llm_client import LLMEngine
 # Job Engine imports
 from job_engine.workflow_generator import WorkflowGenerator
 
+# Fulfillment Engine imports
+from fulfillment_engine.fulfillment_engine import FulfillmentEngine, FulfillmentRequest, FulfillmentStatus
+
 # Integration imports
 from integrations.asset_client import AssetServiceClient
 from integrations.automation_client import AutomationServiceClient
@@ -88,6 +91,14 @@ automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", 
 logger.info("🧠 Initializing Intent Brain System")
 intent_brain = IntentBrain(llm_engine)
 
+# Initialize Fulfillment Engine
+logger.info("🎯 Initializing Fulfillment Engine")
+fulfillment_engine = FulfillmentEngine(
+    llm_engine=llm_engine,
+    automation_client=automation_client,
+    asset_client=asset_client
+)
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI engine on startup"""
@@ -108,13 +119,9 @@ async def startup_event():
             logger.error("❌ Failed to initialize LLM engine")
             return
         
-        # Initialize intent brain
-        success = await intent_brain.initialize()
-        if success:
-            logger.info("🚀 Intent Brain System initialized successfully")
-            logger.info("🧠 Intent analysis and job creation ready")
-        else:
-            logger.error("❌ Failed to initialize Intent Brain System")
+        # Intent brain is ready (no initialization needed)
+        logger.info("🚀 Intent Brain System ready")
+        logger.info("🧠 Intent analysis and job creation ready")
     except Exception as e:
         print(f"❌ STARTUP EXCEPTION: {e}")
         logger.error(f"❌ Exception during startup: {e}")
@@ -288,9 +295,9 @@ Examples:
         raise Exception(f"Intent analysis COMPLETELY FAILED - NO FALLBACK ALLOWED: {e}")
 
 async def _handle_job_creation_request(request, intent_brain_instance, intent_analysis) -> Dict[str, Any]:
-    """Handle job creation requests - INTENT ANALYSIS ONLY MODE"""
+    """Handle job creation requests - INTENT ANALYSIS + FULFILLMENT ENGINE EXECUTION"""
     try:
-        logger.info("🎯 JOB INTENT ANALYSIS ONLY - Direct intent brain call")
+        logger.info("🎯 JOB INTENT ANALYSIS + FULFILLMENT ENGINE EXECUTION")
         
         # Call ONLY the Intent Brain directly - no multi-brain engine needed
         user_context = {
@@ -314,47 +321,78 @@ async def _handle_job_creation_request(request, intent_brain_instance, intent_an
             del _conversation_contexts[request.conversation_id]
             logger.info(f"🔄 Cleared conversation context for {request.conversation_id} - analysis complete")
         
-        # Build comprehensive intent classification with Intent Brain data
+        # 🎯 NEW: Execute with Fulfillment Engine
+        logger.info("🚀 Passing intent to Fulfillment Engine for execution")
+        
+        # Create fulfillment request
+        fulfillment_request = FulfillmentRequest(
+            request_id=f"fulfill_{int(datetime.utcnow().timestamp())}",
+            user_intent=intent_analysis_result.user_intent,
+            user_message=request.message,
+            user_id=str(request.user_id) if request.user_id else "system",
+            context={**user_context, "conversation_id": request.conversation_id}
+        )
+        
+        # Execute with Fulfillment Engine
+        fulfillment_result = await fulfillment_engine.fulfill_intent(fulfillment_request)
+        
+        # Build comprehensive intent classification with Intent Brain + Fulfillment Engine data
         intent_classification = {
-            "intent_type": "job_creation",  # Simple classification
-            "confidence": 1.0,  # We understood what they want
-            "method": "intent_brain_direct",
+            "intent_type": "job_execution",  # Updated to reflect execution
+            "confidence": 1.0,  # We understood and executed what they want
+            "method": "intent_brain_plus_fulfillment_engine",
             "alternatives": [],
             "entities": [],
             "context_analysis": {
                 "confidence_score": 1.0,
                 "risk_level": "LOW",
-                "requirements_count": 0,
-                "recommendations": ["Intent analysis completed - job creation disabled"]
+                "requirements_count": fulfillment_result.total_steps,
+                "recommendations": ["Intent analyzed and executed via Fulfillment Engine"]
             },
             "reasoning": intent_analysis_result.user_intent,
             "metadata": {
-                "engine": "intent_brain_direct",
+                "engine": "intent_brain_plus_fulfillment_engine",
                 "version": "3.0.0",
-                "success": True,
+                "success": fulfillment_result.status == FulfillmentStatus.COMPLETED,
                 "processing_time": intent_analysis_result.processing_time,
-                "brains_consulted": ["intent_brain"],
-                "intent_details": intent_analysis_result.to_dict()
+                "brains_consulted": ["intent_brain", "fulfillment_engine"],
+                "intent_details": intent_analysis_result.to_dict(),
+                "fulfillment_details": fulfillment_result.to_dict()
             }
         }
         
+        # Format response based on fulfillment result
+        if fulfillment_result.status == FulfillmentStatus.COMPLETED:
+            response_text = f"✅ TASK COMPLETED SUCCESSFULLY\n\n{intent_interpretation}\n\n🎯 Execution Summary:\n{fulfillment_result.execution_summary or 'Task completed successfully'}"
+            execution_started = True
+        elif fulfillment_result.status == FulfillmentStatus.FAILED:
+            response_text = f"❌ TASK EXECUTION FAILED\n\n{intent_interpretation}\n\n🎯 Error Details:\n{fulfillment_result.error_message or 'Unknown error occurred'}"
+            execution_started = False
+        elif fulfillment_result.status == FulfillmentStatus.EXECUTING:
+            response_text = f"⏳ TASK EXECUTION IN PROGRESS\n\n{intent_interpretation}\n\n🎯 Progress: {fulfillment_result.steps_completed}/{fulfillment_result.total_steps} steps completed"
+            execution_started = True
+        else:
+            response_text = f"🎯 TASK INITIATED\n\n{intent_interpretation}\n\n🎯 Status: {fulfillment_result.status.value}"
+            execution_started = True
+        
         return {
-            "response": f"🎯 JOB INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Job creation disabled - intent analysis only mode]",
+            "response": response_text,
             "conversation_id": request.conversation_id,
-            "intent": "job_creation",
+            "intent": "job_execution",
             "confidence": 1.0,
-            "job_id": None,  # Job creation disabled
-            "execution_id": None,
-            "automation_job_id": None,
-            "workflow": None,
-            "execution_started": False,
+            "job_id": fulfillment_result.request_id,
+            "execution_id": fulfillment_result.workflow_id,
+            "automation_job_id": None,  # Set to None since workflow_id is a string
+            "workflow": {"execution_logs": fulfillment_result.execution_logs, "workflow_id": fulfillment_result.workflow_id},
+            "execution_started": execution_started,
             "intent_classification": intent_classification,
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
-                "service_type": "intent_analysis_only", 
-                "response_time": 0.0,  # Direct intent brain call
+                "service_type": "intent_brain_plus_fulfillment_engine", 
+                "response_time": intent_analysis_result.processing_time,
                 "cached": False
-            }
+            },
+            "fulfillment_result": fulfillment_result.to_dict()
         }
             
     except Exception as e:
@@ -679,7 +717,7 @@ Keep it concise but informative, as if explaining to the user what you understoo
         
         # Extract the response text from the LLM result
         if isinstance(interpretation_result, dict):
-            interpretation = interpretation_result.get('response', str(interpretation_result))
+            interpretation = interpretation_result.get('generated_text', str(interpretation_result))
         else:
             interpretation = str(interpretation_result)
             
@@ -690,51 +728,58 @@ Keep it concise but informative, as if explaining to the user what you understoo
         return f"Intent analysis completed. Raw data: {str(intent_analysis_result)[:200]}..."
 
 async def _handle_conversation_request(request, intent_brain_instance, intent_analysis) -> Dict[str, Any]:
-    """Handle conversation requests - INTENT ANALYSIS ONLY MODE"""
+    """Handle conversation requests - FULL CONVERSATIONAL RESPONSE"""
     try:
-        logger.info("🎯 INTENT ANALYSIS ONLY - Direct intent brain call")
+        logger.info("💬 Generating conversational response using LLM")
         
-        # Call ONLY the Intent Brain directly - no multi-brain engine needed
-        user_context = {
-            "user_id": str(request.user_id) if request.user_id else "system",
-            "conversation_id": request.conversation_id
-        }
+        # Generate a proper conversational response using the LLM
+        conversation_prompt = f"""You are a helpful AI assistant for OpsConductor, an infrastructure automation platform. 
         
-        # Get intent analysis directly from intent brain
-        intent_analysis_result = await intent_brain_instance.analyze_intent(request.message, user_context)
+The user said: "{request.message}"
+
+Provide a helpful, conversational response. If they're asking about:
+- System status or information: Provide what you can or explain how they can find it
+- How something works: Give a clear explanation
+- General questions: Answer helpfully and conversationally
+- Requests for help: Offer guidance and suggestions
+
+Be friendly, professional, and helpful. Don't mention that you're in "analysis mode" or anything technical about your processing."""
+
+        response_result = await intent_brain_instance.llm_engine.generate(conversation_prompt)
         
-        # Create a human-readable interpretation of what the AI thinks the user wants
-        intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, intent_brain_instance)
+        # Extract the response text
+        if isinstance(response_result, dict):
+            ai_response = response_result.get('generated_text', str(response_result))
+        else:
+            ai_response = str(response_result)
         
-        # Build comprehensive intent classification with simplified data
+        # Build intent classification
         intent_classification = {
-            "intent_type": "user_request",
-            "confidence": 1.0,
-            "method": "intent_brain_direct",
+            "intent_type": "conversation",
+            "confidence": 0.9,
+            "method": "llm_conversation",
             "alternatives": [],
             "entities": [],
             "context_analysis": {
-                "confidence_score": 1.0,
+                "confidence_score": 0.9,
                 "risk_level": "LOW",
                 "requirements_count": 0,
-                "recommendations": ["Intent analysis completed - response generation disabled"]
+                "recommendations": ["Conversational response provided"]
             },
-            "reasoning": intent_analysis_result.user_intent,
+            "reasoning": "User engaged in conversation",
             "metadata": {
-                "engine": "intent_brain_direct",
+                "engine": "llm_conversation_handler",
                 "version": "2.0.0",
                 "success": True,
-                "processing_time": intent_analysis_result.processing_time,
-                "brains_consulted": ["intent_brain"],
-                "intent_details": intent_analysis_result.to_dict()
+                "conversation_type": intent_analysis.get("conversation_type", "general")
             }
         }
         
         return {
-            "response": f"🎯 INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Response generation disabled - intent analysis only mode]",
+            "response": ai_response.strip(),
             "conversation_id": request.conversation_id,
-            "intent": "user_request",
-            "confidence": 1.0,
+            "intent": "conversation",
+            "confidence": 0.9,
             "job_id": None,
             "execution_id": None,
             "automation_job_id": None,
@@ -743,8 +788,8 @@ async def _handle_conversation_request(request, intent_brain_instance, intent_an
             "intent_classification": intent_classification,
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
-                "service_type": "intent_analysis_only", 
-                "response_time": intent_analysis_result.processing_time,
+                "service_type": "llm_conversation", 
+                "response_time": 0.0,
                 "cached": False
             }
         }
@@ -1020,6 +1065,50 @@ async def chat_endpoint(request: ChatRequest):
     """PURE LLM CHAT INTERFACE - NO MORE NLP PATTERN MATCHING BULLSHIT!"""
     result = await pure_llm_chat_endpoint(request, intent_brain)
     return ChatResponse(**result)
+
+@app.get("/ai/fulfillment/status/{request_id}")
+async def get_fulfillment_status(request_id: str):
+    """Get the status of a fulfillment request"""
+    try:
+        logger.info(f"🔍 Getting fulfillment status for request: {request_id}")
+        
+        # Get status from the fulfillment engine
+        status_info = await fulfillment_engine.get_fulfillment_status(request_id)
+        
+        if not status_info:
+            raise HTTPException(status_code=404, detail=f"Fulfillment request {request_id} not found")
+        
+        return status_info.to_dict()
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get fulfillment status for {request_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+
+@app.get("/ai/fulfillment/requests")
+async def list_fulfillment_requests(limit: int = 50, offset: int = 0):
+    """List recent fulfillment requests"""
+    try:
+        logger.info(f"📋 Listing fulfillment requests (limit: {limit}, offset: {offset})")
+        
+        # Get request list from the fulfillment engine
+        requests = await fulfillment_engine.list_active_fulfillments()
+        
+        # Apply limit and offset manually since the engine doesn't support it
+        total_requests = len(requests)
+        paginated_requests = requests[offset:offset + limit] if requests else []
+        
+        return {
+            "requests": [req.to_dict() for req in paginated_requests],
+            "total": total_requests,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list fulfillment requests: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list requests: {str(e)}")
 
 class ProceedWithRiskRequest(BaseModel):
     message: str
