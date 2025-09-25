@@ -184,7 +184,8 @@ class WorkflowPlanner:
             """
             
             logger.info("Sending prompt to LLM engine")
-            response = await self.llm_engine.generate_response(workflow_prompt)
+            llm_response = await self.llm_engine.generate(workflow_prompt)
+            response = llm_response["generated_text"]
             logger.info(f"Received LLM response (length: {len(response)})")
             
             # Parse the JSON response
