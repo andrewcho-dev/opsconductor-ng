@@ -445,13 +445,13 @@ async def _handle_clarification_needed(request, intent_analysis_result, ai_engin
             "missing_information": missing_info,
             "intent_classification": {
                 "intent_type": "clarification_needed",
-                "confidence": intent_analysis_result.overall_confidence,
+                "confidence": 1.0,
                 "method": "intent_brain_clarification",
                 "alternatives": [],
-                "entities": getattr(intent_analysis_result, 'entities', []),
+                "entities": [],
                 "context_analysis": {
-                    "confidence_score": intent_analysis_result.overall_confidence,
-                    "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
+                    "confidence_score": 1.0,
+                    "risk_level": "LOW",
                     "requirements_count": len(missing_info),
                     "recommendations": clarifying_questions
                 },
@@ -717,35 +717,35 @@ async def _handle_conversation_request(request, ai_engine, intent_analysis) -> D
         # Create a human-readable interpretation of what the AI thinks the user wants
         intent_interpretation = await _generate_intent_interpretation(intent_analysis_result, ai_engine)
         
-        # Build comprehensive intent classification with Multi-Brain data
+        # Build comprehensive intent classification with simplified data
         intent_classification = {
-            "intent_type": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'unknown',
-            "confidence": intent_analysis_result.overall_confidence,
+            "intent_type": "user_request",
+            "confidence": 1.0,
             "method": "intent_brain_direct",
             "alternatives": [],
-            "entities": getattr(intent_analysis_result, 'entities', []),
+            "entities": [],
             "context_analysis": {
-                "confidence_score": intent_analysis_result.overall_confidence,
-                "risk_level": getattr(intent_analysis_result, 'risk_level', 'UNKNOWN'),
-                "requirements_count": len(getattr(intent_analysis_result, 'requirements', [])),
+                "confidence_score": 1.0,
+                "risk_level": "LOW",
+                "requirements_count": 0,
                 "recommendations": ["Intent analysis completed - response generation disabled"]
             },
-            "reasoning": getattr(intent_analysis_result, 'intent_summary', 'Intent analysis performed'),
+            "reasoning": intent_analysis_result.user_intent,
             "metadata": {
                 "engine": "intent_brain_direct",
                 "version": "2.0.0",
                 "success": True,
-                "processing_time": 0.0,  # Direct intent brain call
+                "processing_time": intent_analysis_result.processing_time,
                 "brains_consulted": ["intent_brain"],
-                "intent_details": intent_analysis_result.to_dict() if hasattr(intent_analysis_result, 'to_dict') else str(intent_analysis_result)
+                "intent_details": intent_analysis_result.to_dict()
             }
         }
         
         return {
             "response": f"🎯 INTENT ANALYSIS COMPLETE\n\n{intent_interpretation}\n\n[Response generation disabled - intent analysis only mode]",
             "conversation_id": request.conversation_id,
-            "intent": intent_analysis_result.four_w_analysis.what_analysis.action_type.value if hasattr(intent_analysis_result, 'four_w_analysis') else 'unknown',
-            "confidence": intent_analysis_result.overall_confidence,
+            "intent": "user_request",
+            "confidence": 1.0,
             "job_id": None,
             "execution_id": None,
             "automation_job_id": None,
@@ -755,7 +755,7 @@ async def _handle_conversation_request(request, ai_engine, intent_analysis) -> D
             "timestamp": datetime.utcnow().isoformat(),
             "_routing": {
                 "service_type": "intent_analysis_only", 
-                "response_time": 0.0,  # Direct intent brain call
+                "response_time": intent_analysis_result.processing_time,
                 "cached": False
             }
         }

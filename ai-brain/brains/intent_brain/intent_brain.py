@@ -39,11 +39,6 @@ class IntentAnalysisResult:
             "processing_time": self.processing_time,
             "brain_version": self.brain_version
         }
-    
-    def get(self, key: str, default: Any = None) -> Any:
-        """Dictionary-like get method for backward compatibility"""
-        dict_data = self.to_dict()
-        return dict_data.get(key, default)
 
 
 class IntentBrain:
