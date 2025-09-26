@@ -198,7 +198,7 @@ Then move to the next step. When all steps are done, provide a FINAL SUMMARY.
         }
     
     async def _perform_actual_service_calls(self, execution_text: str, original_message: str) -> Dict[str, Any]:
-        """Parse Ollama's execution response and make actual service calls"""
+        """Parse Ollama's execution response and execute multiple service calls sequentially"""
         
         results = {
             "success": False,
@@ -208,26 +208,24 @@ Then move to the next step. When all steps are done, provide a FINAL SUMMARY.
         }
         
         try:
-            # Ask Ollama to extract the specific service calls it wants to make
-            extraction_prompt = f"""Based on your execution plan, extract the specific service calls you want to make:
+            # Ask Ollama to extract the sequential steps it wants to execute
+            extraction_prompt = f"""Based on your execution plan, list the steps you want to execute in order:
 
 Your execution response:
 {execution_text}
 
 Original user request: "{original_message}"
 
-Now provide the EXACT service calls in this format:
+Provide the steps in this format:
 
-SERVICE_CALLS:
-1. SERVICE: automation
-   ACTION: submit_ai_workflow
-   PARAMETERS: {{"name": "...", "steps": [...]}}
+EXECUTION_STEPS:
+1. SERVICE: asset-service
+   PURPOSE: Find all Axis cameras in inventory
+   
+2. SERVICE: automation-service  
+   PURPOSE: Check firmware version on the discovered cameras
 
-2. SERVICE: asset  
-   ACTION: get_servers
-   PARAMETERS: {{}}
-
-Format each service call clearly so I can execute them.
+List each step clearly with the service name and what it should accomplish.
 """
 
             extraction_response = await self.llm_engine.generate(extraction_prompt)
@@ -237,24 +235,136 @@ Format each service call clearly so I can execute them.
             else:
                 extraction_text = str(extraction_response)
             
-            logger.info(f"🔧 Service call extraction: {extraction_text}")
+            logger.info(f"🔧 Multi-step execution plan: {extraction_text}")
             
-            # Let Ollama decide which service(s) to use based on the Service Catalog
-            service_selection_result = await self._select_and_execute_services_with_ollama(original_message, extraction_text)
+            # Execute steps sequentially
+            step_results = await self._execute_sequential_steps(extraction_text, original_message)
             
-            if service_selection_result:
-                results.update(service_selection_result)
+            if step_results:
+                results.update(step_results)
             else:
                 # If no specific service calls were made, still return success with Ollama's analysis
                 results["success"] = True
                 results["summary"] = f"Analysis completed: {execution_text[:200]}..."
             
         except Exception as e:
-            logger.error(f"❌ Service call execution failed: {e}")
+            logger.error(f"❌ Multi-step execution failed: {e}")
             results["success"] = False
-            results["summary"] = f"Service call execution failed: {e}"
+            results["summary"] = f"Multi-step execution failed: {e}"
         
         return results
+    
+    async def _execute_sequential_steps(self, extraction_text: str, original_message: str) -> Dict[str, Any]:
+        """Execute multiple service steps sequentially, passing results between steps"""
+        
+        results = {
+            "success": True,
+            "summary": "",
+            "job_details": [],
+            "service_calls": [],
+            "step_results": []
+        }
+        
+        try:
+            # Parse the steps from Ollama's extraction
+            steps = self._parse_execution_steps(extraction_text)
+            
+            if not steps:
+                logger.warning("⚠️ No execution steps found in Ollama's plan")
+                return await self._select_and_execute_services_with_ollama(original_message, extraction_text)
+            
+            logger.info(f"🔄 Executing {len(steps)} sequential steps")
+            
+            # Execute each step in sequence
+            previous_results = None
+            for i, step in enumerate(steps, 1):
+                service_name = step.get("service", "").lower()
+                purpose = step.get("purpose", "")
+                
+                logger.info(f"🚀 Step {i}: {service_name} - {purpose}")
+                
+                # Execute the specific service
+                step_result = None
+                if "asset" in service_name:
+                    step_result = await self._execute_asset_operation({}, original_message)
+                elif "automation" in service_name:
+                    # For automation, use results from previous step if available
+                    context_message = original_message
+                    if previous_results and "assets" in str(previous_results):
+                        context_message = f"{original_message} (Found assets: {previous_results.get('result', {}).get('assets', [])})"
+                    step_result = await self._execute_automation_operation({}, context_message)
+                elif "network" in service_name:
+                    step_result = await self._execute_network_operation({}, original_message)
+                
+                if step_result:
+                    results["service_calls"].append(step_result)
+                    results["step_results"].append({
+                        "step": i,
+                        "service": service_name,
+                        "purpose": purpose,
+                        "result": step_result
+                    })
+                    previous_results = step_result
+                    logger.info(f"✅ Step {i} completed: {step_result.get('summary', 'Success')}")
+                else:
+                    logger.error(f"❌ Step {i} failed: {service_name}")
+                    results["success"] = False
+                    results["summary"] = f"Step {i} ({service_name}) failed"
+                    return results
+            
+            # Compile final summary
+            step_summaries = [step["result"].get("summary", f"Step {step['step']} completed") 
+                            for step in results["step_results"]]
+            results["summary"] = " → ".join(step_summaries)
+            
+            # Aggregate job details
+            for step in results["step_results"]:
+                if "job_details" in step["result"]:
+                    results["job_details"].extend(step["result"]["job_details"])
+            
+            logger.info(f"🎉 All {len(steps)} steps completed successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Sequential execution failed: {e}")
+            results["success"] = False
+            results["summary"] = f"Sequential execution failed: {e}"
+        
+        return results
+    
+    def _parse_execution_steps(self, extraction_text: str) -> List[Dict[str, str]]:
+        """Parse execution steps from Ollama's response"""
+        steps = []
+        
+        try:
+            lines = extraction_text.split('\n')
+            current_step = {}
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Look for step numbers
+                if line.startswith(('1.', '2.', '3.', '4.', '5.')):
+                    # Save previous step if exists
+                    if current_step:
+                        steps.append(current_step)
+                    current_step = {}
+                
+                # Parse SERVICE line
+                if line.startswith('SERVICE:'):
+                    current_step["service"] = line.replace('SERVICE:', '').strip()
+                
+                # Parse PURPOSE line  
+                elif line.startswith('PURPOSE:'):
+                    current_step["purpose"] = line.replace('PURPOSE:', '').strip()
+            
+            # Add the last step
+            if current_step:
+                steps.append(current_step)
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to parse execution steps: {e}")
+        
+        return steps
     
     async def _select_and_execute_services_with_ollama(self, user_message: str, extraction_text: str) -> Optional[Dict[str, Any]]:
         """Let Ollama intelligently select and execute the appropriate service(s) based on the Service Catalog"""
