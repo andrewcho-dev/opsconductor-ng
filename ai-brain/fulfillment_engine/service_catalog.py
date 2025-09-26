@@ -224,8 +224,8 @@ class ServiceCatalog:
             ServiceType.ASSET: ServiceInfo(
                 service_type=ServiceType.ASSET,
                 name="Asset Management Service",
-                description="Comprehensive asset and target system management",
-                primary_purpose="Manage infrastructure assets, credentials, and system inventory",
+                description="Repository of known infrastructure assets and credentials",
+                primary_purpose="Store and retrieve information about known infrastructure assets, credentials, and system inventory",
                 capabilities=[
                     ServiceCapability(
                         name="Asset Inventory",
@@ -246,10 +246,10 @@ class ServiceCatalog:
                         keywords=["target", "system", "group", "environment", "manage"]
                     ),
                     ServiceCapability(
-                        name="Asset Discovery",
-                        description="Discover and catalog new systems and services",
-                        use_cases=["Network scanning", "Service discovery", "Inventory updates"],
-                        keywords=["discover", "scan", "find", "catalog", "detect"]
+                        name="Asset Lookup",
+                        description="Query and retrieve information about known assets from inventory",
+                        use_cases=["Find existing assets", "Asset information retrieval", "Inventory queries"],
+                        keywords=["lookup", "query", "find", "search", "existing", "known"]
                     )
                 ],
                 best_for=[TaskCategory.ASSET_MANAGEMENT],
@@ -267,7 +267,7 @@ class ServiceCatalog:
                     "/api/v1/assets/search",
                     "/api/v1/credentials"
                 ],
-                when_to_use="For asset management, credential storage, system inventory, target system configuration",
+                when_to_use="To query existing assets, retrieve asset information, find known systems (e.g., 'all axis cameras'), manage credentials, system inventory",
                 when_not_to_use="For task execution (use automation-service) or network analysis (use network-analyzer-service)"
             ),
             
@@ -457,10 +457,16 @@ You have access to the following specialized services. Choose the BEST service f
    - service management (restart, stop, start)
    - file operations, command execution
 
-4. **ASSET MANAGEMENT** → use asset-service
+4. **ASSET DISCOVERY FIRST** → ALWAYS start with asset-service when request involves "all [type] systems"
+   - "all Windows servers" → First query asset-service to find Windows servers
+   - "all axis cameras" → First query asset-service to find Axis cameras  
+   - "all database servers" → First query asset-service to find database servers
+   - THEN use appropriate service to perform actions on discovered assets
+
+5. **ASSET MANAGEMENT** → use asset-service
    - managing systems, credentials, inventory
 
-5. **NOTIFICATIONS** → use communication-service
+6. **NOTIFICATIONS** → use communication-service
    - alerts, reports, external integrations
 
 Choose the RIGHT service for each task based on these capabilities!

@@ -384,9 +384,19 @@ Your decision:"""
                     results["summary"] = "Network service not available"
             
             elif "ASSET" in decision_text:
-                logger.info(f"📋 Asset service selected per Ollama's decision")
-                results["success"] = False
-                results["summary"] = "Asset service not yet implemented"
+                if self.asset_client:
+                    logger.info(f"📋 Executing asset service per Ollama's decision")
+                    asset_result = await self._execute_asset_operation({}, user_message)
+                    if asset_result:
+                        results["service_calls"].append(asset_result)
+                        results["success"] = True
+                        results["summary"] = f"Asset service executed: {asset_result.get('summary', 'Task completed')}"
+                    else:
+                        results["success"] = False
+                        results["summary"] = "Asset service execution failed"
+                else:
+                    results["success"] = False
+                    results["summary"] = "Asset service not available"
             
             else:
                 logger.warning(f"⚠️ Ollama's decision unclear: {decision_text}")
@@ -450,6 +460,62 @@ Your decision:"""
             return None
         
         return None
+    
+    async def _execute_asset_operation(self, operation: Dict[str, Any], user_message: str) -> Optional[Dict[str, Any]]:
+        """Execute an asset operation using the asset client"""
+        
+        try:
+            # For "all axis cameras" type requests, search for assets by manufacturer/type
+            if "axis" in user_message.lower() and "camera" in user_message.lower():
+                assets = await self.asset_client.get_all_assets()
+                axis_cameras = [asset for asset in assets 
+                              if 'axis' in asset.get('manufacturer', '').lower() or 
+                                 'axis' in asset.get('name', '').lower() or
+                                 'axis' in asset.get('description', '').lower()]
+                
+                return {
+                    "service": "asset-service",
+                    "operation": "search_assets",
+                    "query": "axis cameras",
+                    "success": True,
+                    "result": {
+                        "found_assets": len(axis_cameras),
+                        "assets": axis_cameras
+                    },
+                    "summary": f"Found {len(axis_cameras)} Axis cameras in asset inventory"
+                }
+            
+            # General asset search
+            elif "all" in user_message.lower():
+                assets = await self.asset_client.get_all_assets()
+                return {
+                    "service": "asset-service", 
+                    "operation": "get_all_assets",
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "assets": assets
+                    },
+                    "summary": f"Retrieved {len(assets)} assets from inventory"
+                }
+            
+            # Default: get all assets
+            else:
+                assets = await self.asset_client.get_all_assets()
+                return {
+                    "service": "asset-service",
+                    "operation": "get_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "assets": assets
+                    },
+                    "summary": f"Retrieved {len(assets)} assets from inventory"
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Asset operation failed: {e}")
+            return None
     
     async def _execute_automation_operation(self, operation: Dict[str, Any], user_message: str) -> Optional[Dict[str, Any]]:
         """Execute an automation operation using the automation client"""

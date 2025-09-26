@@ -43,7 +43,6 @@ class KnowledgeMetadata:
     last_updated: datetime
     size_bytes: int
     priority: ContextPriority
-    keywords: List[str]
     dependencies: List[str]
     performance_metrics: Dict[str, Any]
 
@@ -72,8 +71,8 @@ class KnowledgeDomain(ABC):
         pass
     
     @abstractmethod
-    def get_context_for_request(self, request_keywords: List[str]) -> Dict[str, Any]:
-        """Get relevant context for a specific request"""
+    def get_context_for_request(self, request_context: str) -> Dict[str, Any]:
+        """Get relevant context for a specific request based on semantic understanding"""
         pass
     
     @abstractmethod
@@ -92,7 +91,6 @@ class VAPIXDomain(KnowledgeDomain):
             last_updated=datetime.now(),
             size_bytes=0,
             priority=ContextPriority.HIGH,
-            keywords=["camera", "vapix", "axis", "video", "surveillance", "ptz", "stream"],
             dependencies=[],
             performance_metrics={}
         )
@@ -162,6 +160,52 @@ class VAPIXDomain(KnowledgeDomain):
                             "use_cases": ["Motion detection setup", "Alarm configuration", "Event logging"]
                         }
                     ]
+                },
+                "firmware_management": {
+                    "description": "Check and manage camera firmware versions",
+                    "endpoints": [
+                        {
+                            "path": "firmwaremanagement.cgi",
+                            "method": "GET",
+                            "description": "Get firmware version and status information",
+                            "parameters": {
+                                "action": "status",
+                                "method": "status"
+                            },
+                            "example_request": "GET /axis-cgi/firmwaremanagement.cgi?action=status",
+                            "response_format": {
+                                "firmware_version": "Current firmware version",
+                                "build_date": "Firmware build date",
+                                "product_type": "Camera model information",
+                                "serial_number": "Device serial number",
+                                "hardware_id": "Hardware identifier"
+                            },
+                            "use_cases": ["Firmware version audit", "Security compliance", "Update planning", "Device inventory"]
+                        }
+                    ]
+                },
+                "device_information": {
+                    "description": "Get device and system information",
+                    "endpoints": [
+                        {
+                            "path": "admin/param.cgi",
+                            "method": "GET",
+                            "description": "Get device parameters and system information",
+                            "parameters": {
+                                "action": "list",
+                                "group": "Properties.System, Properties.Firmware, Brand"
+                            },
+                            "example_request": "GET /axis-cgi/admin/param.cgi?action=list&group=Properties.System",
+                            "response_includes": [
+                                "System.SerialNumber",
+                                "Properties.Firmware.Version",
+                                "Properties.Firmware.BuildDate",
+                                "Brand.ProdFullName",
+                                "Brand.ProdType"
+                            ],
+                            "use_cases": ["Device discovery", "Asset inventory", "System monitoring"]
+                        }
+                    ]
                 }
             },
             "integration_patterns": [
@@ -208,27 +252,17 @@ class VAPIXDomain(KnowledgeDomain):
             examples=[]
         )
     
-    def get_context_for_request(self, request_keywords: List[str]) -> Dict[str, Any]:
-        """Get VAPIX context relevant to the request"""
-        relevant_capabilities = []
-        
-        # Analyze keywords to determine relevant capabilities
-        keyword_set = set(word.lower() for word in request_keywords)
-        
-        if any(word in keyword_set for word in ["camera", "video", "stream", "monitor"]):
-            relevant_capabilities.append(self.base_knowledge["capabilities"]["video_streaming"])
-        
-        if any(word in keyword_set for word in ["pan", "tilt", "zoom", "ptz", "move", "control"]):
-            relevant_capabilities.append(self.base_knowledge["capabilities"]["camera_control"])
-        
-        if any(word in keyword_set for word in ["motion", "event", "alarm", "detect"]):
-            relevant_capabilities.append(self.base_knowledge["capabilities"]["event_management"])
-        
+    def get_context_for_request(self, request_context: str) -> Dict[str, Any]:
+        """Get VAPIX context relevant to the request based on semantic understanding"""
+        # Return all capabilities - let the AI intelligently choose what's relevant
         return {
             "domain": "VAPIX Camera Control",
-            "relevant_capabilities": relevant_capabilities,
+            "service_description": self.base_knowledge["service_info"]["description"],
+            "capabilities": self.base_knowledge["capabilities"],
             "integration_patterns": self.base_knowledge["integration_patterns"],
-            "service_info": self.base_knowledge["service_info"]
+            "service_info": self.base_knowledge["service_info"],
+            "common_workflows": self.base_knowledge["common_workflows"],
+            "best_practices": self.base_knowledge["best_practices"]
         }
     
     def update_knowledge(self, new_knowledge: Dict[str, Any]) -> bool:
@@ -262,396 +296,178 @@ class DynamicServiceCatalog:
         
         # Context management
         self.context_cache = {}
-        self.max_context_size = 50000  # Maximum context size in characters
-        self.context_ttl = timedelta(hours=1)  # Context cache TTL
+        self.cache_ttl = timedelta(hours=1)
         
-        # Performance tracking
-        self.performance_metrics = {
-            "context_generation_time": [],
-            "domain_load_time": [],
-            "cache_hit_rate": 0.0
-        }
-        
-        # Initialize with core domains
+        # Initialize core domains
         self._initialize_core_domains()
     
     def _initialize_core_domains(self):
-        """Initialize core OpsConductor service domains"""
-        try:
-            # Load the enhanced service catalog as a core domain
-            from enhanced_service_catalog import EnhancedServiceCatalog
-            
-            core_catalog = EnhancedServiceCatalog()
-            self._register_core_services(core_catalog)
-        except ImportError:
-            logger.warning("Enhanced service catalog not available, skipping")
+        """Initialize core knowledge domains"""
+        # Add VAPIX domain
+        vapix_domain = VAPIXDomain()
+        self.register_domain(vapix_domain)
         
-        try:
-            # Register core service domains
-            from core_knowledge_domains import register_core_domains
-            register_core_domains(self)
-        except ImportError:
-            logger.warning("Core knowledge domains not available, skipping")
-        
-        try:
-            # Register system expertise domains
-            from system_expertise_domains import register_system_expertise_domains
-            register_system_expertise_domains(self)
-        except ImportError:
-            logger.warning("System expertise domains not available, skipping")
-        
-        try:
-            # Register PowerShell expertise domain
-            from powershell_expertise_domain import register_powershell_expertise_domain
-            register_powershell_expertise_domain(self)
-        except ImportError:
-            logger.warning("PowerShell expertise domain not available, skipping")
-        
-        # Register specialty domains
-        self.register_domain(VAPIXDomain())
-    
-    def _register_core_services(self, enhanced_catalog):
-        """Register core OpsConductor services as knowledge domains"""
-        # This integrates our existing enhanced service catalog
-        # as the foundation for the dynamic system
-        pass
+        logger.info(f"Initialized {len(self.domains)} knowledge domains")
     
     def register_domain(self, domain: KnowledgeDomain):
         """Register a new knowledge domain"""
         self.domains[domain.domain_id] = domain
         self.domain_metadata[domain.domain_id] = domain.metadata
-        logger.info(f"Registered knowledge domain: {domain.domain_id}")
+        logger.info(f"Registered domain: {domain.domain_id}")
     
-    async def discover_domain_from_api(self, api_url: str, domain_name: str, 
-                                     domain_type: KnowledgeDomainType = KnowledgeDomainType.SPECIALTY_API) -> bool:
-        """
-        Dynamically discover and register a new API domain
-        This is the key method for learning new technical areas
-        """
-        try:
-            # Attempt to discover API capabilities
-            discovery_result = await self._perform_api_discovery(api_url)
-            
-            if discovery_result:
-                # Create new domain from discovery
-                new_domain = self._create_domain_from_discovery(
-                    domain_name, domain_type, discovery_result
-                )
-                
-                # Register the new domain
-                self.register_domain(new_domain)
-                
-                # Persist the domain knowledge
-                await self._persist_domain_knowledge(new_domain)
-                
-                logger.info(f"Successfully discovered and registered domain: {domain_name}")
-                return True
-            
-        except Exception as e:
-            logger.error(f"Failed to discover domain {domain_name}: {e}")
+    async def discover_new_capabilities(self, domain_id: str) -> bool:
+        """Discover new capabilities for a domain"""
+        if domain_id not in self.domains:
+            return False
         
-        return False
-    
-    async def _perform_api_discovery(self, api_url: str) -> Optional[APIDiscoveryResult]:
-        """Perform automated API discovery"""
         try:
-            # Try common API discovery endpoints
-            discovery_endpoints = [
-                f"{api_url}/swagger.json",
-                f"{api_url}/openapi.json",
-                f"{api_url}/api-docs",
-                f"{api_url}/docs",
-                f"{api_url}/.well-known/api"
+            domain = self.domains[domain_id]
+            discovery_result = await domain.discover_capabilities()
+            
+            # Update domain with discovered capabilities
+            new_knowledge = {
+                "discovered_endpoints": discovery_result.endpoints,
+                "discovered_capabilities": discovery_result.capabilities
+            }
+            
+            return domain.update_knowledge(new_knowledge)
+        except Exception as e:
+            logger.error(f"Failed to discover capabilities for {domain_id}: {e}")
+            return False
+    
+    def get_relevant_context(self, request_description: str, max_domains: int = 3) -> Dict[str, Any]:
+        """
+        Get relevant context for a request using intelligent semantic analysis
+        """
+        # Cache key based on request description
+        cache_key = hashlib.md5(request_description.encode()).hexdigest()
+        
+        # Check cache
+        if cache_key in self.context_cache:
+            cached_result, timestamp = self.context_cache[cache_key]
+            if datetime.now() - timestamp < self.cache_ttl:
+                return cached_result
+        
+        # Analyze request and determine relevant domains
+        relevant_domains = self._analyze_request_relevance(request_description)
+        
+        # Get context from top domains
+        context = {
+            "request_analysis": {
+                "description": request_description,
+                "timestamp": datetime.now().isoformat(),
+                "relevant_domains": [d["domain_id"] for d in relevant_domains[:max_domains]]
+            },
+            "domain_contexts": {}
+        }
+        
+        for domain_info in relevant_domains[:max_domains]:
+            domain_id = domain_info["domain_id"]
+            domain = self.domains[domain_id]
+            
+            domain_context = domain.get_context_for_request(request_description)
+            context["domain_contexts"][domain_id] = domain_context
+        
+        # Cache result
+        self.context_cache[cache_key] = (context, datetime.now())
+        
+        return context
+    
+    def _analyze_request_relevance(self, request_description: str) -> List[Dict[str, Any]]:
+        """
+        Analyze request and determine domain relevance using semantic understanding
+        """
+        request_lower = request_description.lower()
+        domain_scores = []
+        
+        for domain_id, domain in self.domains.items():
+            score = self._calculate_domain_relevance(request_lower, domain)
+            
+            domain_scores.append({
+                "domain_id": domain_id,
+                "relevance_score": score,
+                "domain_type": domain.metadata.domain_type.value,
+                "priority": domain.metadata.priority.value
+            })
+        
+        # Sort by relevance score and priority
+        domain_scores.sort(key=lambda x: (x["relevance_score"], -x["priority"]), reverse=True)
+        
+        return domain_scores
+    
+    def _calculate_domain_relevance(self, request_text: str, domain: KnowledgeDomain) -> float:
+        """
+        Calculate domain relevance based on semantic understanding of capabilities
+        """
+        if isinstance(domain, VAPIXDomain):
+            # Check if request relates to cameras, video, surveillance, firmware, etc.
+            camera_indicators = [
+                "camera", "video", "surveillance", "axis", "vapix", "stream", "monitor",
+                "firmware", "version", "device", "ptz", "pan", "tilt", "zoom", "motion",
+                "event", "alarm", "recording"
             ]
             
-            for endpoint in discovery_endpoints:
-                try:
-                    response = requests.get(endpoint, timeout=10)
-                    if response.status_code == 200:
-                        api_spec = response.json()
-                        return self._parse_api_specification(api_spec)
-                except:
-                    continue
-            
-            # If no standard discovery, try basic endpoint enumeration
-            return await self._enumerate_api_endpoints(api_url)
-            
-        except Exception as e:
-            logger.error(f"API discovery failed for {api_url}: {e}")
-            return None
+            matches = sum(1 for indicator in camera_indicators if indicator in request_text)
+            return matches / len(camera_indicators) if camera_indicators else 0.0
+        
+        # Default scoring for unknown domains
+        return 0.0
     
-    def _parse_api_specification(self, api_spec: Dict[str, Any]) -> APIDiscoveryResult:
-        """Parse OpenAPI/Swagger specification"""
-        endpoints = []
-        capabilities = []
-        
-        # Parse OpenAPI 3.0 or Swagger 2.0 format
-        if "paths" in api_spec:
-            for path, methods in api_spec["paths"].items():
-                for method, details in methods.items():
-                    if isinstance(details, dict):
-                        endpoints.append({
-                            "path": path,
-                            "method": method.upper(),
-                            "description": details.get("description", ""),
-                            "parameters": self._extract_parameters(details),
-                            "responses": details.get("responses", {})
-                        })
-                        
-                        # Extract capabilities from tags or operation IDs
-                        if "tags" in details:
-                            capabilities.extend(details["tags"])
-        
-        return APIDiscoveryResult(
-            endpoints=endpoints,
-            capabilities=list(set(capabilities)),
-            authentication_methods=self._extract_auth_methods(api_spec),
-            rate_limits={},
-            documentation_urls=[],
-            examples=[]
-        )
-    
-    def _extract_parameters(self, endpoint_details: Dict[str, Any]) -> Dict[str, str]:
-        """Extract parameter information from endpoint details"""
-        parameters = {}
-        
-        if "parameters" in endpoint_details:
-            for param in endpoint_details["parameters"]:
-                param_name = param.get("name", "")
-                param_desc = param.get("description", "")
-                param_type = param.get("type", param.get("schema", {}).get("type", ""))
-                parameters[param_name] = f"{param_desc} (type: {param_type})"
-        
-        return parameters
-    
-    def _extract_auth_methods(self, api_spec: Dict[str, Any]) -> List[str]:
-        """Extract authentication methods from API specification"""
-        auth_methods = []
-        
-        # Check security definitions
-        security_defs = api_spec.get("securityDefinitions", api_spec.get("components", {}).get("securitySchemes", {}))
-        
-        for auth_name, auth_details in security_defs.items():
-            auth_type = auth_details.get("type", "")
-            if auth_type:
-                auth_methods.append(auth_type)
-        
-        return auth_methods
-    
-    async def _enumerate_api_endpoints(self, api_url: str) -> APIDiscoveryResult:
-        """Basic endpoint enumeration when no API spec is available"""
-        # This would implement basic endpoint discovery
-        # For now, return empty result
-        return APIDiscoveryResult(
-            endpoints=[],
-            capabilities=[],
-            authentication_methods=[],
-            rate_limits={},
-            documentation_urls=[],
-            examples=[]
-        )
-    
-    def _create_domain_from_discovery(self, domain_name: str, domain_type: KnowledgeDomainType, 
-                                    discovery: APIDiscoveryResult) -> KnowledgeDomain:
-        """Create a new knowledge domain from discovery results"""
-        # This would create a dynamic domain class
-        # For now, create a generic domain
-        class DiscoveredDomain(KnowledgeDomain):
-            def __init__(self, name: str, discovery_data: APIDiscoveryResult):
-                metadata = KnowledgeMetadata(
-                    domain_id=name.lower().replace(" ", "_"),
-                    domain_type=domain_type,
-                    version="1.0.0",
-                    last_updated=datetime.now(),
-                    size_bytes=len(str(discovery_data)),
-                    priority=ContextPriority.MEDIUM,
-                    keywords=discovery_data.capabilities,
-                    dependencies=[],
-                    performance_metrics={}
-                )
-                super().__init__(name, metadata)
-                self.discovery_data = discovery_data
-            
-            async def discover_capabilities(self) -> APIDiscoveryResult:
-                return self.discovery_data
-            
-            def get_context_for_request(self, request_keywords: List[str]) -> Dict[str, Any]:
-                return {
-                    "domain": self.domain_id,
-                    "endpoints": self.discovery_data.endpoints,
-                    "capabilities": self.discovery_data.capabilities
-                }
-            
-            def update_knowledge(self, new_knowledge: Dict[str, Any]) -> bool:
-                return True
-        
-        return DiscoveredDomain(domain_name, discovery)
-    
-    async def _persist_domain_knowledge(self, domain: KnowledgeDomain):
-        """Persist domain knowledge to disk"""
-        domain_file = self.catalog_dir / f"{domain.domain_id}.json"
-        
-        try:
-            knowledge_data = {
-                "metadata": asdict(domain.metadata),
-                "knowledge": domain.get_context_for_request([])  # Get all knowledge
+    def get_domain_list(self) -> List[Dict[str, Any]]:
+        """Get list of all registered domains"""
+        return [
+            {
+                "domain_id": domain_id,
+                "domain_type": metadata.domain_type.value,
+                "version": metadata.version,
+                "priority": metadata.priority.value,
+                "last_updated": metadata.last_updated.isoformat()
             }
-            
-            with open(domain_file, 'w') as f:
-                json.dump(knowledge_data, f, indent=2, default=str)
-                
-        except Exception as e:
-            logger.error(f"Failed to persist domain {domain.domain_id}: {e}")
+            for domain_id, metadata in self.domain_metadata.items()
+        ]
     
-    def analyze_request_context_needs(self, request: str) -> Dict[str, Any]:
-        """
-        Analyze a request to determine which knowledge domains are needed
-        This is the key intelligence for context optimization
-        """
-        request_lower = request.lower()
-        request_words = request_lower.split()
+    async def refresh_all_domains(self):
+        """Refresh capabilities for all domains"""
+        tasks = []
+        for domain_id in self.domains.keys():
+            tasks.append(self.discover_new_capabilities(domain_id))
         
-        relevant_domains = []
-        confidence_scores = {}
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Analyze each domain for relevance
-        for domain_id, domain in self.domains.items():
-            metadata = self.domain_metadata[domain_id]
-            
-            # Calculate relevance score based on keyword matching
-            keyword_matches = sum(1 for keyword in metadata.keywords 
-                                if keyword.lower() in request_lower)
-            
-            if keyword_matches > 0:
-                confidence = keyword_matches / len(metadata.keywords)
-                confidence_scores[domain_id] = confidence
-                
-                if confidence > 0.1:  # Threshold for inclusion
-                    relevant_domains.append({
-                        "domain_id": domain_id,
-                        "confidence": confidence,
-                        "priority": metadata.priority.value,
-                        "size_bytes": metadata.size_bytes
-                    })
-        
-        # Sort by confidence and priority
-        relevant_domains.sort(key=lambda x: (x["confidence"], -x["priority"]), reverse=True)
-        
-        return {
-            "relevant_domains": relevant_domains,
-            "confidence_scores": confidence_scores,
-            "estimated_context_size": sum(d["size_bytes"] for d in relevant_domains),
-            "request_keywords": request_words
-        }
+        successful = sum(1 for result in results if result is True)
+        logger.info(f"Refreshed {successful}/{len(tasks)} domains successfully")
     
-    def generate_optimized_context(self, request: str) -> str:
-        """
-        Generate optimized context for AI reasoning
-        Only includes relevant knowledge domains within size limits
-        """
-        start_time = datetime.now()
+    def clear_cache(self):
+        """Clear the context cache"""
+        self.context_cache.clear()
+        logger.info("Context cache cleared")
+
+# Global catalog instance
+_catalog_instance = None
+
+def get_service_catalog() -> DynamicServiceCatalog:
+    """Get the global service catalog instance"""
+    global _catalog_instance
+    if _catalog_instance is None:
+        _catalog_instance = DynamicServiceCatalog()
+    return _catalog_instance
+
+# Example usage and testing
+if __name__ == "__main__":
+    async def test_catalog():
+        catalog = get_service_catalog()
         
-        # Analyze what context is needed
-        context_analysis = self.analyze_request_context_needs(request)
+        # Test context retrieval
+        context = catalog.get_relevant_context("check firmware version on all axis cameras")
+        print(json.dumps(context, indent=2, default=str))
         
-        context_parts = []
-        current_size = 0
+        # Test domain discovery
+        await catalog.refresh_all_domains()
         
-        # Always include core services (highest priority)
-        core_context = self._get_core_services_context()
-        context_parts.append(core_context)
-        current_size += len(core_context)
-        
-        # Add relevant specialty domains within size limits
-        for domain_info in context_analysis["relevant_domains"]:
-            domain_id = domain_info["domain_id"]
-            
-            if current_size >= self.max_context_size:
-                break
-            
-            if domain_id in self.domains:
-                domain_context = self.domains[domain_id].get_context_for_request(
-                    context_analysis["request_keywords"]
-                )
-                
-                context_text = self._format_domain_context(domain_id, domain_context)
-                
-                if current_size + len(context_text) <= self.max_context_size:
-                    context_parts.append(context_text)
-                    current_size += len(context_text)
-        
-        # Track performance
-        generation_time = (datetime.now() - start_time).total_seconds()
-        self.performance_metrics["context_generation_time"].append(generation_time)
-        
-        return "\n\n".join(context_parts)
+        # List domains
+        domains = catalog.get_domain_list()
+        print(f"Registered domains: {len(domains)}")
+        for domain in domains:
+            print(f"  - {domain['domain_id']} ({domain['domain_type']})")
     
-    def _get_core_services_context(self) -> str:
-        """Get context for core OpsConductor services"""
-        # This would integrate with the enhanced service catalog
-        return """
-CORE OPSCONDUCTOR SERVICES:
-
-ASSET SERVICE (asset-service):
-Purpose: Manage infrastructure assets, credentials, and system inventory
-Key Capabilities: Asset discovery, credential management, target identification
-API: GET /api/v1/assets?os_type=Windows&environment=production
-
-AUTOMATION SERVICE (automation-service):
-Purpose: Execute commands and workflows on remote systems
-Key Capabilities: Remote command execution, workflow orchestration, multi-platform support
-API: POST /api/v1/automation/execute
-
-COMMUNICATION SERVICE (communication-service):
-Purpose: Handle notifications, alerts, and communication workflows
-Key Capabilities: Email notifications, template management, delivery tracking
-API: POST /api/v1/communication/notify
-
-CELERY-BEAT SCHEDULER:
-Purpose: Schedule and manage recurring automation tasks
-Key Capabilities: Cron scheduling, interval scheduling, task management
-API: POST /api/v1/scheduler/schedule
-        """
-    
-    def _format_domain_context(self, domain_id: str, context: Dict[str, Any]) -> str:
-        """Format domain context for AI consumption"""
-        formatted = f"\n{domain_id.upper().replace('_', ' ')} DOMAIN:\n"
-        
-        if "domain" in context:
-            formatted += f"Purpose: {context['domain']}\n"
-        
-        if "relevant_capabilities" in context:
-            formatted += "Capabilities:\n"
-            for capability in context["relevant_capabilities"]:
-                if isinstance(capability, dict) and "description" in capability:
-                    formatted += f"- {capability['description']}\n"
-        
-        if "service_info" in context:
-            service_info = context["service_info"]
-            if "base_url_pattern" in service_info:
-                formatted += f"Base URL: {service_info['base_url_pattern']}\n"
-            if "authentication" in service_info:
-                formatted += f"Authentication: {', '.join(service_info['authentication'])}\n"
-        
-        return formatted
-    
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get performance metrics for monitoring and optimization"""
-        return {
-            "total_domains": len(self.domains),
-            "average_context_generation_time": sum(self.performance_metrics["context_generation_time"]) / 
-                                             max(len(self.performance_metrics["context_generation_time"]), 1),
-            "cache_hit_rate": self.performance_metrics["cache_hit_rate"],
-            "domain_types": {
-                domain_type.value: sum(1 for metadata in self.domain_metadata.values() 
-                                     if metadata.domain_type == domain_type)
-                for domain_type in KnowledgeDomainType
-            }
-        }
-
-# Global instance
-dynamic_catalog = DynamicServiceCatalog()
-
-def get_dynamic_catalog() -> DynamicServiceCatalog:
-    """Get the global dynamic service catalog instance"""
-    return dynamic_catalog
+    asyncio.run(test_catalog())
