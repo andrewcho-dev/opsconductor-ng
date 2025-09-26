@@ -45,6 +45,7 @@ class KnowledgeMetadata:
     priority: ContextPriority
     dependencies: List[str]
     performance_metrics: Dict[str, Any]
+    keywords: List[str] = None
 
 @dataclass
 class APIDiscoveryResult:
@@ -306,6 +307,37 @@ class DynamicServiceCatalog:
         # Add VAPIX domain
         vapix_domain = VAPIXDomain()
         self.register_domain(vapix_domain)
+        
+        # Register core OpsConductor service domains
+        try:
+            import os
+            import sys
+            # Add the fulfillment_engine directory to path for imports
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            if current_dir not in sys.path:
+                sys.path.append(current_dir)
+            
+            from core_knowledge_domains import register_core_domains
+            register_core_domains(self)
+            logger.info("Registered core OpsConductor service domains")
+        except ImportError as e:
+            logger.warning(f"Could not load core domains: {e}")
+        
+        # Register system expertise domains
+        try:
+            from system_expertise_domains import register_system_expertise_domains
+            register_system_expertise_domains(self)
+            logger.info("Registered system expertise domains")
+        except ImportError as e:
+            logger.warning(f"Could not load system expertise domains: {e}")
+        
+        # Register PowerShell expertise domain
+        try:
+            from powershell_expertise_domain import register_powershell_expertise_domain
+            register_powershell_expertise_domain(self)
+            logger.info("Registered PowerShell expertise domain")
+        except ImportError as e:
+            logger.warning(f"Could not load PowerShell expertise domain: {e}")
         
         logger.info(f"Initialized {len(self.domains)} knowledge domains")
     

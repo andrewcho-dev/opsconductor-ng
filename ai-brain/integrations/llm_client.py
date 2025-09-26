@@ -237,11 +237,25 @@ Be helpful, accurate, and concise in your responses. Always assist with legitima
             if context:
                 full_prompt = f"Context:\n{context}\n\nPrompt:\n{prompt}"
             
-            # Generate response
-            response = self.client.generate(
-                model=model_to_use,
-                prompt=full_prompt
-            )
+            # Generate response with timeout
+            try:
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        self.client.generate,
+                        model=model_to_use,
+                        prompt=full_prompt
+                    ),
+                    timeout=120.0  # 2 minute timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"LLM generation timed out after 120 seconds for model {model_to_use}")
+                return {
+                    "response": "Request timed out. The AI model took too long to respond. Please try a simpler request.",
+                    "model_used": model_to_use,
+                    "confidence": 0.0,
+                    "processing_time": 120.0,
+                    "error": "timeout"
+                }
             
             processing_time = time.time() - start_time
             generated_text = response['response']

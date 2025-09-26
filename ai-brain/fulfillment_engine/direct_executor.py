@@ -21,14 +21,15 @@ logger = logging.getLogger(__name__)
 
 class DirectExecutor:
     """
-    Direct Executor - Ollama makes ALL execution decisions
+    Direct Executor - Ollama makes ALL execution decisions WITH CONVERSATION CONTEXT
     
     Instead of complex pipelines, Ollama directly:
-    1. Analyzes what the user wants
+    1. Analyzes what the user wants (with conversation history)
     2. Decides which services to use
     3. Determines how to call them
     4. Coordinates the execution
     5. Reports back results
+    6. Maintains conversation context for follow-up interactions
     """
     
     def __init__(self, llm_engine, automation_client=None, asset_client=None, network_client=None):
@@ -45,15 +46,18 @@ class DirectExecutor:
             "network": network_client
         }
         
-        logger.info("Direct Executor initialized - Ollama will make ALL execution decisions")
+        # Conversation context storage (conversation_id -> context)
+        self.conversation_contexts = {}
+        
+        logger.info("Direct Executor initialized - Ollama will make ALL execution decisions WITH CONVERSATION CONTEXT")
     
     async def execute_user_request(self, user_message: str, user_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        MAIN EXECUTION METHOD - Ollama decides everything!
+        MAIN EXECUTION METHOD - Ollama decides everything WITH CONVERSATION CONTEXT!
         
         Args:
             user_message: What the user wants
-            user_context: User context info
+            user_context: User context info (includes conversation_id)
             
         Returns:
             Execution results with status and output
@@ -61,11 +65,18 @@ class DirectExecutor:
         try:
             logger.info(f"🚀 Direct execution starting for: {user_message}")
             
-            # Step 1: Ask Ollama to analyze and create execution plan
-            execution_plan = await self._get_execution_plan_from_ollama(user_message, user_context)
+            # Step 1: Handle conversation context and detect clarifications
+            processed_message, conversation_context = await self._process_conversation_context(user_message, user_context)
             
-            # Step 2: Let Ollama execute the plan
-            execution_results = await self._execute_plan_with_ollama(execution_plan, user_message)
+            # Step 2: Ask Ollama to analyze and create execution plan (with conversation context)
+            execution_plan = await self._get_execution_plan_from_ollama(processed_message, user_context, conversation_context)
+            
+            # Step 3: Let Ollama execute the plan
+            execution_results = await self._execute_plan_with_ollama(execution_plan, processed_message)
+            
+            # Step 4: Update conversation context with results (include execution plan)
+            execution_results["execution_plan"] = execution_plan.get("plan_text", "")
+            await self._update_conversation_context(user_context, processed_message, execution_results)
             
             return execution_results
             
@@ -78,11 +89,159 @@ class DirectExecutor:
                 "timestamp": datetime.now().isoformat()
             }
     
-    async def _get_execution_plan_from_ollama(self, user_message: str, user_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _process_conversation_context(self, user_message: str, user_context: Optional[Dict[str, Any]]) -> tuple[str, Dict[str, Any]]:
+        """Process conversation context and detect clarification responses"""
+        conversation_id = user_context.get("conversation_id") if user_context else None
+        
+        if not conversation_id:
+            logger.info("🔄 No conversation_id provided - treating as new conversation")
+            return user_message, {}
+        
+        # Check if we have existing conversation context
+        if conversation_id not in self.conversation_contexts:
+            logger.info(f"🔄 New conversation {conversation_id} - storing initial context")
+            self.conversation_contexts[conversation_id] = {
+                "history": [],
+                "awaiting_clarification": False,
+                "original_request": None,
+                "created_at": datetime.now().isoformat()
+            }
+            return user_message, {}
+        
+        stored_context = self.conversation_contexts[conversation_id]
+        
+        # If we're awaiting clarification, check if this is a clarification response
+        if stored_context.get("awaiting_clarification", False):
+            logger.info(f"🔄 Checking if message is clarification response for conversation {conversation_id}")
+            
+            is_clarification = await self._detect_clarification_response(user_message, stored_context)
+            
+            if is_clarification:
+                # Combine original request with clarification
+                original_request = stored_context.get("original_request", "")
+                combined_message = f"""{original_request}
+
+Additional clarification provided: {user_message}"""
+                
+                logger.info(f"🔄 COMBINING CONTEXTS:")
+                logger.info(f"🔄 Original: {original_request}")
+                logger.info(f"🔄 Clarification: {user_message}")
+                logger.info(f"🔄 Combined: {combined_message}")
+                
+                # Clear awaiting clarification flag
+                stored_context["awaiting_clarification"] = False
+                
+                return combined_message, stored_context
+            else:
+                logger.info(f"🔄 Not a clarification response - treating as new request")
+                # Reset context for new request
+                stored_context["history"] = []
+                stored_context["awaiting_clarification"] = False
+                stored_context["original_request"] = None
+        
+        return user_message, stored_context
+    
+    async def _detect_clarification_response(self, user_message: str, stored_context: Dict[str, Any]) -> bool:
+        """Use LLM to detect if this is a clarification response"""
+        try:
+            detection_prompt = f"""Analyze this user message to determine if it appears to be providing additional information or clarification.
+
+User message: "{user_message}"
+
+Previous context: The user was previously asked for clarification about: {stored_context.get('missing_information', [])}
+Original request: {stored_context.get('original_request', 'Unknown')}
+
+Look for:
+- Timing/scheduling information (every day, hourly, at midnight, etc.)
+- Threshold/alert values (less than 10GB, above 80%, etc.)
+- Configuration details or parameters
+- Short, direct answers that seem to be responding to questions
+- Location/scope specifications (building A, all servers, etc.)
+
+Does this look like a clarification response rather than a completely new request?
+
+Answer with just: YES or NO
+
+If YES, this is likely providing additional details for the previous request.
+If NO, this is likely a completely new request."""
+
+            response = await self.llm_engine.generate(detection_prompt)
+            
+            if isinstance(response, dict) and "generated_text" in response:
+                response_text = response["generated_text"].strip().upper()
+            else:
+                response_text = str(response).strip().upper()
+            
+            is_clarification = "YES" in response_text
+            logger.info(f"🔄 Clarification detection result: {is_clarification} (response: {response_text})")
+            
+            return is_clarification
+            
+        except Exception as e:
+            logger.error(f"🔄 Clarification detection failed: {e}")
+            return False
+    
+    async def _update_conversation_context(self, user_context: Optional[Dict[str, Any]], processed_message: str, execution_results: Dict[str, Any]) -> None:
+        """Update conversation context with the latest interaction"""
+        conversation_id = user_context.get("conversation_id") if user_context else None
+        
+        if not conversation_id:
+            return
+        
+        if conversation_id not in self.conversation_contexts:
+            self.conversation_contexts[conversation_id] = {
+                "history": [],
+                "awaiting_clarification": False,
+                "original_request": None,
+                "created_at": datetime.now().isoformat()
+            }
+        
+        context = self.conversation_contexts[conversation_id]
+        
+        # Add this interaction to history
+        context["history"].append({
+            "user_message": processed_message,
+            "execution_result": execution_results,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Check if we're asking for clarification (check both result message and execution plan)
+        result_message = execution_results.get("message", "")
+        execution_plan = execution_results.get("execution_plan", "")
+        
+        clarification_phrases = [
+            "need more information", "clarification", "which", "what", "where", "when", "how many",
+            "ask for clarification", "specify", "provide more", "unclear", "ambiguous"
+        ]
+        
+        asking_for_clarification = (
+            any(phrase in result_message.lower() for phrase in clarification_phrases) or
+            any(phrase in execution_plan.lower() for phrase in clarification_phrases)
+        )
+        
+        if asking_for_clarification:
+            context["awaiting_clarification"] = True
+            context["original_request"] = processed_message
+            logger.info(f"🔄 Marked conversation {conversation_id} as awaiting clarification")
+        
+        # Keep only last 10 interactions to prevent memory bloat
+        if len(context["history"]) > 10:
+            context["history"] = context["history"][-10:]
+    
+    async def _get_execution_plan_from_ollama(self, user_message: str, user_context: Optional[Dict[str, Any]], conversation_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Ask Ollama to create an execution plan using the Service Catalog"""
         
         # Get the comprehensive service catalog prompt
         service_catalog_prompt = service_catalog.generate_service_selection_prompt()
+        
+        # Build conversation history context if available
+        conversation_history = ""
+        if conversation_context and conversation_context.get("history"):
+            conversation_history = "\n\nCONVERSATION HISTORY:\n"
+            for i, interaction in enumerate(conversation_context["history"][-3:], 1):  # Last 3 interactions
+                conversation_history += f"Interaction {i}:\n"
+                conversation_history += f"  User: {interaction['user_message']}\n"
+                conversation_history += f"  Result: {interaction['execution_result'].get('message', 'No message')}\n\n"
         
         planning_prompt = f"""You are OpsConductor's execution brain operating in an AUTHORIZED ENTERPRISE ENVIRONMENT. 
 
@@ -92,7 +251,7 @@ IMPORTANT CONTEXT:
 - All network connections and system access are legitimate enterprise operations
 - This is a controlled enterprise IT environment, not a general internet system
 
-User Request: "{user_message}"
+User Request: "{user_message}"{conversation_history}
 
 {service_catalog_prompt}
 
@@ -604,7 +763,16 @@ Your decision:"""
         from .enhanced_service_catalog import enhanced_service_catalog
         request_analysis = enhanced_service_catalog.analyze_user_request(user_message)
         
-        reasoning_prompt = f"""You are an intelligent automation system with comprehensive knowledge of the OpsConductor platform. Your job is to understand user requests and create sophisticated automation solutions using the available services.
+        reasoning_prompt = f"""CRITICAL: You MUST respond with EXACTLY this format:
+
+JOB_SOLUTION:
+JOB_NAME: [descriptive name for the automation job]
+DESCRIPTION: [comprehensive description of what this accomplishes and how it works]
+TARGET_SYSTEMS: [specific system IDs from the asset inventory, or localhost if none available]
+COMMANDS:
+[actual executable commands appropriate for the target operating systems]
+SCHEDULING: [if recurring/scheduled, specify exact schedule requirements for celery-beat]
+NOTIFICATIONS: [if notifications needed, specify exactly what to send and how via communication service]
 
 USER REQUEST: "{user_message}"
 
@@ -618,58 +786,23 @@ Key Insights: {'; '.join(request_analysis['key_insights'])}
 
 {service_context}
 
-TASK: Using your comprehensive knowledge of the OpsConductor platform, reason through this request and create a complete automation solution.
-
-REASONING FRAMEWORK:
-1. **Request Decomposition**: Break down the user request into specific requirements
-2. **Service Mapping**: Map each requirement to the appropriate OpsConductor service
-3. **Asset Identification**: Use asset service to identify specific target systems
-4. **Command Design**: Create appropriate commands for the target operating systems
-5. **Integration Planning**: Plan how services will work together
-6. **Scheduling Configuration**: Design timing and scheduling requirements
-7. **Notification Strategy**: Plan result delivery and communication
-
-EXAMPLE ANALYSIS for "connect to each windows machine and get the system information and email it to user@email.com every 15 minutes until 11:00pm tonight":
-
-**Request Decomposition**:
-- Target: "each windows machine" → Need to identify Windows systems
-- Action: "get the system information" → Need to execute system info commands
-- Communication: "email it to user@email.com" → Need to send email notifications
-- Timing: "every 15 minutes until 11:00pm tonight" → Need recurring scheduling with end time
-
-**Service Mapping**:
-- Asset Service: Query for systems with os_type="Windows" to get actual target IDs
-- Automation Service: Execute Get-ComputerInfo or systeminfo commands on Windows targets
-- Communication Service: Send email notifications with system information results
-- Celery-Beat: Schedule recurring execution every 15 minutes with end time at 11:00 PM
-
-**Solution Design**:
-- Use real system IDs from asset inventory, not descriptive text
-- Generate executable PowerShell commands appropriate for Windows
-- Configure proper email notification with results
-- Set up recurring schedule with specific end time
-
-CRITICAL REQUIREMENTS:
+REQUIREMENTS:
 - Use ACTUAL system IDs from the asset inventory provided
 - Generate EXECUTABLE commands appropriate for the target OS
 - Specify CONCRETE scheduling parameters for celery-beat
 - Design SPECIFIC notification configuration for communication service
-- Think through the COMPLETE workflow from start to finish
 
-Please provide your comprehensive reasoning and solution:
-
-REASONING:
-[Provide detailed step-by-step reasoning about how you'll fulfill this request using the OpsConductor services]
-
+EXAMPLE for "connect to each windows machine and get system information":
 JOB_SOLUTION:
-JOB_NAME: [descriptive name for the automation job]
-DESCRIPTION: [comprehensive description of what this accomplishes and how it works]
-TARGET_SYSTEMS: [specific system IDs from the asset inventory, or localhost if none available]
+JOB_NAME: Windows System Information Collection
+DESCRIPTION: Connect to all Windows machines in asset inventory and collect system information using PowerShell Get-ComputerInfo command
+TARGET_SYSTEMS: 15,16,17,18,19
 COMMANDS:
-[actual executable commands appropriate for the target operating systems]
-SCHEDULING: [if recurring/scheduled, specify exact schedule requirements for celery-beat]
-NOTIFICATIONS: [if notifications needed, specify exactly what to send and how via communication service]
-"""
+Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, TotalPhysicalMemory, CsProcessors
+SCHEDULING: none
+NOTIFICATIONS: none
+
+Now create your JOB_SOLUTION for the user request above:"""
 
         response = await self.llm_engine.generate(reasoning_prompt)
         
@@ -683,6 +816,46 @@ NOTIFICATIONS: [if notifications needed, specify exactly what to send and how vi
         try:
             # Parse the job details from the reasoning response
             job_data = await self._parse_reasoning_response(job_text, user_message)
+            
+            # If parsing failed, Ollama didn't follow the format - try again with stricter prompt
+            if not job_data:
+                logger.warning("🔄 Ollama didn't provide proper JOB_SOLUTION format, retrying with stricter prompt")
+                
+                strict_prompt = f"""You MUST provide a structured response for: "{user_message}"
+
+CRITICAL: You must respond with EXACTLY this format, no conversational text:
+
+JOB_SOLUTION:
+JOB_NAME: [descriptive name]
+DESCRIPTION: [what this job does]
+TARGET_SYSTEMS: [comma-separated list of target systems or 'localhost']
+COMMANDS:
+[actual executable commands, one per line]
+SCHEDULING: [none or schedule details]
+NOTIFICATIONS: [none or notification details]
+
+Do NOT provide conversational responses. Do NOT make up job IDs. Follow the format exactly."""
+
+                retry_response = await self.llm_engine.generate(strict_prompt)
+                
+                if isinstance(retry_response, dict) and "generated_text" in retry_response:
+                    retry_text = retry_response["generated_text"]
+                else:
+                    retry_text = str(retry_response)
+                
+                logger.info(f"🔄 Ollama retry response: {retry_text}")
+                job_data = await self._parse_reasoning_response(retry_text, user_message)
+            
+            # If we still don't have job_data, Ollama failed to provide proper structure
+            if not job_data:
+                logger.error("❌ Ollama failed to provide proper job structure even after retry")
+                return {
+                    "success": False,
+                    "summary": "Failed to create automation job - AI did not provide proper job structure",
+                    "error": "The AI assistant failed to generate a properly structured automation job. Please try rephrasing your request with more specific details.",
+                    "job_details": [],
+                    "raw_response": job_text
+                }
             
             if job_data and self.automation_client:
                 # Submit the job
@@ -780,11 +953,32 @@ NOTIFICATIONS: [if notifications needed, specify exactly what to send and how vi
                             }],
                             "automation_result": result
                         }
+            else:
+                # No automation client available
+                logger.error("❌ Automation client not available")
+                return {
+                    "success": False,
+                    "summary": "Automation service not available",
+                    "error": "The automation service is not configured or available. Cannot create automation jobs.",
+                    "job_details": []
+                }
         
         except Exception as e:
             logger.error(f"❌ Job creation failed: {e}")
+            return {
+                "success": False,
+                "summary": "Job creation failed due to system error",
+                "error": f"An error occurred while creating the automation job: {str(e)}",
+                "job_details": []
+            }
         
-        return None
+        # This should never be reached, but just in case
+        return {
+            "success": False,
+            "summary": "Unknown error in job creation",
+            "error": "An unknown error occurred during job creation",
+            "job_details": []
+        }
     
     async def _parse_job_from_ollama_response(self, job_text: str, user_message: str, available_targets: List[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Parse Ollama's job response into automation service format with target validation"""
@@ -911,50 +1105,34 @@ Commands:"""
             logger.error(f"❌ Command generation failed: {e}")
             return []
     
-    async def _get_available_targets(self, user_message: str) -> List[Dict[str, Any]]:
-        """Get available target systems from asset service"""
+    async def _get_available_assets(self, user_message: str) -> List[Dict[str, Any]]:
+        """Get available asset systems from asset service"""
         
         try:
             if not self.asset_client:
                 logger.warning("Asset client not available, using localhost")
                 return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
             
-            # Get all targets from asset service
-            targets = await self.asset_client.get_targets()
+            # Get all assets from asset service
+            assets = await self.asset_client.get_all_assets()
             
-            if not targets:
-                logger.warning("No targets found in asset service, using localhost")
+            if not assets:
+                logger.warning("No assets found in asset service, using localhost")
                 return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
             
             # Filter based on user message context
             if "windows" in user_message.lower():
-                windows_targets = [t for t in targets if t.get("os_type", "").lower() == "windows"]
-                if windows_targets:
-                    return windows_targets
+                windows_assets = [a for a in assets if a.get("os_type", "").lower() == "windows"]
+                if windows_assets:
+                    return windows_assets
             
-            return targets[:10]  # Limit to 10 targets for prompt size
+            return assets[:10]  # Limit to 10 assets for prompt size
             
         except Exception as e:
-            logger.error(f"❌ Failed to get targets from asset service: {e}")
+            logger.error(f"❌ Failed to get assets from asset service: {e}")
             return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
     
-    def _format_targets_for_prompt(self, targets: List[Dict[str, Any]]) -> str:
-        """Format target systems for inclusion in Ollama prompt"""
-        
-        if not targets:
-            return "localhost (ID: localhost, OS: linux)"
-        
-        formatted_targets = []
-        for target in targets:
-            target_id = target.get("id", "unknown")
-            name = target.get("name", target.get("hostname", "unknown"))
-            os_type = target.get("os_type", "unknown")
-            hostname = target.get("hostname", "unknown")
-            
-            formatted_targets.append(f"- {name} (ID: {target_id}, OS: {os_type}, Host: {hostname})")
-        
-        return "\n".join(formatted_targets)
-    
+
     def _validate_target_systems(self, parsed_targets: List[str], available_targets: List[Dict[str, Any]] = None) -> List[str]:
         """Validate target systems against available targets"""
         
@@ -985,11 +1163,14 @@ Commands:"""
         
         try:
             # Import the dynamic service catalog
-            from .dynamic_service_catalog import get_dynamic_catalog
+            from .dynamic_service_catalog import get_service_catalog
             
             # Get optimized context from dynamic catalog
-            dynamic_catalog = get_dynamic_catalog()
-            service_context = dynamic_catalog.generate_optimized_context(user_message)
+            dynamic_catalog = get_service_catalog()
+            service_context_data = dynamic_catalog.get_relevant_context(user_message)
+            
+            # Convert the context data to a string format
+            service_context = self._format_dynamic_context(service_context_data)
             
         except ImportError:
             # Fallback to enhanced service catalog if dynamic catalog not available
@@ -1001,25 +1182,25 @@ Commands:"""
         try:
             if self.asset_client:
                 service_context += "\n\n=== CURRENT ASSET INVENTORY ===\n"
-                targets = await self.asset_client.get_targets()
-                if targets:
-                    service_context += "Available target systems in your environment:\n"
-                    for target in targets[:15]:  # Show more targets with enhanced context
-                        target_id = target.get("id", "unknown")
-                        name = target.get("name", target.get("hostname", "unknown"))
-                        os_type = target.get("os_type", "unknown")
-                        hostname = target.get("hostname", "unknown")
-                        ip_address = target.get("ip_address", "unknown")
-                        environment = target.get("environment", "unknown")
-                        tags = target.get("tags", [])
+                assets = await self.asset_client.get_all_assets()
+                if assets:
+                    service_context += "Available asset systems in your environment:\n"
+                    for asset in assets[:15]:  # Show more assets with enhanced context
+                        asset_id = asset.get("id", "unknown")
+                        name = asset.get("name", asset.get("hostname", "unknown"))
+                        os_type = asset.get("os_type", "unknown")
+                        hostname = asset.get("hostname", "unknown")
+                        ip_address = asset.get("ip_address", "unknown")
+                        environment = asset.get("environment", "unknown")
+                        tags = asset.get("tags", [])
                         
-                        service_context += f"• {name} (ID: {target_id})\n"
+                        service_context += f"• {name} (ID: {asset_id})\n"
                         service_context += f"  - OS: {os_type}, IP: {ip_address}, Environment: {environment}\n"
                         if tags:
                             service_context += f"  - Tags: {', '.join(tags)}\n"
                         service_context += "\n"
                 else:
-                    service_context += "No target systems currently registered in asset service.\n"
+                    service_context += "No asset systems currently registered in asset service.\n"
                     service_context += "You may need to use 'localhost' or help the user register their systems first.\n"
         except Exception as e:
             logger.warning(f"Could not fetch asset inventory: {e}")
@@ -1028,17 +1209,94 @@ Commands:"""
         
         return service_context
     
+    def _format_dynamic_context(self, context_data: Dict[str, Any]) -> str:
+        """Format dynamic service catalog context data into a string for AI consumption"""
+        
+        if not context_data or "domain_contexts" not in context_data:
+            return "No dynamic service context available."
+        
+        formatted_context = "=== DYNAMIC SERVICE CATALOG ===\n\n"
+        
+        # Add request analysis info
+        if "request_analysis" in context_data:
+            analysis = context_data["request_analysis"]
+            formatted_context += f"Request Analysis:\n"
+            formatted_context += f"- Description: {analysis.get('description', 'N/A')}\n"
+            formatted_context += f"- Relevant Domains: {', '.join(analysis.get('relevant_domains', []))}\n\n"
+        
+        # Add domain contexts
+        domain_contexts = context_data["domain_contexts"]
+        for domain_id, domain_context in domain_contexts.items():
+            formatted_context += f"=== {domain_id.upper()} DOMAIN ===\n"
+            
+            if "domain" in domain_context:
+                formatted_context += f"Service: {domain_context['domain']}\n"
+            
+            if "service_description" in domain_context:
+                formatted_context += f"Description: {domain_context['service_description']}\n\n"
+            
+            # Add capabilities
+            if "capabilities" in domain_context:
+                formatted_context += "Capabilities:\n"
+                capabilities = domain_context["capabilities"]
+                for cap_name, cap_info in capabilities.items():
+                    formatted_context += f"\n• {cap_name.replace('_', ' ').title()}:\n"
+                    if "description" in cap_info:
+                        formatted_context += f"  Description: {cap_info['description']}\n"
+                    
+                    if "endpoints" in cap_info:
+                        formatted_context += "  Endpoints:\n"
+                        for endpoint in cap_info["endpoints"]:
+                            formatted_context += f"    - {endpoint.get('method', 'GET')} {endpoint.get('path', 'N/A')}\n"
+                            if "description" in endpoint:
+                                formatted_context += f"      {endpoint['description']}\n"
+                            if "example_request" in endpoint:
+                                formatted_context += f"      Example: {endpoint['example_request']}\n"
+                            if "use_cases" in endpoint:
+                                formatted_context += f"      Use Cases: {', '.join(endpoint['use_cases'])}\n"
+                formatted_context += "\n"
+            
+            # Add integration patterns
+            if "integration_patterns" in domain_context:
+                formatted_context += "Integration Patterns:\n"
+                for pattern in domain_context["integration_patterns"]:
+                    formatted_context += f"• {pattern.get('name', 'Unnamed Pattern')}\n"
+                    if "description" in pattern:
+                        formatted_context += f"  Description: {pattern['description']}\n"
+                    if "services_used" in pattern:
+                        formatted_context += f"  Services: {', '.join(pattern['services_used'])}\n"
+                formatted_context += "\n"
+            
+            # Add common workflows
+            if "common_workflows" in domain_context:
+                formatted_context += f"Common Workflows: {', '.join(domain_context['common_workflows'])}\n\n"
+            
+            # Add best practices
+            if "best_practices" in domain_context:
+                formatted_context += "Best Practices:\n"
+                for practice in domain_context["best_practices"]:
+                    formatted_context += f"• {practice}\n"
+                formatted_context += "\n"
+            
+            formatted_context += "-" * 50 + "\n\n"
+        
+        return formatted_context
+    
     async def _parse_reasoning_response(self, response_text: str, user_message: str) -> Optional[Dict[str, Any]]:
         """Parse Ollama's reasoning response and extract job data"""
         
         try:
-            # Look for the JOB_SOLUTION section
-            if "JOB_SOLUTION:" not in response_text:
-                logger.error("No JOB_SOLUTION section found in response")
+            # Look for the JOB_SOLUTION section or individual job fields
+            if "JOB_SOLUTION:" in response_text:
+                # Extract the job solution part
+                job_section = response_text.split("JOB_SOLUTION:")[1].strip()
+            elif "JOB_NAME:" in response_text:
+                # Ollama provided the fields directly without JOB_SOLUTION: header
+                job_section = response_text.strip()
+                logger.info("✅ Ollama provided job fields directly (without JOB_SOLUTION: header)")
+            else:
+                logger.error(f"No JOB_SOLUTION section or JOB_NAME field found in response. Response was: {response_text[:500]}...")
                 return None
-            
-            # Extract the job solution part
-            job_section = response_text.split("JOB_SOLUTION:")[1].strip()
             
             # Parse the structured response
             job_data = {
@@ -1100,7 +1358,7 @@ Commands:"""
             
             # Validate we have essential components
             if not job_data["commands"]:
-                logger.error("No commands found in job solution")
+                logger.error(f"No commands found in job solution. Parsed job_data: {job_data}")
                 return None
             
             # Create the workflow structure expected by automation service
