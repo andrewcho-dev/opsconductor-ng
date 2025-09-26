@@ -393,16 +393,18 @@ You have access to the following specialized services. Choose the BEST service f
 **WHEN TO USE**: ANY network-related task
 **API**: /api/v1/diagnostics/ping, /api/v1/analysis/start-capture
 
-## 🤖 AUTOMATION-SERVICE (Port: 3002)
-**BEST FOR**: System administration, command execution, workflows
+## 🤖 AUTOMATION-SERVICE (Port: 3003)
+**BEST FOR**: System administration, command execution, workflows, PowerShell commands, remote execution
 **NETWORK ACCESS**: Container network (through nginx proxy)
-**USE FOR**: service management, file operations, system commands, remote execution
+**USE FOR**: service management, file operations, system commands, remote execution, PowerShell, directory listings, Windows commands
 **CAPABILITIES**:
 - Execute commands on remote systems (SSH/PowerShell)
 - Multi-step workflow orchestration
 - System administration tasks
 - Job queuing and management
-**WHEN TO USE**: System administration, service management, file operations
+- Remote Windows PowerShell execution
+- Directory listings and file operations
+**WHEN TO USE**: System administration, service management, file operations, PowerShell commands, remote command execution, directory listings
 **API**: /api/v1/jobs, /api/v1/executions
 
 ## ⏰ CELERY-BEAT (Scheduler)
@@ -416,7 +418,7 @@ You have access to the following specialized services. Choose the BEST service f
 **WHEN TO USE**: ANY scheduling needs (recurring, periodic, future execution)
 **WHEN NOT TO USE**: Immediate execution (use automation-service)
 
-## 📦 ASSET-SERVICE (Port: 3003)
+## 📦 ASSET-SERVICE (Port: 3002)
 **BEST FOR**: Asset management, credential storage, system inventory
 **USE FOR**: managing infrastructure assets, storing credentials, system discovery
 **CAPABILITIES**:

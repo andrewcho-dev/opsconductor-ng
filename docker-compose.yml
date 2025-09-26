@@ -166,7 +166,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:3001
       ASSET_SERVICE_URL: http://asset-service:3002
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
     depends_on:
       postgres:
         condition: service_healthy
@@ -450,7 +450,9 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       HTTP_PROXY: http://nginx:8080
       HTTPS_PROXY: http://nginx:8080
-      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
+      SERVICE_NAME: asset-service
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+      ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
     depends_on:
       postgres:
         condition: service_healthy
@@ -486,7 +488,9 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
       HTTP_PROXY: http://nginx:8080
       HTTPS_PROXY: http://nginx:8080
-      ENCRYPTION_KEY: Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=
+      SERVICE_NAME: asset-service
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+      ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
     depends_on:
       postgres:
         condition: service_healthy

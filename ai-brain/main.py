@@ -87,7 +87,7 @@ service = AIService()
 
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
+default_model = os.getenv("DEFAULT_MODEL", "codellama:7b")
 llm_engine = LLMEngine(ollama_host, default_model)
 
 # Initialize simplified intent brain system
