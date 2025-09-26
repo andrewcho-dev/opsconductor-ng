@@ -38,6 +38,51 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
+  # Keycloak Identity and Access Management
+  keycloak:
+    build: ./keycloak
+    container_name: opsconductor-keycloak
+    ports:
+      - "8090:8080"  # Keycloak admin and auth port (mapped to 8090 to avoid conflict)
+    environment:
+      # Database configuration
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/opsconductor
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres123
+      KC_DB_SCHEMA: keycloak
+      
+      # Admin user configuration
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      
+      # Keycloak configuration
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_PROXY: edge
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+      
+      # Import configuration
+      KC_IMPORT_REALM: false
+    command: 
+      - start-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
   # Kong API Gateway
   kong:
     build: ./kong
@@ -85,6 +130,10 @@ services:
       DB_SCHEMA: identity
       REDIS_URL: redis://redis:6379/1
       JWT_SECRET_KEY: your-secret-key-here
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: opsconductor
+      KEYCLOAK_CLIENT_ID: opsconductor-frontend
+      KEYCLOAK_CLIENT_SECRET: frontend-secret-key-2024
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +143,7 @@ services:
       - opsconductor-net
     volumes:
       - ./identity-service/main.py:/app/main.py
+      - ./identity-service/keycloak_adapter.py:/app/keycloak_adapter.py
       - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -597,6 +647,7 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  keycloak_data:
   scheduler_data:
   chromadb_data:
   ollama_models:

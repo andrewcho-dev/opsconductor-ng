@@ -13,6 +13,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
+from keycloak_adapter import KeycloakAdapter
 
 # Temporary: Define permissions locally until RBAC middleware is working
 class PERMISSIONS:
@@ -126,6 +127,7 @@ class LoginResponse(BaseModel):
 class IdentityService(BaseService):
     def __init__(self):
         super().__init__("identity-service", "1.0.0", 3001)
+        self.keycloak = KeycloakAdapter()
         self._setup_routes()
 
     def _setup_routes(self):
@@ -137,68 +139,31 @@ class IdentityService(BaseService):
         
         @self.app.post("/auth/login", response_model=LoginResponse)
         async def login(login_data: LoginRequest):
-            """Authenticate user and return tokens"""
+            """Authenticate user via Keycloak and return tokens"""
             try:
+                # Authenticate with Keycloak
+                auth_result = await self.keycloak.authenticate_user(
+                    login_data.username, 
+                    login_data.password
+                )
+                
+                if not auth_result:
+                    raise HTTPException(status_code=401, detail="Invalid credentials")
+                
+                # Update last login in local database
                 async with self.db.pool.acquire() as conn:
-                    # Get user with password hash and role information
-                    row = await conn.fetchrow("""
-                        SELECT u.id, u.username, u.email, u.password_hash, u.is_admin, u.is_active,
-                               r.name as role_name, r.permissions
-                        FROM identity.users u
-                        LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
-                        LEFT JOIN identity.roles r ON ur.role_id = r.id
-                        WHERE u.username = $1 AND u.is_active = true
-                    """, login_data.username)
-                    
-                    if not row:
-                        raise HTTPException(status_code=401, detail="Invalid credentials")
-                    
-                    # Verify password (simplified for demo)
-                    # In real implementation, use proper password hashing
-                    if login_data.password != "admin123":  # Demo password
-                        raise HTTPException(status_code=401, detail="Invalid credentials")
-                    
-                    # Update last login
                     await conn.execute(
-                        "UPDATE identity.users SET last_login = CURRENT_TIMESTAMP WHERE id = $1",
-                        row['id']
+                        "UPDATE identity.users SET last_login = CURRENT_TIMESTAMP WHERE username = $1",
+                        login_data.username
                     )
-                    
-                    # Get user permissions
-                    permissions = []
-                    role_name = row['role_name']  # Role should always be assigned via RBAC
-                    if row['permissions']:
-                        import json
-                        permissions = json.loads(row['permissions']) if isinstance(row['permissions'], str) else row['permissions']
-                    
-                    # Generate tokens (simplified for demo)
-                    import jwt
-                    import time
-                    
-                    payload = {
-                        "user_id": row['id'],
-                        "username": row['username'],
-                        "email": row['email'],
-                        "role": role_name,
-                        "permissions": permissions,
-                        "exp": int(time.time()) + 3600  # 1 hour
-                    }
-                    
-                    access_token = jwt.encode(payload, "secret", algorithm="HS256")
-                    refresh_token = jwt.encode({**payload, "exp": int(time.time()) + 86400}, "secret", algorithm="HS256")
-                    
-                    return LoginResponse(
-                        access_token=access_token,
-                        refresh_token=refresh_token,
-                        expires_in=3600,
-                        user={
-                            "id": row['id'],
-                            "username": row['username'],
-                            "email": row['email'],
-                            "role": role_name,
-                            "permissions": permissions
-                        }
-                    )
+                
+                return LoginResponse(
+                    access_token=auth_result["access_token"],
+                    refresh_token=auth_result["refresh_token"],
+                    expires_in=auth_result["expires_in"],
+                    user=auth_result["user"]
+                )
+                
             except HTTPException:
                 raise
             except Exception as e:
@@ -210,7 +175,7 @@ class IdentityService(BaseService):
 
         @self.app.get("/auth/me", response_model=dict)
         async def get_current_user(request: Request):
-            """Get current user info from token"""
+            """Get current user info from Keycloak token"""
             try:
                 # Extract token from Authorization header
                 auth_header = request.headers.get("authorization")
@@ -219,53 +184,16 @@ class IdentityService(BaseService):
                 
                 token = auth_header.split(" ")[1]
                 
-                # Decode JWT token (simplified for demo)
-                import jwt
-                try:
-                    payload = jwt.decode(token, "secret", algorithms=["HS256"])
-                    user_id = payload.get("user_id")
-                    
-                    if not user_id:
-                        raise HTTPException(status_code=401, detail="Invalid token")
-                    
-                    # Get fresh user data with role and permissions
-                    async with self.db.pool.acquire() as conn:
-                        row = await conn.fetchrow("""
-                            SELECT u.id, u.username, u.email, u.first_name, u.last_name, 
-                                   u.is_active, r.name as role_name, r.permissions
-                            FROM identity.users u
-                            LEFT JOIN identity.user_roles ur ON u.id = ur.user_id
-                            LEFT JOIN identity.roles r ON ur.role_id = r.id
-                            WHERE u.id = $1 AND u.is_active = true
-                        """, user_id)
-                        
-                        if not row:
-                            raise HTTPException(status_code=401, detail="User not found or inactive")
-                        
-                        # Get user permissions
-                        permissions = []
-                        role_name = row['role_name']  # Role should always be assigned via RBAC
-                        if row['permissions']:
-                            import json
-                            permissions = json.loads(row['permissions']) if isinstance(row['permissions'], str) else row['permissions']
-                        
-                        return {
-                            "success": True,
-                            "data": {
-                                "id": row['id'],
-                                "username": row['username'],
-                                "email": row['email'],
-                                "first_name": row['first_name'],
-                                "last_name": row['last_name'],
-                                "role": role_name,
-                                "permissions": permissions
-                            }
-                        }
-                        
-                except jwt.ExpiredSignatureError:
-                    raise HTTPException(status_code=401, detail="Token expired")
-                except jwt.InvalidTokenError:
-                    raise HTTPException(status_code=401, detail="Invalid token")
+                # Validate token with Keycloak
+                user_info = await self.keycloak.decode_token(token)
+                
+                if not user_info:
+                    raise HTTPException(status_code=401, detail="Invalid or expired token")
+                
+                return {
+                    "success": True,
+                    "data": user_info
+                }
                     
             except HTTPException:
                 raise

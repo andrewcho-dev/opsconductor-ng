@@ -8,6 +8,7 @@ CREATE SCHEMA IF NOT EXISTS assets;
 CREATE SCHEMA IF NOT EXISTS automation;
 CREATE SCHEMA IF NOT EXISTS communication;
 CREATE SCHEMA IF NOT EXISTS network_analysis;
+CREATE SCHEMA IF NOT EXISTS keycloak;
 
 -- ============================================================================
 -- IDENTITY SERVICE SCHEMA
