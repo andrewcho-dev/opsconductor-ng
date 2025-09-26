@@ -160,42 +160,26 @@ Be specific about which services to use and what actions to take. If you need to
                             previous_results_summary += f"  - {detail}\n"
             
             # Ask Ollama what to do next
-            next_step_prompt = f"""You are executing a multi-step job for the user request: "{original_message}"
-
-Your original plan was:
-{plan_text}
+            next_step_prompt = f"""You are executing: "{original_message}"
 
 {previous_results_summary}
 
-{service_catalog_prompt}
+DECISION REQUIRED: What should happen next?
 
-CRITICAL DECISION POINT:
-Based on the user's request and any previous results, what should happen next?
+You MUST respond with EXACTLY ONE line starting with one of these:
 
-MANDATORY RESPONSE FORMAT - You have THREE options:
+COMPLETE: [summary] - if all work is done
+NEXT STEP: [service] - [action] - if more work needed  
+CLARIFICATION: [question] - if you need info
 
-OPTION 1 - If the job is complete and all services have been executed:
-COMPLETE: [brief summary of what was accomplished]
+Services available:
+- asset-service: Query asset inventory
+- automation-service: Execute commands on systems
+- network-analyzer-service: Network testing
 
-OPTION 2 - If more steps are needed to fulfill the request:
-NEXT STEP: [service-name] - [specific action to take]
+For "{original_message}" you need to start by finding the cameras first.
 
-OPTION 3 - If you cannot determine what to do or need more information:
-CLARIFICATION: I need more information about [what you need clarified]
-
-Available services:
-- automation-service: Execute commands/scripts on remote systems
-- network-analyzer-service: Network connectivity testing and diagnostics  
-- asset-service: Query infrastructure asset inventory
-
-CRITICAL INSTRUCTIONS:
-- Your response MUST start with exactly one of: "COMPLETE:", "NEXT STEP:", or "CLARIFICATION:"
-- If you cannot follow this format, use "CLARIFICATION:" to explain what you need
-- For "{original_message}", you likely need to execute services to get real data
-- Do NOT provide explanations or reasoning - just the required format
-- If you're unsure which service to use, ask for clarification using the CLARIFICATION format
-
-Your response:"""
+Your single-line response:"""
 
             response = await self.llm_engine.generate(next_step_prompt)
             
