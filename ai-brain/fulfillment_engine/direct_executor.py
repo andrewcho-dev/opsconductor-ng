@@ -488,46 +488,75 @@ Your decision:"""
         # Get comprehensive context about available services and assets
         service_context = await self._get_comprehensive_service_context(user_message)
         
-        reasoning_prompt = f"""You are an intelligent automation system with deep knowledge of the OpsConductor platform and its services. Your job is to understand user requests and create comprehensive automation solutions.
+        # Get enhanced analysis of the user request
+        from .enhanced_service_catalog import enhanced_service_catalog
+        request_analysis = enhanced_service_catalog.analyze_user_request(user_message)
+        
+        reasoning_prompt = f"""You are an intelligent automation system with comprehensive knowledge of the OpsConductor platform. Your job is to understand user requests and create sophisticated automation solutions using the available services.
 
 USER REQUEST: "{user_message}"
 
 CONTEXT FROM ANALYSIS: {extraction_text}
 
+AUTOMATED REQUEST ANALYSIS:
+Services Identified: {', '.join(request_analysis['identified_services'])}
+Reasoning: {'; '.join(request_analysis['reasoning'])}
+Suggested Workflow: {'; '.join(request_analysis['suggested_workflow'])}
+Key Insights: {'; '.join(request_analysis['key_insights'])}
+
 {service_context}
 
-TASK: Carefully analyze the user request and reason through how to fulfill it using the available OpsConductor services.
+TASK: Using your comprehensive knowledge of the OpsConductor platform, reason through this request and create a complete automation solution.
 
-REASONING PROCESS:
-1. Break down the user request into its component parts
-2. Identify which OpsConductor services are needed for each part
-3. Determine the specific systems/assets involved
-4. Design the commands and actions needed
-5. Consider scheduling and notification requirements
-6. Create a comprehensive solution
+REASONING FRAMEWORK:
+1. **Request Decomposition**: Break down the user request into specific requirements
+2. **Service Mapping**: Map each requirement to the appropriate OpsConductor service
+3. **Asset Identification**: Use asset service to identify specific target systems
+4. **Command Design**: Create appropriate commands for the target operating systems
+5. **Integration Planning**: Plan how services will work together
+6. **Scheduling Configuration**: Design timing and scheduling requirements
+7. **Notification Strategy**: Plan result delivery and communication
 
-For example, if a user says "connect to each windows machine and get the system information and email it to user@email.com every 15 minutes until 11:00pm tonight":
+EXAMPLE ANALYSIS for "connect to each windows machine and get the system information and email it to user@email.com every 15 minutes until 11:00pm tonight":
 
-- "each windows machine" = Need to query asset service to find all systems with OS type "Windows"
-- "get the system information" = Execute appropriate Windows commands (Get-ComputerInfo, systeminfo, etc.)
-- "email it to user@email.com" = Use communication service to send email notifications
-- "every 15 minutes until 11:00pm tonight" = Use celery-beat scheduler for recurring execution with end time
+**Request Decomposition**:
+- Target: "each windows machine" → Need to identify Windows systems
+- Action: "get the system information" → Need to execute system info commands
+- Communication: "email it to user@email.com" → Need to send email notifications
+- Timing: "every 15 minutes until 11:00pm tonight" → Need recurring scheduling with end time
 
-IMPORTANT: Don't make assumptions. Use the actual services and data available. If you need Windows machines, look at the asset inventory provided. If you need to send emails, reference the communication service. If you need scheduling, reference celery-beat.
+**Service Mapping**:
+- Asset Service: Query for systems with os_type="Windows" to get actual target IDs
+- Automation Service: Execute Get-ComputerInfo or systeminfo commands on Windows targets
+- Communication Service: Send email notifications with system information results
+- Celery-Beat: Schedule recurring execution every 15 minutes with end time at 11:00 PM
 
-Please provide your complete reasoning and solution:
+**Solution Design**:
+- Use real system IDs from asset inventory, not descriptive text
+- Generate executable PowerShell commands appropriate for Windows
+- Configure proper email notification with results
+- Set up recurring schedule with specific end time
+
+CRITICAL REQUIREMENTS:
+- Use ACTUAL system IDs from the asset inventory provided
+- Generate EXECUTABLE commands appropriate for the target OS
+- Specify CONCRETE scheduling parameters for celery-beat
+- Design SPECIFIC notification configuration for communication service
+- Think through the COMPLETE workflow from start to finish
+
+Please provide your comprehensive reasoning and solution:
 
 REASONING:
-[Think through the request step by step, explaining how you'll use each service]
+[Provide detailed step-by-step reasoning about how you'll fulfill this request using the OpsConductor services]
 
 JOB_SOLUTION:
-JOB_NAME: [descriptive name for the job]
-DESCRIPTION: [what this job accomplishes and how]
+JOB_NAME: [descriptive name for the automation job]
+DESCRIPTION: [comprehensive description of what this accomplishes and how it works]
 TARGET_SYSTEMS: [specific system IDs from the asset inventory, or localhost if none available]
 COMMANDS:
-[actual executable commands for the target operating systems]
-SCHEDULING: [if recurring/scheduled, specify the schedule requirements for celery-beat]
-NOTIFICATIONS: [if notifications needed, specify what to send and how via communication service]
+[actual executable commands appropriate for the target operating systems]
+SCHEDULING: [if recurring/scheduled, specify exact schedule requirements for celery-beat]
+NOTIFICATIONS: [if notifications needed, specify exactly what to send and how via communication service]
 """
 
         response = await self.llm_engine.generate(reasoning_prompt)
@@ -842,93 +871,42 @@ Commands:"""
     async def _get_comprehensive_service_context(self, user_message: str) -> str:
         """Get comprehensive context about available services and assets for reasoning"""
         
-        context_parts = []
+        # Import the enhanced service catalog
+        from .enhanced_service_catalog import enhanced_service_catalog
         
-        # Add service catalog information
-        context_parts.append("=== AVAILABLE OPSCONDUCTOR SERVICES ===")
+        # Get the comprehensive service context
+        service_context = enhanced_service_catalog.get_comprehensive_service_context(user_message)
         
-        # Asset Service Context
-        context_parts.append("""
-ASSET SERVICE (asset-service):
-- Purpose: Manage infrastructure assets, credentials, and system inventory
-- Capabilities: Asset inventory, credential management, target system management, asset discovery
-- API: /api/v1/assets, /api/v1/assets/search, /api/v1/credentials
-- Use for: Finding systems by OS type, hostname, or other criteria; managing credentials for connections
-- Key insight: When user mentions "windows machines" or "linux servers", query this service to find actual systems
-""")
-        
-        # Automation Service Context  
-        context_parts.append("""
-AUTOMATION SERVICE (automation-service):
-- Purpose: Execute commands, manage workflows, and automate system tasks
-- Capabilities: Job execution, workflow management, remote execution via SSH/PowerShell, system administration
-- API: /api/v1/jobs, /api/v1/executions, /api/v1/workflows
-- Use for: Running commands on target systems, executing scripts, system administration tasks
-- Key insight: This is where actual command execution happens on target systems
-""")
-        
-        # Communication Service Context
-        context_parts.append("""
-COMMUNICATION SERVICE (communication-service):
-- Purpose: Handle notifications, alerts, and communication with external systems
-- Capabilities: Email notifications, SMS, Slack integration, template management, external integrations
-- API: /api/v1/notifications, /api/v1/templates, /api/v1/channels
-- Use for: Sending emails, alerts, status updates, report delivery
-- Key insight: When user wants results "emailed" or "notified", use this service
-""")
-        
-        # Celery Beat Scheduler Context
-        context_parts.append("""
-CELERY BEAT SCHEDULER (celery-beat):
-- Purpose: Advanced task scheduling and recurring job management
-- Capabilities: Recurring task scheduling, cron-like scheduling, future task scheduling, dynamic schedule management
-- API: /api/v1/schedules, /api/v1/schedules/{id}/pause, /api/v1/schedules/{id}/resume
-- Use for: Scheduling recurring tasks, periodic execution, time-based automation
-- Key insight: When user wants something to happen "every X minutes" or "until Y time", use this service
-""")
-        
-        # Get actual asset information if available
+        # Add current asset inventory if available
         try:
             if self.asset_client:
-                context_parts.append("\n=== CURRENT ASSET INVENTORY ===")
+                service_context += "\n\n=== CURRENT ASSET INVENTORY ===\n"
                 targets = await self.asset_client.get_targets()
                 if targets:
-                    context_parts.append("Available target systems:")
-                    for target in targets[:10]:  # Limit to 10 for context size
+                    service_context += "Available target systems in your environment:\n"
+                    for target in targets[:15]:  # Show more targets with enhanced context
                         target_id = target.get("id", "unknown")
                         name = target.get("name", target.get("hostname", "unknown"))
                         os_type = target.get("os_type", "unknown")
                         hostname = target.get("hostname", "unknown")
-                        context_parts.append(f"- {name} (ID: {target_id}, OS: {os_type}, Host: {hostname})")
+                        ip_address = target.get("ip_address", "unknown")
+                        environment = target.get("environment", "unknown")
+                        tags = target.get("tags", [])
+                        
+                        service_context += f"• {name} (ID: {target_id})\n"
+                        service_context += f"  - OS: {os_type}, IP: {ip_address}, Environment: {environment}\n"
+                        if tags:
+                            service_context += f"  - Tags: {', '.join(tags)}\n"
+                        service_context += "\n"
                 else:
-                    context_parts.append("No target systems currently registered in asset service")
+                    service_context += "No target systems currently registered in asset service.\n"
+                    service_context += "You may need to use 'localhost' or help the user register their systems first.\n"
         except Exception as e:
             logger.warning(f"Could not fetch asset inventory: {e}")
-            context_parts.append("Asset inventory not available - will need to use localhost or user-specified targets")
+            service_context += "\n\n=== ASSET INVENTORY STATUS ===\n"
+            service_context += "Asset inventory not currently available - will need to use localhost or user-specified targets.\n"
         
-        # Add reasoning guidelines
-        context_parts.append("""
-=== REASONING GUIDELINES ===
-1. ANALYZE the user request to identify:
-   - What systems are involved (query asset service)
-   - What actions need to be performed (use automation service)
-   - How results should be communicated (use communication service)
-   - When/how often it should happen (use celery-beat for scheduling)
-
-2. LEVERAGE SERVICES APPROPRIATELY:
-   - Don't hardcode system lists - query the asset service
-   - Don't assume localhost - find actual target systems
-   - Don't ignore scheduling requirements - use celery-beat
-   - Don't forget notification requirements - use communication service
-
-3. CREATE EXECUTABLE SOLUTIONS:
-   - Use actual system IDs from asset service
-   - Generate proper commands for the target OS
-   - Include proper scheduling configuration
-   - Include notification configuration
-""")
-        
-        return "\n".join(context_parts)
+        return service_context
     
     async def _parse_reasoning_response(self, response_text: str, user_message: str) -> Optional[Dict[str, Any]]:
         """Parse Ollama's reasoning response and extract job data"""
