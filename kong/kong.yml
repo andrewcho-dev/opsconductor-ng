@@ -518,11 +518,6 @@ routes:
       - OPTIONS
     strip_path: false
     preserve_host: false
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: /ai
 
   # Network Analyzer Service Routes (already has /api/v1/ prefix)
   - name: network-api
