@@ -287,7 +287,10 @@ class DynamicServiceCatalog:
     Dynamic, scalable service catalog with intelligent context management
     """
     
-    def __init__(self, catalog_dir: str = "/home/opsconductor/opsconductor-ng/ai-brain/knowledge_domains"):
+    def __init__(self, catalog_dir: str = None):
+        if catalog_dir is None:
+            # Use relative path from current working directory
+            catalog_dir = os.path.join(os.getcwd(), "knowledge_domains")
         self.catalog_dir = Path(catalog_dir)
         self.catalog_dir.mkdir(exist_ok=True)
         

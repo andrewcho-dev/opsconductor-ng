@@ -1362,17 +1362,23 @@ Commands:"""
                 return None
             
             # Create the workflow structure expected by automation service
+            steps = []
+            for i, command in enumerate(job_data["commands"]):
+                step_id = f"step_{i}"
+                steps.append({
+                    "id": step_id,
+                    "name": f"Execute: {command[:50]}..." if len(command) > 50 else f"Execute: {command}",
+                    "type": "command",
+                    "inputs": {},
+                    "command": command,
+                    "timeout": 300
+                })
+            
             workflow = {
                 "name": job_data["name"],
                 "description": job_data["description"],
                 "target_systems": job_data["target_systems"],
-                "steps": [
-                    {
-                        "step_name": "Execute Commands",
-                        "commands": job_data["commands"],
-                        "target_systems": job_data["target_systems"]
-                    }
-                ]
+                "steps": steps
             }
             
             # Add scheduling and notification metadata
