@@ -483,31 +483,54 @@ Your decision:"""
         return "8.8.8.8"
     
     async def _create_automation_job_with_ollama(self, user_message: str, extraction_text: str) -> Optional[Dict[str, Any]]:
-        """Let Ollama create the specific automation job"""
+        """Let Ollama reason about the request and create appropriate automation using available services"""
         
-        job_prompt = f"""Create an automation job for this user request: "{user_message}"
+        # Get comprehensive context about available services and assets
+        service_context = await self._get_comprehensive_service_context(user_message)
+        
+        reasoning_prompt = f"""You are an intelligent automation system with deep knowledge of the OpsConductor platform and its services. Your job is to understand user requests and create comprehensive automation solutions.
 
-Based on your analysis: {extraction_text}
+USER REQUEST: "{user_message}"
 
-Create a job with these details:
-- Job name
-- Description  
-- Commands to run
-- Target systems
+CONTEXT FROM ANALYSIS: {extraction_text}
 
-Provide the job in this format:
+{service_context}
 
-JOB_NAME: [descriptive name]
-DESCRIPTION: [what this job does]
+TASK: Carefully analyze the user request and reason through how to fulfill it using the available OpsConductor services.
+
+REASONING PROCESS:
+1. Break down the user request into its component parts
+2. Identify which OpsConductor services are needed for each part
+3. Determine the specific systems/assets involved
+4. Design the commands and actions needed
+5. Consider scheduling and notification requirements
+6. Create a comprehensive solution
+
+For example, if a user says "connect to each windows machine and get the system information and email it to user@email.com every 15 minutes until 11:00pm tonight":
+
+- "each windows machine" = Need to query asset service to find all systems with OS type "Windows"
+- "get the system information" = Execute appropriate Windows commands (Get-ComputerInfo, systeminfo, etc.)
+- "email it to user@email.com" = Use communication service to send email notifications
+- "every 15 minutes until 11:00pm tonight" = Use celery-beat scheduler for recurring execution with end time
+
+IMPORTANT: Don't make assumptions. Use the actual services and data available. If you need Windows machines, look at the asset inventory provided. If you need to send emails, reference the communication service. If you need scheduling, reference celery-beat.
+
+Please provide your complete reasoning and solution:
+
+REASONING:
+[Think through the request step by step, explaining how you'll use each service]
+
+JOB_SOLUTION:
+JOB_NAME: [descriptive name for the job]
+DESCRIPTION: [what this job accomplishes and how]
+TARGET_SYSTEMS: [specific system IDs from the asset inventory, or localhost if none available]
 COMMANDS:
-- [command 1]
-- [command 2]
-TARGET_SYSTEMS: [localhost or specific servers]
-
-Be specific about the actual commands to run.
+[actual executable commands for the target operating systems]
+SCHEDULING: [if recurring/scheduled, specify the schedule requirements for celery-beat]
+NOTIFICATIONS: [if notifications needed, specify what to send and how via communication service]
 """
 
-        response = await self.llm_engine.generate(job_prompt)
+        response = await self.llm_engine.generate(reasoning_prompt)
         
         if isinstance(response, dict) and "generated_text" in response:
             job_text = response["generated_text"]
@@ -517,8 +540,8 @@ Be specific about the actual commands to run.
         logger.info(f"🔧 Ollama job creation: {job_text}")
         
         try:
-            # Parse the job details and submit to automation service
-            job_data = await self._parse_job_from_ollama_response(job_text, user_message)
+            # Parse the job details from the reasoning response
+            job_data = await self._parse_reasoning_response(job_text, user_message)
             
             if job_data and self.automation_client:
                 # Submit the job
@@ -622,8 +645,8 @@ Be specific about the actual commands to run.
         
         return None
     
-    async def _parse_job_from_ollama_response(self, job_text: str, user_message: str) -> Optional[Dict[str, Any]]:
-        """Parse Ollama's job response into automation service format"""
+    async def _parse_job_from_ollama_response(self, job_text: str, user_message: str, available_targets: List[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Parse Ollama's job response into automation service format with target validation"""
         
         try:
             # Simple parsing - look for key sections
@@ -644,9 +667,20 @@ Be specific about the actual commands to run.
                 elif line.startswith("COMMANDS:"):
                     current_section = "commands"
                 elif line.startswith("TARGET_SYSTEMS:"):
-                    target_systems = [line.replace("TARGET_SYSTEMS:", "").strip()]
+                    target_text = line.replace("TARGET_SYSTEMS:", "").strip()
+                    if target_text:
+                        # Validate target systems against available targets
+                        parsed_targets = [t.strip() for t in target_text.split(',')]
+                        validated_targets = self._validate_target_systems(parsed_targets, available_targets)
+                        if validated_targets:
+                            target_systems = validated_targets
                 elif current_section == "commands" and line.startswith("-"):
                     command = line.replace("-", "").strip()
+                    if command:
+                        commands.append(command)
+                elif current_section == "commands" and line and not line.startswith("TARGET_SYSTEMS:") and not line.startswith("JOB_NAME:") and not line.startswith("DESCRIPTION:"):
+                    # Handle commands that don't start with "-"
+                    command = line.strip()
                     if command:
                         commands.append(command)
             
@@ -735,3 +769,265 @@ Commands:"""
         except Exception as e:
             logger.error(f"❌ Command generation failed: {e}")
             return []
+    
+    async def _get_available_targets(self, user_message: str) -> List[Dict[str, Any]]:
+        """Get available target systems from asset service"""
+        
+        try:
+            if not self.asset_client:
+                logger.warning("Asset client not available, using localhost")
+                return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+            
+            # Get all targets from asset service
+            targets = await self.asset_client.get_targets()
+            
+            if not targets:
+                logger.warning("No targets found in asset service, using localhost")
+                return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+            
+            # Filter based on user message context
+            if "windows" in user_message.lower():
+                windows_targets = [t for t in targets if t.get("os_type", "").lower() == "windows"]
+                if windows_targets:
+                    return windows_targets
+            
+            return targets[:10]  # Limit to 10 targets for prompt size
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get targets from asset service: {e}")
+            return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+    
+    def _format_targets_for_prompt(self, targets: List[Dict[str, Any]]) -> str:
+        """Format target systems for inclusion in Ollama prompt"""
+        
+        if not targets:
+            return "localhost (ID: localhost, OS: linux)"
+        
+        formatted_targets = []
+        for target in targets:
+            target_id = target.get("id", "unknown")
+            name = target.get("name", target.get("hostname", "unknown"))
+            os_type = target.get("os_type", "unknown")
+            hostname = target.get("hostname", "unknown")
+            
+            formatted_targets.append(f"- {name} (ID: {target_id}, OS: {os_type}, Host: {hostname})")
+        
+        return "\n".join(formatted_targets)
+    
+    def _validate_target_systems(self, parsed_targets: List[str], available_targets: List[Dict[str, Any]] = None) -> List[str]:
+        """Validate target systems against available targets"""
+        
+        if not available_targets:
+            # If no available targets, allow localhost
+            return ["localhost"] if "localhost" in parsed_targets else ["localhost"]
+        
+        validated_targets = []
+        available_ids = [str(t.get("id", "")) for t in available_targets] + ["localhost"]
+        
+        for target in parsed_targets:
+            target = target.strip()
+            if target in available_ids:
+                validated_targets.append(target)
+            elif target == "localhost":
+                validated_targets.append(target)
+            else:
+                logger.warning(f"Invalid target system '{target}' not found in available targets")
+        
+        # If no valid targets found, use localhost as fallback
+        if not validated_targets:
+            validated_targets = ["localhost"]
+        
+        return validated_targets
+    
+    async def _get_comprehensive_service_context(self, user_message: str) -> str:
+        """Get comprehensive context about available services and assets for reasoning"""
+        
+        context_parts = []
+        
+        # Add service catalog information
+        context_parts.append("=== AVAILABLE OPSCONDUCTOR SERVICES ===")
+        
+        # Asset Service Context
+        context_parts.append("""
+ASSET SERVICE (asset-service):
+- Purpose: Manage infrastructure assets, credentials, and system inventory
+- Capabilities: Asset inventory, credential management, target system management, asset discovery
+- API: /api/v1/assets, /api/v1/assets/search, /api/v1/credentials
+- Use for: Finding systems by OS type, hostname, or other criteria; managing credentials for connections
+- Key insight: When user mentions "windows machines" or "linux servers", query this service to find actual systems
+""")
+        
+        # Automation Service Context  
+        context_parts.append("""
+AUTOMATION SERVICE (automation-service):
+- Purpose: Execute commands, manage workflows, and automate system tasks
+- Capabilities: Job execution, workflow management, remote execution via SSH/PowerShell, system administration
+- API: /api/v1/jobs, /api/v1/executions, /api/v1/workflows
+- Use for: Running commands on target systems, executing scripts, system administration tasks
+- Key insight: This is where actual command execution happens on target systems
+""")
+        
+        # Communication Service Context
+        context_parts.append("""
+COMMUNICATION SERVICE (communication-service):
+- Purpose: Handle notifications, alerts, and communication with external systems
+- Capabilities: Email notifications, SMS, Slack integration, template management, external integrations
+- API: /api/v1/notifications, /api/v1/templates, /api/v1/channels
+- Use for: Sending emails, alerts, status updates, report delivery
+- Key insight: When user wants results "emailed" or "notified", use this service
+""")
+        
+        # Celery Beat Scheduler Context
+        context_parts.append("""
+CELERY BEAT SCHEDULER (celery-beat):
+- Purpose: Advanced task scheduling and recurring job management
+- Capabilities: Recurring task scheduling, cron-like scheduling, future task scheduling, dynamic schedule management
+- API: /api/v1/schedules, /api/v1/schedules/{id}/pause, /api/v1/schedules/{id}/resume
+- Use for: Scheduling recurring tasks, periodic execution, time-based automation
+- Key insight: When user wants something to happen "every X minutes" or "until Y time", use this service
+""")
+        
+        # Get actual asset information if available
+        try:
+            if self.asset_client:
+                context_parts.append("\n=== CURRENT ASSET INVENTORY ===")
+                targets = await self.asset_client.get_targets()
+                if targets:
+                    context_parts.append("Available target systems:")
+                    for target in targets[:10]:  # Limit to 10 for context size
+                        target_id = target.get("id", "unknown")
+                        name = target.get("name", target.get("hostname", "unknown"))
+                        os_type = target.get("os_type", "unknown")
+                        hostname = target.get("hostname", "unknown")
+                        context_parts.append(f"- {name} (ID: {target_id}, OS: {os_type}, Host: {hostname})")
+                else:
+                    context_parts.append("No target systems currently registered in asset service")
+        except Exception as e:
+            logger.warning(f"Could not fetch asset inventory: {e}")
+            context_parts.append("Asset inventory not available - will need to use localhost or user-specified targets")
+        
+        # Add reasoning guidelines
+        context_parts.append("""
+=== REASONING GUIDELINES ===
+1. ANALYZE the user request to identify:
+   - What systems are involved (query asset service)
+   - What actions need to be performed (use automation service)
+   - How results should be communicated (use communication service)
+   - When/how often it should happen (use celery-beat for scheduling)
+
+2. LEVERAGE SERVICES APPROPRIATELY:
+   - Don't hardcode system lists - query the asset service
+   - Don't assume localhost - find actual target systems
+   - Don't ignore scheduling requirements - use celery-beat
+   - Don't forget notification requirements - use communication service
+
+3. CREATE EXECUTABLE SOLUTIONS:
+   - Use actual system IDs from asset service
+   - Generate proper commands for the target OS
+   - Include proper scheduling configuration
+   - Include notification configuration
+""")
+        
+        return "\n".join(context_parts)
+    
+    async def _parse_reasoning_response(self, response_text: str, user_message: str) -> Optional[Dict[str, Any]]:
+        """Parse Ollama's reasoning response and extract job data"""
+        
+        try:
+            # Look for the JOB_SOLUTION section
+            if "JOB_SOLUTION:" not in response_text:
+                logger.error("No JOB_SOLUTION section found in response")
+                return None
+            
+            # Extract the job solution part
+            job_section = response_text.split("JOB_SOLUTION:")[1].strip()
+            
+            # Parse the structured response
+            job_data = {
+                "name": "AI Generated Job",
+                "description": "Job created by AI reasoning",
+                "target_systems": ["localhost"],
+                "commands": [],
+                "scheduling": None,
+                "notifications": None
+            }
+            
+            lines = job_section.split('\n')
+            current_section = None
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                if line.startswith("JOB_NAME:"):
+                    job_data["name"] = line.replace("JOB_NAME:", "").strip()
+                elif line.startswith("DESCRIPTION:"):
+                    job_data["description"] = line.replace("DESCRIPTION:", "").strip()
+                elif line.startswith("TARGET_SYSTEMS:"):
+                    targets_str = line.replace("TARGET_SYSTEMS:", "").strip()
+                    if targets_str:
+                        job_data["target_systems"] = [t.strip() for t in targets_str.split(',')]
+                elif line.startswith("COMMANDS:"):
+                    current_section = "commands"
+                elif line.startswith("SCHEDULING:"):
+                    current_section = "scheduling"
+                    scheduling_text = line.replace("SCHEDULING:", "").strip()
+                    if scheduling_text:
+                        job_data["scheduling"] = scheduling_text
+                elif line.startswith("NOTIFICATIONS:"):
+                    current_section = "notifications"
+                    notification_text = line.replace("NOTIFICATIONS:", "").strip()
+                    if notification_text:
+                        job_data["notifications"] = notification_text
+                elif current_section == "commands" and line:
+                    # Clean up command line
+                    if line.startswith('- '):
+                        line = line[2:]
+                    elif line.startswith('* '):
+                        line = line[2:]
+                    
+                    if line and not line.lower().startswith(('scheduling:', 'notifications:')):
+                        job_data["commands"].append(line)
+                elif current_section == "scheduling" and line:
+                    if not job_data["scheduling"]:
+                        job_data["scheduling"] = line
+                    else:
+                        job_data["scheduling"] += " " + line
+                elif current_section == "notifications" and line:
+                    if not job_data["notifications"]:
+                        job_data["notifications"] = line
+                    else:
+                        job_data["notifications"] += " " + line
+            
+            # Validate we have essential components
+            if not job_data["commands"]:
+                logger.error("No commands found in job solution")
+                return None
+            
+            # Create the workflow structure expected by automation service
+            workflow = {
+                "name": job_data["name"],
+                "description": job_data["description"],
+                "target_systems": job_data["target_systems"],
+                "steps": [
+                    {
+                        "step_name": "Execute Commands",
+                        "commands": job_data["commands"],
+                        "target_systems": job_data["target_systems"]
+                    }
+                ]
+            }
+            
+            # Add scheduling and notification metadata
+            if job_data["scheduling"]:
+                workflow["scheduling_requirements"] = job_data["scheduling"]
+            if job_data["notifications"]:
+                workflow["notification_requirements"] = job_data["notifications"]
+            
+            logger.info(f"✅ Parsed job from reasoning: {job_data['name']} with {len(job_data['commands'])} commands")
+            return workflow
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to parse reasoning response: {e}")
+            return None
