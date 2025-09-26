@@ -192,25 +192,19 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
             logger.info("🔄 Detected follow-up to clarification - processing with additional context")
             return follow_up_result
         
-        # 🚀 DIRECT EXECUTION: Skip all complex analysis - let Ollama decide and execute!
-        logger.info("🚀 BYPASSING COMPLEX ANALYSIS - GOING DIRECTLY TO OLLAMA EXECUTION")
+        # 🚀 PURE OLLAMA CONTROL: Let Ollama decide EVERYTHING!
+        logger.info("🚀 PURE OLLAMA CONTROL - NO HARDCODED ROUTING!")
         
         user_context = {
             "user_id": str(request.user_id) if request.user_id else "system",
             "conversation_id": request.conversation_id
         }
         
-        # Let Ollama decide if this needs execution or conversation
+        # Let Ollama handle the entire request and format the response
         execution_result = await direct_executor.execute_user_request(request.message, user_context)
         
-        # If Ollama executed something, return execution results
-        if execution_result.get("actual_results", {}).get("service_calls"):
-            logger.info("🚀 Ollama executed service calls - returning execution results")
-            return await _format_execution_response(request, execution_result)
-        else:
-            # If no service calls were made, treat as conversation
-            logger.info("💬 No service calls made - treating as conversation")
-            return await _format_conversation_response(request, execution_result)
+        # Return whatever Ollama decided - NO HARDCODED FORMATTING!
+        return await _format_ollama_response(request, execution_result)
         
     except Exception as e:
         logger.error("❌ PURE LLM chat processing failed", error=str(e), exc_info=True)
@@ -323,48 +317,80 @@ async def _format_execution_response(request, execution_result) -> Dict[str, Any
         "job_details": job_details
     }
 
-async def _format_conversation_response(request, execution_result) -> Dict[str, Any]:
-    """Format response for conversation (no execution)"""
-    response_text = execution_result.get("message", "I understand your request.")
+async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
+    """Let Ollama decide how to format the response - NO HARDCODED LOGIC!"""
     
-    # If Ollama provided analysis, include it
-    if execution_result.get("execution_plan"):
-        response_text += f"\n\n🧠 Analysis: {execution_result['execution_plan'][:200]}..."
+    # Determine response type based on what Ollama actually did
+    executed_services = execution_result.get("executed_services", False)
+    
+    if executed_services:
+        # Ollama executed services - format as automation response
+        intent_type = "automation"
+        execution_started = True
+        job_details = execution_result.get("job_details", [])
+        
+        # Create job ID if services were executed
+        job_id = f"job-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+        
+        response_text = execution_result.get("message", "Task completed successfully.")
+        
+    else:
+        # Ollama decided this was conversation only
+        intent_type = "conversation"
+        execution_started = False
+        job_details = []
+        job_id = None
+        
+        response_text = execution_result.get("message", "I understand your request.")
+        
+        # If Ollama provided analysis, include it
+        if execution_result.get("execution_plan"):
+            response_text += f"\n\n🧠 Analysis: {execution_result['execution_plan'][:200]}..."
     
     return {
         "response": response_text,
         "conversation_id": request.conversation_id,
-        "intent": "conversation",
-        "confidence": 0.8,
-        "job_id": None,
-        "execution_id": None,
-        "automation_job_id": None,
+        "intent": intent_type,
+        "confidence": 0.9,
+        "job_id": job_id,
+        "execution_id": job_id,
+        "automation_job_id": job_id if executed_services else None,
         "workflow": None,
-        "execution_started": False,
+        "execution_started": execution_started,
+        "clarification_needed": False,
+        "clarifying_questions": None,
+        "missing_information": None,
+        "risk_assessment": None,
+        "field_confidence_scores": None,
+        "validation_issues": None,
         "intent_classification": {
-            "intent_type": "conversation",
-            "confidence": 0.8,
-            "method": "direct_executor_analysis",
+            "intent_type": intent_type,
+            "confidence": 0.9,
+            "method": "pure_ollama_decision",
             "alternatives": [],
             "entities": [],
             "context_analysis": {
-                "confidence_score": 0.8,
+                "confidence_score": 0.9,
                 "risk_level": "LOW",
-                "requirements_count": 0,
-                "recommendations": ["Analyzed by Ollama as conversation"]
+                "requirements_count": len(job_details),
+                "recommendations": [f"Ollama decided: {intent_type}"]
             },
-            "reasoning": "Ollama determined this is conversational",
+            "reasoning": f"Ollama executed services: {executed_services}",
             "metadata": {
-                "engine": "direct_executor",
-                "success": True
+                "engine": "pure_ollama",
+                "success": execution_result.get("status") == "completed"
             }
         },
         "timestamp": datetime.utcnow().isoformat(),
+        "success": execution_result.get("status") == "completed",
         "_routing": {
-            "service_type": "direct_ollama_conversation", 
+            "service": "ai_brain",
+            "service_type": "pure_ollama",
             "response_time": 0.0,
             "cached": False
-        }
+        },
+        "execution_result": execution_result,
+        "job_details": job_details
     }
 
 async def _analyze_user_intent_with_llm(message: str, intent_brain_instance) -> Dict[str, Any]:

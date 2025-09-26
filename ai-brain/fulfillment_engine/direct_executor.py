@@ -172,16 +172,20 @@ Your original plan was:
 CRITICAL DECISION POINT:
 Based on the user's request and any previous results, what should happen next?
 
-Options:
-1. If the user's request is FULLY COMPLETED, respond with: "COMPLETE: [summary of what was accomplished]"
-2. If more steps are needed, respond with: "NEXT STEP: [which service to use] - [what specific action to take]"
+YOU MUST RESPOND WITH EXACTLY ONE OF THESE TWO FORMATS:
+
+FORMAT 1 - If the job is complete:
+COMPLETE: [brief summary of what was accomplished]
+
+FORMAT 2 - If more steps are needed:
+NEXT STEP: [service-name] - [specific action to take]
 
 Available services:
 - automation-service: Execute commands/scripts on remote systems
 - network-analyzer-service: Network connectivity testing and diagnostics  
 - asset-service: Query infrastructure asset inventory
 
-Think carefully: Is the user's original request fully satisfied, or do you need to take another action?
+IMPORTANT: You must start your response with either "COMPLETE:" or "NEXT STEP:" - no other text before it.
 
 Your decision:"""
 
@@ -240,7 +244,8 @@ Your decision:"""
             "all_results": all_execution_results,
             "message": final_summary,
             "timestamp": datetime.now().isoformat(),
-            "job_details": all_job_details
+            "job_details": all_job_details,
+            "executed_services": len(all_execution_results) > 0  # Clear flag for main.py
         }
     
     async def _execute_single_step_with_ollama(self, step_description: str, original_message: str) -> Dict[str, Any]:
