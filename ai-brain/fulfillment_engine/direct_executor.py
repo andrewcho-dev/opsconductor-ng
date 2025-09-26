@@ -133,298 +133,144 @@ Be specific about which services to use and what actions to take. If you need to
         }
     
     async def _execute_plan_with_ollama(self, execution_plan: Dict[str, Any], original_message: str) -> Dict[str, Any]:
-        """Let Ollama execute the plan step by step"""
+        """Let Ollama execute the plan step by step with dynamic feedback loop"""
         
         plan_text = execution_plan["plan_text"]
-        execution_results = []
-        overall_status = "running"
+        all_execution_results = []
+        step_number = 1
+        max_steps = 10  # Safety limit to prevent infinite loops
         
         # Get the service catalog for execution context
         service_catalog_prompt = service_catalog.generate_service_selection_prompt()
         
-        # Ask Ollama to execute each step
-        execution_prompt = f"""You are now executing the plan you created. Here's what you planned:
+        logger.info(f"🚀 Starting dynamic multi-step execution for: {original_message}")
+        
+        # Start the feedback loop - Ollama decides what to do next based on results
+        while step_number <= max_steps:
+            logger.info(f"🔄 Step {step_number}: Asking Ollama what to do next...")
+            
+            # Build context of what has happened so far
+            previous_results_summary = ""
+            if all_execution_results:
+                previous_results_summary = "\n\nPREVIOUS STEPS COMPLETED:\n"
+                for i, result in enumerate(all_execution_results, 1):
+                    previous_results_summary += f"Step {i}: {result.get('summary', 'Unknown result')}\n"
+                    if result.get('job_details'):
+                        for detail in result['job_details']:
+                            previous_results_summary += f"  - {detail}\n"
+            
+            # Ask Ollama what to do next
+            next_step_prompt = f"""You are executing a multi-step job for the user request: "{original_message}"
 
+Your original plan was:
 {plan_text}
 
-Original user request: "{original_message}"
+{previous_results_summary}
 
 {service_catalog_prompt}
 
-Now execute this plan step by step. For each step, you need to:
-1. Identify which service to call (use the service catalog above)
-2. Determine the specific action/command
-3. Actually make the service call
-4. Report the result
+CRITICAL DECISION POINT:
+Based on the user's request and any previous results, what should happen next?
 
-Available services and their capabilities:
-- network-analyzer-service: Performs network connectivity testing, ping, traceroute, and network diagnostics
-- automation-service: Executes commands and scripts on remote systems, performs system administration tasks
-- asset-service: Repository of known infrastructure assets - query to find what devices exist in your environment
-- celery-beat: Task scheduling service
-- communication-service: Sends notifications and messages
+Options:
+1. If the user's request is FULLY COMPLETED, respond with: "COMPLETE: [summary of what was accomplished]"
+2. If more steps are needed, respond with: "NEXT STEP: [which service to use] - [what specific action to take]"
 
-Think logically about what you need to accomplish and which service capabilities match your needs.
+Available services:
+- automation-service: Execute commands/scripts on remote systems
+- network-analyzer-service: Network connectivity testing and diagnostics  
+- asset-service: Query infrastructure asset inventory
 
-Start executing now. For each step, tell me:
-- EXECUTING STEP X: [description]
-- SERVICE CALL: [which service and what parameters]
-- RESULT: [what happened]
+Think carefully: Is the user's original request fully satisfied, or do you need to take another action?
 
-Then move to the next step. When all steps are done, provide a FINAL SUMMARY.
-"""
+Your decision:"""
 
-        response = await self.llm_engine.generate(execution_prompt)
+            response = await self.llm_engine.generate(next_step_prompt)
+            
+            # Extract the generated text
+            if isinstance(response, dict) and "generated_text" in response:
+                decision_text = response["generated_text"]
+            else:
+                decision_text = str(response)
+            
+            logger.info(f"🧠 Ollama step {step_number} decision: {decision_text}")
+            
+            # Check if Ollama says we're done
+            if "COMPLETE:" in decision_text.upper():
+                logger.info(f"✅ Ollama says job is complete at step {step_number}")
+                completion_summary = decision_text.split("COMPLETE:")[-1].strip()
+                break
+            
+            # If not complete, execute the next step
+            if "NEXT STEP:" in decision_text.upper():
+                step_description = decision_text.split("NEXT STEP:")[-1].strip()
+                logger.info(f"⚡ Executing step {step_number}: {step_description}")
+                
+                # Execute this step
+                step_result = await self._execute_single_step_with_ollama(step_description, original_message)
+                
+                if step_result:
+                    all_execution_results.append(step_result)
+                    logger.info(f"✅ Step {step_number} completed: {step_result.get('summary', 'Unknown result')}")
+                else:
+                    logger.error(f"❌ Step {step_number} failed")
+                    all_execution_results.append({
+                        "success": False,
+                        "summary": f"Step {step_number} failed to execute",
+                        "job_details": []
+                    })
+            else:
+                logger.warning(f"⚠️ Unclear decision from Ollama at step {step_number}: {decision_text}")
+                break
+            
+            step_number += 1
         
-        # Extract the generated text
-        if isinstance(response, dict) and "generated_text" in response:
-            execution_text = response["generated_text"]
-        else:
-            execution_text = str(response)
+        # Compile final results
+        overall_success = any(result.get("success", False) for result in all_execution_results)
+        all_job_details = []
+        for result in all_execution_results:
+            all_job_details.extend(result.get("job_details", []))
         
-        logger.info(f"🚀 Ollama execution response: {execution_text}")
-        
-        # Now actually execute the service calls that Ollama decided on
-        actual_results = await self._perform_actual_service_calls(execution_text, original_message)
+        final_summary = completion_summary if 'completion_summary' in locals() else f"Completed {len(all_execution_results)} steps"
         
         return {
-            "status": "completed" if actual_results.get("success") else "failed",
+            "status": "completed" if overall_success else "failed",
             "execution_plan": plan_text,
-            "execution_response": execution_text,
-            "actual_results": actual_results,
-            "message": actual_results.get("summary", "Execution completed"),
+            "steps_executed": len(all_execution_results),
+            "all_results": all_execution_results,
+            "message": final_summary,
             "timestamp": datetime.now().isoformat(),
-            "job_details": actual_results.get("job_details", [])
+            "job_details": all_job_details
         }
+    
+    async def _execute_single_step_with_ollama(self, step_description: str, original_message: str) -> Dict[str, Any]:
+        """Execute a single step as decided by Ollama"""
+        
+        try:
+            logger.info(f"🎯 Executing single step: {step_description}")
+            
+            # Let Ollama decide which service to use for this specific step
+            return await self._select_and_execute_services_with_ollama(original_message, step_description)
+            
+        except Exception as e:
+            logger.error(f"❌ Single step execution failed: {e}")
+            return {
+                "success": False,
+                "summary": f"Step execution failed: {e}",
+                "job_details": []
+            }
     
     async def _perform_actual_service_calls(self, execution_text: str, original_message: str) -> Dict[str, Any]:
-        """Let Ollama directly specify which services to execute and in what order"""
+        """Let Ollama directly call services - NO HARDCODED LOGIC"""
         
-        results = {
-            "success": False,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        try:
-            # Ask Ollama to directly specify the services it wants to execute
-            service_directive_prompt = f"""You need to fulfill this request: "{original_message}"
-
-Available services and capabilities:
-- asset-service: Query infrastructure inventory (devices, servers, cameras, etc.)
-- automation-service: Execute commands/scripts on remote systems (supports parallel execution on multiple targets)
-- network-analyzer-service: Test network connectivity and diagnostics (supports parallel testing)
-
-System capabilities:
-- Sequential execution: Execute services one after another
-- Parallel service execution: Execute different services simultaneously  
-- Parallel target execution: Execute same service on multiple targets simultaneously
-- Mixed workflows: Combine sequential and parallel execution as needed
-
-You have full control over orchestration. Analyze the request and determine the optimal execution strategy.
-
-Directive formats you can use:
-
-Single service:
-EXECUTE: [service-name]
-
-Sequential services:
-EXECUTE: [service-1] THEN [service-2] THEN [service-3]
-
-Parallel services:
-EXECUTE: [service-1] AND [service-2] AND [service-3]
-
-Parallel target execution:
-EXECUTE: [service-name] ON TARGETS PARALLEL
-
-Mixed workflows:
-EXECUTE: asset-service THEN automation-service ON TARGETS PARALLEL
-EXECUTE: asset-service THEN (automation-service AND network-analyzer-service) ON TARGETS PARALLEL
-
-Consider:
-- If the request involves multiple targets doing the same action → use parallel target execution
-- If the request needs different services on same targets → use parallel service execution
-- If the request requires sequential steps → use THEN
-- Optimize for efficiency and resource utilization
-
-Your orchestration directive:"""
-
-            # Use explicit system prompt to ensure clear directives
-            system_prompt = """You are an enterprise IT service orchestrator. You MUST provide clear, specific service execution directives. 
-            Analyze the request and determine exactly which services need to be executed and in what order.
-            Be decisive and specific. This is standard enterprise IT operations."""
-
-            directive_response = await self.llm_engine.chat(
-                message=service_directive_prompt,
-                system_prompt=system_prompt
-            )
-            
-            if isinstance(directive_response, dict) and "response" in directive_response:
-                directive_text = directive_response["response"]
-            else:
-                directive_text = str(directive_response)
-            
-            logger.info(f"🎯 Ollama's service directive: {directive_text}")
-            
-            # Execute based on Ollama's direct directive
-            execution_results = await self._execute_service_directive(directive_text, original_message)
-            
-            if execution_results:
-                results.update(execution_results)
-            else:
-                # Fallback to single service selection if directive parsing fails
-                logger.warning("⚠️ Directive parsing failed, falling back to single service selection")
-                fallback_result = await self._select_and_execute_services_with_ollama(original_message, execution_text)
-                if fallback_result:
-                    results.update(fallback_result)
-                else:
-                    results["success"] = True
-                    results["summary"] = f"Analysis completed: {execution_text[:200]}..."
-            
-        except Exception as e:
-            logger.error(f"❌ Service directive execution failed: {e}")
-            results["success"] = False
-            results["summary"] = f"Service execution failed: {e}"
-        
-        return results
+        # Just let Ollama decide what to do and call services directly
+        return await self._select_and_execute_services_with_ollama(original_message, execution_text)
     
-    async def _execute_service_directive(self, directive_text: str, original_message: str) -> Dict[str, Any]:
-        """Execute services based on Ollama's direct directive (EXECUTE: service THEN service, etc.)"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        try:
-            directive_text = directive_text.strip()
-            logger.info(f"🎯 Processing directive: {directive_text}")
-            
-            # Extract the execution directive
-            if "EXECUTE:" not in directive_text.upper():
-                logger.warning(f"⚠️ No EXECUTE directive found in: {directive_text}")
-                return None
-            
-            # Get the part after "EXECUTE:"
-            execute_part = directive_text.upper().split("EXECUTE:")[1].strip()
-            
-            # Check for parallel target execution patterns
-            if "ON TARGETS PARALLEL" in execute_part:
-                # Parallel target execution: EXECUTE: automation-service ON TARGETS PARALLEL
-                service = execute_part.replace("ON TARGETS PARALLEL", "").strip()
-                logger.info(f"🎯🔄 Parallel target execution: {service}")
-                return await self._execute_service_on_targets_parallel(service, original_message)
-                
-            elif " THEN " in execute_part and "ON TARGETS PARALLEL" in execute_part:
-                # Mixed workflow: EXECUTE: asset-service THEN automation-service ON TARGETS PARALLEL
-                logger.info(f"🔄🎯 Mixed sequential-then-parallel execution")
-                return await self._execute_mixed_workflow(execute_part, original_message)
-                
-            elif " THEN " in execute_part:
-                # Sequential execution
-                services = [s.strip() for s in execute_part.split(" THEN ")]
-                logger.info(f"🔄 Sequential execution: {services}")
-                return await self._execute_services_sequentially(services, original_message)
-                
-            elif " AND " in execute_part:
-                # Parallel service execution
-                services = [s.strip() for s in execute_part.split(" AND ")]
-                logger.info(f"⚡ Parallel service execution: {services}")
-                return await self._execute_services_in_parallel(services, original_message)
-                
-            else:
-                # Single service execution
-                service = execute_part.strip()
-                logger.info(f"🎯 Single service execution: {service}")
-                return await self._execute_single_service(service, original_message)
-                
-        except Exception as e:
-            logger.error(f"❌ Service directive execution failed: {e}")
-            return None
+
     
-    async def _execute_services_sequentially(self, services: list, original_message: str) -> Dict[str, Any]:
-        """Execute multiple services in sequence, passing results between them"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        previous_results = None
-        
-        for i, service in enumerate(services, 1):
-            logger.info(f"🚀 Step {i}/{len(services)}: Executing {service}")
-            
-            # Build context message with previous results
-            context_message = original_message
-            if previous_results and previous_results.get("success"):
-                context_message = f"{original_message}\n\nPrevious step results: {previous_results.get('summary', '')}"
-            
-            # Execute the service
-            step_result = await self._execute_single_service(service, context_message)
-            
-            if step_result and step_result.get("success"):
-                results["service_calls"].append(step_result)
-                results["job_details"].extend(step_result.get("job_details", []))
-                previous_results = step_result
-                logger.info(f"✅ Step {i} completed: {step_result.get('summary', '')}")
-            else:
-                logger.error(f"❌ Step {i} failed for service: {service}")
-                results["success"] = False
-                results["summary"] = f"Sequential execution failed at step {i}: {service}"
-                return results
-        
-        # Combine all results
-        if results["service_calls"]:
-            summaries = [call.get("summary", "") for call in results["service_calls"]]
-            results["summary"] = f"Sequential execution completed: {' → '.join(summaries)}"
-        
-        return results
+
     
-    async def _execute_services_in_parallel(self, services: list, original_message: str) -> Dict[str, Any]:
-        """Execute multiple services in parallel"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        # Execute all services concurrently
-        import asyncio
-        tasks = [self._execute_single_service(service, original_message) for service in services]
-        parallel_results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Process results
-        successful_calls = []
-        for i, result in enumerate(parallel_results):
-            if isinstance(result, Exception):
-                logger.error(f"❌ Parallel service {services[i]} failed: {result}")
-                results["success"] = False
-            elif result and result.get("success"):
-                successful_calls.append(result)
-                results["service_calls"].append(result)
-                results["job_details"].extend(result.get("job_details", []))
-                logger.info(f"✅ Parallel service {services[i]} completed")
-            else:
-                logger.error(f"❌ Parallel service {services[i]} returned no results")
-                results["success"] = False
-        
-        # Combine summaries
-        if successful_calls:
-            summaries = [call.get("summary", "") for call in successful_calls]
-            results["summary"] = " + ".join(summaries)
-        else:
-            results["summary"] = "No services completed successfully"
-            results["success"] = False
-        
-        return results
+
     
     async def _execute_single_service(self, service_name: str, message: str) -> Dict[str, Any]:
         """Execute a single service based on its name"""
@@ -461,268 +307,13 @@ Your orchestration directive:"""
             logger.error(f"❌ Unknown service: {service_name}")
             return {"success": False, "summary": f"Unknown service: {service_name}"}
     
-    async def _execute_service_on_targets_parallel(self, service_name: str, original_message: str) -> Dict[str, Any]:
-        """Execute a service on multiple targets in parallel (e.g., check firmware on all cameras)"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        try:
-            logger.info(f"🎯🔄 Starting parallel target execution for: {service_name}")
-            logger.info(f"🔍 DEBUG: Original message: {original_message}")
-            
-            # First, we need to get the targets (usually from asset service)
-            # For most parallel target scenarios, we need to find the targets first
-            if "automation" in service_name.lower() or "network" in service_name.lower():
-                # For automation/network services, we typically need to find targets first
-                logger.info("🏢 Getting targets from asset service first...")
-                logger.info(f"🔍 DEBUG: About to call asset service with message: {original_message}")
-                asset_result = await self._execute_single_service("asset-service", original_message)
-                logger.info(f"🔍 DEBUG: Asset service result: {asset_result}")
-                
-                if not asset_result or not asset_result.get("success"):
-                    return {"success": False, "summary": "Failed to get targets for parallel execution"}
-                
-                # Extract targets from asset result
-                targets = self._extract_targets_from_asset_result(asset_result, original_message)
-                logger.info(f"🔍 DEBUG: Extracted targets: {targets}")
-                
-                if not targets:
-                    return {"success": False, "summary": "No targets found for parallel execution"}
-                
-                logger.info(f"🎯 Found {len(targets)} targets for parallel execution: {targets}")
-                
-                # Execute the service on all targets in parallel
-                logger.info(f"🔍 DEBUG: About to call {service_name} on targets: {targets}")
-                parallel_result = await self._execute_service_on_specific_targets(service_name, targets, original_message)
-                logger.info(f"🔍 DEBUG: Parallel execution result: {parallel_result}")
-                
-                # Combine asset discovery and parallel execution results
-                results["service_calls"].append(asset_result)
-                if parallel_result:
-                    results["service_calls"].extend(parallel_result.get("service_calls", []))
-                    results["job_details"].extend(parallel_result.get("job_details", []))
-                    results["success"] = parallel_result.get("success", False)
-                    results["summary"] = parallel_result.get("summary", "Parallel execution completed")
-                else:
-                    results["success"] = False
-                    results["summary"] = "Execution failed"
-                
-            else:
-                # For asset service parallel execution (less common but possible)
-                parallel_result = await self._execute_single_service(service_name, original_message)
-                if parallel_result:
-                    results.update(parallel_result)
-                    results["summary"] = f"Parallel asset query: {parallel_result.get('summary', '')}"
-                
-        except Exception as e:
-            logger.error(f"❌ Parallel target execution failed: {e}")
-            results["success"] = False
-            results["summary"] = f"Target execution failed: {e}"
-        
-        return results
+
     
-    async def _execute_mixed_workflow(self, execute_part: str, original_message: str) -> Dict[str, Any]:
-        """Execute mixed workflows like: asset-service THEN automation-service ON TARGETS PARALLEL"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        try:
-            logger.info(f"🔄🎯 Executing mixed workflow: {execute_part}")
-            
-            # Parse the mixed workflow
-            # Example: "ASSET-SERVICE THEN AUTOMATION-SERVICE ON TARGETS PARALLEL"
-            parts = execute_part.split(" THEN ")
-            
-            if len(parts) != 2:
-                logger.error(f"❌ Invalid mixed workflow format: {execute_part}")
-                return {"success": False, "summary": "Invalid mixed workflow format"}
-            
-            initial_service = parts[0].strip()
-            parallel_part = parts[1].strip()
-            
-            # Execute the initial service (usually asset discovery)
-            logger.info(f"🚀 Step 1: Executing {initial_service}")
-            initial_result = await self._execute_single_service(initial_service, original_message)
-            
-            if not initial_result or not initial_result.get("success"):
-                return {"success": False, "summary": f"Initial step failed: {initial_service}"}
-            
-            results["service_calls"].append(initial_result)
-            
-            # Extract the service name from the parallel part
-            if "ON TARGETS PARALLEL" in parallel_part:
-                parallel_service = parallel_part.replace("ON TARGETS PARALLEL", "").strip()
-                
-                # Extract targets from the initial result
-                targets = self._extract_targets_from_asset_result(initial_result, original_message)
-                
-                if not targets:
-                    logger.warning("⚠️ No targets found from initial step, executing service normally")
-                    parallel_result = await self._execute_single_service(parallel_service, original_message)
-                else:
-                    logger.info(f"🎯 Step 2: Executing {parallel_service} on {len(targets)} targets in parallel")
-                    parallel_result = await self._execute_service_on_specific_targets(parallel_service, targets, original_message)
-                
-                if parallel_result:
-                    if isinstance(parallel_result.get("service_calls"), list):
-                        results["service_calls"].extend(parallel_result["service_calls"])
-                    else:
-                        results["service_calls"].append(parallel_result)
-                    results["job_details"].extend(parallel_result.get("job_details", []))
-                    
-                    # Create comprehensive summary with actual results
-                    initial_summary = initial_result.get('summary', '')
-                    parallel_summary = parallel_result.get('summary', '')
-                    
-                    # Show actual results
-                    if parallel_summary:
-                        results["summary"] = f"{initial_summary} → {parallel_summary}"
-                    else:
-                        results["summary"] = initial_summary
-                else:
-                    results["success"] = False
-                    results["summary"] = "Initial step succeeded but parallel execution failed"
-            
-        except Exception as e:
-            logger.error(f"❌ Mixed workflow execution failed: {e}")
-            results["success"] = False
-            results["summary"] = f"Mixed workflow execution failed: {e}"
-        
-        return results
+
     
-    def _extract_targets_from_asset_result(self, asset_result: Dict[str, Any], original_message: str) -> List[str]:
-        """Extract target hostnames/IPs from asset service result"""
-        targets = []
-        
-        try:
-            # Look for assets in the result
-            result_data = asset_result.get("result", {})
-            
-            if "assets" in result_data:
-                assets = result_data["assets"]
-                for asset in assets:
-                    # Extract hostname, IP, or name
-                    if isinstance(asset, dict):
-                        target = asset.get("hostname") or asset.get("ip_address") or asset.get("name") or asset.get("device_name")
-                        if target:
-                            targets.append(target)
-                    elif isinstance(asset, str):
-                        targets.append(asset)
-            
-            # Also check job_details for target information
-            for job_detail in asset_result.get("job_details", []):
-                if isinstance(job_detail, dict) and "target" in job_detail:
-                    targets.append(job_detail["target"])
-            
-            logger.info(f"🎯 Extracted {len(targets)} targets: {targets}")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to extract targets: {e}")
-        
-        return list(set(targets))  # Remove duplicates
+
     
-    async def _execute_service_on_specific_targets(self, service_name: str, targets: List[str], original_message: str) -> Dict[str, Any]:
-        """Execute a service on specific targets in parallel"""
-        
-        results = {
-            "success": True,
-            "summary": "",
-            "job_details": [],
-            "service_calls": []
-        }
-        
-        try:
-            logger.info(f"🎯🔄 Executing {service_name} on {len(targets)} targets in parallel")
-            logger.info(f"🔍 DEBUG: Service={service_name}, Targets={targets}, Message={original_message}")
-            
-            # Create parallel tasks for each target
-            import asyncio
-            tasks = []
-            
-            for target in targets:
-                # Create a targeted message for each target
-                target_message = f"{original_message} (Target: {target})"
-                logger.info(f"🔍 DEBUG: Creating task for target {target} with message: {target_message}")
-                task = self._execute_single_service(service_name, target_message)
-                tasks.append(task)
-            
-            # Execute all tasks in parallel
-            parallel_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Process results
-            successful_executions = 0
-            failed_executions = 0
-            
-            for i, result in enumerate(parallel_results):
-                target = targets[i]
-                
-                if isinstance(result, Exception):
-                    logger.error(f"❌ Target {target} failed: {result}")
-                    failed_executions += 1
-                    results["job_details"].append({
-                        "target": target,
-                        "status": "failed",
-                        "error": str(result)
-                    })
-                elif result and result.get("success"):
-                    logger.info(f"✅ Target {target} completed successfully")
-                    successful_executions += 1
-                    results["service_calls"].append(result)
-                    results["job_details"].extend(result.get("job_details", []))
-                    
-                    # Add target info to job details
-                    for job_detail in result.get("job_details", []):
-                        if isinstance(job_detail, dict):
-                            job_detail["parallel_target"] = target
-                else:
-                    logger.error(f"❌ Target {target} returned no results")
-                    failed_executions += 1
-                    results["job_details"].append({
-                        "target": target,
-                        "status": "failed",
-                        "error": "No results returned"
-                    })
-            
-            # Determine overall success and create detailed summary
-            if successful_executions > 0:
-                results["success"] = True
-                
-                # Create detailed summary with actual results
-                detailed_summaries = []
-                for service_call in results["service_calls"]:
-                    if service_call.get("success") and service_call.get("summary"):
-                        detailed_summaries.append(service_call["summary"])
-                
-                if detailed_summaries:
-                    # Show actual results instead of just success count
-                    results["summary"] = " | ".join(detailed_summaries)
-                else:
-                    # Fallback to count if no detailed summaries available
-                    results["summary"] = f"{successful_executions}/{len(targets)} targets succeeded"
-                    if failed_executions > 0:
-                        results["summary"] += f", {failed_executions} failed"
-            else:
-                results["success"] = False
-                results["summary"] = f"0/{len(targets)} targets succeeded"
-            
-            logger.info(f"🎉 Parallel execution completed: {successful_executions} successes, {failed_executions} failures")
-            
-        except Exception as e:
-            logger.error(f"❌ Parallel target execution failed: {e}")
-            results["success"] = False
-            results["summary"] = f"Target execution failed: {e}"
-        
-        return results
+
 
     
     async def _select_and_execute_services_with_ollama(self, user_message: str, extraction_text: str) -> Optional[Dict[str, Any]]:
