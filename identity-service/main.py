@@ -394,7 +394,28 @@ class IdentityService(BaseService):
                     
                     return {"success": True, "message": "User created", "data": user}
             except Exception as e:
-                self.logger.error("Failed to create user", error=str(e))
+                error_str = str(e)
+                self.logger.error("Failed to create user", error=error_str)
+                
+                # Handle specific database constraint violations
+                if "duplicate key value violates unique constraint" in error_str:
+                    if "users_email_key" in error_str:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="A user with this email address already exists"
+                        )
+                    elif "users_username_key" in error_str:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="A user with this username already exists"
+                        )
+                    else:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="A user with these details already exists"
+                        )
+                
+                # Generic error for other issues
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to create user"
