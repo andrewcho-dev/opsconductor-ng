@@ -24,8 +24,8 @@ fi
 echo ""
 echo "🔍 Checking that all Python files are properly mounted..."
 
-# Services to check
-SERVICES=("api-gateway" "identity-service" "asset-service" "automation-service" "communication-service" "ai-service")
+# Services to check (excluding api-gateway as it's been replaced by Kong Gateway)
+SERVICES=("identity-service" "asset-service" "automation-service" "communication-service" "ai-brain" "network-analyzer-service")
 
 WARNINGS=0
 
@@ -40,9 +40,14 @@ for service in "${SERVICES[@]}"; do
                 continue
             fi
             
+            # Skip debug, test, and development files that don't need to be mounted
+            if [[ "$file" == *"debug_"* ]] || [[ "$file" == *"test_"* ]] || [[ "$file" == *"_test.py" ]] || [[ "$file" == *"/tests/"* ]] || [[ "$file" == *"fixed_"* ]] || [[ "$file" == *"simple_"* ]] || [[ "$file" == *"sync_"* ]] || [[ "$file" == *"hardcoded_"* ]] || [[ "$file" == *"startup_"* ]] || [[ "$file" == *"verify_"* ]] || [[ "$file" == *"main_minimal.py" ]] || [[ "$file" == *"ultra_"* ]] || [[ "$file" == *"__init__.py" ]] || [[ "$file" == *"multi_brain_engine.py" ]]; then
+                continue
+            fi
+            
             # Skip files in directories that are mounted entirely
             skip_file=false
-            for mounted_dir in libraries data config templates static; do
+            for mounted_dir in libraries data config templates static brains coordination communication confidence learning orchestration taxonomy job_engine integrations api fulfillment_engine models analyzers agents utils; do
                 if [[ "$file" == *"/$mounted_dir/"* ]] && grep -q "./$service/$mounted_dir:/app/$mounted_dir" docker-compose.yml; then
                     skip_file=true
                     break

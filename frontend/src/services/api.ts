@@ -331,80 +331,178 @@ export const jobRunApi = {
 // Health Monitoring API
 export const healthApi = {
   checkAllServices: async (): Promise<Record<string, any>> => {
-    const startTime = Date.now();
-    try {
-      const response = await api.get('/health', {
-        timeout: 10000 // 10 second timeout for comprehensive health check
-      });
-      const responseTime = Date.now() - startTime;
-      
-      // Transform the centralized health response into the expected format
-      const healthData = response.data;
-      const results: Record<string, any> = {};
-      
-      // Add overall API Gateway status - but don't let it be unhealthy just because of missing services
-      // If we can reach the gateway and get a response, consider it healthy
-      results['api-gateway'] = {
-        status: 'healthy', // If we got a response, the gateway is working
-        service: 'api-gateway',
-        responseTime,
-        message: 'API Gateway responding'
-      };
-      
-      // Add individual service checks from the centralized response
-      if (healthData.checks) {
-        healthData.checks.forEach((check: any) => {
-          // Map service names from the health check response
-          let serviceName = check.service || check.name || 'unknown';
-          
-          // Map backend service names to frontend expected names
-          const serviceNameMapping: Record<string, string> = {
-            // No mappings needed - use backend names directly
+    // Define services with their Kong health endpoints
+    const services = [
+      { name: 'identity-service', path: '/api/health/identity-service' },
+      { name: 'asset-service', path: '/api/health/asset-service' },
+      { name: 'automation-service', path: '/api/health/automation-service' },
+      { name: 'communication-service', path: '/api/health/communication-service' },
+      { name: 'ai-brain', path: '/api/health/ai-brain' },
+      { name: 'network-analyzer-service', path: '/api/health/network-analyzer-service' },
+    ];
+
+    const results: Record<string, any> = {};
+
+    // Check each service through Kong
+    const healthChecks = services.map(async (service) => {
+      const startTime = Date.now();
+      try {
+        const response = await fetch(`${service.path}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(5000) // 5 second timeout per service
+        });
+        
+        const responseTime = Date.now() - startTime;
+        
+        if (response.ok) {
+          const healthData = await response.json();
+          results[service.name] = {
+            ...healthData,
+            service: service.name,
+            responseTime
           };
-          
-          const mappedServiceName = serviceNameMapping[serviceName.toLowerCase()] || serviceName.toLowerCase();
-          
-          results[mappedServiceName] = { 
-            ...check, 
-            service: mappedServiceName, 
-            responseTime: check.response_time_ms || responseTime
+        } else {
+          results[service.name] = {
+            status: 'unhealthy',
+            service: service.name,
+            responseTime,
+            error: `HTTP ${response.status}: ${response.statusText}`
           };
+        }
+      } catch (error) {
+        const responseTime = Date.now() - startTime;
+        results[service.name] = {
+          status: 'unhealthy',
+          service: service.name,
+          responseTime,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        };
+      }
+    });
+
+    // Check infrastructure services
+    const infraChecks = [
+      // Kong Gateway - if we can make API calls through it, it's healthy
+      (async () => {
+        const startTime = Date.now();
+        try {
+          // Test Kong by making a simple API call through it
+          const response = await fetch('/api/v1/users', {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000)
+          });
+          const responseTime = Date.now() - startTime;
+          // Kong is healthy if it responds (even with auth errors)
+          results['kong'] = {
+            status: (response.status < 500) ? 'healthy' : 'unhealthy',
+            service: 'kong',
+            responseTime,
+            message: 'API Gateway responding'
+          };
+        } catch (error) {
+          const responseTime = Date.now() - startTime;
+          results['kong'] = {
+            status: 'unhealthy',
+            service: 'kong',
+            responseTime,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+      })(),
+      
+      // PostgreSQL - check via a simple query through one of the services
+      (async () => {
+        try {
+          // We can infer postgres health from the identity service health check
+          // which includes database connectivity
+          results['postgres'] = {
+            status: 'unknown',
+            service: 'postgres',
+            message: 'Status inferred from service health checks'
+          };
+        } catch (error) {
+          results['postgres'] = {
+            status: 'unknown',
+            service: 'postgres',
+            error: 'Cannot directly check database'
+          };
+        }
+      })(),
+      
+      // Redis - similar approach
+      (async () => {
+        results['redis'] = {
+          status: 'unknown',
+          service: 'redis',
+          message: 'Status inferred from service health checks'
+        };
+      })(),
+      
+      // ChromaDB - infer health from AI Brain service which uses it
+      (async () => {
+        // ChromaDB health will be inferred from AI Brain service health
+        // since AI Brain depends on ChromaDB for vector storage
+        results['chromadb'] = {
+          status: 'unknown',
+          service: 'chromadb',
+          message: 'Status inferred from AI Brain service health'
+        };
+      })(),
+    ];
+
+    // Wait for all health checks to complete
+    await Promise.allSettled([...healthChecks, ...infraChecks]);
+
+    // Infer postgres and redis status from service health checks
+    const servicesWithDbChecks = ['identity-service', 'asset-service', 'automation-service', 'communication-service'];
+    let postgresHealthy = false;
+    let redisHealthy = false;
+
+    servicesWithDbChecks.forEach(serviceName => {
+      const serviceHealth = results[serviceName];
+      if (serviceHealth && serviceHealth.checks) {
+        serviceHealth.checks.forEach((check: any) => {
+          if (check.name === 'database' && check.status === 'healthy') {
+            postgresHealthy = true;
+          }
+          if (check.name === 'redis' && check.status === 'healthy') {
+            redisHealthy = true;
+          }
         });
       }
-      
-      // No hardcoded service lists - just return what the API gives us
-      // The API Gateway health check will return all services it knows about
-      
-      return results;
-    } catch (error) {
-      const responseTime = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Return error status for all services if health check fails
-      const services = [
-        'api-gateway', 'identity', 'asset', 'automation', 'communication',
-        'postgres', 'redis', 'chromadb',
-        'worker-1', 'worker-2', 'scheduler', 'celery-monitor',
-        'frontend', 'nginx'
-      ];
-      
-      const results: Record<string, any> = {};
-      services.forEach(service => {
-        results[service] = {
-          status: 'unhealthy',
-          service,
-          responseTime,
-          error: errorMessage
-        };
-      });
-      
-      return results;
+    });
+
+    // Update postgres and redis status based on service checks
+    if (results['postgres']) {
+      results['postgres'].status = postgresHealthy ? 'healthy' : 'unhealthy';
+      results['postgres'].message = postgresHealthy ? 'Database connectivity confirmed via services' : 'Database issues detected in service checks';
     }
+
+    if (results['redis']) {
+      results['redis'].status = redisHealthy ? 'healthy' : 'unhealthy';
+      results['redis'].message = redisHealthy ? 'Redis connectivity confirmed via services' : 'Redis issues detected in service checks';
+    }
+
+    // Infer ChromaDB status from AI Brain service health
+    const aiBrainHealth = results['ai-brain'];
+    if (results['chromadb'] && aiBrainHealth) {
+      if (aiBrainHealth.status === 'healthy') {
+        results['chromadb'].status = 'healthy';
+        results['chromadb'].message = 'ChromaDB connectivity confirmed via AI Brain service';
+      } else {
+        results['chromadb'].status = 'unhealthy';
+        results['chromadb'].message = 'ChromaDB issues detected - AI Brain service unhealthy';
+      }
+    }
+
+    return results;
   },
 
   checkService: async (service: string): Promise<{ status: string; service: string; responseTime?: number; error?: string }> => {
-    // For individual service checks, use the centralized health endpoint
-    // and extract the specific service status
+    // For individual service checks, get all services and extract the specific one
     try {
       const allServices = await healthApi.checkAllServices();
       return allServices[service] || {
@@ -423,18 +521,27 @@ export const healthApi = {
 
   getSystemStats: async (): Promise<any> => {
     try {
-      // Get system stats from the centralized health endpoint
-      const healthResponse = await api.get('/health');
-      const healthData = healthResponse.data;
+      // Get system stats from individual service health checks
+      const allServices = await healthApi.checkAllServices();
+      const servicesList = Object.values(allServices);
       
-      // Extract system statistics from health data
+      const healthyServices = servicesList.filter((service: any) => service.status === 'healthy').length;
+      const unhealthyServices = servicesList.filter((service: any) => service.status === 'unhealthy').length;
+      const totalServices = servicesList.length;
+      
+      // Determine overall status
+      let overallStatus = 'healthy';
+      if (unhealthyServices > 0) {
+        overallStatus = unhealthyServices >= totalServices / 2 ? 'unhealthy' : 'degraded';
+      }
+      
       const stats = {
-        overall_status: healthData.status,
-        services_count: healthData.checks ? healthData.checks.length : 0,
-        healthy_services: healthData.checks ? healthData.checks.filter((c: any) => c.status === 'healthy').length : 0,
-        unhealthy_services: healthData.checks ? healthData.checks.filter((c: any) => c.status === 'unhealthy').length : 0,
+        overall_status: overallStatus,
+        services_count: totalServices,
+        healthy_services: healthyServices,
+        unhealthy_services: unhealthyServices,
         timestamp: new Date().toISOString(),
-        message: healthData.message || 'System health check completed'
+        message: `System health check completed - ${healthyServices}/${totalServices} services healthy`
       };
       
       return stats;

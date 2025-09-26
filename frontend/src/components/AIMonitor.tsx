@@ -25,7 +25,13 @@ interface AIServiceStatus {
 
 interface AIHealth {
   status: string;
-  services: Record<string, AIServiceStatus>;
+  service?: string;
+  architecture?: string;
+  brain_engine?: {
+    status: string;
+    brain_type: string;
+  };
+  services?: Record<string, AIServiceStatus>;
   timestamp: string;
 }
 
@@ -459,6 +465,47 @@ const AIMonitor: React.FC = () => {
       )}
 
       {health && (
+        <div className="monitor-section">
+          <div className="section-header">AI Service Status</div>
+          <div className="section-content">
+            <div className="service-card">
+              <div className="service-header">
+                <div className="service-name">
+                  {getStatusIcon(health.status)}
+                  <span>{health.service || 'AI Service'}</span>
+                </div>
+                <span className="service-type">{health.architecture || 'N/A'}</span>
+              </div>
+              
+              <div className="service-metrics">
+                <div className="metric">
+                  <span className="metric-label">Status</span>
+                  <span className="metric-value">{health.status}</span>
+                </div>
+                <div className="metric">
+                  <span className="metric-label">Brain Type</span>
+                  <span className="metric-value">{health.brain_engine?.brain_type || 'N/A'}</span>
+                </div>
+                <div className="metric">
+                  <span className="metric-label">Architecture</span>
+                  <span className="metric-value">{health.architecture || 'N/A'}</span>
+                </div>
+              </div>
+              
+              {health.timestamp && (
+                <div className="circuit-breaker">
+                  <span className="cb-label">Last Updated:</span>
+                  <span className="cb-state">
+                    {new Date(health.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {health && health.services && (
         <div className="services-grid">
           {/* Direct service cards as subcards */}
           {Object.entries(health.services).map(([name, service]) => (
@@ -514,11 +561,11 @@ const AIMonitor: React.FC = () => {
       )}
 
       {/* Alerts Section - Disabled */}
-      {false && dashboard?.analysis?.alerts && dashboard.analysis.alerts.length > 0 && (
+      {false && dashboard?.analysis?.alerts && (dashboard?.analysis?.alerts?.length || 0) > 0 && (
         <div className="alerts-section" style={{ marginTop: '12px' }}>
           <div className="section-header-small">Active Alerts</div>
           <div className="alerts-list">
-            {dashboard.analysis.alerts.map((alert, idx) => (
+            {dashboard?.analysis?.alerts?.map((alert, idx) => (
               <div key={idx} className="alert-item">
                 <div 
                   className="alert-severity"
@@ -536,7 +583,7 @@ const AIMonitor: React.FC = () => {
       )}
 
       {/* Statistics - Keep this */}
-      {dashboard?.statistics && (
+      {dashboard?.statistics && Object.keys(dashboard.statistics).length > 0 && (
         <div className="stats-section" style={{ marginTop: '12px' }}>
           <div className="section-header-small">Performance Statistics</div>
           <div className="stats-grid">

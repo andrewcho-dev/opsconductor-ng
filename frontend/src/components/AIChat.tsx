@@ -260,8 +260,8 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
         jobId: data.job_id,
         executionId: data.execution_id,
         conversationId: data.conversation_id,
-        fulfillmentId: data.fulfillment_id,
-        fulfillmentStatus: data.fulfillment_status,
+        fulfillmentId: (data as any).fulfillment_id,
+        fulfillmentStatus: (data as any).fulfillment_status,
         status: data.execution_started ? 'pending' : undefined,
         debugInfo: {
           intent_classification: data.intent_classification,
@@ -445,42 +445,42 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Context Analysis Section */}
-          {intent?.context_analysis && (
+          {intent && (intent as any)?.context_analysis && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
                   <Shield className="debug-section-icon" />
                   Context Analysis
                 </div>
-                <span className={`risk-indicator ${getRiskClass(intent.context_analysis.risk_level)}`}>
+                <span className={`risk-indicator ${getRiskClass((intent as any).context_analysis.risk_level)}`}>
                   <AlertTriangle size={14} />
-                  {formatRiskLevel(intent.context_analysis.risk_level)}
+                  {formatRiskLevel((intent as any).context_analysis.risk_level)}
                 </span>
               </div>
 
               <div className="debug-field">
                 <span className="debug-field-label">Context Confidence</span>
-                <span className="debug-field-value">{formatConfidence(intent.context_analysis.confidence_score)}</span>
+                <span className="debug-field-value">{formatConfidence((intent as any).context_analysis.confidence_score)}</span>
               </div>
 
               <div className="debug-field">
                 <span className="debug-field-label">Risk Level</span>
-                <span className="debug-field-value">{formatRiskLevel(intent.context_analysis.risk_level)}</span>
+                <span className="debug-field-value">{formatRiskLevel((intent as any).context_analysis.risk_level)}</span>
               </div>
 
               <div className="debug-field">
                 <span className="debug-field-label">Requirements Count</span>
-                <span className="debug-field-value">{intent.context_analysis.requirements_count || 0}</span>
+                <span className="debug-field-value">{(intent as any).context_analysis.requirements_count || 0}</span>
               </div>
 
               {/* Recommendations */}
-              {intent.context_analysis.recommendations && intent.context_analysis.recommendations.length > 0 && (
+              {(intent as any).context_analysis.recommendations && (intent as any).context_analysis.recommendations.length > 0 && (
                 <div>
                   <div className="debug-field-label" style={{ marginTop: 'var(--space-3)', marginBottom: 'var(--space-2)' }}>
                     Recommendations
                   </div>
                   <div className="recommendations-list">
-                    {intent.context_analysis.recommendations.map((rec, index) => (
+                    {(intent as any).context_analysis.recommendations.map((rec: any, index: number) => (
                       <div key={index} className="recommendation-item">
                         <AlertTriangle className="recommendation-icon" />
                         <span className="recommendation-text">
@@ -495,7 +495,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Alternative Intents Section */}
-          {intent?.alternatives && intent.alternatives.length > 0 && (
+          {intent && (intent as any)?.alternatives && (intent as any).alternatives.length > 0 && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -505,7 +505,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
 
               <div className="alternatives-list">
-                {intent.alternatives.map((alt, index) => (
+                {(intent as any).alternatives.map((alt: any, index: number) => (
                   <div key={index} className="alternative-item">
                     <span className="alternative-name">{alt.intent}</span>
                     <span className="alternative-confidence">{formatConfidence(alt.confidence)}</span>
@@ -516,7 +516,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Entities Section */}
-          {intent?.entities && intent.entities.length > 0 && (
+          {intent && (intent as any)?.entities && (intent as any).entities.length > 0 && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -526,7 +526,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
 
               <div className="entities-list">
-                {intent.entities.map((entity, index) => (
+                {(intent as any).entities.map((entity: any, index: number) => (
                   <div key={index} className="entity-item">
                     <div className="entity-details">
                       <span className="entity-value">{entity.value}</span>
@@ -573,7 +573,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Multi-Brain Consultations Section */}
-          {intent?.metadata?.brains_consulted && intent.metadata.brains_consulted.length > 0 && (
+          {intent && (intent.metadata as any)?.brains_consulted && (intent.metadata as any).brains_consulted.length > 0 && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -583,7 +583,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
               
               <div className="brains-consulted-list">
-                {intent.metadata.brains_consulted.map((brain: string, index: number) => (
+                {(intent.metadata as any).brains_consulted.map((brain: string, index: number) => (
                   <div key={index} className="brain-consulted-item">
                     <span className="brain-name">{brain}</span>
                     <span className="brain-status">✓ Consulted</span>
@@ -594,7 +594,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* SME Consultations Section */}
-          {intent?.metadata?.sme_consultations && Object.keys(intent.metadata.sme_consultations).length > 0 && (
+          {intent && (intent.metadata as any)?.sme_consultations && Object.keys((intent.metadata as any).sme_consultations).length > 0 && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -604,7 +604,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
               
               <div className="sme-consultations-list">
-                {Object.entries(intent.metadata.sme_consultations).map(([domain, consultation]: [string, any], index: number) => (
+                {Object.entries((intent.metadata as any).sme_consultations).map(([domain, consultation]: [string, any], index: number) => (
                   <div key={index} className="sme-consultation-item">
                     <div className="sme-domain">{domain.replace(/_/g, ' ').toUpperCase()}</div>
                     <div className="sme-details">
@@ -630,7 +630,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Technical Plan Section */}
-          {intent?.metadata?.technical_plan && Object.keys(intent.metadata.technical_plan).length > 0 && (
+          {intent && (intent.metadata as any)?.technical_plan && Object.keys((intent.metadata as any).technical_plan).length > 0 && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -640,22 +640,22 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
               
               <div className="technical-plan-details">
-                {intent.metadata.technical_plan.confidence_score && (
+                {(intent.metadata as any).technical_plan.confidence_score && (
                   <div className="debug-field">
                     <span className="debug-field-label">Plan Confidence</span>
-                    <span className="debug-field-value">{formatConfidence(intent.metadata.technical_plan.confidence_score)}</span>
+                    <span className="debug-field-value">{formatConfidence((intent.metadata as any).technical_plan.confidence_score)}</span>
                   </div>
                 )}
-                {intent.metadata.technical_plan.complexity_level && (
+                {(intent.metadata as any).technical_plan.complexity_level && (
                   <div className="debug-field">
                     <span className="debug-field-label">Complexity</span>
-                    <span className="debug-field-value">{intent.metadata.technical_plan.complexity_level}</span>
+                    <span className="debug-field-value">{(intent.metadata as any).technical_plan.complexity_level}</span>
                   </div>
                 )}
-                {intent.metadata.technical_plan.estimated_duration && (
+                {(intent.metadata as any).technical_plan.estimated_duration && (
                   <div className="debug-field">
                     <span className="debug-field-label">Est. Duration</span>
-                    <span className="debug-field-value">{intent.metadata.technical_plan.estimated_duration}</span>
+                    <span className="debug-field-value">{(intent.metadata as any).technical_plan.estimated_duration}</span>
                   </div>
                 )}
               </div>
@@ -663,7 +663,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           )}
 
           {/* Job Details Section (for job creation) */}
-          {intent?.metadata?.job_details && (
+          {(intent?.metadata as any)?.job_details && (
             <div className="debug-section">
               <div className="debug-section-header">
                 <div className="debug-section-title">
@@ -673,22 +673,22 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
               </div>
               
               <div className="job-details">
-                {intent.metadata.job_details.job_id && (
+                {intent && (intent.metadata as any).job_details?.job_id && (
                   <div className="debug-field">
                     <span className="debug-field-label">Job ID</span>
-                    <span className="debug-field-value code">{intent.metadata.job_details.job_id}</span>
+                    <span className="debug-field-value code">{(intent.metadata as any).job_details.job_id}</span>
                   </div>
                 )}
-                {intent.metadata.job_details.automation_job_id && (
+                {intent && (intent.metadata as any).job_details?.automation_job_id && (
                   <div className="debug-field">
                     <span className="debug-field-label">Automation Job ID</span>
-                    <span className="debug-field-value">{intent.metadata.job_details.automation_job_id}</span>
+                    <span className="debug-field-value">{(intent.metadata as any).job_details.automation_job_id}</span>
                   </div>
                 )}
-                {intent.metadata.job_details.workflow_steps !== undefined && (
+                {intent && (intent.metadata as any).job_details?.workflow_steps !== undefined && (
                   <div className="debug-field">
                     <span className="debug-field-label">Workflow Steps</span>
-                    <span className="debug-field-value">{intent.metadata.job_details.workflow_steps}</span>
+                    <span className="debug-field-value">{(intent.metadata as any).job_details.workflow_steps}</span>
                   </div>
                 )}
               </div>

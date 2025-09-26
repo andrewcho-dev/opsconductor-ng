@@ -1,0 +1,666 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  # Identity Service (Authentication)
+  - name: identity-service
+    url: http://identity-service:3001
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
+
+  # Asset Service
+  - name: asset-service
+    url: http://asset-service:3002
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          hour: 3000
+          policy: local
+
+  # Automation Service
+  - name: automation-service
+    url: http://automation-service:3003
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          hour: 3000
+          policy: local
+
+  # Communication Service
+  - name: communication-service
+    url: http://communication-service:3004
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 200
+          hour: 2000
+          policy: local
+
+  # AI Brain Service
+  - name: ai-brain-service
+    url: http://ai-brain:3005
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
+
+  # Network Analyzer Service
+  - name: network-analyzer-service
+    url: http://network-analyzer-service:3006
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 200
+          hour: 2000
+          policy: local
+
+routes:
+  # Identity Service Routes (Auth & Users)
+  - name: auth-api
+    service: identity-service
+    paths:
+      - /api/v1/auth
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /auth
+
+  - name: users-api
+    service: identity-service
+    paths:
+      - /api/v1/users
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /users
+
+  - name: roles-api
+    service: identity-service
+    paths:
+      - /api/v1/roles
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /roles
+
+  - name: available-roles-api
+    service: identity-service
+    paths:
+      - /api/v1/available-roles
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /available-roles
+
+  # Asset Service Routes
+  - name: assets-api
+    service: asset-service
+    paths:
+      - /api/v1/assets
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /assets
+
+  - name: metadata-api
+    service: asset-service
+    paths:
+      - /api/v1/metadata
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /metadata
+
+  # Automation Service Routes
+  - name: jobs-api
+    service: automation-service
+    paths:
+      - /api/v1/jobs
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /jobs
+
+  - name: runs-api
+    service: automation-service
+    paths:
+      - /api/v1/runs
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /runs
+
+  - name: schedules-api
+    service: automation-service
+    paths:
+      - /api/v1/schedules
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /schedules
+
+  - name: workflows-api
+    service: automation-service
+    paths:
+      - /api/v1/workflows
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /workflows
+
+  - name: executions-api
+    service: automation-service
+    paths:
+      - /api/v1/executions
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /executions
+
+  - name: automation-api
+    service: automation-service
+    paths:
+      - /api/v1/automation
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /automation
+
+  - name: tasks-api
+    service: automation-service
+    paths:
+      - /api/v1/tasks
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /tasks
+
+  # Communication Service Routes
+  - name: templates-api
+    service: communication-service
+    paths:
+      - /api/v1/templates
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /templates
+
+  - name: channels-api
+    service: communication-service
+    paths:
+      - /api/v1/channels
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /channels
+
+  - name: notifications-api
+    service: communication-service
+    paths:
+      - /api/v1/notifications
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /notifications
+
+  - name: audit-api
+    service: communication-service
+    paths:
+      - /api/v1/audit
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /audit
+
+  # AI Brain Service Routes
+  - name: ai-api
+    service: ai-brain-service
+    paths:
+      - /api/v1/ai
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /ai
+
+  # Network Analyzer Service Routes (already has /api/v1/ prefix)
+  - name: network-api
+    service: network-analyzer-service
+    paths:
+      - /api/v1/network
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+
+  - name: analysis-api
+    service: network-analyzer-service
+    paths:
+      - /api/v1/analysis
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+
+  - name: monitoring-api
+    service: network-analyzer-service
+    paths:
+      - /api/v1/monitoring
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+
+  - name: remote-api
+    service: network-analyzer-service
+    paths:
+      - /api/v1/remote
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+
+  # Health Check Routes
+  - name: identity-health
+    service: identity-service
+    paths:
+      - /api/health/identity-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: asset-health
+    service: asset-service
+    paths:
+      - /api/health/asset-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: automation-health
+    service: automation-service
+    paths:
+      - /api/health/automation-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: communication-health
+    service: communication-service
+    paths:
+      - /api/health/communication-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: ai-brain-health
+    service: ai-brain-service
+    paths:
+      - /api/health/ai-brain
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: network-analyzer-health
+    service: network-analyzer-service
+    paths:
+      - /api/health/network-analyzer-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+# Global plugins
+plugins: []
+
+consumers: []
