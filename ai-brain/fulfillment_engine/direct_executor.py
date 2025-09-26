@@ -157,12 +157,14 @@ Now execute this plan step by step. For each step, you need to:
 3. Actually make the service call
 4. Report the result
 
-REMEMBER THE SERVICE SELECTION RULES:
-- Network tasks (ping, traceroute, connectivity) → network-analyzer-service
-- Scheduling tasks → celery-beat
-- System administration → automation-service
-- Asset management → asset-service
-- Notifications → communication-service
+Available services and their capabilities:
+- network-analyzer-service: Performs network connectivity testing, ping, traceroute, and network diagnostics
+- automation-service: Executes commands and scripts on remote systems, performs system administration tasks
+- asset-service: Repository of known infrastructure assets - query to find what devices exist in your environment
+- celery-beat: Task scheduling service
+- communication-service: Sends notifications and messages
+
+Think logically about what you need to accomplish and which service capabilities match your needs.
 
 Start executing now. For each step, tell me:
 - EXECUTING STEP X: [description]
@@ -269,12 +271,15 @@ Here is the complete Service Catalog with all available services and their capab
 
 CRITICAL TASK: You must decide which service to execute and give me a clear decision.
 
-Available services:
-- automation-service: For executing commands, PowerShell scripts, remote operations, file operations
-- network-analyzer-service: For network diagnostics, ping, traceroute, connectivity tests
-- asset-service: For asset management and inventory
+Service Descriptions:
 
-For the request "{user_message}", you must decide:
+automation-service: Executes commands and scripts on remote systems. Can run PowerShell, bash, or other commands on target machines to perform system administration tasks, check status, install software, etc.
+
+network-analyzer-service: Performs network connectivity testing and diagnostics. Can ping hosts, run traceroute, test network connectivity, and analyze network performance.
+
+asset-service: Repository containing information about known infrastructure assets in your environment. Query this service to find what devices, servers, cameras, or other equipment exists in your inventory.
+
+For the request "{user_message}", analyze what needs to be accomplished and decide which service's capabilities best match the task.
 
 EXECUTE: [service-name]
 
