@@ -172,22 +172,30 @@ Your original plan was:
 CRITICAL DECISION POINT:
 Based on the user's request and any previous results, what should happen next?
 
-YOU MUST RESPOND WITH EXACTLY ONE OF THESE TWO FORMATS:
+MANDATORY RESPONSE FORMAT - You have THREE options:
 
-FORMAT 1 - If the job is complete:
+OPTION 1 - If the job is complete and all services have been executed:
 COMPLETE: [brief summary of what was accomplished]
 
-FORMAT 2 - If more steps are needed:
+OPTION 2 - If more steps are needed to fulfill the request:
 NEXT STEP: [service-name] - [specific action to take]
+
+OPTION 3 - If you cannot determine what to do or need more information:
+CLARIFICATION: I need more information about [what you need clarified]
 
 Available services:
 - automation-service: Execute commands/scripts on remote systems
 - network-analyzer-service: Network connectivity testing and diagnostics  
 - asset-service: Query infrastructure asset inventory
 
-IMPORTANT: You must start your response with either "COMPLETE:" or "NEXT STEP:" - no other text before it.
+CRITICAL INSTRUCTIONS:
+- Your response MUST start with exactly one of: "COMPLETE:", "NEXT STEP:", or "CLARIFICATION:"
+- If you cannot follow this format, use "CLARIFICATION:" to explain what you need
+- For "{original_message}", you likely need to execute services to get real data
+- Do NOT provide explanations or reasoning - just the required format
+- If you're unsure which service to use, ask for clarification using the CLARIFICATION format
 
-Your decision:"""
+Your response:"""
 
             response = await self.llm_engine.generate(next_step_prompt)
             
@@ -206,7 +214,7 @@ Your decision:"""
                 break
             
             # If not complete, execute the next step
-            if "NEXT STEP:" in decision_text.upper():
+            elif "NEXT STEP:" in decision_text.upper():
                 step_description = decision_text.split("NEXT STEP:")[-1].strip()
                 logger.info(f"⚡ Executing step {step_number}: {step_description}")
                 
@@ -223,8 +231,27 @@ Your decision:"""
                         "summary": f"Step {step_number} failed to execute",
                         "job_details": []
                     })
+            
+            # Handle clarification requests from Ollama
+            elif "CLARIFICATION:" in decision_text.upper():
+                clarification_text = decision_text.split("CLARIFICATION:")[-1].strip()
+                logger.info(f"🤔 Ollama needs clarification: {clarification_text}")
+                
+                # Return clarification needed response
+                return {
+                    "status": "clarification_needed",
+                    "execution_plan": plan_text,
+                    "steps_executed": len(all_execution_results),
+                    "all_results": all_execution_results,
+                    "message": f"I need clarification: {clarification_text}",
+                    "clarification_request": clarification_text,
+                    "timestamp": datetime.now().isoformat(),
+                    "job_details": [],
+                    "executed_services": len(all_execution_results) > 0
+                }
+            
             else:
-                logger.warning(f"⚠️ Unclear decision from Ollama at step {step_number}: {decision_text}")
+                logger.warning(f"⚠️ Ollama didn't use required format at step {step_number}: {decision_text}")
                 break
             
             step_number += 1

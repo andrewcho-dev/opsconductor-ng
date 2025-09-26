@@ -320,6 +320,54 @@ async def _format_execution_response(request, execution_result) -> Dict[str, Any
 async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
     """Let Ollama decide how to format the response - NO HARDCODED LOGIC!"""
     
+    # Check if Ollama needs clarification
+    if execution_result.get("status") == "clarification_needed":
+        return {
+            "response": execution_result.get("message", "I need more information to proceed."),
+            "conversation_id": request.conversation_id,
+            "intent": "clarification",
+            "confidence": 0.9,
+            "job_id": None,
+            "execution_id": None,
+            "automation_job_id": None,
+            "workflow": None,
+            "execution_started": False,
+            "clarification_needed": True,
+            "clarifying_questions": [execution_result.get("clarification_request", "More information needed")],
+            "missing_information": [execution_result.get("clarification_request", "More information needed")],
+            "risk_assessment": None,
+            "field_confidence_scores": None,
+            "validation_issues": None,
+            "intent_classification": {
+                "intent_type": "clarification",
+                "confidence": 0.9,
+                "method": "ollama_clarification_request",
+                "alternatives": [],
+                "entities": [],
+                "context_analysis": {
+                    "confidence_score": 0.9,
+                    "risk_level": "LOW",
+                    "requirements_count": 0,
+                    "recommendations": ["Ollama requested clarification"]
+                },
+                "reasoning": "Ollama needs clarification to proceed",
+                "metadata": {
+                    "engine": "pure_ollama",
+                    "success": False
+                }
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+            "success": False,
+            "_routing": {
+                "service": "ai_brain",
+                "service_type": "pure_ollama_clarification",
+                "response_time": 0.0,
+                "cached": False
+            },
+            "execution_result": execution_result,
+            "job_details": []
+        }
+    
     # Determine response type based on what Ollama actually did
     executed_services = execution_result.get("executed_services", False)
     
@@ -332,6 +380,9 @@ async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
         # Create job ID if services were executed
         job_id = f"job-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
         
+        # Generate numeric automation job ID for compatibility
+        automation_job_id = int(datetime.utcnow().strftime('%Y%m%d%H%M%S'))
+        
         response_text = execution_result.get("message", "Task completed successfully.")
         
     else:
@@ -340,6 +391,7 @@ async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
         execution_started = False
         job_details = []
         job_id = None
+        automation_job_id = None
         
         response_text = execution_result.get("message", "I understand your request.")
         
@@ -354,7 +406,7 @@ async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
         "confidence": 0.9,
         "job_id": job_id,
         "execution_id": job_id,
-        "automation_job_id": job_id if executed_services else None,
+        "automation_job_id": automation_job_id if executed_services else None,
         "workflow": None,
         "execution_started": execution_started,
         "clarification_needed": False,
