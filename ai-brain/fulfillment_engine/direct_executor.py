@@ -283,18 +283,25 @@ List each step clearly with the service name and what it should accomplish.
                 
                 logger.info(f"🚀 Step {i}: {service_name} - {purpose}")
                 
-                # Execute the specific service
+                # Execute the specific service based on name matching
                 step_result = None
-                if "asset" in service_name:
+                if any(keyword in service_name for keyword in ["asset", "inventory", "device"]):
+                    logger.info(f"🏢 Executing asset service for: {service_name}")
                     step_result = await self._execute_asset_operation({}, original_message)
-                elif "automation" in service_name:
+                elif any(keyword in service_name for keyword in ["automation", "command", "script", "remote"]):
+                    logger.info(f"🤖 Executing automation service for: {service_name}")
                     # For automation, use results from previous step if available
                     context_message = original_message
                     if previous_results and "assets" in str(previous_results):
                         context_message = f"{original_message} (Found assets: {previous_results.get('result', {}).get('assets', [])})"
                     step_result = await self._execute_automation_operation({}, context_message)
-                elif "network" in service_name:
+                elif any(keyword in service_name for keyword in ["network", "ping", "connectivity"]):
+                    logger.info(f"🌐 Executing network service for: {service_name}")
                     step_result = await self._execute_network_operation({}, original_message)
+                else:
+                    logger.warning(f"⚠️ Unknown service type: {service_name}")
+                    # Default to asset service if unclear
+                    step_result = await self._execute_asset_operation({}, original_message)
                 
                 if step_result:
                     results["service_calls"].append(step_result)
@@ -332,38 +339,46 @@ List each step clearly with the service name and what it should accomplish.
         return results
     
     def _parse_execution_steps(self, extraction_text: str) -> List[Dict[str, str]]:
-        """Parse execution steps from Ollama's response"""
+        """Parse execution steps from Ollama's natural language response"""
         steps = []
         
         try:
             lines = extraction_text.split('\n')
-            current_step = {}
             
             for line in lines:
                 line = line.strip()
                 
-                # Look for step numbers
-                if line.startswith(('1.', '2.', '3.', '4.', '5.')):
-                    # Save previous step if exists
-                    if current_step:
-                        steps.append(current_step)
-                    current_step = {}
-                
-                # Parse SERVICE line
-                if line.startswith('SERVICE:'):
-                    current_step["service"] = line.replace('SERVICE:', '').strip()
-                
-                # Parse PURPOSE line  
-                elif line.startswith('PURPOSE:'):
-                    current_step["purpose"] = line.replace('PURPOSE:', '').strip()
-            
-            # Add the last step
-            if current_step:
-                steps.append(current_step)
-                
+                # Look for step patterns like "Step 1: Asset Service - Query..."
+                if line.startswith(('Step 1:', 'Step 2:', 'Step 3:', 'Step 4:', 'Step 5:')):
+                    step_info = {}
+                    
+                    # Extract service name and purpose
+                    if ':' in line and '-' in line:
+                        # Format: "Step 1: Asset Service - Query all axis cameras"
+                        parts = line.split(':', 1)[1].strip()  # Remove "Step 1:"
+                        if '-' in parts:
+                            service_part, purpose_part = parts.split('-', 1)
+                            step_info["service"] = service_part.strip()
+                            step_info["purpose"] = purpose_part.strip()
+                        else:
+                            step_info["service"] = parts.strip()
+                            step_info["purpose"] = "Execute service"
+                    
+                    # Also handle formal format if present
+                    elif line.startswith('SERVICE:'):
+                        step_info["service"] = line.replace('SERVICE:', '').strip()
+                    elif line.startswith('PURPOSE:'):
+                        if steps:  # Add to last step
+                            steps[-1]["purpose"] = line.replace('PURPOSE:', '').strip()
+                        continue
+                    
+                    if step_info:
+                        steps.append(step_info)
+                        
         except Exception as e:
             logger.error(f"❌ Failed to parse execution steps: {e}")
         
+        logger.info(f"🔍 Parsed {len(steps)} execution steps: {steps}")
         return steps
     
     async def _select_and_execute_services_with_ollama(self, user_message: str, extraction_text: str) -> Optional[Dict[str, Any]]:
