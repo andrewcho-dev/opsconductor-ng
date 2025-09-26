@@ -871,11 +871,19 @@ Commands:"""
     async def _get_comprehensive_service_context(self, user_message: str) -> str:
         """Get comprehensive context about available services and assets for reasoning"""
         
-        # Import the enhanced service catalog
-        from .enhanced_service_catalog import enhanced_service_catalog
-        
-        # Get the comprehensive service context
-        service_context = enhanced_service_catalog.get_comprehensive_service_context(user_message)
+        try:
+            # Import the dynamic service catalog
+            from .dynamic_service_catalog import get_dynamic_catalog
+            
+            # Get optimized context from dynamic catalog
+            dynamic_catalog = get_dynamic_catalog()
+            service_context = dynamic_catalog.generate_optimized_context(user_message)
+            
+        except ImportError:
+            # Fallback to enhanced service catalog if dynamic catalog not available
+            logger.warning("Dynamic service catalog not available, falling back to enhanced catalog")
+            from .enhanced_service_catalog import enhanced_service_catalog
+            service_context = enhanced_service_catalog.get_comprehensive_service_context(user_message)
         
         # Add current asset inventory if available
         try:
