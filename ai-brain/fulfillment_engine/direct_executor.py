@@ -419,9 +419,9 @@ Your orchestration directive:"""
         # Combine summaries
         if successful_calls:
             summaries = [call.get("summary", "") for call in successful_calls]
-            results["summary"] = f"Parallel execution completed: {' + '.join(summaries)}"
+            results["summary"] = " + ".join(summaries)
         else:
-            results["summary"] = "Parallel execution failed - no services completed successfully"
+            results["summary"] = "No services completed successfully"
             results["success"] = False
         
         return results
@@ -431,6 +431,7 @@ Your orchestration directive:"""
         
         service_name = service_name.lower().strip()
         logger.info(f"🎯 Executing single service: {service_name}")
+        logger.info(f"🔍 DEBUG: Single service call - Service={service_name}, Message={message}")
         
         # Map service names to execution methods
         if "asset" in service_name:
@@ -442,7 +443,10 @@ Your orchestration directive:"""
                 
         elif "automation" in service_name:
             if self.automation_client:
-                return await self._execute_automation_operation({}, message)
+                logger.info(f"🔍 DEBUG: Calling automation service with message: {message}")
+                result = await self._execute_automation_operation({}, message)
+                logger.info(f"🔍 DEBUG: Automation service returned: {result}")
+                return result
             else:
                 logger.error("❌ Automation service not available")
                 return {"success": False, "summary": "Automation service not available"}
@@ -469,19 +473,23 @@ Your orchestration directive:"""
         
         try:
             logger.info(f"🎯🔄 Starting parallel target execution for: {service_name}")
+            logger.info(f"🔍 DEBUG: Original message: {original_message}")
             
             # First, we need to get the targets (usually from asset service)
             # For most parallel target scenarios, we need to find the targets first
             if "automation" in service_name.lower() or "network" in service_name.lower():
                 # For automation/network services, we typically need to find targets first
                 logger.info("🏢 Getting targets from asset service first...")
+                logger.info(f"🔍 DEBUG: About to call asset service with message: {original_message}")
                 asset_result = await self._execute_single_service("asset-service", original_message)
+                logger.info(f"🔍 DEBUG: Asset service result: {asset_result}")
                 
                 if not asset_result or not asset_result.get("success"):
                     return {"success": False, "summary": "Failed to get targets for parallel execution"}
                 
                 # Extract targets from asset result
                 targets = self._extract_targets_from_asset_result(asset_result, original_message)
+                logger.info(f"🔍 DEBUG: Extracted targets: {targets}")
                 
                 if not targets:
                     return {"success": False, "summary": "No targets found for parallel execution"}
@@ -489,7 +497,9 @@ Your orchestration directive:"""
                 logger.info(f"🎯 Found {len(targets)} targets for parallel execution: {targets}")
                 
                 # Execute the service on all targets in parallel
+                logger.info(f"🔍 DEBUG: About to call {service_name} on targets: {targets}")
                 parallel_result = await self._execute_service_on_specific_targets(service_name, targets, original_message)
+                logger.info(f"🔍 DEBUG: Parallel execution result: {parallel_result}")
                 
                 # Combine asset discovery and parallel execution results
                 results["service_calls"].append(asset_result)
@@ -497,10 +507,10 @@ Your orchestration directive:"""
                     results["service_calls"].extend(parallel_result.get("service_calls", []))
                     results["job_details"].extend(parallel_result.get("job_details", []))
                     results["success"] = parallel_result.get("success", False)
-                    results["summary"] = f"Asset discovery: {asset_result.get('summary', '')} → Parallel execution: {parallel_result.get('summary', '')}"
+                    results["summary"] = parallel_result.get("summary", "Parallel execution completed")
                 else:
                     results["success"] = False
-                    results["summary"] = f"Asset discovery succeeded but parallel execution failed"
+                    results["summary"] = "Execution failed"
                 
             else:
                 # For asset service parallel execution (less common but possible)
@@ -512,7 +522,7 @@ Your orchestration directive:"""
         except Exception as e:
             logger.error(f"❌ Parallel target execution failed: {e}")
             results["success"] = False
-            results["summary"] = f"Parallel target execution failed: {e}"
+            results["summary"] = f"Target execution failed: {e}"
         
         return results
     
@@ -569,10 +579,19 @@ Your orchestration directive:"""
                     else:
                         results["service_calls"].append(parallel_result)
                     results["job_details"].extend(parallel_result.get("job_details", []))
-                    results["summary"] = f"{initial_result.get('summary', '')} → Parallel {parallel_service}: {parallel_result.get('summary', '')}"
+                    
+                    # Create comprehensive summary with actual results
+                    initial_summary = initial_result.get('summary', '')
+                    parallel_summary = parallel_result.get('summary', '')
+                    
+                    # Show actual results
+                    if parallel_summary:
+                        results["summary"] = f"{initial_summary} → {parallel_summary}"
+                    else:
+                        results["summary"] = initial_summary
                 else:
                     results["success"] = False
-                    results["summary"] = f"Initial step succeeded but parallel execution failed"
+                    results["summary"] = "Initial step succeeded but parallel execution failed"
             
         except Exception as e:
             logger.error(f"❌ Mixed workflow execution failed: {e}")
@@ -624,6 +643,7 @@ Your orchestration directive:"""
         
         try:
             logger.info(f"🎯🔄 Executing {service_name} on {len(targets)} targets in parallel")
+            logger.info(f"🔍 DEBUG: Service={service_name}, Targets={targets}, Message={original_message}")
             
             # Create parallel tasks for each target
             import asyncio
@@ -632,6 +652,7 @@ Your orchestration directive:"""
             for target in targets:
                 # Create a targeted message for each target
                 target_message = f"{original_message} (Target: {target})"
+                logger.info(f"🔍 DEBUG: Creating task for target {target} with message: {target_message}")
                 task = self._execute_single_service(service_name, target_message)
                 tasks.append(task)
             
@@ -672,22 +693,34 @@ Your orchestration directive:"""
                         "error": "No results returned"
                     })
             
-            # Determine overall success
+            # Determine overall success and create detailed summary
             if successful_executions > 0:
                 results["success"] = True
-                results["summary"] = f"Parallel execution: {successful_executions}/{len(targets)} targets succeeded"
-                if failed_executions > 0:
-                    results["summary"] += f", {failed_executions} failed"
+                
+                # Create detailed summary with actual results
+                detailed_summaries = []
+                for service_call in results["service_calls"]:
+                    if service_call.get("success") and service_call.get("summary"):
+                        detailed_summaries.append(service_call["summary"])
+                
+                if detailed_summaries:
+                    # Show actual results instead of just success count
+                    results["summary"] = " | ".join(detailed_summaries)
+                else:
+                    # Fallback to count if no detailed summaries available
+                    results["summary"] = f"{successful_executions}/{len(targets)} targets succeeded"
+                    if failed_executions > 0:
+                        results["summary"] += f", {failed_executions} failed"
             else:
                 results["success"] = False
-                results["summary"] = f"Parallel execution failed: 0/{len(targets)} targets succeeded"
+                results["summary"] = f"0/{len(targets)} targets succeeded"
             
             logger.info(f"🎉 Parallel execution completed: {successful_executions} successes, {failed_executions} failures")
             
         except Exception as e:
             logger.error(f"❌ Parallel target execution failed: {e}")
             results["success"] = False
-            results["summary"] = f"Parallel target execution failed: {e}"
+            results["summary"] = f"Target execution failed: {e}"
         
         return results
 
@@ -906,53 +939,18 @@ Your decision:"""
         """Execute an asset operation using the asset client"""
         
         try:
-            # For "all axis cameras" type requests, search for assets by manufacturer/type
-            if "axis" in user_message.lower() and "camera" in user_message.lower():
-                assets = await self.asset_client.get_all_assets()
-                axis_cameras = [asset for asset in assets 
-                              if 'axis' in asset.get('manufacturer', '').lower() or 
-                                 'axis' in asset.get('name', '').lower() or
-                                 'axis' in asset.get('description', '').lower()]
-                
-                return {
-                    "service": "asset-service",
-                    "operation": "search_assets",
-                    "query": "axis cameras",
-                    "success": True,
-                    "result": {
-                        "found_assets": len(axis_cameras),
-                        "assets": axis_cameras
-                    },
-                    "summary": f"Found {len(axis_cameras)} Axis cameras in asset inventory"
-                }
-            
-            # General asset search
-            elif "all" in user_message.lower():
-                assets = await self.asset_client.get_all_assets()
-                return {
-                    "service": "asset-service", 
-                    "operation": "get_all_assets",
-                    "success": True,
-                    "result": {
-                        "total_assets": len(assets),
-                        "assets": assets
-                    },
-                    "summary": f"Retrieved {len(assets)} assets from inventory"
-                }
-            
-            # Default: get all assets
-            else:
-                assets = await self.asset_client.get_all_assets()
-                return {
-                    "service": "asset-service",
-                    "operation": "get_assets", 
-                    "success": True,
-                    "result": {
-                        "total_assets": len(assets),
-                        "assets": assets
-                    },
-                    "summary": f"Retrieved {len(assets)} assets from inventory"
-                }
+            # Let Ollama determine what asset operation to perform
+            assets = await self.asset_client.get_all_assets()
+            return {
+                "service": "asset-service",
+                "operation": "get_assets", 
+                "success": True,
+                "result": {
+                    "total_assets": len(assets),
+                    "assets": assets
+                },
+                "summary": f"Retrieved {len(assets)} assets from inventory"
+            }
                 
         except Exception as e:
             logger.error(f"❌ Asset operation failed: {e}")
