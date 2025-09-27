@@ -421,11 +421,16 @@ services:
       CHROMADB_URL: http://chromadb:8000
       OLLAMA_HOST: http://ollama:11434
       
+      # Prefect integration
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_FLOW_REGISTRY_URL: http://prefect-flow-registry:8000
+      
       # New AI Brain configuration
       SYSTEM_MODEL_ENABLED: true
       KNOWLEDGE_GRAPH_ENABLED: true
       JOB_CREATION_ENGINE_ENABLED: true
       INTENT_ENGINE_ENABLED: true
+      PREFECT_INTEGRATION_ENABLED: true
       
     deploy:
       resources:
@@ -453,6 +458,7 @@ services:
       
       # Core files
       - ./ai-brain/main.py:/app/main.py
+      - ./ai-brain/main_modern.py:/app/main_modern.py
       - ./ai-brain/llm_conversation_handler.py:/app/llm_conversation_handler.py
       
       # AI modules (ONLY what Multi-Brain AI Engine needs)
@@ -467,7 +473,6 @@ services:
       - ./ai-brain/communication:/app/communication
       - ./ai-brain/confidence:/app/confidence
       - ./ai-brain/learning:/app/learning
-      - ./ai-brain/orchestration:/app/orchestration
       - ./ai-brain/taxonomy:/app/taxonomy
       
       # Shared libraries
@@ -479,6 +484,81 @@ services:
       timeout: 30s
       retries: 10
       start_period: 2000s
+    restart: unless-stopped
+
+  # Prefect Orchestration Services
+  prefect-server:
+    image: prefecthq/prefect:2.14-python3.11
+    container_name: opsconductor-prefect-server
+    ports:
+      - "4200:4200"
+    environment:
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_SERVER_API_PORT=4200
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql://postgres:postgres123@postgres:5432/opsconductor
+      - PREFECT_API_DATABASE_ECHO=false
+      - PREFECT_SERVER_ANALYTICS_ENABLED=false
+    command: prefect server start --host 0.0.0.0 --port 4200
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - prefect_data:/root/.prefect
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  prefect-worker:
+    image: prefecthq/prefect:2.14-python3.11
+    container_name: opsconductor-prefect-worker
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - PREFECT_WORKER_HEARTBEAT_SECONDS=30
+      - PREFECT_WORKER_QUERY_SECONDS=10
+    command: prefect worker start --pool default-pool --type process
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - prefect_flows:/flows
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  prefect-flow-registry:
+    build: ./prefect-flow-registry
+    container_name: opsconductor-prefect-registry
+    ports:
+      - "4201:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/opsconductor
+      - PREFECT_API_URL=http://prefect-server:4200/api
+      - REDIS_URL=redis://redis:6379/10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - prefect_flows:/flows
+      - ./prefect-flow-registry/main.py:/app/main.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   # Background Workers
@@ -653,3 +733,5 @@ volumes:
   ollama_models:
   vector_data:
   ai-chromadb-data:
+  prefect_data:
+  prefect_flows:

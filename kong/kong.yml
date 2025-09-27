@@ -226,6 +226,69 @@ services:
           hour: 2000
           policy: local
 
+  # Prefect Orchestration Services
+  - name: prefect-server-service
+    url: http://prefect-server:4200
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 300
+          hour: 3000
+          policy: local
+
+  - name: prefect-flow-registry-service
+    url: http://prefect-flow-registry:8000
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 200
+          hour: 2000
+          policy: local
+
 routes:
   # Keycloak Authentication Routes
   - name: keycloak-auth
@@ -655,6 +718,56 @@ routes:
       - DELETE
       - OPTIONS
 
+  # Prefect Orchestration Routes
+  - name: prefect-ui
+    service: prefect-server-service
+    paths:
+      - /prefect
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: true
+    preserve_host: false
+
+  - name: prefect-api
+    service: prefect-server-service
+    paths:
+      - /api/v1/prefect
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /api
+
+  - name: prefect-flows-api
+    service: prefect-flow-registry-service
+    paths:
+      - /api/v1/flows
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /flows
+
   # Health Check Routes
   - name: identity-health
     service: identity-service
@@ -735,6 +848,36 @@ routes:
     service: network-analyzer-service
     paths:
       - /api/health/network-analyzer-service
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /health
+
+  - name: prefect-server-health
+    service: prefect-server-service
+    paths:
+      - /api/health/prefect-server
+    methods:
+      - GET
+      - OPTIONS
+    strip_path: false
+    preserve_host: false
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /api/health
+
+  - name: prefect-flow-registry-health
+    service: prefect-flow-registry-service
+    paths:
+      - /api/health/prefect-flow-registry
     methods:
       - GET
       - OPTIONS

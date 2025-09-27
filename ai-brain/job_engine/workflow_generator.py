@@ -128,6 +128,16 @@ class WorkflowGenerator:
         self.step_library = self._initialize_step_library()
         self.asset_client = AssetServiceClient()
         self.job_validator = JobValidator()
+        
+        # Initialize execution router for Prefect integration
+        try:
+            from .execution_router import ExecutionRouter
+            self.execution_router = ExecutionRouter()
+            logger.info("Execution router initialized - Prefect integration available")
+        except ImportError as e:
+            logger.warning(f"Execution router not available: {str(e)}")
+            self.execution_router = None
+        
         # Expose workflow and step types for testing and introspection
         self.workflow_types = WorkflowType
         self.step_types = StepType
@@ -222,6 +232,70 @@ class WorkflowGenerator:
         except Exception as e:
             logger.error(f"Error generating workflow: {str(e)}")
             raise
+    
+    async def execute_workflow(
+        self,
+        workflow: GeneratedWorkflow,
+        engine_preference: str = "auto",
+        force_engine: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Execute a generated workflow using the appropriate execution engine
+        
+        Args:
+            workflow: The workflow to execute
+            engine_preference: Preferred execution engine ("auto", "celery", "prefect")
+            force_engine: Whether to force the preferred engine
+            
+        Returns:
+            Dict containing execution results
+        """
+        try:
+            if not self.execution_router:
+                logger.warning("Execution router not available, falling back to legacy execution")
+                return {"error": "Execution router not available"}
+            
+            # Map string preference to enum
+            from .execution_router import ExecutionEngine
+            engine_map = {
+                "auto": ExecutionEngine.AUTO,
+                "celery": ExecutionEngine.CELERY,
+                "prefect": ExecutionEngine.PREFECT
+            }
+            
+            engine_pref = engine_map.get(engine_preference.lower(), ExecutionEngine.AUTO)
+            
+            # Execute workflow
+            result = await self.execution_router.route_execution(
+                workflow=workflow,
+                engine_preference=engine_pref,
+                force_engine=force_engine
+            )
+            
+            # Convert result to dictionary
+            return {
+                "workflow_id": result.workflow_id,
+                "engine_used": result.engine_used.value,
+                "success": result.success,
+                "execution_id": result.execution_id,
+                "start_time": result.start_time.isoformat() if result.start_time else None,
+                "end_time": result.end_time.isoformat() if result.end_time else None,
+                "duration_seconds": result.duration_seconds,
+                "steps_completed": result.steps_completed,
+                "total_steps": result.total_steps,
+                "result_data": result.result_data,
+                "error_message": result.error_message,
+                "logs": result.logs
+            }
+            
+        except Exception as e:
+            logger.error(f"Error executing workflow: {str(e)}")
+            return {
+                "workflow_id": workflow.workflow_id,
+                "success": False,
+                "error_message": str(e),
+                "logs": [f"Execution failed: {str(e)}"]
+            }
     
     def _select_template(
         self,

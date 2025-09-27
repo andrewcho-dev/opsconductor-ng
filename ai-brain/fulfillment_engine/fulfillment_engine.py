@@ -158,10 +158,50 @@ class FulfillmentEngine:
             result.status = FulfillmentStatus.EXECUTING
             result.execution_logs.append("Starting workflow execution")
             
-            execution_result = await self.execution_coordinator.execute_workflow(
-                workflow=workflow,
-                progress_callback=lambda step, total: self._update_progress(request.request_id, step, total)
-            )
+            # Try to use the new workflow generator with Prefect integration
+            try:
+                from job_engine.workflow_generator import WorkflowGenerator
+                
+                # Create a new workflow generator instance
+                workflow_gen = WorkflowGenerator()
+                
+                # Convert legacy workflow to new format if needed
+                if hasattr(workflow_gen, 'execute_workflow') and hasattr(workflow, 'workflow_type'):
+                    # This is already a GeneratedWorkflow, use the new execution method
+                    execution_dict = await workflow_gen.execute_workflow(
+                        workflow=workflow,
+                        engine_preference="auto",
+                        force_engine=False
+                    )
+                    
+                    # Convert to legacy format for compatibility
+                    from fulfillment_engine.execution_coordinator import WorkflowExecutionResult, ExecutionStatus
+                    
+                    execution_result = WorkflowExecutionResult(
+                        workflow_id=execution_dict.get("workflow_id", workflow.workflow_id),
+                        status=ExecutionStatus.COMPLETED if execution_dict.get("success") else ExecutionStatus.FAILED,
+                        steps_completed=execution_dict.get("steps_completed", 0),
+                        total_steps=execution_dict.get("total_steps", len(workflow.steps)),
+                        summary=f"Executed with {execution_dict.get('engine_used', 'unknown')} engine",
+                        error_message=execution_dict.get("error_message"),
+                        logs=execution_dict.get("logs", [])
+                    )
+                    
+                    result.execution_logs.append(f"Used {execution_dict.get('engine_used', 'unknown')} execution engine")
+                    
+                else:
+                    # Fallback to legacy execution
+                    execution_result = await self.execution_coordinator.execute_workflow(
+                        workflow=workflow,
+                        progress_callback=lambda step, total: self._update_progress(request.request_id, step, total)
+                    )
+                    
+            except ImportError:
+                # Fallback to legacy execution if new components not available
+                execution_result = await self.execution_coordinator.execute_workflow(
+                    workflow=workflow,
+                    progress_callback=lambda step, total: self._update_progress(request.request_id, step, total)
+                )
             
             # Step 3: Update final status
             if execution_result.success:

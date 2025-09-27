@@ -40,6 +40,10 @@ pyasn1-modules==0.2.8
 paramiko==3.4.0
 aiosmtplib==3.0.1
 
+# Prefect integration
+prefect>=3.0.0
+prefect-docker>=0.4.0
+
 # Additional utilities
 python-dotenv==1.0.0
 pyyaml==6.0.1

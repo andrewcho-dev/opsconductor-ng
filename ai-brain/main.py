@@ -84,6 +84,14 @@ app = service.app
 # app.include_router(knowledge_router)  # Temporarily disabled - missing knowledge_engine
 # app.include_router(learning_router)  # Temporarily disabled - missing knowledge_engine
 
+# Include Prefect integration router
+try:
+    from api.prefect_router import prefect_router
+    app.include_router(prefect_router)
+    logger.info("✅ Prefect API router included")
+except ImportError as e:
+    logger.warning(f"⚠️  Prefect router not available: {str(e)}")
+
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 default_model = os.getenv("DEFAULT_MODEL", "codellama:7b")
