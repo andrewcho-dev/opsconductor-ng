@@ -1,24 +1,8 @@
-# 🚀 OpsConductor NG - Complete Deployment Guide
+# 🚀 OpsConductor NG - Deployment Guide
 
 ## 📋 Overview
 
-This comprehensive guide covers deploying OpsConductor NG, a production-ready AI-powered IT operations automation platform with microservices architecture.
-
-## 🎯 What You're Deploying
-
-### Core Platform
-- **11 Microservices** - API Gateway, Identity, Asset, Automation, Communication, AI services
-- **AI Capabilities** - Natural language processing, intent classification, workflow generation
-- **Infrastructure** - PostgreSQL, Redis, ChromaDB, Ollama, Nginx
-- **Frontend** - React TypeScript web interface
-- **Workers** - Celery-based distributed task processing
-
-### Key Features
-- 🧠 **AI-Powered Interface** - Natural language commands
-- 🏗️ **Microservices Architecture** - Scalable, maintainable design
-- 🔧 **Multi-Protocol Automation** - SSH, RDP, SNMP, HTTP, PowerShell
-- 📊 **Real-Time Monitoring** - Comprehensive infrastructure visibility
-- 🛡️ **Enterprise Security** - RBAC, audit logging, encrypted credentials
+Complete deployment guide for OpsConductor NG, a production-ready AI-powered IT operations automation platform with microservices architecture.
 
 ## 🔧 Prerequisites
 
@@ -53,72 +37,6 @@ cd opsconductor-ng
 - **API Gateway**: http://localhost:3000
 - **Default Login**: admin / admin123
 
-### Manual Deployment Steps
-
-#### Step 1: Clone and Prepare
-```bash
-git clone <repository-url>
-cd opsconductor-ng
-
-# Copy environment template
-cp .env.example .env
-
-# Review and customize environment variables
-nano .env
-```
-
-#### Step 2: Build Services
-```bash
-# Build all services
-./build.sh
-
-# Or build manually
-docker-compose build
-```
-
-#### Step 3: Deploy Infrastructure
-```bash
-# Start infrastructure services first
-docker-compose up -d postgres redis chromadb
-
-# Wait for services to be ready
-docker-compose logs -f postgres
-# Wait for "database system is ready to accept connections"
-```
-
-#### Step 4: Deploy Core Services
-```bash
-# Start core services
-docker-compose up -d kong keycloak identity-service asset-service automation-service communication-service
-
-# Check service health
-docker-compose ps
-```
-
-#### Step 5: Deploy AI Services
-```bash
-# Start AI infrastructure
-docker-compose up -d ollama
-
-# Pull AI models (this may take time)
-docker-compose exec ollama ollama pull llama2:latest
-
-# Start AI services
-docker-compose up -d ai-brain
-
-# Check AI service health
-curl http://localhost:3005/health
-```
-
-#### Step 6: Deploy Frontend and Proxy
-```bash
-# Start frontend and nginx
-docker-compose up -d frontend nginx
-
-# Verify complete deployment
-docker-compose ps
-```
-
 ## 🔍 Verification and Testing
 
 ### Health Check Script
@@ -133,15 +51,14 @@ docker-compose ps
 docker-compose ps
 
 # Individual service health
-curl http://localhost:3000/health  # API Gateway
+curl http://localhost:3000/health  # Kong Gateway
+curl http://localhost:3005/health  # AI Brain
+curl http://localhost:8090/health  # Keycloak
 curl http://localhost:3001/health  # Identity Service
 curl http://localhost:3002/health  # Asset Service
 curl http://localhost:3003/health  # Automation Service
 curl http://localhost:3004/health  # Communication Service
-curl http://localhost:3005/health  # AI Command Service
-curl http://localhost:3007/health  # Vector Service
-curl http://localhost:3008/health  # LLM Service
-curl http://localhost:3010/health  # AI Orchestrator
+curl http://localhost:3006/health  # Network Analyzer
 
 # Infrastructure health
 curl http://localhost:8000/api/v1/heartbeat  # ChromaDB
@@ -153,13 +70,13 @@ curl http://localhost:11434/api/tags         # Ollama
 # Check database schemas
 docker exec opsconductor-postgres psql -U postgres -d opsconductor -c "
 SELECT schema_name FROM information_schema.schemata 
-WHERE schema_name IN ('identity', 'assets', 'automation', 'communication');"
+WHERE schema_name IN ('identity', 'assets', 'automation', 'communication', 'network_analysis');"
 
 # Check table counts
 docker exec opsconductor-postgres psql -U postgres -d opsconductor -c "
 SELECT schemaname, COUNT(*) as table_count 
 FROM pg_tables 
-WHERE schemaname IN ('identity', 'assets', 'automation', 'communication') 
+WHERE schemaname IN ('identity', 'assets', 'automation', 'communication', 'network_analysis') 
 GROUP BY schemaname;"
 ```
 
@@ -170,15 +87,10 @@ curl -X POST http://localhost:3005/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "show me all servers", "user_id": 1}'
 
-# Test vector search
-curl -X POST http://localhost:3007/vector/search \
+# Test Ollama LLM
+curl -X POST http://localhost:11434/api/generate \
   -H "Content-Type: application/json" \
-  -d '{"query": "server management", "limit": 3}'
-
-# Test LLM generation
-curl -X POST http://localhost:3008/llm/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Explain Docker containers", "model": "llama2:latest"}'
+  -d '{"model": "codellama:7b", "prompt": "Explain Docker containers", "stream": false}'
 ```
 
 ## 🎮 First Steps After Deployment
@@ -226,6 +138,21 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 # Verify GPU access
 docker exec opsconductor-ai-brain nvidia-smi
+```
+
+### Alternative Deployment Methods
+```bash
+# With Traefik reverse proxy
+./deploy-traefik.sh
+
+# With ELK logging stack
+./deploy-elk.sh
+
+# With Redis Streams messaging
+./deploy-redis-streams.sh
+
+# With monitoring stack (Prometheus/Grafana)
+./start-monitoring.sh
 ```
 
 ### Production SSL Configuration
@@ -372,11 +299,23 @@ docker-compose logs frontend
 # Check nginx logs
 docker-compose logs nginx
 
-# Verify API Gateway
+# Verify Kong Gateway
 curl http://localhost:3000/health
 
 # Rebuild frontend
 docker-compose up -d --build frontend
+```
+
+#### Keycloak Authentication Issues
+```bash
+# Check Keycloak status
+curl http://localhost:8090/health
+
+# Check Keycloak logs
+docker-compose logs keycloak
+
+# Verify realm configuration
+curl http://localhost:8090/realms/opsconductor/.well-known/openid_configuration
 ```
 
 ### Performance Issues
@@ -398,45 +337,48 @@ docker exec opsconductor-redis redis-cli FLUSHALL
 
 ### Updating Services
 ```bash
-# Pull latest changes
-git pull origin main
+# Pull latest images
+docker-compose pull
 
-# Rebuild and restart specific service
-docker-compose up -d --build <service-name>
-
-# Full system update
-docker-compose down
-docker-compose build
+# Restart with new images
 docker-compose up -d
+
+# Update specific service
+docker-compose up -d --no-deps <service-name>
 ```
 
-### Database Migrations
+### Backup Before Updates
 ```bash
-# Check for new migrations
-ls database/migrations/
+# Backup database
+docker exec opsconductor-postgres pg_dump -U postgres opsconductor > backup-pre-update.sql
 
-# Apply migrations manually if needed
-docker exec -i opsconductor-postgres psql -U postgres opsconductor < database/migrations/new-migration.sql
+# Backup volumes
+docker run --rm -v opsconductor-postgres-data:/data -v $(pwd):/backup alpine tar czf /backup/postgres-data-backup.tar.gz /data
 ```
 
-## 📚 Additional Resources
+## 📋 Production Checklist
 
-### Documentation
-- **[README.md](README.md)** - Main project overview
-- **[REPO.md](REPO.md)** - Repository structure
-- **[AI_DOCUMENTATION.md](AI_DOCUMENTATION.md)** - AI system details
-- **[VOLUME_MOUNT_SYSTEM.md](VOLUME_MOUNT_SYSTEM.md)** - Volume configuration
+### Security
+- [ ] Change default admin password
+- [ ] Configure SSL certificates
+- [ ] Set up proper firewall rules
+- [ ] Configure backup strategy
+- [ ] Set up monitoring and alerting
 
-### API Documentation
-- **API Gateway**: http://localhost:3000/docs
-- **AI Command Service**: http://localhost:3005/docs
-- **All Services**: Available at `<service-url>/docs`
+### Performance
+- [ ] Configure resource limits
+- [ ] Set up log rotation
+- [ ] Configure database optimization
+- [ ] Set up caching strategy
+- [ ] Configure load balancing
 
-### Support and Community
-- **Issues**: Report bugs and feature requests
-- **Discussions**: Community support and questions
-- **Documentation**: Comprehensive guides and tutorials
+### Monitoring
+- [ ] Set up health checks
+- [ ] Configure log aggregation
+- [ ] Set up performance monitoring
+- [ ] Configure alerting rules
+- [ ] Set up backup verification
 
 ---
 
-**🎉 Congratulations! You've successfully deployed OpsConductor NG. Start automating your IT operations with AI-powered natural language commands!**
+**For additional help, see [README.md](README.md) for overview and [REPO.md](REPO.md) for architecture details.**

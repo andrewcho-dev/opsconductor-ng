@@ -6,200 +6,155 @@ alwaysApply: true
 # Repository Information Overview
 
 ## Repository Summary
-OpsConductor NG is a production-ready, microservices-based IT operations automation platform built with Python FastAPI, React TypeScript, and PostgreSQL. It provides a comprehensive solution for IT asset management, job automation, workflow generation with AI capabilities, and complete enterprise-grade features including RBAC, audit logging, and hierarchical target management.
+OpsConductor NG is a production-ready IT operations automation platform with advanced AI capabilities. The architecture uses Kong API Gateway, Keycloak for identity management, and a pure LLM-driven AI brain that eliminates hardcoded logic in favor of intelligent service orchestration.
 
 ## Repository Structure
-The repository follows a microservices architecture with clear domain boundaries and is designed for immediate deployment from a fresh git clone:
+The repository follows a microservices architecture with enhanced AI capabilities:
 - **Backend Services**: Python FastAPI microservices with shared base classes
-- **Frontend**: Modern React TypeScript application with Material-UI
-- **Infrastructure**: Complete Docker Compose orchestration with health checks
-- **Database**: PostgreSQL with comprehensive schema and automated initialization
-- **Deployment**: Automated build, verification, and deployment scripts
+- **Frontend**: React TypeScript application with Bootstrap components
+- **Infrastructure**: Docker Compose orchestration with GPU support
+- **AI System**: Pure LLM-powered brain with Ollama integration
+- **Identity**: Keycloak-based enterprise identity management
+- **API Gateway**: Kong for centralized routing and authentication
 
 ### Main Repository Components
-- **API Gateway** (Port 3000): Central routing, authentication, and rate limiting
-- **Identity Service** (Port 3001): User authentication, RBAC with 5 roles, session management
-- **Asset Service** (Port 3002): Enhanced targets with embedded credentials, hierarchical groups
-- **Automation Service** (Port 3003): Job execution, Celery workers, step libraries
-- **Communication Service** (Port 3004): Notifications, templates, audit logging
-- **AI Service** (Port 3005): Natural language processing and workflow generation
-- **Frontend** (Port 3100): Modern TypeScript web interface with enhanced UX
+- **Kong API Gateway** (Port 3000): Centralized routing and authentication
+- **Keycloak** (Port 8090): Enterprise identity and access management
+- **Identity Service** (Port 3001): User management with Keycloak integration
+- **Asset Service** (Port 3002): Infrastructure asset management with encryption
+- **Automation Service** (Port 3003): Job execution and workflow management
+- **Communication Service** (Port 3004): Notifications and audit logging
+- **AI Brain** (Port 3005): Pure LLM-driven intelligence with Ollama integration
+- **Network Analyzer** (Port 3006): Network monitoring and analysis
+- **Frontend** (Port 3100): Modern web interface
 
 ## Projects
+
+### AI Brain (Pure LLM Architecture)
+**Configuration Files**: `ai-brain/main.py`, `ai-brain/requirements.txt`
+
+#### Language & Runtime
+**Language**: Python 3.12+
+**Framework**: FastAPI with async support
+**LLM Integration**: Ollama with CodeLLama 7B model
+**Vector Database**: ChromaDB for knowledge storage
+
+#### Architecture
+**Key Components**:
+- **Intent Brain**: Pure LLM-based intent understanding
+- **Fulfillment Engine**: Direct execution of user requests
+- **Direct Executor**: Ollama-driven service orchestration
+- **Service Catalog**: Dynamic service discovery
+- **No Hardcoded Logic**: All decisions made by LLM
+
+#### Dependencies
+- ollama-python==0.1.0
+- chromadb==0.4.22
+- fastapi==0.104.1
+- httpx==0.25.2
+- structlog==23.2.0
+- pydantic==2.5.0
 
 ### Backend Services (Python FastAPI)
 **Configuration Files**: `requirements.txt`, `Dockerfile` in each service directory
 
 #### Language & Runtime
-**Language**: Python 3.11+
+**Language**: Python 3.12+
 **Framework**: FastAPI 0.104.1
-**Database**: PostgreSQL 16 with comprehensive schema (4 schemas: identity, assets, automation, communication)
-**Cache/Queue**: Redis 7, Celery 5.3.4
-**Authentication**: JWT with refresh tokens, bcrypt password hashing
+**Database**: PostgreSQL 17 with 5 schemas
+**Cache/Queue**: Redis 7.4
+**Authentication**: Keycloak integration with OAuth2
 
-#### Dependencies
-**Main Dependencies**:
-- fastapi==0.104.1
-- uvicorn[standard]==0.24.0
-- asyncpg==0.29.0
-- redis==5.0.1
-- structlog==23.2.0
-- pydantic[email]==2.5.0
-- PyJWT==2.8.0
-- bcrypt==4.1.2
-- httpx==0.25.2
-- python-multipart==0.0.6
-- cryptography==41.0.7 (Fernet encryption for credentials)
-- celery==5.3.4 (Automation Service)
-- aiohttp==3.9.1
-- email-validator==2.3.0
+#### Key Services
+- **Asset Service**: Asset management with embedded credentials
+- **Automation Service**: Job execution with WebSocket updates
+- **Network Analyzer**: Network monitoring with remote probes
+- **Communication Service**: Notifications and audit logging
 
-#### Build & Installation
-```bash
-# Complete automated setup
-./build.sh      # Sets up all services and dependencies
-./deploy.sh     # Builds, deploys, and initializes database
+### Identity Management (Keycloak)
+**Configuration Files**: `keycloak/Dockerfile`, `keycloak/opsconductor-realm.json`
 
-# Or manual setup
-docker compose build
-docker compose up -d
-./database/init-db.sh  # Initialize complete database schema
-```
+#### Features
+**Authentication**: OAuth2/OpenID Connect
+**User Management**: Complete user lifecycle
+**Role-Based Access**: Fine-grained permissions
+**Integration**: Native integration with Kong API Gateway
 
-#### Docker
-**Dockerfile**: Present in each service directory
-**Base Image**: python:3.11-slim
-**Configuration**: Multi-container setup with Docker Compose
+### API Gateway (Kong)
+**Configuration Files**: `kong/Dockerfile`, `kong/kong.yml`
 
-#### Testing & Verification
-**Health Checks**: Each service has `/health` endpoint with database connectivity checks
-**Verification Script**: `./verify-setup.sh` - Comprehensive pre-deployment verification
-**Run Commands**:
-```bash
-# Verify complete setup
-./verify-setup.sh
-
-# Check individual service health
-curl http://localhost:3000/health  # API Gateway
-curl http://localhost:3001/health  # Identity Service
-curl http://localhost:3002/health  # Asset Service
-```
+#### Features
+**Routing**: Centralized API routing
+**Authentication**: OAuth2 with Keycloak
+**Rate Limiting**: Request throttling
+**Configuration**: Declarative YAML configuration
 
 ### Frontend (React TypeScript)
 **Configuration File**: `frontend/package.json`
 
 #### Language & Runtime
 **Language**: TypeScript 4.9.5
-**Framework**: React 18.2.0 with hooks and context API
-**Build System**: React Scripts 5.0.1
-**Package Manager**: npm
-**UI Framework**: Material-UI with custom theming
+**Framework**: React 18.2.0
+**UI Components**: Bootstrap 5.3.8, Lucide React icons
+**Data Grid**: AG Grid for advanced data display
 
-#### Dependencies
-**Main Dependencies**:
-- react==18.2.0
-- react-dom==18.2.0
-- react-router-dom==6.20.1
-- axios==1.6.2
-- @mui/material==5.15.0 (Material-UI)
-- @mui/icons-material==5.15.0
-- @emotion/react==11.11.1
-- @emotion/styled==11.11.0
-- lucide-react==0.542.0
-- react-beautiful-dnd==13.1.1 (Drag & drop)
-- react-hook-form==7.48.2 (Form management)
-
-#### Build & Installation
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-#### Docker
-**Dockerfile**: `frontend/Dockerfile`
-**Base Image**: node:18-alpine
-**Build Command**: npm run build
+#### Key Pages
+- **AIChat**: Natural language interface
+- **Assets**: Infrastructure management
+- **Jobs**: Automation workflow management
+- **Dashboard**: System overview and metrics
 
 ### Infrastructure & Database
-**Configuration Files**: `docker-compose.yml`, `database/complete-schema.sql`, `database/init-db.sh`
+**Configuration Files**: `docker-compose.yml`, `database/complete-schema.sql`
 
 #### Components
-**Reverse Proxy**: Nginx with SSL/TLS support
-**Container Orchestration**: Docker Compose with health checks
-**Monitoring**: Celery Flower dashboard (Port 5555)
-**Database**: PostgreSQL 16 with comprehensive schema
-**Cache/Queue**: Redis 7 for sessions and Celery tasks
+**Database**: PostgreSQL 17 with 5 schemas
+**Message Queue**: Redis 7.4 for service communication
+**LLM Server**: Ollama for local model serving
+**Vector Database**: ChromaDB for AI knowledge storage
+**Reverse Proxy**: Nginx for SSL termination
 
-#### Database Schema (Complete)
-**Identity Schema**: 
-- users, roles, user_roles, user_sessions, user_preferences
-- 5 predefined roles: admin, manager, operator, developer, viewer
+#### Database Schema
+**5 Schemas**:
+- **identity**: User management (integrated with Keycloak)
+- **assets**: Consolidated asset management
+- **automation**: Job execution and scheduling
+- **communication**: Notifications and audit logs
+- **network_analysis**: Network monitoring and diagnostics
 
-**Assets Schema**:
-- enhanced_targets (new architecture with embedded credentials)
-- target_services (31+ predefined service types)
-- target_groups (3-level hierarchy with materialized paths)
-- target_group_memberships, service_definitions
-- Legacy tables: targets, target_credentials (backward compatibility)
+### Network Analysis System
+**Configuration Files**: `network-analyzer-service/main.py`, `network-analytics-probe/main.py`
 
-**Automation Schema**:
-- jobs, job_executions, step_executions, job_schedules
-- Complete workflow tracking and scheduling
+#### Features
+**Remote Probes**: Distributed network monitoring
+**Packet Analysis**: Deep packet inspection
+**Protocol Analysis**: Application-layer visibility
+**AI Analysis**: Intelligent anomaly detection
 
-**Communication Schema**:
-- notification_templates, notification_channels, notifications
-- audit_logs for comprehensive system auditing
+## Deployment & Operations
 
-#### Key Configuration
-**Ports**:
-- Frontend: 3100 (HTTP) / 443 (HTTPS with Nginx)
-- API Gateway: 3000
-- Identity Service: 3001
-- Asset Service: 3002
-- Automation Service: 3003
-- Communication Service: 3004
-- AI Service: 3005
-- PostgreSQL: 5432
-- Redis: 6379
-- Celery Flower: 5555
+### Deployment Options
+```bash
+# Standard deployment
+./deploy.sh
 
-#### Security & Features
-**Authentication**: JWT token-based with refresh tokens, session management
-**RBAC**: Complete role-based access control with granular permissions
-**Encryption**: Fernet encryption for sensitive credentials and secrets
-**Audit Logging**: Comprehensive audit trail for all system operations
-**Data Integrity**: Database triggers, constraints, and validation
-**Default Admin**: admin/admin123 for immediate access
+# With GPU acceleration for AI
+docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
-## Latest Improvements & Deployment
+# With monitoring stack
+./start-monitoring.sh
+```
 
-### Production-Ready Features (Latest)
-- **Complete Database Schema**: Single `complete-schema.sql` with all tables, triggers, and initial data
-- **Automated Initialization**: `init-db.sh` script for database setup and verification
-- **Enhanced Target Management**: New architecture with embedded credentials and hierarchical groups
-- **Service Definitions**: 31+ predefined service types (SSH, RDP, HTTP, databases, etc.)
-- **Comprehensive RBAC**: 5 roles with granular permissions for enterprise use
-- **Audit Logging**: Complete system audit trail with user tracking
-- **Session Management**: JWT with refresh tokens and session tracking
-- **Verification System**: Pre-deployment verification with `verify-setup.sh`
+### Advanced Features
+- **GPU Acceleration**: NVIDIA GPU support for LLM performance
+- **Traefik Integration**: Alternative to Nginx (deploy-traefik.sh)
+- **ELK Stack**: Optional logging infrastructure (deploy-elk.sh)
+- **Redis Streams**: Advanced message processing (deploy-redis-streams.sh)
+- **Remote Probes**: Distributed network monitoring agents
 
-### Deployment Scripts
-- **`build.sh`**: Complete system build with dependency management
-- **`deploy.sh`**: Automated deployment with health checks and database initialization
-- **`verify-setup.sh`**: Pre-deployment verification of all components
-- **`database/init-db.sh`**: Database initialization with integrity checks
-
-### Fresh Installation Ready
-The repository is designed for immediate deployment from a fresh git clone:
-1. Clone repository
-2. Run `./verify-setup.sh` (optional verification)
-3. Run `./build.sh` (builds all components)
-4. Run `./deploy.sh` (deploys and initializes)
-5. Access http://localhost:3100 with admin/admin123
-
-### Configuration Management
-- **`.env.example`**: Complete environment configuration template
-- **Environment Variables**: All services support environment-based configuration
-- **Docker Compose**: Health checks, dependency management, and volume persistence
-- **Nginx Configuration**: SSL/TLS ready with reverse proxy setup
+### Security Features
+- **Keycloak Authentication**: Enterprise-grade identity
+- **Credential Encryption**: Fernet encryption for sensitive data
+- **RBAC**: Role-based access with fine-grained permissions
+- **Audit Logging**: Comprehensive activity tracking
+- **TLS/SSL**: Secure communication with certificate management

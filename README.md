@@ -1,10 +1,10 @@
-# OpsConductor NG - Intelligent Infrastructure Automation Platform
+# OpsConductor NG - AI-Powered Infrastructure Automation Platform
 
-**Production-Ready IT Operations with AI-Powered Microservices Architecture**
+**Production-Ready IT Operations with Pure LLM-Driven Intelligence**
 
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-green.svg)](https://github.com/opsconductor/opsconductor-ng)
 [![Architecture](https://img.shields.io/badge/Architecture-Microservices-blue.svg)](#architecture)
-[![AI Powered](https://img.shields.io/badge/AI-Powered-purple.svg)](#ai-capabilities)
+[![AI Powered](https://img.shields.io/badge/AI-Pure%20LLM-purple.svg)](#ai-capabilities)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -31,12 +31,12 @@ cd opsconductor-ng
 
 ## 🎯 What is OpsConductor?
 
-OpsConductor NG is a **production-ready, microservices-based IT operations automation platform** that transforms complex infrastructure management into simple natural language conversations. Built with modern AI capabilities, it provides comprehensive automation, monitoring, and intelligent workflow generation.
+OpsConductor NG is a **production-ready, microservices-based IT operations automation platform** powered by pure LLM intelligence. It transforms complex infrastructure management into simple natural language conversations using advanced AI orchestration.
 
 ### Key Features
 
-- 🧠 **AI-Powered Interface** - Natural language commands for all operations
-- 🏗️ **Microservices Architecture** - Scalable, maintainable service design
+- 🧠 **Pure LLM Architecture** - No hardcoded logic, all decisions made by AI
+- 🏗️ **Enterprise Microservices** - Kong Gateway, Keycloak identity, scalable design
 - 🔧 **Multi-Protocol Automation** - SSH, RDP, SNMP, HTTP, PowerShell, and more
 - 📊 **Real-Time Monitoring** - Comprehensive infrastructure visibility
 - 🤖 **Intelligent Workflows** - AI-generated automation scripts
@@ -50,94 +50,87 @@ OpsConductor NG is a **production-ready, microservices-based IT operations autom
 ### System Overview
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Web Frontend  │◄──►│   API Gateway   │◄──►│ AI Command      │
-│   (React/TS)    │    │   (FastAPI)     │    │ Service         │
-│   Port 3100     │    │   Port 3000     │    │ Port 3005       │
+│   Web Frontend  │◄──►│   Kong Gateway  │◄──►│ AI Brain        │
+│   (React/TS)    │    │   (Port 3000)   │    │ (Pure LLM)      │
+│   Port 3100     │    │                 │    │ Port 3005       │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                       │
                                 ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  Identity       │    │  Asset Service  │    │  Automation     │
-│  Service        │    │  (Targets)      │    │  Service        │
-│  Port 3001      │    │  Port 3002      │    │  Port 3003      │
+│  Keycloak       │    │  Asset Service  │    │  Automation     │
+│  Identity       │    │  (Targets)      │    │  Service        │
+│  Port 8090      │    │  Port 3002      │    │  Port 3003      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                 │                       │
                                 ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│ Communication   │    │ Network Analyzer│    │  Vector Service │
-│ Service         │    │ Service         │    │  (ChromaDB)     │
-│ Port 3004       │    │ Port 3006       │    │  Port 3007      │
+│ Communication   │    │ Network Analyzer│    │  Ollama LLM     │
+│ Service         │    │ Service         │    │  Server         │
+│ Port 3004       │    │ Port 3006       │    │  Port 11434     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-                                │                       │
-                                ▼                       ▼
-                       ┌─────────────────┐    ┌─────────────────┐
-                       │   LLM Service   │    │ AI Orchestrator │
-                       │   (Ollama)      │    │ Service         │
-                       │  Port 3008      │    │ Port 3010       │
-                       └─────────────────┘    └─────────────────┘
 ```
 
 ### Core Services
 
 #### Infrastructure Services
-- **PostgreSQL** (Port 5432) - Primary database with 4 schemas
-- **Redis** (Port 6379) - Caching, sessions, and task queues
+- **PostgreSQL** (Port 5432) - Primary database with 5 schemas
+- **Redis** (Port 6379) - Caching, sessions, and message streams
 - **ChromaDB** (Port 8000) - Vector database for AI knowledge
 - **Nginx** (Port 80/443) - Reverse proxy and SSL termination
 
 #### Application Services
-- **API Gateway** (Port 3000) - Central routing, authentication, rate limiting
-- **Identity Service** (Port 3001) - User management, RBAC, JWT authentication
+- **Kong Gateway** (Port 3000) - Enterprise API gateway with OAuth2
+- **Keycloak** (Port 8090) - Enterprise identity and access management
+- **Identity Service** (Port 3001) - User management with Keycloak integration
 - **Asset Service** (Port 3002) - Infrastructure targets with embedded credentials
 - **Automation Service** (Port 3003) - Job execution with Celery workers
-- **Communication Service** (Port 3004) - Notifications, audit logging
-- **Network Analyzer Service** (Port 3006) - Packet analysis, network monitoring, and troubleshooting
+- **Communication Service** (Port 3004) - Notifications and audit logging
+- **Network Analyzer Service** (Port 3006) - Network monitoring and analysis
 
 #### AI Services
-- **AI Command Service** (Port 3005) - Main AI interface with intent classification
-- **Vector Service** (Port 3007) - Knowledge storage and semantic search
-- **LLM Service** (Port 3008) - Large language model interface
-- **AI Orchestrator** (Port 3010) - AI workflow coordination
-- **Ollama Server** (Port 11434) - Local LLM model serving
+- **AI Brain** (Port 3005) - Pure LLM-driven intelligence with Ollama integration
+- **Ollama Server** (Port 11434) - Local LLM model serving (CodeLLama 7B)
+- **ChromaDB** (Port 8000) - Vector database for knowledge storage
 
 ---
 
 ## 🧠 AI Capabilities
 
-### Natural Language Processing
-Transform complex operations into simple conversations:
+### Pure LLM Architecture
+Transform complex operations into simple conversations with no hardcoded logic:
 
 ```bash
-\"Check CPU usage on all Linux servers\"
-\"Restart nginx service on web servers\"
-\"Show disk space alerts from last 24 hours\"
-\"Create a PowerShell script to restart IIS\"
-\"Schedule weekly disk cleanup on Windows servers\"
+"Check CPU usage on all Linux servers"
+"Restart nginx service on web servers"
+"Show disk space alerts from last 24 hours"
+"Create a PowerShell script to restart IIS"
+"Schedule weekly disk cleanup on Windows servers"
 ```
 
 ### Intelligent Features
-- **Intent Classification** - Understands user intentions with high accuracy
-- **Entity Extraction** - Identifies targets, operations, and parameters
+- **Intent Brain** - Pure LLM-based intent understanding
+- **Fulfillment Engine** - Direct execution of user requests
+- **Direct Executor** - Ollama-driven service orchestration
+- **Service Catalog** - Dynamic service discovery
 - **Context Awareness** - Maintains conversation history
-- **Script Generation** - Creates production-ready automation scripts
 - **Learning System** - Continuously improves from interactions
-- **Predictive Analytics** - Proactive issue detection
 
 ---
 
 ## 🗄️ Database Architecture
 
-### Four-Schema Design
-- **identity** - Users, roles, permissions, sessions (5 tables)
-- **assets** - Consolidated targets with embedded credentials (8 tables)
-- **automation** - Jobs, executions, schedules, workflows (6 tables)
-- **communication** - Notifications, templates, audit logs (4 tables)
+### Five-Schema Design
+- **identity** - Users, roles, permissions, sessions (integrated with Keycloak)
+- **assets** - Consolidated targets with embedded credentials
+- **automation** - Jobs, executions, schedules, workflows
+- **communication** - Notifications, templates, audit logs
+- **network_analysis** - Network monitoring and diagnostics
 
 ### Key Features
 - **Enhanced Targets** - New architecture with embedded credentials
 - **Hierarchical Groups** - 3-level target organization
 - **Service Definitions** - 31+ predefined service types
-- **Comprehensive RBAC** - 5 roles with granular permissions
+- **Comprehensive RBAC** - Enterprise-grade role-based access control
 - **Audit Logging** - Complete system operation tracking
 
 ---
@@ -155,16 +148,19 @@ Transform complex operations into simple conversations:
 docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
-### Manual Deployment
+### Alternative Deployments
 ```bash
-# Standard deployment
-docker-compose up -d
+# With Traefik reverse proxy
+./deploy-traefik.sh
 
-# Scale workers
-docker-compose up -d --scale automation-worker-1=3
+# With ELK logging stack
+./deploy-elk.sh
 
-# Individual service updates
-docker-compose up -d --no-deps <service-name>
+# With Redis Streams messaging
+./deploy-redis-streams.sh
+
+# With monitoring stack
+./start-monitoring.sh
 ```
 
 ### Health Monitoring
@@ -173,8 +169,8 @@ docker-compose up -d --no-deps <service-name>
 docker-compose ps
 
 # Individual health checks
-curl http://localhost:3000/health  # API Gateway
-curl http://localhost:3005/health  # AI Command Service
+curl http://localhost:3000/health  # Kong Gateway
+curl http://localhost:3005/health  # AI Brain
 curl http://localhost:5555         # Celery Flower Dashboard
 ```
 
@@ -182,10 +178,10 @@ curl http://localhost:5555         # Celery Flower Dashboard
 
 ## 🔒 Security
 
-### Authentication & Authorization
-- **JWT-based Authentication** - Secure token-based access
-- **Role-based Access Control** - 5 predefined roles (admin, manager, operator, developer, viewer)
-- **Session Management** - Refresh tokens and session tracking
+### Enterprise Identity Management
+- **Keycloak Integration** - Enterprise-grade identity and access management
+- **OAuth2/OpenID Connect** - Secure token-based authentication
+- **Role-based Access Control** - Fine-grained permissions
 - **Multi-factor Authentication** - Enhanced security options
 
 ### Data Protection
@@ -221,8 +217,8 @@ GET  /api/v1/executions           - List job executions
 ```
 
 ### Interactive Documentation
-- **API Gateway**: http://localhost:3000/docs
-- **AI Command Service**: http://localhost:3005/docs
+- **Kong Gateway**: http://localhost:3000/docs
+- **AI Brain**: http://localhost:3005/docs
 - **All Services**: Available at `<service-url>/docs`
 
 ---
@@ -244,9 +240,9 @@ python test_frontend_integration.py
 ### Manual Testing
 ```bash
 # Test AI chat
-curl -X POST http://localhost:3005/ai/chat \\
-  -H \"Content-Type: application/json\" \\
-  -d '{\"message\": \"restart nginx on web servers\", \"user_id\": 1}'
+curl -X POST http://localhost:3005/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "restart nginx on web servers", "user_id": 1}'
 ```
 
 ---
@@ -265,13 +261,14 @@ pip install -r requirements-dev.txt
 ### Code Structure
 ```
 opsconductor-ng/
-├── ai-brain/                # Unified AI service with modular engine architecture
-├── kong/                    # Kong Gateway - Enterprise API Gateway
-├── keycloak/                # Keycloak - Enterprise Identity Management
+├── ai-brain/                # Pure LLM-driven AI service
+├── kong/                    # Kong Gateway configuration
+├── keycloak/                # Keycloak identity management
 ├── identity-service/        # User management
 ├── asset-service/           # Infrastructure targets
 ├── automation-service/      # Job execution
 ├── communication-service/   # Notifications
+├── network-analyzer-service/# Network monitoring
 ├── frontend/                # React TypeScript web interface
 ├── database/                # Complete schema and migrations
 ├── shared/                  # Common utilities
@@ -320,7 +317,7 @@ docker-compose up -d --build <service-name>
 #### Database Issues
 ```bash
 # Check database connection
-docker-compose exec postgres psql -U postgres -d opsconductor -c \"SELECT 1;\"
+docker-compose exec postgres psql -U postgres -d opsconductor -c "SELECT 1;"
 
 # Reset database (WARNING: Data loss)
 docker-compose down -v
@@ -363,33 +360,11 @@ curl http://localhost:8000/api/v1/heartbeat
 
 ---
 
-## 🔮 Roadmap
-
-### Short Term (1-3 months)
-- [ ] Enhanced multi-model LLM support
-- [ ] Advanced caching and performance optimization
-- [ ] Mobile-responsive web interface
-- [ ] Extended protocol support (WMI, REST APIs)
-
-### Medium Term (3-6 months)
-- [ ] Kubernetes deployment manifests
-- [ ] Advanced analytics dashboard
-- [ ] Custom plugin architecture
-- [ ] Multi-tenant support
-
-### Long Term (6+ months)
-- [ ] Edge computing support
-- [ ] Advanced AI model training
-- [ ] Marketplace for automation scripts
-- [ ] Enterprise SSO integration
-
----
-
 ## 📚 Additional Documentation
 
-- **[Volume Mount System](VOLUME_MOUNT_SYSTEM.md)** - Docker volume configuration
-- **[GPU Setup Guide](GPU_SETUP.md)** - GPU acceleration setup
-- **[Scripting Standards](docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md)** - Development standards
+- **[DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)** - Complete deployment instructions
+- **[REPO.md](REPO.md)** - Repository structure and architecture
+- **[docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md](docs/OPSCONDUCTOR_SCRIPTING_STANDARD.md)** - Development standards
 
 ---
 
@@ -399,16 +374,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🙏 Acknowledgments
-
-- **OpenAI** - For advancing AI and natural language processing
-- **Ollama** - For local LLM serving capabilities
-- **ChromaDB** - For vector database technology
-- **FastAPI** - For modern Python web framework
-- **React** - For powerful frontend development
-
----
-
-**OpsConductor NG - Transforming IT Operations with Intelligent Automation**
-
-*Built with ❤️ for the IT operations community*
+**OpsConductor NG: Where Infrastructure Meets Intelligence**
