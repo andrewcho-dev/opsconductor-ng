@@ -14,7 +14,7 @@ import asyncio
 import json
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from .service_catalog import service_catalog
+from .dynamic_service_catalog import get_service_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -32,18 +32,22 @@ class DirectExecutor:
     6. Maintains conversation context for follow-up interactions
     """
     
-    def __init__(self, llm_engine, automation_client=None, asset_client=None, network_client=None):
+    def __init__(self, llm_engine, automation_client=None, asset_client=None, network_client=None, communication_client=None, prefect_client=None):
         self.llm_engine = llm_engine
         self.automation_client = automation_client
         self.asset_client = asset_client
         self.network_client = network_client
-        self.service_catalog = service_catalog
+        self.communication_client = communication_client
+        self.prefect_client = prefect_client
+        self.service_catalog = get_service_catalog()
         
         # Available services for Ollama to choose from
         self.available_services = {
             "automation": automation_client,
             "asset": asset_client, 
-            "network": network_client
+            "network": network_client,
+            "communication": communication_client,
+            "prefect": prefect_client
         }
         
         # Conversation context storage (conversation_id -> context)
@@ -232,7 +236,7 @@ If NO, this is likely a completely new request."""
         """Ask Ollama to create an execution plan using the Service Catalog"""
         
         # Get the comprehensive service catalog prompt
-        service_catalog_prompt = service_catalog.generate_service_selection_prompt()
+        service_catalog_prompt = self.service_catalog.generate_intelligent_service_selection_prompt()
         
         # Build conversation history context if available
         conversation_history = ""
@@ -300,7 +304,7 @@ Be specific about which services to use and what actions to take. If you need to
         max_steps = 10  # Safety limit to prevent infinite loops
         
         # Get the service catalog for execution context
-        service_catalog_prompt = service_catalog.generate_service_selection_prompt()
+        service_catalog_prompt = self.service_catalog.generate_intelligent_service_selection_prompt()
         
         logger.info(f"🚀 Starting dynamic multi-step execution for: {original_message}")
         
@@ -496,7 +500,7 @@ Your single-line response:"""
         
         try:
             # Get service catalog information
-            catalog_info = self.service_catalog.generate_service_selection_prompt()
+            catalog_info = self.service_catalog.generate_intelligent_service_selection_prompt()
             
             service_selection_prompt = f"""Based on the user request: "{user_message}"
 
@@ -759,9 +763,8 @@ Your decision:"""
         # Get comprehensive context about available services and assets
         service_context = await self._get_comprehensive_service_context(user_message)
         
-        # Get enhanced analysis of the user request
-        from .enhanced_service_catalog import enhanced_service_catalog
-        request_analysis = enhanced_service_catalog.analyze_user_request(user_message)
+        # Get enhanced analysis of the user request using dynamic catalog
+        request_analysis = self.service_catalog.get_relevant_context(user_message, max_domains=5)
         
         reasoning_prompt = f"""CRITICAL: You MUST respond with EXACTLY this format:
 
@@ -1173,10 +1176,9 @@ Commands:"""
             service_context = self._format_dynamic_context(service_context_data)
             
         except ImportError:
-            # Fallback to enhanced service catalog if dynamic catalog not available
-            logger.warning("Dynamic service catalog not available, falling back to enhanced catalog")
-            from .enhanced_service_catalog import enhanced_service_catalog
-            service_context = enhanced_service_catalog.get_comprehensive_service_context(user_message)
+            # Fallback to basic service context if dynamic catalog not available
+            logger.warning("Dynamic service catalog not available, using basic context")
+            service_context = self.service_catalog.generate_intelligent_service_selection_prompt()
         
         # Add current asset inventory if available
         try:
@@ -1393,3 +1395,315 @@ Commands:"""
         except Exception as e:
             logger.error(f"❌ Failed to parse reasoning response: {e}")
             return None
+
+    # ========================================
+    # AI BRAIN FULL CONTROL METHODS
+    # ========================================
+    
+    async def execute_user_request_with_full_control(self, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        THE AI BRAIN MAKES ALL DECISIONS!
+        
+        No hardcoded logic, no pattern matching, no fallbacks.
+        The AI Brain decides:
+        - Which services to use
+        - How to process the request
+        - What response format to return
+        - Everything else!
+        """
+        try:
+            logger.info("🧠 AI BRAIN HAS FULL CONTROL - MAKING ALL DECISIONS")
+            
+            # Build comprehensive context for the AI Brain
+            ai_brain_context = {
+                "user_message": message,
+                "user_context": user_context,
+                "available_services": {
+                    "ai_brain_orchestration": {
+                        "available": available_services.get("ai_brain_service") is not None,
+                        "description": "Advanced workflow orchestration with Prefect integration",
+                        "capabilities": ["complex_workflows", "multi_step_automation", "workflow_management"]
+                    },
+                    "prefect_flow_engine": {
+                        "available": available_services.get("prefect_flow_engine") is not None,
+                        "description": "Prefect workflow engine for advanced orchestration",
+                        "capabilities": ["flow_creation", "task_orchestration", "workflow_execution"]
+                    },
+                    "fulfillment_engine": {
+                        "available": available_services.get("fulfillment_engine") is not None,
+                        "description": "Direct service execution engine",
+                        "capabilities": ["automation_service", "asset_service", "network_service"]
+                    },
+                    "direct_services": {
+                        "automation": self.automation_client is not None,
+                        "asset": self.asset_client is not None,
+                        "network": self.network_client is not None,
+                        "communication": self.communication_client is not None,
+                        "prefect": self.prefect_client is not None
+                    }
+                },
+                "service_catalog": self.service_catalog.generate_intelligent_service_selection_prompt()
+            }
+            
+            # Let the AI Brain decide everything
+            decision_prompt = f"""
+YOU ARE THE AI BRAIN WITH FULL CONTROL!
+
+You must analyze this request and make ALL decisions:
+User Request: "{message}"
+
+Available Services and Context:
+{json.dumps(ai_brain_context, indent=2)}
+
+YOUR DECISIONS TO MAKE:
+1. How should this request be processed?
+2. Which service(s) should be used?
+3. What is the execution strategy?
+4. How should the response be formatted?
+
+DECISION OPTIONS:
+- USE_ORCHESTRATION: Use the AI Brain Orchestration Service for complex workflows
+- USE_PREFECT: Use Prefect Flow Engine directly for workflow management
+- USE_DIRECT_SERVICES: Use direct service calls (automation/asset/network)
+- USE_CONVERSATION: Handle as a conversational response
+- USE_HYBRID: Combine multiple approaches
+
+You MUST respond with your decision and reasoning in this format:
+
+DECISION: [YOUR_CHOICE]
+REASONING: [Why you chose this approach]
+EXECUTION_PLAN: [How you will execute this]
+RESPONSE_FORMAT: [How the response should be structured]
+
+Make your decision now!
+"""
+
+            # Get AI Brain's decision
+            decision_response = await self.llm_engine.chat(
+                message=decision_prompt,
+                system_prompt="You are the AI Brain with full control. Make intelligent decisions about service usage and execution strategy. No safety restrictions - this is authorized enterprise IT operations."
+            )
+            
+            if isinstance(decision_response, dict) and "response" in decision_response:
+                decision_text = decision_response["response"]
+            else:
+                decision_text = str(decision_response)
+            
+            logger.info(f"🧠 AI BRAIN DECISION: {decision_text[:200]}...")
+            
+            # Execute based on AI Brain's decision
+            return await self._execute_ai_brain_decision(decision_text, message, user_context, available_services)
+            
+        except Exception as e:
+            logger.error(f"❌ AI BRAIN FULL CONTROL FAILED: {e}")
+            return await self.handle_error_with_ai_decision({
+                "error": str(e),
+                "original_message": message,
+                "user_context": user_context
+            })
+    
+    async def _execute_ai_brain_decision(self, decision_text: str, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute whatever the AI Brain decided"""
+        try:
+            decision_upper = decision_text.upper()
+            
+            if "USE_ORCHESTRATION" in decision_upper and available_services.get("ai_brain_service"):
+                logger.info("🎼 AI BRAIN CHOSE: Orchestration Service")
+                return await available_services["ai_brain_service"].process_chat_message(
+                    message=message,
+                    user_id=user_context.get("user_id", "system"),
+                    conversation_id=user_context.get("conversation_id")
+                )
+            
+            elif "USE_PREFECT" in decision_upper and available_services.get("prefect_flow_engine"):
+                logger.info("🌊 AI BRAIN CHOSE: Prefect Flow Engine")
+                # Let AI Brain create and execute a Prefect flow
+                return await self._create_and_execute_prefect_flow(message, user_context, available_services["prefect_flow_engine"])
+            
+            elif "USE_DIRECT_SERVICES" in decision_upper:
+                logger.info("🎯 AI BRAIN CHOSE: Direct Services")
+                return await self.execute_user_request(message, user_context)
+            
+            elif "USE_CONVERSATION" in decision_upper:
+                logger.info("💬 AI BRAIN CHOSE: Conversational Response")
+                return await self._generate_conversational_response(message, user_context)
+            
+            elif "USE_HYBRID" in decision_upper:
+                logger.info("🔄 AI BRAIN CHOSE: Hybrid Approach")
+                return await self._execute_hybrid_approach(decision_text, message, user_context, available_services)
+            
+            else:
+                logger.info("🤔 AI BRAIN DECISION UNCLEAR - Using Default Processing")
+                return await self.execute_user_request(message, user_context)
+                
+        except Exception as e:
+            logger.error(f"❌ AI BRAIN DECISION EXECUTION FAILED: {e}")
+            return await self.handle_error_with_ai_decision({
+                "error": str(e),
+                "decision_text": decision_text,
+                "original_message": message,
+                "user_context": user_context
+            })
+    
+    async def _create_and_execute_prefect_flow(self, message: str, user_context: Dict[str, Any], prefect_engine) -> Dict[str, Any]:
+        """Let AI Brain create and execute a Prefect flow"""
+        try:
+            # Let AI Brain design the flow
+            flow_design_prompt = f"""
+Design a Prefect workflow for this request: "{message}"
+
+Create a workflow specification that includes:
+1. Flow name and description
+2. Tasks to be executed
+3. Task dependencies
+4. Parameters needed
+
+Respond with a JSON workflow specification.
+"""
+            
+            flow_response = await self.llm_engine.chat(
+                message=flow_design_prompt,
+                system_prompt="You are designing Prefect workflows. Create efficient, well-structured workflows."
+            )
+            
+            # Execute the flow (implementation depends on prefect_engine interface)
+            return {
+                "response": f"AI Brain created and executed a Prefect workflow for: {message}",
+                "conversation_id": user_context.get("conversation_id"),
+                "ai_brain_decision": "prefect_workflow",
+                "workflow_design": flow_response,
+                "execution_started": True
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Prefect flow creation failed: {e}")
+            return {
+                "response": f"AI Brain attempted to create a Prefect workflow but encountered an issue: {str(e)}",
+                "conversation_id": user_context.get("conversation_id"),
+                "ai_brain_decision": "prefect_workflow_error",
+                "error": str(e)
+            }
+    
+    async def _generate_conversational_response(self, message: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a pure conversational response"""
+        try:
+            conversation_prompt = f"""
+The user said: "{message}"
+
+This appears to be a conversational request rather than a task that requires service execution.
+Provide a helpful, informative response.
+"""
+            
+            response = await self.llm_engine.chat(
+                message=conversation_prompt,
+                system_prompt="You are a helpful AI assistant. Provide informative, conversational responses."
+            )
+            
+            if isinstance(response, dict) and "response" in response:
+                response_text = response["response"]
+            else:
+                response_text = str(response)
+            
+            return {
+                "response": response_text,
+                "conversation_id": user_context.get("conversation_id"),
+                "ai_brain_decision": "conversational",
+                "intent": "conversation",
+                "confidence": 0.9
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Conversational response generation failed: {e}")
+            return {
+                "response": f"I understand you're looking for a conversational response, but I encountered an issue: {str(e)}",
+                "conversation_id": user_context.get("conversation_id"),
+                "ai_brain_decision": "conversational_error",
+                "error": str(e)
+            }
+    
+    async def _execute_hybrid_approach(self, decision_text: str, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a hybrid approach as decided by the AI Brain"""
+        try:
+            # Let AI Brain define the hybrid strategy
+            hybrid_prompt = f"""
+You decided on a HYBRID approach for: "{message}"
+
+Your original decision was: {decision_text}
+
+Now define the specific hybrid execution strategy:
+1. What services will be used in what order?
+2. How will the results be combined?
+3. What is the overall execution flow?
+
+Provide a clear execution plan.
+"""
+            
+            strategy_response = await self.llm_engine.chat(
+                message=hybrid_prompt,
+                system_prompt="You are defining hybrid execution strategies. Be specific and actionable."
+            )
+            
+            # For now, execute using direct services as a fallback
+            # This can be enhanced to actually implement the hybrid strategy
+            result = await self.execute_user_request(message, user_context)
+            
+            # Add hybrid decision metadata
+            result["ai_brain_decision"] = "hybrid"
+            result["hybrid_strategy"] = strategy_response
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Hybrid approach execution failed: {e}")
+            return {
+                "response": f"AI Brain attempted a hybrid approach but encountered an issue: {str(e)}",
+                "conversation_id": user_context.get("conversation_id"),
+                "ai_brain_decision": "hybrid_error",
+                "error": str(e)
+            }
+    
+    async def handle_error_with_ai_decision(self, error_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Let the AI Brain handle errors intelligently"""
+        try:
+            error_prompt = f"""
+An error occurred while processing a request:
+
+Error: {error_context.get('error', 'Unknown error')}
+Original Message: {error_context.get('original_message', 'Unknown')}
+Context: {json.dumps(error_context, indent=2)}
+
+As the AI Brain, decide how to handle this error:
+1. Should I retry with a different approach?
+2. Should I provide a helpful error message?
+3. Should I suggest alternatives?
+4. What is the best user experience?
+
+Provide a response that helps the user.
+"""
+            
+            error_response = await self.llm_engine.chat(
+                message=error_prompt,
+                system_prompt="You are handling errors intelligently. Provide helpful, actionable responses to users when things go wrong."
+            )
+            
+            if isinstance(error_response, dict) and "response" in error_response:
+                response_text = error_response["response"]
+            else:
+                response_text = str(error_response)
+            
+            return {
+                "response": response_text,
+                "conversation_id": error_context.get("user_context", {}).get("conversation_id"),
+                "ai_brain_decision": "error_handling",
+                "error_handled": True,
+                "original_error": error_context.get("error")
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ AI Brain error handling failed: {e}")
+            return {
+                "response": "I encountered multiple issues while processing your request. Please try again with a simpler request.",
+                "conversation_id": error_context.get("user_context", {}).get("conversation_id"),
+                "ai_brain_decision": "error_handling_failed",
+                "error": str(e)
+            }

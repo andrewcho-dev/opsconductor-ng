@@ -476,6 +476,167 @@ class DynamicServiceCatalog:
         """Clear the context cache"""
         self.context_cache.clear()
         logger.info("Context cache cleared")
+    
+    def generate_intelligent_service_selection_prompt(self) -> str:
+        """Generate comprehensive service selection prompt with intelligent decision guidance"""
+        prompt = """# OpsConductor Dynamic Service Catalog
+
+You have access to the following specialized services. Analyze the NATURE and COMPLEXITY of each task to choose the OPTIMAL service:
+
+## 🌐 NETWORK-ANALYZER-SERVICE (Port: 3006)
+**BEST FOR**: Network diagnostics, connectivity testing, packet analysis
+**NETWORK ACCESS**: Direct host network (can reach any IP/port)
+**USE FOR**: ping, traceroute, port scanning, packet capture, network monitoring, protocol analysis
+**CAPABILITIES**:
+- Advanced network diagnostics (ping, traceroute, nmap)
+- Real-time packet capture and analysis
+- Protocol-specific analysis (TCP, UDP, HTTP, DNS)
+- AI-powered network troubleshooting
+- Network interface monitoring
+**WHEN TO USE**: ANY network-related task
+**API**: /api/v1/diagnostics/ping, /api/v1/analysis/start-capture
+
+## 🤖 AUTOMATION-SERVICE (Port: 3003) - FAST & SIMPLE
+**BEST FOR**: Immediate execution, simple operations, basic scheduling
+**NETWORK ACCESS**: Container network (through nginx proxy)
+**EXECUTION STYLE**: Fast response (< 1 second), direct execution, real-time monitoring
+**IDEAL FOR**:
+- **Single commands**: restart service, check status, run script, file operations
+- **Simple sequential workflows**: stop → update → start (linear, predictable steps)
+- **System administration**: service management, file operations, user management
+- **Basic scheduling**: recurring tasks with simple time-based triggers (cron-like)
+- **Remote execution**: SSH/PowerShell commands on target systems
+- **Immediate needs**: when you need fast execution without complex orchestration
+
+**SCHEDULING CAPABILITIES**: 
+- Simple Celery Beat scheduling for regular maintenance and housekeeping
+- Time-based recurring tasks (hourly, daily, weekly)
+- Independent tasks that don't require complex coordination
+
+**CHOOSE AUTOMATION-SERVICE WHEN**:
+- Task is self-contained and straightforward
+- You need immediate execution with fast response
+- Simple sequential steps without complex branching
+- Basic recurring schedules (like cron jobs)
+- System administration and maintenance tasks
+- The task doesn't require sophisticated error handling or recovery
+
+**API**: /api/v1/jobs, /api/v1/executions, /api/v1/schedules
+
+## 🔄 PREFECT-FLOW-REGISTRY (Port: 4201) - ENTERPRISE ORCHESTRATION
+**BEST FOR**: Complex workflows, enterprise orchestration, sophisticated automation
+**EXECUTION STYLE**: Enterprise-grade with advanced features, detailed monitoring, sophisticated coordination
+**IDEAL FOR**:
+- **Complex workflows**: Multi-step processes with conditional branching and parallel execution
+- **Advanced scheduling**: Event-driven triggers, external system integration, conditional scheduling
+- **Enterprise orchestration**: Workflows requiring rollback, recovery, and audit trails
+- **Sophisticated coordination**: Cross-system workflows with complex dependencies
+- **Mission-critical processes**: Workflows requiring guaranteed execution and detailed monitoring
+
+**ORCHESTRATION CAPABILITIES**:
+- Conditional branching and dynamic workflow generation
+- Parallel execution with coordination and synchronization
+- Advanced error handling with automatic retries and custom recovery
+- Event-driven triggers and external system integration
+- Workflow versioning, templates, and governance
+- Comprehensive monitoring and debugging capabilities
+
+**CHOOSE PREFECT-FLOW-REGISTRY WHEN**:
+- Workflow has complex conditional logic or branching
+- You need sophisticated error handling and recovery
+- Tasks have complex dependencies between steps
+- Advanced scheduling with event triggers or external conditions
+- Enterprise-grade monitoring and audit requirements
+- Workflow requires rollback or recovery capabilities
+- Visual workflow monitoring and debugging is needed
+
+**API**: /api/v1/flows, /api/v1/flows/{flow_id}/execute, /api/v1/schedules/advanced
+
+## 📦 ASSET-SERVICE (Port: 3002)
+**BEST FOR**: Asset management, credential storage, system inventory
+**USE FOR**: managing infrastructure assets, storing credentials, system discovery
+**CAPABILITIES**:
+- Comprehensive asset inventory
+- Secure credential management
+- Target system management
+- Asset discovery and cataloging
+**WHEN TO USE**: Asset management, credential operations, system inventory
+**API**: /api/v1/assets, /api/v1/credentials
+
+## 📢 COMMUNICATION-SERVICE (Port: 3004)
+**BEST FOR**: Notifications, alerts, external integrations
+**USE FOR**: sending notifications, alerts, reports, third-party integrations
+**CAPABILITIES**:
+- Multi-channel notifications (email, SMS, Slack)
+- Template-based messaging
+- External API integrations
+- Delivery tracking
+**WHEN TO USE**: Sending notifications or integrating with external systems
+**API**: /api/v1/notifications, /api/v1/templates
+
+## 🔐 IDENTITY-SERVICE (Port: 3001)
+**BEST FOR**: Authentication and authorization
+**USE FOR**: user management, authentication, access control
+**CAPABILITIES**:
+- User authentication via Keycloak
+- Authorization and access control
+- JWT token management
+- User account management
+**WHEN TO USE**: User authentication, access control, identity management
+**API**: /api/v1/auth/login, /api/v1/users
+
+## INTELLIGENT SERVICE SELECTION GUIDELINES:
+
+### 🎯 SCHEDULING DECISION MATRIX:
+
+**USE AUTOMATION-SERVICE (Celery Beat) FOR**:
+- Simple time-based recurring tasks (every hour, daily, weekly)
+- Independent maintenance tasks (log cleanup, health checks)
+- Basic housekeeping operations (backup single system, status reports)
+- Tasks that run independently without complex coordination
+- When you need fast, lightweight scheduling without overhead
+
+**USE PREFECT-FLOW-REGISTRY FOR**:
+- Complex scheduling with multiple conditions and dependencies
+- Event-driven workflows triggered by external systems
+- Workflows requiring coordination between multiple systems
+- Advanced scheduling that adapts based on system state
+- When you need sophisticated monitoring and workflow visualization
+
+### 🎯 EXECUTION DECISION MATRIX:
+
+**USE AUTOMATION-SERVICE FOR**:
+- Single command execution (restart service, check status)
+- Simple sequential operations (stop → update → start)
+- System administration tasks (file operations, service management)
+- When speed and simplicity are priorities
+- Self-contained tasks without complex dependencies
+
+**USE PREFECT-FLOW-REGISTRY FOR**:
+- Multi-step workflows with conditional logic
+- Parallel processing with coordination requirements
+- Workflows requiring rollback and recovery capabilities
+- Enterprise processes with audit and compliance needs
+- Complex orchestration across multiple systems and services
+
+### 🎯 CORE SELECTION RULES:
+
+1. **NETWORK TASKS** → ALWAYS use network-analyzer-service
+2. **ASSET DISCOVERY** → ALWAYS start with asset-service for "all [type] systems"
+3. **SIMPLE & FAST** → automation-service (immediate execution, basic scheduling)
+4. **COMPLEX & SOPHISTICATED** → prefect-flow-registry (enterprise orchestration)
+5. **NOTIFICATIONS** → communication-service
+6. **AUTHENTICATION** → identity-service
+
+**DECISION PRINCIPLE**: Choose based on COMPLEXITY and REQUIREMENTS, not just keywords!
+
+### 🎯 SPECIALTY DOMAINS:
+
+**VAPIX CAMERAS**: For Axis camera control, video streaming, PTZ operations, firmware management
+**SYSTEM EXPERTISE**: Linux, Windows, PowerShell knowledge for platform-specific operations
+**LEARNED CAPABILITIES**: AI-discovered patterns and workflows (expandable)
+"""
+        return prompt
 
 # Global catalog instance
 _catalog_instance = None

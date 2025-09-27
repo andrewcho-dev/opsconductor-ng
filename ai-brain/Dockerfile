@@ -98,7 +98,7 @@ echo "Ollama service is ready!"\n\
 echo "Starting FastAPI application..."\n\
 \n\
 # Start the application\n\
-uvicorn main:app --host 0.0.0.0 --port 3005 --reload' > /app/start.sh
+uvicorn main:app --host 0.0.0.0 --port 3005' > /app/start.sh
 
 RUN chmod +x /app/start.sh
 

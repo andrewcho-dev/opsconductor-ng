@@ -40,10 +40,16 @@ from fulfillment_engine.fulfillment_engine import FulfillmentEngine, Fulfillment
 from fulfillment_engine.fulfillment_orchestrator import FulfillmentOrchestrator
 from fulfillment_engine.direct_executor import DirectExecutor
 
+# Orchestration Engine imports
+from orchestration.ai_brain_service import AIBrainService
+from orchestration.prefect_flow_engine import PrefectFlowEngine
+
 # Integration imports
 from integrations.asset_client import AssetServiceClient
 from integrations.automation_client import AutomationServiceClient
 from integrations.network_client import NetworkAnalyzerClient
+from integrations.communication_client import CommunicationServiceClient
+from integrations.prefect_client import PrefectClient
 
 # Configure structured logging
 structlog.configure(
@@ -92,6 +98,14 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Prefect router not available: {str(e)}")
 
+# Include Orchestration router
+try:
+    from api.orchestration_router import orchestration_router, set_orchestration_services
+    app.include_router(orchestration_router)
+    logger.info("✅ Orchestration API router included")
+except ImportError as e:
+    logger.warning(f"⚠️  Orchestration router not available: {str(e)}")
+
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 default_model = os.getenv("DEFAULT_MODEL", "codellama:7b")
@@ -99,9 +113,14 @@ llm_engine = LLMEngine(ollama_host, default_model)
 
 # Initialize simplified intent brain system
 workflow_generator = WorkflowGenerator()
-asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://localhost:3002"))
-automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
+asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"))
+automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
 network_client = NetworkAnalyzerClient(os.getenv("NETWORK_ANALYZER_URL", "http://network-analyzer-service:3006"))
+communication_client = CommunicationServiceClient(os.getenv("COMMUNICATION_SERVICE_URL", "http://communication-service:3004"))
+prefect_client = PrefectClient(
+    prefect_api_url=os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api"),
+    flow_registry_url=os.getenv("PREFECT_FLOW_REGISTRY_URL", "http://prefect-flow-registry:8000")
+)
 
 logger.info("🧠 Initializing Intent Brain System")
 intent_brain = IntentBrain(llm_engine)
@@ -127,8 +146,16 @@ direct_executor = DirectExecutor(
     llm_engine=llm_engine,
     automation_client=automation_client,
     asset_client=asset_client,
-    network_client=network_client
+    network_client=network_client,
+    communication_client=communication_client,
+    prefect_client=prefect_client
 )
+
+logger.info("🎼 Initializing AI Brain Orchestration Service")
+ai_brain_service = AIBrainService()
+
+logger.info("🌊 Initializing Prefect Flow Engine")
+prefect_flow_engine = PrefectFlowEngine()
 
 @app.on_event("startup")
 async def startup_event():
@@ -153,6 +180,29 @@ async def startup_event():
         # Intent brain is ready (no initialization needed)
         logger.info("🚀 Intent Brain System ready")
         logger.info("🧠 Intent analysis and job creation ready")
+        
+        # Initialize AI Brain Orchestration Service
+        logger.info("🎼 Initializing AI Brain Orchestration Service...")
+        orchestration_success = await ai_brain_service.initialize()
+        if orchestration_success:
+            logger.info("🚀 AI Brain Orchestration Service initialized successfully")
+        else:
+            logger.warning("⚠️ AI Brain Orchestration Service initialization failed - continuing without orchestration")
+        
+        # Initialize Prefect Flow Engine
+        logger.info("🌊 Initializing Prefect Flow Engine...")
+        prefect_success = await prefect_flow_engine.initialize()
+        if prefect_success:
+            logger.info("🚀 Prefect Flow Engine initialized successfully")
+        else:
+            logger.warning("⚠️ Prefect Flow Engine initialization failed - continuing without Prefect")
+        
+        # Set orchestration services for API router
+        try:
+            set_orchestration_services(ai_brain_service, prefect_flow_engine)
+            logger.info("🔗 Orchestration services linked to API router")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to link orchestration services to API: {e}")
     except Exception as e:
         print(f"❌ STARTUP EXCEPTION: {e}")
         logger.error(f"❌ Exception during startup: {e}")
@@ -161,296 +211,115 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Cleanup intent brain on shutdown"""
-    logger.info("Shutting down Intent Brain System...")
+    """Cleanup intent brain and orchestration services on shutdown"""
+    logger.info("Shutting down AI Brain System...")
     try:
+        # Cleanup Intent Brain
         if hasattr(intent_brain, 'cleanup'):
             await intent_brain.cleanup()
             logger.info("🧠 Intent Brain System cleanup completed")
         else:
             logger.info("🧠 Intent Brain System shutdown completed")
+        
+        # Cleanup Prefect Flow Engine
+        if hasattr(prefect_flow_engine, 'cleanup'):
+            await prefect_flow_engine.cleanup()
+            logger.info("🌊 Prefect Flow Engine cleanup completed")
+        
+        # Cleanup AI Brain Orchestration Service
+        if hasattr(ai_brain_service, 'cleanup'):
+            await ai_brain_service.cleanup()
+            logger.info("🎼 AI Brain Orchestration Service cleanup completed")
+            
     except Exception as e:
-        logger.error(f"❌ Exception during Intent Brain System shutdown: {e}")
+        logger.error(f"❌ Exception during AI Brain System shutdown: {e}")
 
-# PURE LLM CHAT FUNCTION - INTELLIGENT ROUTING BETWEEN CONVERSATION AND JOB CREATION
+# PURE AI BRAIN DECISION MAKING - NO HARDCODED LOGIC!
 async def pure_llm_chat_endpoint(request, intent_brain_instance):
     """
-    PURE LLM CHAT INTERFACE - INTELLIGENT ROUTING
+    PURE AI BRAIN DECISION MAKING
     
-    This function uses LLM to determine if the user wants to:
-    1. Create a job/automation (routes to LLM job creator)
-    2. Have a conversation (routes to LLM conversation handler)
+    The AI Brain (Ollama) makes ALL decisions about:
+    - Which services to use
+    - How to process the request
+    - What response format to return
+    - Everything else!
     
-    NO PATTERN MATCHING, NO TEMPLATES, JUST INTELLIGENT LLM ROUTING!
+    NO HARDCODED LOGIC, NO PATTERN MATCHING, NO FALLBACKS!
+    THE AI BRAIN DECIDES EVERYTHING!
     """
     try:
-        logger.info("🧠 Processing PURE LLM chat request", message=request.message[:100], conversation_id=request.conversation_id)
-        logger.info(f"🧠 Intent Brain type: {type(intent_brain_instance)}, has llm_engine: {hasattr(intent_brain_instance, 'llm_engine')}")
-        user_id = str(request.user_id) if request.user_id else "system"
+        logger.info("🧠 AI BRAIN MAKING ALL DECISIONS", message=request.message[:100])
         
         # Generate conversation_id if not provided
         if not request.conversation_id:
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
-        # Step 1: Check if this is a follow-up to a clarification request
-        logger.info(f"🔍 Checking for follow-up clarification context")
-        follow_up_result = await _check_for_clarification_followup(request, intent_brain_instance)
-        if follow_up_result:
-            logger.info("🔄 Detected follow-up to clarification - processing with additional context")
-            return follow_up_result
-        
-        # 🚀 PURE OLLAMA CONTROL: Let Ollama decide EVERYTHING!
-        logger.info("🚀 PURE OLLAMA CONTROL - NO HARDCODED ROUTING!")
-        
         user_context = {
             "user_id": str(request.user_id) if request.user_id else "system",
-            "conversation_id": request.conversation_id
+            "conversation_id": request.conversation_id,
+            "available_services": {
+                "ai_brain_orchestration": ai_brain_service and ai_brain_service.initialization_complete,
+                "prefect_flow_engine": prefect_flow_engine is not None,
+                "direct_executor": direct_executor is not None,
+                "fulfillment_engine": fulfillment_engine is not None
+            }
         }
         
-        # Let Ollama handle the entire request and format the response
-        execution_result = await direct_executor.execute_user_request(request.message, user_context)
+        # THE AI BRAIN DECIDES EVERYTHING!
+        # Pass all available services and let Ollama choose what to do
+        execution_result = await direct_executor.execute_user_request_with_full_control(
+            message=request.message, 
+            user_context=user_context,
+            available_services={
+                "ai_brain_service": ai_brain_service,
+                "prefect_flow_engine": prefect_flow_engine,
+                "fulfillment_engine": fulfillment_engine
+            }
+        )
         
-        # Return whatever Ollama decided - NO HARDCODED FORMATTING!
-        return await _format_ollama_response(request, execution_result)
+        # Return exactly what the AI Brain decided - NO MODIFICATIONS!
+        return execution_result
         
     except Exception as e:
-        logger.error("❌ PURE LLM chat processing failed", error=str(e), exc_info=True)
+        logger.error("❌ AI BRAIN DECISION MAKING FAILED", error=str(e), exc_info=True)
         
-        # LLM-powered error handling
-        return {
-            "response": f"I encountered an issue processing your message: {str(e)}. Please try rephrasing your request.",
-            "conversation_id": request.conversation_id,
-            "intent": "error_recovery",
-            "confidence": 0.8,
-            "job_id": None,
-            "execution_id": None,
-            "automation_job_id": None,
-            "workflow": None,
-            "execution_started": False,
-            "intent_classification": {
-                "intent_type": "error_recovery",
-                "confidence": 0.8,
-                "method": "pure_llm_error_handling",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {
-                    "confidence_score": 0.8,
-                    "risk_level": "LOW",
-                    "requirements_count": 0,
-                    "recommendations": ["Try rephrasing the request"]
-                },
-                "reasoning": "Error occurred in pure LLM processing",
-                "metadata": {
-                    "engine": "llm_error_handler",
-                    "success": False,
-                    "error": str(e)
-                }
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "_routing": {
-                "service_type": "pure_llm_error_handler", 
-                "response_time": 0.0,
-                "cached": False
+        # Even error handling is decided by the AI Brain
+        try:
+            error_context = {
+                "error": str(e),
+                "user_id": str(request.user_id) if request.user_id else "system",
+                "conversation_id": request.conversation_id,
+                "original_message": request.message
             }
-        }
+            
+            # Let AI Brain handle the error
+            error_result = await direct_executor.handle_error_with_ai_decision(error_context)
+            return error_result
+            
+        except Exception as final_error:
+            logger.error("❌ EVEN AI BRAIN ERROR HANDLING FAILED", error=str(final_error))
+            # Only as absolute last resort
+            return {
+                "response": "I'm experiencing technical difficulties. Please try again.",
+                "conversation_id": request.conversation_id,
+                "ai_brain_decision": "emergency_fallback"
+            }
 
-async def _format_execution_response(request, execution_result) -> Dict[str, Any]:
-    """Format response for execution results"""
-    job_details = execution_result.get("job_details", [])
-    primary_job_id = None
-    primary_execution_id = None
-    
-    if job_details:
-        primary_job = job_details[0]
-        primary_job_id = str(primary_job.get('job_id', '')) if primary_job.get('job_id') else None
-        primary_execution_id = str(primary_job.get('execution_id', '')) if primary_job.get('execution_id') else None
-    
-    if execution_result.get("status") == "completed":
-        response_text = f"✅ TASK COMPLETED SUCCESSFULLY\n\n{execution_result.get('message', 'Task completed')}"
-        confidence = 1.0
-        execution_started = True
-    elif execution_result.get("status") == "failed":
-        response_text = f"❌ TASK EXECUTION FAILED\n\n{execution_result.get('message', 'Task failed')}"
-        confidence = 0.5
-        execution_started = False
-    else:
-        response_text = f"⏳ TASK IN PROGRESS\n\n{execution_result.get('message', 'Task running')}"
-        confidence = 0.8
-        execution_started = True
-    
-    if job_details:
-        response_text += f"\n\n📋 Job Details:\n"
-        for job_detail in job_details:
-            job_name = job_detail.get('job_name', 'AI Generated Job')
-            job_id = job_detail.get('job_id', 'N/A')
-            execution_id = job_detail.get('execution_id', 'N/A')
-            response_text += f"• Job: {job_name} (ID: {job_id}, Execution: {execution_id})\n"
-    
-    return {
-        "response": response_text,
-        "conversation_id": request.conversation_id,
-        "intent": "direct_execution",
-        "confidence": confidence,
-        "job_id": primary_job_id,
-        "execution_id": primary_execution_id,
-        "automation_job_id": primary_job_id,
-        "workflow": {"execution_logs": [execution_result.get("execution_response", "")]},
-        "execution_started": execution_started,
-        "intent_classification": {
-            "intent_type": "direct_ollama_execution",
-            "confidence": confidence,
-            "method": "direct_executor",
-            "alternatives": [],
-            "entities": [],
-            "context_analysis": {
-                "confidence_score": confidence,
-                "risk_level": "LOW",
-                "requirements_count": 1,
-                "recommendations": ["Executed directly by Ollama"]
-            },
-            "reasoning": "Ollama analyzed and executed the request directly",
-            "metadata": {
-                "engine": "direct_executor",
-                "success": execution_result.get("status") == "completed"
-            }
-        },
-        "timestamp": datetime.utcnow().isoformat(),
-        "_routing": {
-            "service_type": "direct_ollama_executor", 
-            "response_time": 0.0,
-            "cached": False
-        },
-        "execution_result": execution_result,
-        "job_details": job_details
-    }
+# NO MORE HARDCODED FORMATTING FUNCTIONS!
+# THE AI BRAIN DECIDES EVERYTHING!
 
-async def _format_ollama_response(request, execution_result) -> Dict[str, Any]:
-    """Let Ollama decide how to format the response - NO HARDCODED LOGIC!"""
-    
-    # Check if Ollama needs clarification
-    if execution_result.get("status") == "clarification_needed":
-        return {
-            "response": execution_result.get("message", "I need more information to proceed."),
-            "conversation_id": request.conversation_id,
-            "intent": "clarification",
-            "confidence": 0.9,
-            "job_id": None,
-            "execution_id": None,
-            "automation_job_id": None,
-            "workflow": None,
-            "execution_started": False,
-            "clarification_needed": True,
-            "clarifying_questions": [execution_result.get("clarification_request", "More information needed")],
-            "missing_information": [execution_result.get("clarification_request", "More information needed")],
-            "risk_assessment": None,
-            "field_confidence_scores": None,
-            "validation_issues": None,
-            "intent_classification": {
-                "intent_type": "clarification",
-                "confidence": 0.9,
-                "method": "ollama_clarification_request",
-                "alternatives": [],
-                "entities": [],
-                "context_analysis": {
-                    "confidence_score": 0.9,
-                    "risk_level": "LOW",
-                    "requirements_count": 0,
-                    "recommendations": ["Ollama requested clarification"]
-                },
-                "reasoning": "Ollama needs clarification to proceed",
-                "metadata": {
-                    "engine": "pure_ollama",
-                    "success": False
-                }
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "success": False,
-            "_routing": {
-                "service": "ai_brain",
-                "service_type": "pure_ollama_clarification",
-                "response_time": 0.0,
-                "cached": False
-            },
-            "execution_result": execution_result,
-            "job_details": []
-        }
-    
-    # Determine response type based on what Ollama actually did
-    executed_services = execution_result.get("executed_services", False)
-    
-    if executed_services:
-        # Ollama executed services - format as automation response
-        intent_type = "automation"
-        execution_started = True
-        job_details = execution_result.get("job_details", [])
-        
-        # Create job ID if services were executed
-        job_id = f"job-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-        
-        # Generate numeric automation job ID for compatibility
-        automation_job_id = int(datetime.utcnow().strftime('%Y%m%d%H%M%S'))
-        
-        response_text = execution_result.get("message", "Task completed successfully.")
-        
-    else:
-        # Ollama decided this was conversation only
-        intent_type = "conversation"
-        execution_started = False
-        job_details = []
-        job_id = None
-        automation_job_id = None
-        
-        response_text = execution_result.get("message", "I understand your request.")
-        
-        # If Ollama provided analysis, include it
-        if execution_result.get("execution_plan"):
-            response_text += f"\n\n🧠 Analysis: {execution_result['execution_plan'][:200]}..."
-    
-    return {
-        "response": response_text,
-        "conversation_id": request.conversation_id,
-        "intent": intent_type,
-        "confidence": 0.9,
-        "job_id": job_id,
-        "execution_id": job_id,
-        "automation_job_id": automation_job_id if executed_services else None,
-        "workflow": None,
-        "execution_started": execution_started,
-        "clarification_needed": False,
-        "clarifying_questions": None,
-        "missing_information": None,
-        "risk_assessment": None,
-        "field_confidence_scores": None,
-        "validation_issues": None,
-        "intent_classification": {
-            "intent_type": intent_type,
-            "confidence": 0.9,
-            "method": "pure_ollama_decision",
-            "alternatives": [],
-            "entities": [],
-            "context_analysis": {
-                "confidence_score": 0.9,
-                "risk_level": "LOW",
-                "requirements_count": len(job_details),
-                "recommendations": [f"Ollama decided: {intent_type}"]
-            },
-            "reasoning": f"Ollama executed services: {executed_services}",
-            "metadata": {
-                "engine": "pure_ollama",
-                "success": execution_result.get("status") == "completed"
-            }
-        },
-        "timestamp": datetime.utcnow().isoformat(),
-        "success": execution_result.get("status") == "completed",
-        "_routing": {
-            "service": "ai_brain",
-            "service_type": "pure_ollama",
-            "response_time": 0.0,
-            "cached": False
-        },
-        "execution_result": execution_result,
-        "job_details": job_details
-    }
+# Removed all hardcoded formatting functions:
+# - _format_execution_response
+# - _format_orchestration_response  
+# - _format_ollama_response
+# The AI Brain now handles all response formatting decisions!
+
+# All formatting functions removed - AI Brain handles everything!
+
+# All formatting functions removed - AI Brain handles everything!
+
+# Broken function removed - proper one exists later in file
 
 async def _analyze_user_intent_with_llm(message: str, intent_brain_instance) -> Dict[str, Any]:
     """Use LLM to analyze if the user wants to create a job or have a conversation"""

@@ -466,6 +466,7 @@ services:
       - ./ai-brain/integrations:/app/integrations
       - ./ai-brain/api:/app/api
       - ./ai-brain/fulfillment_engine:/app/fulfillment_engine
+      - ./ai-brain/orchestration:/app/orchestration
       
       # Multi-brain system directories (CRITICAL - these were missing!)
       - ./ai-brain/brains:/app/brains
@@ -488,7 +489,7 @@ services:
 
   # Prefect Orchestration Services
   prefect-server:
-    image: prefecthq/prefect:2.14-python3.11
+    build: ./prefect-server
     container_name: opsconductor-prefect-server
     ports:
       - "4200:4200"
@@ -515,7 +516,7 @@ services:
     restart: unless-stopped
 
   prefect-worker:
-    image: prefecthq/prefect:2.14-python3.11
+    build: ./prefect-server
     container_name: opsconductor-prefect-worker
     environment:
       - PREFECT_API_URL=http://prefect-server:4200/api
