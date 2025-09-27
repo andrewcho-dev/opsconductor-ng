@@ -1,0 +1,206 @@
+# Traefik Dynamic Configuration for OpsConductor V3
+# Phase 5: Advanced Routing Rules and Middleware
+
+# HTTP Configuration
+http:
+  # Routers
+  routers:
+    # API Routes - Route to Kong Gateway
+    api-router:
+      rule: "Host(`localhost`) && PathPrefix(`/api/`)"
+      service: kong-gateway
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - api-rate-limit
+        - api-headers
+      # TLS configuration for production
+      # tls:
+      #   certResolver: letsencrypt
+
+    # Health Check Route
+    health-router:
+      rule: "Host(`localhost`) && Path(`/status`)"
+      service: kong-gateway
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - health-headers
+
+    # WebSocket Routes - Direct to Automation Service
+    websocket-router:
+      rule: "Host(`localhost`) && PathPrefix(`/api/v1/automation/monitoring/ws`)"
+      service: automation-websocket
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - websocket-headers
+
+    # Frontend Routes - React Application
+    frontend-router:
+      rule: "Host(`localhost`)"
+      service: frontend
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - frontend-headers
+        - frontend-compress
+      priority: 1  # Lower priority than API routes
+
+    # Traefik Dashboard (development only)
+    dashboard-router:
+      rule: "Host(`localhost`) && (PathPrefix(`/dashboard/`) || PathPrefix(`/api/`))"
+      service: api@internal
+      entryPoints:
+        - traefik
+      middlewares:
+        - dashboard-auth
+
+  # Services
+  services:
+    # Kong Gateway Service
+    kong-gateway:
+      loadBalancer:
+        servers:
+          - url: "http://kong:8000"
+        healthCheck:
+          path: "/api/v1/users"
+          interval: "30s"
+          timeout: "10s"
+          scheme: "http"
+        sticky:
+          cookie:
+            name: "kong-session"
+            secure: false
+            httpOnly: true
+
+    # Frontend Service
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://opsconductor-frontend:3000"
+        healthCheck:
+          path: "/"
+          interval: "30s"
+          timeout: "10s"
+          scheme: "http"
+
+    # Automation WebSocket Service
+    automation-websocket:
+      loadBalancer:
+        servers:
+          - url: "http://opsconductor-automation:3003"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "10s"
+          scheme: "http"
+
+  # Middleware
+  middlewares:
+    # API Rate Limiting
+    api-rate-limit:
+      rateLimit:
+        burst: 100
+        average: 1000
+        period: "1s"
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # API Headers
+    api-headers:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "http"
+          X-Forwarded-Host: "localhost"
+        customResponseHeaders:
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"
+          X-XSS-Protection: "1; mode=block"
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowOriginList:
+          - "http://localhost"
+          - "http://localhost:80"
+          - "http://localhost:3000"
+        accessControlAllowCredentials: true
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Requested-With"
+
+    # API Timeout (removed forwardAuth for simplicity)
+    api-timeout:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "http"
+
+    # Health Check Headers
+    health-headers:
+      headers:
+        customResponseHeaders:
+          Cache-Control: "no-cache, no-store, must-revalidate"
+          Pragma: "no-cache"
+          Expires: "0"
+
+    # WebSocket Headers
+    websocket-headers:
+      headers:
+        customRequestHeaders:
+          Connection: "upgrade"
+          Upgrade: "websocket"
+        customResponseHeaders:
+          X-Frame-Options: "DENY"
+
+    # Frontend Headers
+    frontend-headers:
+      headers:
+        customResponseHeaders:
+          X-Frame-Options: "SAMEORIGIN"
+          X-Content-Type-Options: "nosniff"
+          X-XSS-Protection: "1; mode=block"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+        customRequestHeaders:
+          X-Forwarded-Proto: "http"
+
+    # Frontend Compression
+    frontend-compress:
+      compress:
+        excludedContentTypes:
+          - "text/event-stream"
+
+    # Dashboard Authentication (development)
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "admin:$2y$10$2b2cu/0P6eBi4Ej1iBXXhOaohvZabfQANjU7fCzCqz9OeUPuVJ3Pu"  # admin:admin123
+
+    # Security Headers
+    security-headers:
+      headers:
+        customResponseHeaders:
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+          Content-Security-Policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:;"
+          X-Frame-Options: "DENY"
+          X-Content-Type-Options: "nosniff"
+          X-XSS-Protection: "1; mode=block"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+
+# TCP Configuration (for non-HTTP services)
+# tcp:
+#   routers: {}
+#   services: {}
+
+# UDP Configuration (for UDP services)  
+# udp:
+#   routers: {}
+#   services: {}

@@ -1,0 +1,102 @@
+# Traefik Configuration for OpsConductor V3
+# Phase 5: Advanced Reverse Proxy with SSL Automation
+
+# Global Configuration
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+# API and Dashboard
+api:
+  dashboard: true
+  debug: true
+  insecure: true  # For development - disable in production
+
+# Entry Points
+entryPoints:
+  web:
+    address: ":80"
+    # HTTP to HTTPS redirect (disabled for development)
+    # http:
+    #   redirections:
+    #     entryPoint:
+    #       to: websecure
+    #       scheme: https
+    #       permanent: true
+
+  websecure:
+    address: ":443"
+
+  # Forward proxy for outbound connections
+  proxy:
+    address: ":8080"
+
+  # Traefik dashboard
+  traefik:
+    address: ":8081"
+
+# Certificate Resolvers (Let's Encrypt)
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      tlsChallenge: {}
+      email: admin@opsconductor.com
+      storage: /letsencrypt/acme.json
+      # Use staging for development
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+      # Production: https://acme-v02.api.letsencrypt.org/directory
+
+# Providers
+providers:
+  # Docker provider for automatic service discovery
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: opsconductor-net
+    watch: true
+
+  # File provider for static configuration
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+# Logging
+log:
+  level: INFO
+  format: json
+
+# Access Logs
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    names:
+      ClientUsername: drop
+    headers:
+      defaultMode: keep
+      names:
+        User-Agent: redact
+        Authorization: drop
+        Content-Type: keep
+
+# Metrics (Prometheus integration)
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    addRoutersLabels: true
+    buckets:
+      - 0.1
+      - 0.3
+      - 1.2
+      - 5.0
+
+# Tracing (optional)
+# tracing:
+#   jaeger:
+#     samplingServerURL: http://jaeger:14268/api/sampling
+#     localAgentHostPort: jaeger:6831
+
+# Pilot (Traefik Cloud - disabled)
+pilot:
+  dashboard: false
