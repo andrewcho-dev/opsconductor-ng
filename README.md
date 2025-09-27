@@ -266,7 +266,8 @@ pip install -r requirements-dev.txt
 ```
 opsconductor-ng/
 ├── ai-brain/                # Unified AI service with modular engine architecture
-├── api-gateway/             # Central API routing
+├── kong/                    # Kong Gateway - Enterprise API Gateway
+├── keycloak/                # Keycloak - Enterprise Identity Management
 ├── identity-service/        # User management
 ├── asset-service/           # Infrastructure targets
 ├── automation-service/      # Job execution

@@ -89,7 +89,7 @@ docker-compose logs -f postgres
 #### Step 4: Deploy Core Services
 ```bash
 # Start core services
-docker-compose up -d api-gateway identity-service asset-service automation-service communication-service
+docker-compose up -d kong keycloak identity-service asset-service automation-service communication-service
 
 # Check service health
 docker-compose ps

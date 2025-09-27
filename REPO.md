@@ -12,7 +12,8 @@ opsconductor-ng/
 │   └── ai-brain/                # Unified AI service with modular engine architecture
 │
 ├── 🌐 Core Services
-│   ├── api-gateway/             # Central API routing and authentication
+│   ├── kong/                    # Kong Gateway - Enterprise API Gateway
+│   ├── keycloak/                # Keycloak - Enterprise Identity Management
 │   ├── identity-service/        # User management and RBAC
 │   ├── asset-service/           # Infrastructure target management
 │   ├── automation-service/      # Job execution with Celery workers
@@ -98,23 +99,38 @@ ai-brain/
 
 ## 🌐 Core Services
 
-### API Gateway (`/api-gateway/`)
-**Central API routing and authentication**
+### Kong Gateway (`/kong/`)
+**Enterprise API Gateway**
 
 ```
-api-gateway/
-├── main.py                      # FastAPI gateway service
-├── ai_router.py                 # AI service routing
-├── requirements.txt             # Python dependencies
+kong/
+├── kong.yml                     # Kong Gateway configuration
 └── Dockerfile                   # Container configuration
 ```
 
 **Key Features**:
-- Request routing to appropriate services
-- JWT authentication and authorization
-- Rate limiting and request validation
-- CORS handling and security headers
-- Health check aggregation
+- Enterprise-grade API routing and load balancing
+- Advanced authentication and authorization
+- Rate limiting, request/response transformation
+- Plugin ecosystem for extensibility
+- High performance and scalability
+
+### Keycloak (`/keycloak/`)
+**Enterprise Identity Management**
+
+```
+keycloak/
+├── opsconductor-realm.json      # Keycloak realm configuration
+├── init-keycloak.sh             # Initialization script
+└── Dockerfile                   # Container configuration
+```
+
+**Key Features**:
+- Single Sign-On (SSO) and Multi-Factor Authentication (MFA)
+- Advanced Role-Based Access Control (RBAC)
+- User federation and social login
+- OAuth2/OpenID Connect compliance
+- Enterprise identity standards
 
 ### Identity Service (`/identity-service/`)
 **User management and RBAC**

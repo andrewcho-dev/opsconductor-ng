@@ -98,8 +98,9 @@ make status
 
 All services are configured with selective volume mounts:
 
-- ✅ **api-gateway** - main.py + shared
-- ✅ **identity-service** - main.py + shared  
+- ✅ **kong** - kong.yml configuration
+- ✅ **keycloak** - realm configuration + init scripts
+- ✅ **identity-service** - main.py + keycloak_adapter.py + shared  
 - ✅ **asset-service** - main.py + main_with_groups.py + data + shared
 - ✅ **automation-service** - All Python files + libraries + shared
 - ✅ **communication-service** - main.py + shared

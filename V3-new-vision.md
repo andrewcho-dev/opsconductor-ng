@@ -465,15 +465,15 @@ services:
       - traefik.http.routers.dashboard.tls.certresolver=letsencrypt
 
   # Example service configuration
-  api-gateway:
-    image: opsconductor/api-gateway:latest
+  identity-service:
+    image: opsconductor/identity-service:latest
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`api.opsconductor.com`)
-      - traefik.http.routers.api.tls.certresolver=letsencrypt
-      - traefik.http.services.api.loadbalancer.server.port=8000
-      - traefik.http.middlewares.api-auth.basicauth.users=admin:$$2y$$10$$...
-      - traefik.http.routers.api.middlewares=api-auth
+      - traefik.http.routers.identity.rule=Host(`identity.opsconductor.com`)
+      - traefik.http.routers.identity.tls.certresolver=letsencrypt
+      - traefik.http.services.identity.loadbalancer.server.port=8001
+      - traefik.http.middlewares.identity-auth.basicauth.users=admin:$$2y$$10$$...
+      - traefik.http.routers.identity.middlewares=identity-auth
 ```
 
 **Migration Strategy:**
