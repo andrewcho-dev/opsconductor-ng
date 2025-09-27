@@ -2,8 +2,8 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    cluster: 'opsconductor-production'
-    environment: 'production'
+    cluster: 'opsconductor-development'
+    environment: 'development'
 
 rule_files:
   - "rules/*.yml"
@@ -15,15 +15,63 @@ alerting:
           - alertmanager:9093
 
 scrape_configs:
-  # Multi-Brain AI System Metrics
-  - job_name: 'ai-brain-production'
+  # OpsConductor Core Services
+  - job_name: 'identity-service'
     static_configs:
-      - targets: ['ai-brain-production:3005']
+      - targets: ['identity-service:3001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'asset-service'
+    static_configs:
+      - targets: ['asset-service:3002']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'automation-service'
+    static_configs:
+      - targets: ['automation-service:3003']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'communication-service'
+    static_configs:
+      - targets: ['communication-service:3004']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'ai-brain'
+    static_configs:
+      - targets: ['ai-brain:3005']
     metrics_path: '/metrics'
     scrape_interval: 10s
     scrape_timeout: 5s
-    params:
-      format: ['prometheus']
+
+  - job_name: 'network-analyzer-service'
+    static_configs:
+      - targets: ['network-analyzer-service:3006']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Infrastructure Services
+  - job_name: 'kong-gateway'
+    static_configs:
+      - targets: ['kong:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'keycloak'
+    static_configs:
+      - targets: ['keycloak:8080']
+    metrics_path: '/auth/realms/master/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
 
   # System Metrics
   - job_name: 'node-exporter'
@@ -49,27 +97,27 @@ scrape_configs:
       - targets: ['redis-exporter:9121']
     scrape_interval: 15s
 
-  # Nginx Metrics (if nginx-prometheus-exporter is added)
-  - job_name: 'nginx'
+  # AI Infrastructure
+  - job_name: 'chromadb'
     static_configs:
-      - targets: ['nginx-production:9113']
-    scrape_interval: 15s
+      - targets: ['chromadb:8000']
+    metrics_path: '/api/v1/heartbeat'
+    scrape_interval: 30s
+
+  - job_name: 'ollama'
+    static_configs:
+      - targets: ['ollama:11434']
+    metrics_path: '/api/tags'
+    scrape_interval: 60s
+
+  # Celery Workers
+  - job_name: 'celery-monitor'
+    static_configs:
+      - targets: ['celery-monitor:5555']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-
-  # ChromaDB Health Check
-  - job_name: 'chromadb'
-    static_configs:
-      - targets: ['chromadb-production:8000']
-    metrics_path: '/api/v1/heartbeat'
-    scrape_interval: 30s
-
-  # Ollama LLM Server
-  - job_name: 'ollama'
-    static_configs:
-      - targets: ['ollama-production:11434']
-    metrics_path: '/api/tags'
-    scrape_interval: 60s

@@ -68,22 +68,21 @@ logger = structlog.get_logger()
 
 class AIService(BaseService):
     def __init__(self):
-        super().__init__("ai-service")
+        super().__init__(
+            name="ai-service",
+            version="2.0.0-HARDCODE-FREE",
+            port=3005
+        )
         
 # Hardcoded logic prevention removed - was blocking legitimate functionality
 
-app = FastAPI(
-    title="OpsConductor AI Service - LLM-ONLY DECISION MAKING",
-    description="AI-powered automation service with ZERO hardcoded logic - ALL decisions made by Ollama LLM",
-    version="2.0.0-HARDCODE-FREE"
-)
+# Initialize service components
+service = AIService()
+app = service.app
 
 # Include modern API routes
 # app.include_router(knowledge_router)  # Temporarily disabled - missing knowledge_engine
 # app.include_router(learning_router)  # Temporarily disabled - missing knowledge_engine
-
-# Initialize service components
-service = AIService()
 
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")

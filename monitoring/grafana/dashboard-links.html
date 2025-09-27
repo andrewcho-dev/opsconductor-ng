@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpsConductor Monitoring Dashboards</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        }
+        .dashboard-card h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+        .dashboard-card p {
+            margin-bottom: 20px;
+            line-height: 1.6;
+            opacity: 0.9;
+        }
+        .dashboard-link {
+            display: inline-block;
+            background: linear-gradient(45deg, #4fc3f7, #29b6f6);
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(79, 195, 247, 0.3);
+        }
+        .dashboard-link:hover {
+            background: linear-gradient(45deg, #29b6f6, #0288d1);
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(79, 195, 247, 0.4);
+        }
+        .status-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 30px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .service-status {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .service-status.healthy {
+            border-left: 4px solid #4caf50;
+        }
+        .service-status.unhealthy {
+            border-left: 4px solid #f44336;
+        }
+        .quick-links {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .quick-links a {
+            display: inline-block;
+            margin: 0 10px;
+            color: #4fc3f7;
+            text-decoration: none;
+            font-weight: bold;
+            padding: 8px 16px;
+            border: 2px solid #4fc3f7;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+        .quick-links a:hover {
+            background: #4fc3f7;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 OpsConductor V3 Monitoring</h1>
+            <p>Comprehensive monitoring dashboards for the OpsConductor platform</p>
+        </div>
+
+        <div class="status-section">
+            <h3>📊 Monitoring Stack Status</h3>
+            <div class="status-grid">
+                <div class="service-status healthy">
+                    <strong>Prometheus</strong><br>
+                    <small>Metrics Collection</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>Grafana</strong><br>
+                    <small>Visualization</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>6/6 Services</strong><br>
+                    <small>Metrics Enabled</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>3 Dashboards</strong><br>
+                    <small>Ready to Use</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <h3>🔍 Services Overview</h3>
+                <p>High-level monitoring of all OpsConductor services. View request rates, health status, performance metrics, and service distribution across the entire platform.</p>
+                <a href="http://localhost:3200/d/opsconductor-services-overview/opsconductor-services-overview" class="dashboard-link" target="_blank">Open Dashboard</a>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>🎯 Service Details</h3>
+                <p>Deep-dive into individual service metrics. Select any service to view detailed endpoint performance, error rates, database queries, and Redis operations.</p>
+                <a href="http://localhost:3200/d/opsconductor-service-details/opsconductor-service-details" class="dashboard-link" target="_blank">Open Dashboard</a>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>🖥️ Infrastructure</h3>
+                <p>System-level monitoring including CPU, memory, disk usage, network I/O, and service availability. Monitor the underlying infrastructure health.</p>
+                <a href="http://localhost:3200/d/opsconductor-infrastructure/opsconductor-infrastructure" class="dashboard-link" target="_blank">Open Dashboard</a>
+            </div>
+        </div>
+
+        <div class="status-section">
+            <h3>🎛️ Monitored Services</h3>
+            <div class="status-grid">
+                <div class="service-status healthy">
+                    <strong>Identity Service</strong><br>
+                    <small>Port 3001</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>Asset Service</strong><br>
+                    <small>Port 3002</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>Automation Service</strong><br>
+                    <small>Port 3003</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>Communication Service</strong><br>
+                    <small>Port 3004</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>AI Brain</strong><br>
+                    <small>Port 3005</small>
+                </div>
+                <div class="service-status healthy">
+                    <strong>Network Analyzer</strong><br>
+                    <small>Port 3006</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="quick-links">
+            <h3>🔗 Quick Access</h3>
+            <a href="http://localhost:3200" target="_blank">Grafana Home</a>
+            <a href="http://localhost:9090" target="_blank">Prometheus</a>
+            <a href="http://localhost:9090/targets" target="_blank">Prometheus Targets</a>
+            <a href="http://localhost:3200/explore" target="_blank">Grafana Explore</a>
+        </div>
+    </div>
+</body>
+</html>

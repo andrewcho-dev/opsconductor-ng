@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Prometheus Monitoring
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.48.0
     container_name: opsconductor-prometheus
     ports:
       - "9090:9090"
@@ -19,8 +19,9 @@ services:
       - '--storage.tsdb.retention.time=30d'
       - '--web.enable-lifecycle'
       - '--web.enable-admin-api'
+      - '--web.enable-remote-write-receiver'
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
     deploy:
       resources:
@@ -38,10 +39,10 @@ services:
 
   # Grafana Dashboard
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.2.2
     container_name: opsconductor-grafana
     ports:
-      - "3000:3000"
+      - "3200:3000"  # Changed to 3200 to avoid conflicts
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin123}
       - GF_USERS_ALLOW_SIGN_UP=false
@@ -54,7 +55,7 @@ services:
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
       - ./monitoring/grafana/config:/etc/grafana/provisioning
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
     depends_on:
       - prometheus
@@ -74,7 +75,7 @@ services:
 
   # Node Exporter for system metrics
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.7.0
     container_name: opsconductor-node-exporter
     ports:
       - "9100:9100"
@@ -88,7 +89,7 @@ services:
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
     deploy:
       resources:
@@ -98,10 +99,10 @@ services:
 
   # cAdvisor for container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
     container_name: opsconductor-cadvisor
     ports:
-      - "8080:8080"
+      - "8081:8080"  # Changed to 8081 to avoid conflict with nginx proxy on 8080
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -112,7 +113,7 @@ services:
     devices:
       - /dev/kmsg
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
     deploy:
       resources:
@@ -122,17 +123,15 @@ services:
 
   # Redis Exporter for Redis metrics
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.55.0
     container_name: opsconductor-redis-exporter
     ports:
       - "9121:9121"
     environment:
-      - REDIS_ADDR=redis://redis-production:6379
+      - REDIS_ADDR=redis://redis:6379
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
-    depends_on:
-      - redis-production
     deploy:
       resources:
         limits:
@@ -141,17 +140,15 @@ services:
 
   # Postgres Exporter for database metrics
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: opsconductor-postgres-exporter
     ports:
       - "9187:9187"
     environment:
-      - DATA_SOURCE_NAME=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres-production:5432/opsconductor?sslmode=disable
+      - DATA_SOURCE_NAME=postgresql://postgres:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/opsconductor?sslmode=disable
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
-    depends_on:
-      - postgres-production
     deploy:
       resources:
         limits:
@@ -160,7 +157,7 @@ services:
 
   # Alertmanager for alerts
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.26.0
     container_name: opsconductor-alertmanager
     ports:
       - "9093:9093"
@@ -172,7 +169,7 @@ services:
       - '--storage.path=/alertmanager'
       - '--web.external-url=http://localhost:9093'
     networks:
-      - opsconductor-prod-net
+      - opsconductor-net
     restart: unless-stopped
     deploy:
       resources:
@@ -181,8 +178,9 @@ services:
           cpus: '0.25'
 
 networks:
-  opsconductor-prod-net:
+  opsconductor-net:
     external: true
+    name: opsconductor-ng_opsconductor-net
 
 volumes:
   prometheus_data:

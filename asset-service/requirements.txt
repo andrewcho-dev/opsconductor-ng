@@ -11,6 +11,7 @@ python-multipart==0.0.6
 cryptography==41.0.7
 aiohttp==3.9.1
 celery==5.3.4
+prometheus_client==0.19.0
 
 # Connection testing dependencies
 asyncssh==2.14.0  # For SSH/SFTP connections
