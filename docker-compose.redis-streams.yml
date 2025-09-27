@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # Enhanced Redis with Streams configuration
+  redis-streams:
+    image: redis:7.4-alpine
+    container_name: opsconductor-redis-streams
+    ports:
+      - "6380:6379"  # Different port to run alongside existing Redis
+    volumes:
+      - redis_streams_data:/data
+      - ./redis-streams/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - opsconductor-net
+    environment:
+      - REDIS_REPLICATION_MODE=master
+    sysctls:
+      - net.core.somaxconn=65535
+    ulimits:
+      memlock: -1
+      nofile: 65535
+
+  # Redis Streams Message Processor
+  redis-streams-processor:
+    build:
+      context: .
+      dockerfile: ./redis-streams/Dockerfile
+    container_name: opsconductor-streams-processor
+    environment:
+      REDIS_STREAMS_URL: redis://redis-streams:6379/0
+      REDIS_URL: redis://redis:6379/0  # Legacy Redis for compatibility
+      LOG_LEVEL: INFO
+      PROCESSOR_WORKERS: 4
+      MAX_RETRIES: 3
+      DEAD_LETTER_TTL: 86400  # 24 hours
+    depends_on:
+      redis-streams:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    restart: unless-stopped
+    volumes:
+      - ./redis-streams/processor.py:/app/processor.py:ro
+      - ./shared:/app/shared:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.from_url('redis://redis-streams:6379/0'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Streams Monitor (Web UI)
+  redis-streams-monitor:
+    build:
+      context: .
+      dockerfile: ./redis-streams/Dockerfile.monitor
+    container_name: opsconductor-streams-monitor
+    ports:
+      - "8090:8090"
+    environment:
+      REDIS_STREAMS_URL: redis://redis-streams:6379/0
+      MONITOR_PORT: 8090
+      REFRESH_INTERVAL: 5
+    depends_on:
+      redis-streams:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    restart: unless-stopped
+    volumes:
+      - ./redis-streams/monitor.py:/app/monitor.py:ro
+      - ./shared:/app/shared:ro
+
+volumes:
+  redis_streams_data:
+    driver: local
+
+networks:
+  opsconductor-net:
+    external: true
