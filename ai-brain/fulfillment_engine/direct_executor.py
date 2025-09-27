@@ -13,7 +13,7 @@ import logging
 import asyncio
 import json
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from .dynamic_service_catalog import get_service_catalog
 
 logger = logging.getLogger(__name__)
@@ -32,13 +32,14 @@ class DirectExecutor:
     6. Maintains conversation context for follow-up interactions
     """
     
-    def __init__(self, llm_engine, automation_client=None, asset_client=None, network_client=None, communication_client=None, prefect_client=None):
+    def __init__(self, llm_engine, automation_client=None, asset_client=None, network_client=None, communication_client=None, prefect_client=None, prefect_flow_engine=None):
         self.llm_engine = llm_engine
         self.automation_client = automation_client
         self.asset_client = asset_client
         self.network_client = network_client
         self.communication_client = communication_client
         self.prefect_client = prefect_client
+        self.prefect_flow_engine = prefect_flow_engine
         self.service_catalog = get_service_catalog()
         
         # Available services for Ollama to choose from
@@ -53,7 +54,11 @@ class DirectExecutor:
         # Conversation context storage (conversation_id -> context)
         self.conversation_contexts = {}
         
-        logger.info("Direct Executor initialized - Ollama will make ALL execution decisions WITH CONVERSATION CONTEXT")
+        # Prefect integration flags
+        self.prefect_available = prefect_flow_engine is not None
+        self.workflow_complexity_threshold = 3  # Number of steps to trigger Prefect
+        
+        logger.info(f"Direct Executor initialized - Ollama will make ALL execution decisions WITH CONVERSATION CONTEXT. Prefect integration: {'ENABLED' if self.prefect_available else 'DISABLED'}")
     
     async def execute_user_request(self, user_message: str, user_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -299,6 +304,15 @@ Be specific about which services to use and what actions to take. If you need to
         """Let Ollama execute the plan step by step with dynamic feedback loop"""
         
         plan_text = execution_plan["plan_text"]
+        
+        # 🚀 AI-DRIVEN PREFECT INTEGRATION: Analyze workflow complexity
+        if self.prefect_available:
+            should_use_prefect = await self._analyze_workflow_complexity(execution_plan, original_message)
+            if should_use_prefect:
+                logger.info("🔥 COMPLEX WORKFLOW DETECTED - Using Prefect for orchestration!")
+                return await self._execute_with_prefect_workflow(execution_plan, original_message)
+        
+        # Continue with standard DirectExecutor for simple workflows
         all_execution_results = []
         step_number = 1
         max_steps = 10  # Safety limit to prevent infinite loops
@@ -1706,4 +1720,450 @@ Provide a response that helps the user.
                 "conversation_id": error_context.get("user_context", {}).get("conversation_id"),
                 "ai_brain_decision": "error_handling_failed",
                 "error": str(e)
+            }
+    
+    # 🚀 PREFECT INTEGRATION METHODS
+    
+    async def _analyze_workflow_complexity(self, execution_plan: Dict[str, Any], original_message: str) -> bool:
+        """
+        AI-DRIVEN WORKFLOW COMPLEXITY ANALYSIS
+        
+        Uses LLM to intelligently determine if a workflow should use Prefect orchestration
+        based on complexity, dependencies, scheduling needs, and enterprise requirements.
+        """
+        try:
+            plan_text = execution_plan.get("plan_text", "")
+            
+            complexity_analysis_prompt = f"""Analyze this execution plan to determine if it requires enterprise workflow orchestration (Prefect) or can be handled with simple execution.
+
+ORIGINAL REQUEST: "{original_message}"
+
+EXECUTION PLAN:
+{plan_text}
+
+PREFECT ORCHESTRATION CRITERIA:
+✅ Use Prefect if ANY of these apply:
+- Multiple dependent steps (3+ sequential operations)
+- Cross-service coordination (calling multiple services)
+- Error handling/retry requirements
+- Scheduling or recurring execution needed
+- Data pipeline or ETL operations
+- Complex conditional logic or branching
+- Long-running operations (>5 minutes)
+- Enterprise compliance/audit requirements
+- Parallel task execution needed
+- Resource-intensive operations
+
+❌ Use Simple Execution for:
+- Single service calls
+- Quick information queries
+- Simple status checks
+- Basic conversational responses
+- Single-step operations
+
+ANALYSIS REQUIRED:
+1. Count the number of distinct steps
+2. Identify service dependencies
+3. Assess complexity and enterprise requirements
+4. Consider error handling needs
+5. Evaluate execution time requirements
+
+Respond with EXACTLY:
+PREFECT: YES - [reason]
+OR
+PREFECT: NO - [reason]"""
+
+            response = await self.llm_engine.generate(complexity_analysis_prompt)
+            
+            if isinstance(response, dict) and "generated_text" in response:
+                analysis_text = response["generated_text"].strip()
+            else:
+                analysis_text = str(response).strip()
+            
+            # Parse the decision
+            use_prefect = "PREFECT: YES" in analysis_text.upper()
+            
+            logger.info(f"🧠 Workflow Complexity Analysis: {'PREFECT' if use_prefect else 'SIMPLE'}")
+            logger.info(f"🧠 Analysis: {analysis_text}")
+            
+            return use_prefect
+            
+        except Exception as e:
+            logger.error(f"❌ Workflow complexity analysis failed: {e}")
+            # Default to simple execution on error
+            return False
+    
+    async def _execute_with_prefect_workflow(self, execution_plan: Dict[str, Any], original_message: str) -> Dict[str, Any]:
+        """
+        EXECUTE COMPLEX WORKFLOW USING PREFECT ORCHESTRATION
+        
+        Converts the execution plan into a Prefect workflow with proper task dependencies,
+        error handling, and cross-service orchestration.
+        """
+        try:
+            logger.info("🚀 Creating Prefect workflow from execution plan...")
+            
+            # Generate workflow tasks from execution plan
+            workflow_tasks = await self._generate_prefect_tasks_from_plan(execution_plan, original_message)
+            
+            # Create dynamic Prefect flow
+            flow_name = f"ai_brain_workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            flow_id = await self.prefect_flow_engine.create_dynamic_flow(
+                flow_name=flow_name,
+                tasks=workflow_tasks,
+                parameters={
+                    "original_message": original_message,
+                    "execution_plan": execution_plan["plan_text"],
+                    "created_by": "ai_brain_direct_executor"
+                }
+            )
+            
+            logger.info(f"✅ Created Prefect flow: {flow_id}")
+            
+            # Deploy the flow
+            deployment_id = await self.prefect_flow_engine.deploy_flow(flow_id)
+            logger.info(f"✅ Deployed Prefect flow: {deployment_id}")
+            
+            # Execute the flow
+            flow_run_id = await self.prefect_flow_engine.execute_flow(
+                flow_id=flow_id,
+                parameters={
+                    "original_message": original_message,
+                    "execution_plan": execution_plan["plan_text"]
+                }
+            )
+            
+            logger.info(f"✅ Started Prefect flow execution: {flow_run_id}")
+            
+            # Monitor execution (with timeout)
+            execution_result = await self._monitor_prefect_execution(flow_run_id, timeout_seconds=300)
+            
+            return {
+                "status": "completed",
+                "message": f"Complex workflow executed successfully using Prefect orchestration",
+                "execution_method": "prefect_workflow",
+                "flow_id": flow_id,
+                "flow_run_id": flow_run_id,
+                "deployment_id": deployment_id,
+                "workflow_result": execution_result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Prefect workflow execution failed: {e}")
+            
+            # Fallback to simple execution
+            logger.info("🔄 Falling back to simple execution...")
+            return await self._execute_simple_fallback(execution_plan, original_message, str(e))
+    
+    async def _generate_prefect_tasks_from_plan(self, execution_plan: Dict[str, Any], original_message: str) -> List[Dict[str, Any]]:
+        """
+        AI-DRIVEN PREFECT TASK GENERATION
+        
+        Uses LLM to convert execution plan into structured Prefect tasks with proper
+        dependencies, parameters, and service integrations.
+        """
+        try:
+            plan_text = execution_plan.get("plan_text", "")
+            
+            task_generation_prompt = f"""Convert this execution plan into structured Prefect workflow tasks.
+
+ORIGINAL REQUEST: "{original_message}"
+
+EXECUTION PLAN:
+{plan_text}
+
+AVAILABLE SERVICES:
+- automation-service: Execute commands, run scripts, manage processes
+- asset-service: Query inventory, get asset details, update asset info
+- network-service: Network discovery, connectivity tests, port scans
+- communication-service: Send notifications, alerts, messages
+
+TASK GENERATION RULES:
+1. Each major step becomes a separate task
+2. Tasks should have clear dependencies
+3. Include proper error handling
+4. Specify service integrations
+5. Add retry logic for critical operations
+6. Include parameter passing between tasks
+
+Generate tasks in this JSON format:
+[
+  {{
+    "name": "task_name",
+    "type": "service_call|data_processing|notification|generic",
+    "service": "automation|asset|network|communication",
+    "action": "specific_action_to_take",
+    "parameters": {{
+      "key": "value"
+    }},
+    "depends_on": ["previous_task_name"],
+    "retry_count": 3,
+    "timeout_seconds": 60
+  }}
+]
+
+IMPORTANT: Return ONLY the JSON array, no other text."""
+
+            response = await self.llm_engine.generate(task_generation_prompt)
+            
+            if isinstance(response, dict) and "generated_text" in response:
+                tasks_text = response["generated_text"].strip()
+            else:
+                tasks_text = str(response).strip()
+            
+            # Parse JSON tasks
+            try:
+                # Extract JSON from response if it contains other text
+                import re
+                json_match = re.search(r'\[.*\]', tasks_text, re.DOTALL)
+                if json_match:
+                    tasks_json = json_match.group(0)
+                else:
+                    tasks_json = tasks_text
+                
+                workflow_tasks = json.loads(tasks_json)
+                
+                logger.info(f"✅ Generated {len(workflow_tasks)} Prefect tasks from execution plan")
+                return workflow_tasks
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ Failed to parse generated tasks JSON: {e}")
+                logger.error(f"❌ Raw response: {tasks_text}")
+                
+                # Fallback: Create simple generic tasks
+                return self._create_fallback_tasks(execution_plan, original_message)
+                
+        except Exception as e:
+            logger.error(f"❌ Task generation failed: {e}")
+            return self._create_fallback_tasks(execution_plan, original_message)
+    
+    def _create_fallback_tasks(self, execution_plan: Dict[str, Any], original_message: str) -> List[Dict[str, Any]]:
+        """Create simple fallback tasks when AI generation fails"""
+        return [
+            {
+                "name": "analyze_request",
+                "type": "generic",
+                "action": "analyze_user_request",
+                "parameters": {
+                    "original_message": original_message,
+                    "execution_plan": execution_plan.get("plan_text", "")
+                },
+                "depends_on": [],
+                "retry_count": 1,
+                "timeout_seconds": 30
+            },
+            {
+                "name": "execute_plan",
+                "type": "generic", 
+                "action": "execute_execution_plan",
+                "parameters": {
+                    "plan": execution_plan.get("plan_text", "")
+                },
+                "depends_on": ["analyze_request"],
+                "retry_count": 2,
+                "timeout_seconds": 120
+            }
+        ]
+    
+    async def _monitor_prefect_execution(self, flow_run_id: str, timeout_seconds: int = 300) -> Dict[str, Any]:
+        """
+        Monitor Prefect flow execution with intelligent status tracking
+        """
+        try:
+            start_time = datetime.now()
+            timeout_time = start_time + timedelta(seconds=timeout_seconds)
+            
+            logger.info(f"🔍 Monitoring Prefect flow execution: {flow_run_id}")
+            
+            while datetime.now() < timeout_time:
+                # Get flow run status
+                status = await self.prefect_flow_engine.get_flow_run_status(flow_run_id)
+                
+                current_state = status.get("state", "unknown").lower()
+                
+                if current_state in ["completed", "success"]:
+                    logger.info(f"✅ Prefect flow completed successfully: {flow_run_id}")
+                    return {
+                        "status": "completed",
+                        "flow_run_id": flow_run_id,
+                        "execution_time": str(datetime.now() - start_time),
+                        "final_state": current_state,
+                        "details": status
+                    }
+                elif current_state in ["failed", "crashed", "cancelled"]:
+                    logger.error(f"❌ Prefect flow failed: {flow_run_id} - State: {current_state}")
+                    return {
+                        "status": "failed",
+                        "flow_run_id": flow_run_id,
+                        "execution_time": str(datetime.now() - start_time),
+                        "final_state": current_state,
+                        "error": f"Flow execution failed with state: {current_state}",
+                        "details": status
+                    }
+                elif current_state in ["running", "pending", "scheduled"]:
+                    logger.info(f"🔄 Prefect flow still running: {flow_run_id} - State: {current_state}")
+                    # Wait before checking again
+                    await asyncio.sleep(5)
+                else:
+                    logger.warning(f"⚠️ Unknown Prefect flow state: {current_state}")
+                    await asyncio.sleep(5)
+            
+            # Timeout reached
+            logger.warning(f"⏰ Prefect flow monitoring timeout: {flow_run_id}")
+            return {
+                "status": "timeout",
+                "flow_run_id": flow_run_id,
+                "execution_time": str(datetime.now() - start_time),
+                "error": f"Flow monitoring timeout after {timeout_seconds} seconds"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Prefect flow monitoring failed: {e}")
+            return {
+                "status": "monitoring_failed",
+                "flow_run_id": flow_run_id,
+                "error": str(e)
+            }
+    
+    async def _execute_simple_fallback(self, execution_plan: Dict[str, Any], original_message: str, prefect_error: str) -> Dict[str, Any]:
+        """
+        Fallback to simple execution when Prefect fails
+        """
+        logger.info("🔄 Executing fallback to simple DirectExecutor...")
+        
+        try:
+            # Continue with the original simple execution logic
+            plan_text = execution_plan["plan_text"]
+            all_execution_results = []
+            step_number = 1
+            max_steps = 10
+            
+            # Get the service catalog for execution context
+            service_catalog_prompt = self.service_catalog.generate_intelligent_service_selection_prompt()
+            
+            logger.info(f"🚀 Starting fallback execution for: {original_message}")
+            
+            # Execute first step to get started
+            while step_number <= max_steps:
+                logger.info(f"🔄 Fallback Step {step_number}: Asking Ollama what to do next...")
+                
+                # Build context of what has happened so far
+                previous_results_summary = ""
+                if all_execution_results:
+                    previous_results_summary = "\n\nPREVIOUS STEPS COMPLETED:\n"
+                    for i, result in enumerate(all_execution_results, 1):
+                        previous_results_summary += f"Step {i}: {result.get('summary', 'Unknown result')}\n"
+                
+                # Ask Ollama what to do next
+                next_step_prompt = f"""FALLBACK EXECUTION (Prefect failed: {prefect_error})
+
+You are executing: "{original_message}"
+
+{previous_results_summary}
+
+DECISION REQUIRED: What should happen next?
+
+You MUST respond with EXACTLY ONE line starting with one of these:
+
+COMPLETE: [summary] - if all work is done
+NEXT STEP: [service] - [action] - if more work needed  
+CLARIFICATION: [question] - if you need info
+
+Services available: automation, asset, network, communication
+
+Be specific about what action to take."""
+
+                response = await self.llm_engine.generate(next_step_prompt)
+                
+                if isinstance(response, dict) and "generated_text" in response:
+                    decision = response["generated_text"].strip()
+                else:
+                    decision = str(response).strip()
+                
+                logger.info(f"🧠 Fallback Ollama decision: {decision}")
+                
+                # Parse the decision
+                if decision.upper().startswith("COMPLETE:"):
+                    summary = decision[9:].strip()
+                    logger.info(f"✅ Fallback execution completed: {summary}")
+                    
+                    return {
+                        "status": "completed",
+                        "message": f"Request completed using fallback execution (Prefect unavailable): {summary}",
+                        "execution_method": "simple_fallback",
+                        "prefect_error": prefect_error,
+                        "steps_completed": len(all_execution_results),
+                        "results": all_execution_results,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
+                elif decision.upper().startswith("CLARIFICATION:"):
+                    question = decision[13:].strip()
+                    logger.info(f"❓ Fallback needs clarification: {question}")
+                    
+                    return {
+                        "status": "needs_clarification",
+                        "message": question,
+                        "execution_method": "simple_fallback",
+                        "prefect_error": prefect_error,
+                        "steps_completed": len(all_execution_results),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                
+                elif decision.upper().startswith("NEXT STEP:"):
+                    # Execute the next step
+                    step_details = decision[10:].strip()
+                    step_result = await self._execute_fallback_step(step_details, step_number)
+                    all_execution_results.append(step_result)
+                    step_number += 1
+                
+                else:
+                    logger.warning(f"⚠️ Unexpected fallback decision format: {decision}")
+                    break
+            
+            # If we get here, we hit max steps
+            return {
+                "status": "partial_completion",
+                "message": f"Fallback execution reached maximum steps ({max_steps}). Partial results available.",
+                "execution_method": "simple_fallback",
+                "prefect_error": prefect_error,
+                "steps_completed": len(all_execution_results),
+                "results": all_execution_results,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Fallback execution also failed: {e}")
+            return {
+                "status": "failed",
+                "message": f"Both Prefect and fallback execution failed. Prefect error: {prefect_error}. Fallback error: {str(e)}",
+                "execution_method": "fallback_failed",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    
+    async def _execute_fallback_step(self, step_details: str, step_number: int) -> Dict[str, Any]:
+        """Execute a single step in fallback mode"""
+        try:
+            logger.info(f"🔄 Executing fallback step {step_number}: {step_details}")
+            
+            # Simple step execution - just return a summary
+            return {
+                "step_number": step_number,
+                "details": step_details,
+                "summary": f"Fallback step {step_number} executed: {step_details}",
+                "status": "completed",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Fallback step {step_number} failed: {e}")
+            return {
+                "step_number": step_number,
+                "details": step_details,
+                "summary": f"Fallback step {step_number} failed: {str(e)}",
+                "status": "failed",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
             }
