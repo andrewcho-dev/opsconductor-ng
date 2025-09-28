@@ -623,10 +623,6 @@ const AIChatPage: React.FC = () => {
             <Play size={14} />
             <span>0 Runs</span>
           </Link>
-          <Link to="/" className="stat-pill">
-            <MessageSquare size={14} />
-            <span>Dashboard</span>
-          </Link>
         </div>
       </div>
 

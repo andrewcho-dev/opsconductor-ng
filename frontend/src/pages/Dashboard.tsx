@@ -231,7 +231,7 @@ const Dashboard: React.FC = () => {
             <Play size={14} />
             <span>{stats.recentRuns} Runs</span>
           </Link>
-          <Link to="/ai-chat" className="stat-pill">
+          <Link to="/" className="stat-pill">
             <MessageSquare size={14} />
             <span>AI Assistant</span>
           </Link>

@@ -44,8 +44,8 @@ const App: React.FC = () => {
                 <ProtectedRoute>
                   <Navbar />
                   <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/ai-chat" element={<AIChatPage />} />
+                    <Route path="/" element={<AIChatPage />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
                     
                     {/* Workflows Routes */}
                     <Route path="/workflows" element={<Workflows />} />

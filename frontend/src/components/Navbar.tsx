@@ -4,7 +4,6 @@ import { authApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, PERMISSIONS } from '../utils/permissions';
 import { 
-  BarChart3, 
   Users, 
   Target, 
   Settings, 
@@ -88,15 +87,6 @@ const Navbar: React.FC = () => {
               <Link 
                 to="/" 
                 className={`nav-menu-item ${isActive('/') && location.pathname === '/' ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><BarChart3 size={16} /></span>
-                Dashboard
-              </Link>
-
-              <Link 
-                to="/ai-chat" 
-                className={`nav-menu-item ${isActive('/ai-chat') ? 'active' : ''}`} 
                 onClick={closeMenu}
               >
                 <span className="nav-icon"><MessageSquare size={16} /></span>
