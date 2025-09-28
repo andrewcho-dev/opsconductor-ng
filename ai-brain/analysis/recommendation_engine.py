@@ -28,7 +28,7 @@ import statistics
 import math
 from collections import defaultdict, Counter
 
-from .analysis_models import (
+from analysis.analysis_models import (
     AnalysisResult, Recommendation, RecommendationType, Pattern, RootCause,
     Trend, Correlation, AnalysisContext, AnalysisMetrics, PatternType,
     TrendDirection, LearningData

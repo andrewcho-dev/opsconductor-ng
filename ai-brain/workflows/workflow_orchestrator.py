@@ -14,16 +14,16 @@ import json
 import uuid
 from collections import defaultdict
 
-from .workflow_models import (
+from workflows.workflow_models import (
     IntelligentWorkflow, WorkflowContext, WorkflowStatus, ExecutionResult,
     ExecutionStatus, OrchestrationContext, OrchestrationResult, OrchestrationStatus,
-    ServiceCoordination, CrossServiceWorkflow, WorkflowExecution, ServiceIntegration
+    ServiceCoordination, CrossServiceWorkflow, ServiceIntegration
 )
-from .intelligent_workflow_generator import IntelligentWorkflowGenerator
-from .adaptive_execution_engine import AdaptiveExecutionEngine
-from ..decision import DecisionEngine, DecisionRequest, DecisionType
-from ..integrations.thinking_llm_client import ThinkingLLMClient
-from ..streaming import StreamManager
+from workflows.intelligent_workflow_generator import IntelligentWorkflowGenerator
+from workflows.adaptive_execution_engine import AdaptiveExecutionEngine
+from decision import DecisionEngine, DecisionRequest, DecisionType
+from integrations.thinking_llm_client import ThinkingLLMClient
+from streaming import StreamManager
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,51 @@ class WorkflowOrchestrator:
         self.synchronization_interval = timedelta(seconds=30)
         
         logger.info("Workflow Orchestrator initialized")
+    
+    async def initialize(self):
+        """Initialize the workflow orchestrator asynchronously"""
+        try:
+            # Initialize service registry
+            await self._initialize_service_registry()
+            
+            # Set up coordination patterns
+            await self._setup_coordination_patterns()
+            
+            # Start health monitoring
+            await self._start_health_monitoring()
+            
+            logger.info("🔧 Workflow Orchestrator async initialization completed")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Workflow Orchestrator: {e}")
+            raise
+    
+    async def _initialize_service_registry(self):
+        """Initialize the service registry"""
+        # Register core services
+        self.service_registry = {
+            'asset_service': {'url': 'http://asset-service:3002', 'status': 'unknown'},
+            'automation_service': {'url': 'http://automation-service:3003', 'status': 'unknown'},
+            'communication_service': {'url': 'http://communication-service:3004', 'status': 'unknown'},
+            'network_analyzer': {'url': 'http://network-analyzer-service:3006', 'status': 'unknown'}
+        }
+        logger.info("✅ Service registry initialized")
+    
+    async def _setup_coordination_patterns(self):
+        """Set up coordination patterns for different workflow types"""
+        self.coordination_patterns = {
+            'sequential': {'type': 'sequential', 'parallelism': 1},
+            'parallel': {'type': 'parallel', 'parallelism': 5},
+            'hybrid': {'type': 'hybrid', 'parallelism': 3}
+        }
+        logger.info("✅ Coordination patterns configured")
+    
+    async def _start_health_monitoring(self):
+        """Start health monitoring for registered services"""
+        # Initialize health status
+        for service_name in self.service_registry:
+            self.service_health[service_name] = {'status': 'unknown', 'last_check': None}
+        logger.info("✅ Health monitoring started")
     
     async def orchestrate_complex_workflow(
         self,

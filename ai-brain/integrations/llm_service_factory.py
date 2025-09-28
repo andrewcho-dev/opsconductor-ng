@@ -68,7 +68,14 @@ class LLMServiceFactory:
         
         # Get configuration from environment if not provided
         ollama_host = ollama_host or os.getenv("OLLAMA_HOST", "http://ollama:11434")
-        default_model = default_model or os.getenv("DEFAULT_MODEL", "codellama:7b")
+        
+        # Check for forced model first, then default model
+        force_model = os.getenv("FORCE_MODEL")
+        if force_model:
+            default_model = force_model
+            logger.info(f"Using forced model: {force_model}")
+        else:
+            default_model = default_model or os.getenv("DEFAULT_MODEL", "codellama:7b")
         
         # Auto-detect client type if needed
         if client_type == LLMClientType.AUTO:

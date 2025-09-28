@@ -28,7 +28,7 @@ import json
 import math
 import statistics
 
-from .analysis_models import (
+from analysis.analysis_models import (
     DataPoint, Pattern, PatternType, AnalysisContext, 
     AnalysisMetrics, ConfidenceLevel
 )

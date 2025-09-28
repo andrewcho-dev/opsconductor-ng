@@ -24,7 +24,7 @@ from .adaptive_execution_engine import (
 )
 from .workflow_orchestrator import (
     WorkflowOrchestrator, OrchestrationContext, OrchestrationResult,
-    ServiceCoordination, CrossServiceWorkflow, WorkflowExecution,
+    ServiceCoordination, CrossServiceWorkflow,
     OrchestrationStatus, ServiceIntegration
 )
 from .workflow_models import (
@@ -61,7 +61,6 @@ __all__ = [
     'OrchestrationResult',
     'ServiceCoordination',
     'CrossServiceWorkflow',
-    'WorkflowExecution',
     'OrchestrationStatus',
     'ServiceIntegration',
     

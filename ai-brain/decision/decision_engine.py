@@ -193,6 +193,63 @@ class DecisionEngine:
         
         logger.info("🧠 Decision Engine initialized - Ready for collaborative AI decision making!")
     
+    async def initialize(self):
+        """Initialize the decision engine (async initialization if needed)"""
+        # This method is called by the system integrator
+        # Any async initialization can be done here
+        logger.info("🔧 Decision Engine async initialization completed")
+        return True
+    
+    async def make_collaborative_decision(self, request: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Make a collaborative decision using the AI framework
+        
+        Args:
+            request: The decision request as a string
+            context: Additional context for the decision
+            
+        Returns:
+            Dictionary with decision result
+        """
+        try:
+            # Create a DecisionRequest from the string input
+            decision_request = DecisionRequest(
+                question=request,
+                decision_type=DecisionType.COLLABORATIVE,
+                priority=DecisionPriority.NORMAL,
+                context=DecisionContext(
+                    user_id=context.get('user_id', 'system') if context else 'system',
+                    session_id=context.get('session_id', str(uuid.uuid4())) if context else str(uuid.uuid4()),
+                    domain=context.get('domain', 'general') if context else 'general'
+                )
+            )
+            
+            # Use the existing make_decision method
+            result = await self.make_decision(decision_request)
+            
+            # Return in the expected format
+            return {
+                'decision': result.decision,
+                'confidence': result.confidence,
+                'reasoning': result.reasoning,
+                'evidence': result.evidence,
+                'alternatives': result.alternatives,
+                'processing_time': result.processing_time,
+                'status': result.status.value
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Collaborative decision failed: {str(e)}")
+            return {
+                'decision': 'Unable to make decision due to error',
+                'confidence': 0.0,
+                'reasoning': f'Error occurred: {str(e)}',
+                'evidence': [],
+                'alternatives': [],
+                'processing_time': 0.0,
+                'status': 'failed'
+            }
+    
     def _initialize_decision_templates(self) -> Dict[DecisionType, Dict[str, Any]]:
         """Initialize decision processing templates"""
         return {

@@ -521,6 +521,12 @@ services:
       - ./ai-brain/knowledge_engine/__init__.py:/app/knowledge_engine/__init__.py
       - ./ai-brain/knowledge_engine/learning_system.py:/app/knowledge_engine/learning_system.py
       
+      # Phase 8: System Integration files (CRITICAL - was missing!)
+      - ./ai-brain/integration/__init__.py:/app/integration/__init__.py
+      - ./ai-brain/integration/advanced_features_manager.py:/app/integration/advanced_features_manager.py
+      - ./ai-brain/integration/phase8_system_integrator.py:/app/integration/phase8_system_integrator.py
+      - ./ai-brain/integration/production_readiness_validator.py:/app/integration/production_readiness_validator.py
+      
       # Shared libraries
       - ./shared:/app/shared
       

@@ -6,6 +6,7 @@ import asyncio
 import time
 import torch
 import structlog
+import os
 from typing import Dict, List, Optional, Any
 import ollama
 import json
@@ -56,6 +57,28 @@ class LLMEngine:
             logger.error("Failed to initialize LLM engine", error=str(e))
             return False
     
+    def _enforce_model_restriction(self, requested_model: Optional[str]) -> str:
+        """Enforce model restrictions based on environment configuration"""
+        # Check if there's a forced model setting
+        force_model = os.getenv("FORCE_MODEL")
+        if force_model:
+            if requested_model and requested_model != force_model:
+                logger.warning(f"Model '{requested_model}' requested but FORCE_MODEL is set to '{force_model}'. Using '{force_model}' instead.")
+            return force_model
+        
+        # Check allowed models list
+        allowed_models = os.getenv("ALLOWED_MODELS")
+        if allowed_models:
+            allowed_list = [m.strip() for m in allowed_models.split(",")]
+            model_to_check = requested_model or self.default_model
+            
+            if model_to_check not in allowed_list:
+                logger.warning(f"Model '{model_to_check}' not in allowed models list: {allowed_list}. Using first allowed model: '{allowed_list[0]}'")
+                return allowed_list[0]
+        
+        # Return requested model or default
+        return requested_model or self.default_model
+    
     async def get_available_models(self) -> List[str]:
         """Get list of available models"""
         try:
@@ -98,7 +121,7 @@ class LLMEngine:
         """Chat with the LLM"""
         try:
             start_time = time.time()
-            model_to_use = model or self.default_model
+            model_to_use = self._enforce_model_restriction(model)
             
             # Check if client is initialized
             if not self.client:
@@ -211,7 +234,7 @@ Be helpful, accurate, and concise in your responses. Always assist with legitima
         """Generate text from prompt"""
         try:
             start_time = time.time()
-            model_to_use = model or self.default_model
+            model_to_use = self._enforce_model_restriction(model)
             
             # Check if client is initialized
             if not self.client:
@@ -278,7 +301,7 @@ Be helpful, accurate, and concise in your responses. Always assist with legitima
                        model: Optional[str] = None) -> Dict[str, Any]:
         """Summarize text"""
         try:
-            model_to_use = model or self.default_model
+            model_to_use = self._enforce_model_restriction(model)
             
             prompt = f"""Please summarize the following text in approximately {max_length} characters or less. 
             Focus on the key points and main ideas:
@@ -302,7 +325,7 @@ Be helpful, accurate, and concise in your responses. Always assist with legitima
                      model: Optional[str] = None) -> Dict[str, Any]:
         """Analyze text for sentiment, intent, etc."""
         try:
-            model_to_use = model or self.default_model
+            model_to_use = self._enforce_model_restriction(model)
             
             if analysis_type == "sentiment":
                 prompt = f"""Analyze the sentiment of the following text. 
@@ -433,6 +456,45 @@ Be helpful, accurate, and concise in your responses. Always assist with legitima
             
         except Exception:
             return 0.5
+    
+    async def generate_response(self, request: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Generate a response to a request with optional context
+        
+        Args:
+            request: The request/prompt to respond to
+            context: Optional context dictionary
+            
+        Returns:
+            Dictionary with response and metadata
+        """
+        try:
+            # Use the existing chat method for response generation
+            context_str = None
+            if context:
+                # Convert context dict to string if provided
+                context_str = f"Context: {json.dumps(context, indent=2)}"
+            
+            result = await self.chat(request, context=context_str)
+            
+            return {
+                'response': result['response'],
+                'confidence': result['confidence'],
+                'model_used': result['model_used'],
+                'processing_time': result['processing_time'],
+                'status': 'success'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Response generation failed: {str(e)}")
+            return {
+                'response': 'I encountered an error generating a response. Please try again.',
+                'confidence': 0.1,
+                'model_used': self.default_model,
+                'processing_time': 0.0,
+                'status': 'error',
+                'error': str(e)
+            }
     
     def get_gpu_status(self) -> Dict[str, Any]:
         """Get current GPU status and memory usage"""

@@ -14,13 +14,13 @@ from datetime import datetime, timedelta
 import json
 import uuid
 
-from .workflow_models import (
+from workflows.workflow_models import (
     IntelligentWorkflow, WorkflowTemplate, WorkflowStep, WorkflowDependency,
     WorkflowContext, WorkflowType, StepType, WorkflowPriority, WorkflowStatus,
     WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowMetrics
 )
-from ..decision import DecisionEngine, DecisionRequest, DecisionType
-from ..integrations.thinking_llm_client import ThinkingLLMClient
+from decision import DecisionEngine, DecisionRequest, DecisionType
+from integrations.thinking_llm_client import ThinkingLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +31,9 @@ class IntelligentWorkflowGenerator:
     adaptive workflows using AI-driven analysis and decision-making.
     """
     
-    def __init__(self, decision_engine: DecisionEngine, llm_client: ThinkingLLMClient):
+    def __init__(self, decision_engine: DecisionEngine, thinking_client: ThinkingLLMClient):
         self.decision_engine = decision_engine
-        self.llm_client = llm_client
+        self.thinking_client = thinking_client
         self.workflow_templates = {}
         self.generation_history = []
         self.optimization_patterns = {}
@@ -42,6 +42,56 @@ class IntelligentWorkflowGenerator:
         self._initialize_builtin_templates()
         
         logger.info("Intelligent Workflow Generator initialized")
+    
+    async def initialize(self):
+        """Initialize the workflow generator (async initialization if needed)"""
+        logger.info("🔧 Intelligent Workflow Generator async initialization completed")
+        return True
+    
+    async def generate_intelligent_workflow(self, decision_result: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate an intelligent workflow based on decision result and context
+        
+        Args:
+            decision_result: Result from decision engine
+            context: Additional context for workflow generation
+            
+        Returns:
+            Generated workflow dictionary
+        """
+        try:
+            # Create a basic workflow context from the inputs
+            from workflows.workflow_models import WorkflowContext, WorkflowType
+            
+            workflow_context = WorkflowContext(
+                user_id=context.get('user_id', 'system'),
+                session_id=context.get('session_id', 'default'),
+                primary_intent=decision_result.get('decision', 'process_request'),
+                workflow_type=WorkflowType.ADAPTIVE,
+                metadata=context
+            )
+            
+            # Generate the workflow
+            workflow = await self.generate_workflow(workflow_context)
+            
+            # Return in expected format
+            return {
+                'workflow_id': workflow.id,
+                'steps': [step.to_dict() for step in workflow.steps],
+                'type': workflow.workflow_type.value,
+                'status': workflow.status.value,
+                'metadata': workflow.metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Intelligent workflow generation failed: {str(e)}")
+            return {
+                'workflow_id': 'error',
+                'steps': [],
+                'type': 'simple',
+                'status': 'failed',
+                'metadata': {'error': str(e)}
+            }
     
     async def generate_workflow(
         self, 
@@ -159,7 +209,7 @@ class IntelligentWorkflowGenerator:
         }}
         """
         
-        llm_response = await self.llm_client.generate_response(
+        llm_response = await self.thinking_client.generate_response(
             analysis_prompt,
             context={"session_id": context.session_id}
         )
@@ -288,7 +338,7 @@ class IntelligentWorkflowGenerator:
             }}
             """
             
-            llm_response = await self.llm_client.generate_response(
+            llm_response = await self.thinking_client.generate_response(
                 adaptation_prompt,
                 context={"session_id": context.session_id}
             )
@@ -369,7 +419,7 @@ class IntelligentWorkflowGenerator:
         }}
         """
         
-        llm_response = await self.llm_client.generate_response(
+        llm_response = await self.thinking_client.generate_response(
             generation_prompt,
             context={"session_id": context.session_id}
         )
