@@ -7,7 +7,7 @@ Provides comprehensive health checks, metrics collection, and alerting
 import asyncio
 import aiohttp
 import asyncpg
-import aioredis
+import redis.asyncio as redis
 import time
 import json
 import logging
@@ -255,15 +255,15 @@ class RedisHealthChecker(HealthChecker):
         start_time = time.time()
         
         try:
-            redis = aioredis.from_url(self.url, socket_timeout=self.timeout)
+            redis_client = redis.from_url(self.url, socket_timeout=self.timeout)
             
             # Test ping
-            await redis.ping()
+            await redis_client.ping()
             
             # Get info
-            info = await redis.info()
+            info = await redis_client.info()
             
-            await redis.close()
+            await redis_client.close()
             
             response_time = (time.time() - start_time) * 1000
             

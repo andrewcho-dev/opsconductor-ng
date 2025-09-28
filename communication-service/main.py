@@ -8,12 +8,13 @@ Consolidates: notification-service
 import sys
 import os
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import Query, HTTPException, status
 from pydantic import BaseModel
 from datetime import datetime
 sys.path.append('/app/shared')
 from base_service import BaseService
+from health_monitor import HealthMonitor, HealthCheckResult
 
 # ============================================================================
 # MODELS
@@ -216,6 +217,8 @@ class CommunicationService(BaseService):
             "processed_count": 0,
             "last_activity": datetime.utcnow().isoformat()
         }
+        self.health_monitor = HealthMonitor()
+        self._setup_health_checks()
     
     async def setup_service_dependencies(self):
         """Setup communication service specific dependencies"""
@@ -234,6 +237,73 @@ class CommunicationService(BaseService):
         For now returns 1, but should be replaced with proper auth"""
         # TODO: Implement proper authentication context
         return 1
+    
+    def _setup_health_checks(self):
+        """Setup health checks for all system services"""
+        # Get current host dynamically
+        current_host = os.getenv("HOST_IP", "localhost")
+        
+        # Database
+        self.health_monitor.add_postgres(
+            "PostgreSQL Database",
+            host=os.getenv("DB_HOST", "postgres"),
+            port=int(os.getenv("DB_PORT", "5432")),
+            database=os.getenv("DB_NAME", "opsconductor"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "postgres123")
+        )
+        
+        # Redis Cache
+        redis_url = f"redis://{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}"
+        self.health_monitor.add_redis("Redis Cache", redis_url)
+        
+        # Kong Gateway
+        self.health_monitor.add_http_service(
+            "Kong Gateway",
+            f"http://{os.getenv('KONG_HOST', 'kong')}:8001/status"
+        )
+        
+        # Keycloak
+        self.health_monitor.add_http_service(
+            "Keycloak",
+            f"http://{os.getenv('KEYCLOAK_HOST', 'keycloak')}:{os.getenv('KEYCLOAK_PORT', '8080')}/"
+        )
+        
+        # Identity Service
+        self.health_monitor.add_http_service(
+            "Identity Service",
+            f"http://{os.getenv('IDENTITY_SERVICE_HOST', 'identity-service')}:{os.getenv('IDENTITY_SERVICE_PORT', '3001')}/ready"
+        )
+        
+        # Asset Service
+        self.health_monitor.add_http_service(
+            "Asset Service",
+            f"http://{os.getenv('ASSET_SERVICE_HOST', 'asset-service')}:{os.getenv('ASSET_SERVICE_PORT', '3002')}/ready"
+        )
+        
+        # Automation Service
+        self.health_monitor.add_http_service(
+            "Automation Service",
+            f"http://{os.getenv('AUTOMATION_SERVICE_HOST', 'automation-service')}:{os.getenv('AUTOMATION_SERVICE_PORT', '3003')}/ready"
+        )
+        
+        # AI Brain
+        self.health_monitor.add_http_service(
+            "AI Brain",
+            f"http://{os.getenv('AI_BRAIN_HOST', 'ai-brain')}:{os.getenv('AI_BRAIN_PORT', '3005')}/health"
+        )
+        
+        # Network Analyzer
+        self.health_monitor.add_http_service(
+            "Network Analyzer",
+            f"http://{os.getenv('NETWORK_ANALYZER_HOST', 'network-analyzer-service')}:{os.getenv('NETWORK_ANALYZER_PORT', '3006')}/ready"
+        )
+        
+        # Ollama LLM Server
+        self.health_monitor.add_http_service(
+            "Ollama LLM Server",
+            f"http://{os.getenv('OLLAMA_HOST', 'ollama')}:{os.getenv('OLLAMA_PORT', '11434')}/api/tags"
+        )
     
     async def on_startup(self):
         """Set the database schema to communication"""
@@ -1402,6 +1472,164 @@ class CommunicationService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to update channel"
                 )
+        
+        # Health monitoring endpoints
+        @self.app.get("/health/services")
+        async def get_services_health():
+            """Get health status of all services"""
+            try:
+                results = await self.health_monitor.check_all()
+                
+                services = []
+                for name, result in results.items():
+                    # Map health status to service status
+                    if result.status.value == "healthy":
+                        status = "running"
+                    elif result.status.value == "degraded":
+                        status = "warning"
+                    else:
+                        status = "error"
+                    
+                    # Calculate uptime (mock for now, should be tracked properly)
+                    uptime = 0 if status == "error" else 86400  # 1 day if healthy
+                    
+                    service_data = {
+                        "id": str(hash(name) % 1000),  # Generate consistent ID
+                        "name": name,
+                        "type": self._get_service_type(name),
+                        "status": status,
+                        "uptime": uptime,
+                        "responseTime": result.metrics.response_time,
+                        "lastCheck": result.timestamp.isoformat(),
+                        "url": self._get_service_url(name),
+                        "errorMessage": result.error_message
+                    }
+                    services.append(service_data)
+                
+                return {"services": services}
+            except Exception as e:
+                self.logger.error("Failed to get services health", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get services health"
+                )
+        
+        @self.app.get("/health/metrics")
+        async def get_system_metrics():
+            """Get system metrics"""
+            try:
+                # For now, return basic system metrics
+                # In production, this should integrate with actual system monitoring
+                import psutil
+                
+                metrics = [
+                    {
+                        "id": "1",
+                        "name": "CPU Usage",
+                        "value": psutil.cpu_percent(interval=1),
+                        "unit": "%",
+                        "status": "healthy" if psutil.cpu_percent() < 80 else "warning",
+                        "trend": "stable",
+                        "lastUpdated": datetime.utcnow().isoformat()
+                    },
+                    {
+                        "id": "2", 
+                        "name": "Memory Usage",
+                        "value": psutil.virtual_memory().percent,
+                        "unit": "%",
+                        "status": "healthy" if psutil.virtual_memory().percent < 80 else "warning",
+                        "trend": "stable",
+                        "lastUpdated": datetime.utcnow().isoformat()
+                    },
+                    {
+                        "id": "3",
+                        "name": "Disk Usage", 
+                        "value": psutil.disk_usage('/').percent,
+                        "unit": "%",
+                        "status": "healthy" if psutil.disk_usage('/').percent < 80 else "warning",
+                        "trend": "stable",
+                        "lastUpdated": datetime.utcnow().isoformat()
+                    }
+                ]
+                
+                return {"metrics": metrics}
+            except Exception as e:
+                self.logger.error("Failed to get system metrics", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get system metrics"
+                )
+        
+        @self.app.get("/health/alerts")
+        async def get_health_alerts():
+            """Get health alerts"""
+            try:
+                results = await self.health_monitor.check_all()
+                
+                alerts = []
+                for name, result in results.items():
+                    if result.status.value != "healthy":
+                        alert = {
+                            "id": str(hash(f"{name}_{result.timestamp}") % 10000),
+                            "severity": "error" if result.status.value == "unhealthy" else "warning",
+                            "title": f"{name} Service Issue",
+                            "message": result.error_message or f"{name} is {result.status.value}",
+                            "timestamp": result.timestamp.isoformat(),
+                            "acknowledged": False,
+                            "source": "Health Monitor"
+                        }
+                        alerts.append(alert)
+                
+                return {"alerts": alerts}
+            except Exception as e:
+                self.logger.error("Failed to get health alerts", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get health alerts"
+                )
+
+    def _get_service_type(self, service_name: str) -> str:
+        """Map service name to service type"""
+        if "Database" in service_name or "PostgreSQL" in service_name:
+            return "database"
+        elif "Cache" in service_name or "Redis" in service_name:
+            return "cache"
+        elif "Gateway" in service_name or "Kong" in service_name:
+            return "api"
+        elif "Service" in service_name:
+            return "api"
+        elif "Brain" in service_name or "AI" in service_name:
+            return "worker"
+        else:
+            return "api"
+    
+    def _get_service_url(self, service_name: str) -> str:
+        """Get service URL for display - using Docker DNS names and internal ports"""
+        
+        if "PostgreSQL" in service_name:
+            return "postgresql://postgres:5432"
+        elif "Redis" in service_name:
+            return "redis://redis:6379"
+        elif "Kong" in service_name:
+            return "http://kong:8001"  # Kong admin API port
+        elif "Keycloak" in service_name:
+            return "http://keycloak:8080"  # Keycloak internal port
+        elif "Identity" in service_name:
+            return "http://identity-service:3001"
+        elif "Asset" in service_name:
+            return "http://asset-service:3002"
+        elif "Automation" in service_name:
+            return "http://automation-service:3003"
+        elif "Communication" in service_name:
+            return "http://communication-service:3004"
+        elif "AI Brain" in service_name:
+            return "http://ai-brain:3005"
+        elif "Network" in service_name:
+            return "http://network-analyzer-service:3006"
+        elif "Ollama" in service_name:
+            return "http://ollama:11434"
+        else:
+            return ""
 
     async def _test_slack(self, config: dict, message: str) -> dict:
         """Test Slack webhook configuration"""

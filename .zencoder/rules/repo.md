@@ -35,9 +35,9 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 
 #### Language & Runtime
 **Language**: Python 3.12+
-**Framework**: FastAPI with async support
-**LLM Integration**: Ollama with CodeLLama 7B model
-**Vector Database**: ChromaDB for knowledge storage
+**Framework**: FastAPI 0.117.1
+**LLM Integration**: Ollama 0.4.7 with CodeLLama 7B model
+**Vector Database**: ChromaDB 0.6.1 for knowledge storage
 
 #### Architecture
 **Key Components**:
@@ -48,19 +48,20 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 - **No Hardcoded Logic**: All decisions made by LLM
 
 #### Dependencies
-- ollama-python==0.1.0
-- chromadb==0.4.22
-- fastapi==0.104.1
-- httpx==0.25.2
-- structlog==23.2.0
-- pydantic==2.5.0
+- fastapi==0.117.1
+- uvicorn==0.24.0
+- pydantic>=2.8.0
+- chromadb==0.6.1
+- ollama==0.4.7
+- prefect>=3.0.0
+- sentence-transformers>=3.3.1
 
 ### Backend Services (Python FastAPI)
 **Configuration Files**: `requirements.txt`, `Dockerfile` in each service directory
 
 #### Language & Runtime
 **Language**: Python 3.12+
-**Framework**: FastAPI 0.104.1
+**Framework**: FastAPI
 **Database**: PostgreSQL 17 with 5 schemas
 **Cache/Queue**: Redis 7.4
 **Authentication**: Keycloak integration with OAuth2
@@ -95,8 +96,8 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 #### Language & Runtime
 **Language**: TypeScript 4.9.5
 **Framework**: React 18.2.0
-**UI Components**: Bootstrap 5.3.8, Lucide React icons
-**Data Grid**: AG Grid for advanced data display
+**UI Components**: Bootstrap 5.3.8, Lucide React 0.542.0
+**Data Grid**: AG Grid 32.3.9 for advanced data display
 
 #### Key Pages
 - **AIChat**: Natural language interface
@@ -110,8 +111,8 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 #### Components
 **Database**: PostgreSQL 17 with 5 schemas
 **Message Queue**: Redis 7.4 for service communication
-**LLM Server**: Ollama for local model serving
-**Vector Database**: ChromaDB for AI knowledge storage
+**LLM Server**: Ollama 0.11.11 for local model serving
+**Vector Database**: ChromaDB 0.6.1 for AI knowledge storage
 **Reverse Proxy**: Traefik for SSL termination and routing
 
 #### Database Schema

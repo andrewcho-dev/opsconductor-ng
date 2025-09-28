@@ -117,10 +117,7 @@ asset_client = AssetServiceClient(os.getenv("ASSET_SERVICE_URL", "http://asset-s
 automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
 network_client = NetworkAnalyzerClient(os.getenv("NETWORK_ANALYZER_URL", "http://network-analyzer-service:3006"))
 communication_client = CommunicationServiceClient(os.getenv("COMMUNICATION_SERVICE_URL", "http://communication-service:3004"))
-prefect_client = PrefectClient(
-    prefect_api_url=os.getenv("PREFECT_API_URL", "http://prefect-server:4200/api"),
-    flow_registry_url=os.getenv("PREFECT_FLOW_REGISTRY_URL", "http://prefect-flow-registry:8000")
-)
+prefect_client = PrefectClient()
 
 logger.info("🧠 Initializing Intent Brain System")
 intent_brain = IntentBrain(llm_engine)

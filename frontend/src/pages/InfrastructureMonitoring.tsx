@@ -54,148 +54,49 @@ const InfrastructureMonitoring: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'services' | 'alerts'>('overview');
 
-  useEffect(() => {
-    // TODO: Replace with actual monitoring API calls
-    const mockMetrics: SystemMetric[] = [
-      {
-        id: '1',
-        name: 'CPU Usage',
-        value: 45.2,
-        unit: '%',
-        status: 'healthy',
-        trend: 'stable',
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        id: '2',
-        name: 'Memory Usage',
-        value: 78.5,
-        unit: '%',
-        status: 'warning',
-        trend: 'up',
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        id: '3',
-        name: 'Disk Usage',
-        value: 62.1,
-        unit: '%',
-        status: 'healthy',
-        trend: 'stable',
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        id: '4',
-        name: 'Network I/O',
-        value: 125.3,
-        unit: 'MB/s',
-        status: 'healthy',
-        trend: 'down',
-        lastUpdated: new Date().toISOString()
-      }
-    ];
+  const fetchHealthData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch real data from health monitoring API via host port
+      const [metricsResponse, servicesResponse, alertsResponse] = await Promise.all([
+        fetch('http://192.168.10.50:3004/health/metrics'),
+        fetch('http://192.168.10.50:3004/health/services'),
+        fetch('http://192.168.10.50:3004/health/alerts')
+      ]);
 
-    // Get the current host dynamically
-  const currentHost = window.location.hostname;
-  
-  const mockServices: Service[] = [
-      {
-        id: '1',
-        name: 'PostgreSQL Database',
-        type: 'database',
-        status: 'running',
-        uptime: 2592000, // 30 days in seconds
-        responseTime: 12,
-        lastCheck: new Date().toISOString(),
-        url: `postgresql://${currentHost}:5432`
-      },
-      {
-        id: '2',
-        name: 'Redis Cache',
-        type: 'cache',
-        status: 'running',
-        uptime: 1728000, // 20 days in seconds
-        responseTime: 2,
-        lastCheck: new Date().toISOString(),
-        url: `redis://${currentHost}:6379`
-      },
-      {
-        id: '3',
-        name: 'Prefect Server',
-        type: 'api',
-        status: 'running',
-        uptime: 604800, // 7 days in seconds
-        responseTime: 45,
-        lastCheck: new Date().toISOString(),
-        url: `http://${currentHost}:4200`
-      },
-      {
-        id: '4',
-        name: 'Prefect Agent',
-        type: 'worker',
-        status: 'running',
-        uptime: 604800, // 7 days in seconds
-        responseTime: 0,
-        lastCheck: new Date().toISOString()
-      },
-      {
-        id: '5',
-        name: 'Kong Gateway',
-        type: 'api',
-        status: 'running',
-        uptime: 2592000, // 30 days in seconds
-        responseTime: 8,
-        lastCheck: new Date().toISOString(),
-        url: `http://${currentHost}:8000`
-      },
-      {
-        id: '6',
-        name: 'Keycloak',
-        type: 'api',
-        status: 'error',
-        uptime: 0,
-        responseTime: 0,
-        lastCheck: new Date().toISOString(),
-        url: `http://${currentHost}:8080`
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setMetrics(metricsData.metrics || []);
       }
-    ];
 
-    const mockAlerts: Alert[] = [
-      {
-        id: '1',
-        severity: 'warning',
-        title: 'High Memory Usage',
-        message: 'Memory usage has exceeded 75% threshold',
-        timestamp: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-        acknowledged: false,
-        source: 'System Monitor'
-      },
-      {
-        id: '2',
-        severity: 'error',
-        title: 'Keycloak Service Down',
-        message: 'Keycloak authentication service is not responding',
-        timestamp: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
-        acknowledged: false,
-        source: 'Service Monitor'
-      },
-      {
-        id: '3',
-        severity: 'info',
-        title: 'Prefect Agent Restarted',
-        message: 'Prefect agent was successfully restarted',
-        timestamp: new Date(Date.now() - 1800000).toISOString(), // 30 minutes ago
-        acknowledged: true,
-        source: 'Prefect Monitor'
+      if (servicesResponse.ok) {
+        const servicesData = await servicesResponse.json();
+        setServices(servicesData.services || []);
       }
-    ];
 
-    setTimeout(() => {
-      setMetrics(mockMetrics);
-      setServices(mockServices);
-      setAlerts(mockAlerts);
+      if (alertsResponse.ok) {
+        const alertsData = await alertsResponse.json();
+        setAlerts(alertsData.alerts || []);
+      }
+
+    } catch (error) {
+      console.error('Failed to fetch health data:', error);
+      // Set empty arrays on error instead of mock data
+      setMetrics([]);
+      setServices([]);
+      setAlerts([]);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
+  };
+
+  useEffect(() => {
+    fetchHealthData();
+    
+    // Refresh data every 30 seconds
+    const interval = setInterval(fetchHealthData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const getStatusIcon = (status: string) => {
@@ -333,7 +234,11 @@ const InfrastructureMonitoring: React.FC = () => {
               <p className="text-muted mb-0">Monitor system health and service status</p>
             </div>
             <div className="d-flex gap-2">
-              <button className="btn btn-outline-primary">
+              <button 
+                className="btn btn-outline-primary"
+                onClick={fetchHealthData}
+                disabled={loading}
+              >
                 <Activity size={16} className="me-2" />
                 Refresh
               </button>
