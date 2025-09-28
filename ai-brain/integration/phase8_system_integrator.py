@@ -145,6 +145,27 @@ class Phase8SystemIntegrator:
         
         logger.info("🚀 Phase 8 System Integrator initialized")
     
+    async def initialize(self) -> bool:
+        """
+        Initialize the Phase 8 System Integrator.
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            # Basic initialization is done in __init__
+            # This method is for compatibility with other components
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Phase 8 System Integrator: {str(e)}")
+            return False
+    
+    async def integrate_all_systems(self) -> IntegrationResult:
+        """
+        Alias for integrate_full_system for compatibility.
+        """
+        return await self.integrate_full_system()
+    
     async def integrate_full_system(self) -> IntegrationResult:
         """
         🔗 COMPLETE SYSTEM INTEGRATION
@@ -363,17 +384,37 @@ class Phase8SystemIntegrator:
             
             # Initialize vector store and redis stream if not available
             try:
-                vector_client = OpsConductorVectorStore()
-                redis_stream = RedisThinkingStreamManager()
+                # Initialize ChromaDB client (connect to ChromaDB service)
+                import chromadb
+                
+                # Connect to the ChromaDB service running in the container
+                chroma_client = chromadb.HttpClient(
+                    host="chromadb",
+                    port=8000
+                )
+                
+                vector_client = OpsConductorVectorStore(chroma_client)
+                await vector_client.initialize()
+                
+                redis_stream = RedisThinkingStreamManager("redis://opsconductor-redis:6379")
+                await redis_stream.initialize()
                 
                 self.conversation_memory = ConversationMemoryEngine(
-                    llm_client=self.llm_client,
+                    llm_client=self.thinking_client,
                     vector_client=vector_client,
                     redis_stream=redis_stream
                 )
-                self.clarification_intelligence = ClarificationIntelligence(self.llm_client)
-                
                 await self.conversation_memory.initialize()
+                
+                # Import pattern recognition engine
+                from analysis.pattern_recognition import PatternRecognitionEngine
+                pattern_engine = PatternRecognitionEngine()
+                
+                self.clarification_intelligence = ClarificationIntelligence(
+                    llm_client=self.thinking_client,
+                    decision_engine=self.decision_engine,
+                    pattern_engine=pattern_engine
+                )
                 await self.clarification_intelligence.initialize()
                 
                 self.capabilities.conversational_intelligence = True

@@ -20,7 +20,7 @@ logger = structlog.get_logger()
 class RedisThinkingStreamManager:
     """Manages Redis streams for real-time thinking visualization"""
     
-    def __init__(self, redis_url: str = "redis://redis:6379"):
+    def __init__(self, redis_url: str = "redis://opsconductor-redis:6379"):
         self.redis_url = redis_url
         self.redis_client: Optional[redis.Redis] = None
         self.active_sessions: Dict[str, StreamingSession] = {}

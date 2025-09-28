@@ -70,6 +70,46 @@ class ConversationMemoryEngine:
         
         self.logger = logging.getLogger(__name__)
     
+    async def initialize(self) -> bool:
+        """
+        Initialize the conversation memory engine.
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.info("Initializing Conversation Memory Engine...")
+            
+            # Validate dependencies
+            if not self.llm_client:
+                raise ValueError("LLM client is required")
+            if not self.vector_client:
+                raise ValueError("Vector client is required")
+            if not self.redis_stream:
+                raise ValueError("Redis stream is required")
+            
+            # Initialize memory storage structures
+            self.active_conversations = {}
+            self.conversation_contexts = {}
+            self.conversation_summaries = {}
+            self.conversation_metrics = {}
+            
+            # Initialize tracking structures
+            self.memory_access_frequency = defaultdict(int)
+            self.last_access_time = {}
+            self.memory_importance_scores = {}
+            
+            # Initialize search indices
+            self.message_embeddings = {}
+            self.conversation_embeddings = {}
+            
+            self.logger.info("✅ Conversation Memory Engine initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Conversation Memory Engine: {str(e)}")
+            return False
+    
     async def store_message(self, message: ConversationMessage) -> bool:
         """
         Store a conversation message with semantic indexing.

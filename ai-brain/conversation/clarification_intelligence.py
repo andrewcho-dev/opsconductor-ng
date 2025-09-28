@@ -98,12 +98,36 @@ class ClarificationIntelligence:
         self.question_success_rates: Dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
         self.resolution_times: deque = deque(maxlen=1000)
         
-        # Configuration
-        self.ambiguity_threshold = 0.6
-        self.context_gap_threshold = 0.7
-        self.max_clarifications_per_turn = 3
-        
         self.logger = logging.getLogger(__name__)
+    
+    async def initialize(self) -> bool:
+        """
+        Initialize the clarification intelligence system.
+        
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.info("Initializing Clarification Intelligence System...")
+            
+            # Initialize clarification strategies if not already done
+            if not self.clarification_strategies:
+                self._initialize_clarification_strategies()
+            
+            # Validate dependencies
+            if not self.llm_client:
+                raise ValueError("LLM client is required")
+            if not self.decision_engine:
+                raise ValueError("Decision engine is required")
+            if not self.pattern_engine:
+                raise ValueError("Pattern engine is required")
+            
+            self.logger.info("✅ Clarification Intelligence System initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Clarification Intelligence: {str(e)}")
+            return False
     
     async def analyze_clarification_needs(self, 
                                         conversation_id: str,

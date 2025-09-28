@@ -19,7 +19,7 @@ logger = structlog.get_logger()
 class CentralStreamManager:
     """Central manager for all streaming operations"""
     
-    def __init__(self, redis_url: str = "redis://redis:6379"):
+    def __init__(self, redis_url: str = "redis://opsconductor-redis:6379"):
         self.redis_stream_manager = RedisThinkingStreamManager(redis_url)
         self.is_initialized = False
         
@@ -194,7 +194,7 @@ class CentralStreamManager:
 global_stream_manager: Optional[CentralStreamManager] = None
 
 
-async def initialize_global_stream_manager(redis_url: str = "redis://redis:6379") -> bool:
+async def initialize_global_stream_manager(redis_url: str = "redis://opsconductor-redis:6379") -> bool:
     """Initialize the global stream manager"""
     global global_stream_manager
     

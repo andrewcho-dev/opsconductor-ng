@@ -9,8 +9,8 @@ from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from typing import Dict, Set, Optional, Any
 from datetime import datetime
 
-from ..streaming.redis_thinking_stream import RedisThinkingStreamManager
-from ..streaming.thinking_data_models import StreamConfig, ThinkingContext
+from streaming.redis_thinking_stream import RedisThinkingStreamManager
+from streaming.thinking_data_models import StreamConfig, ThinkingContext
 
 logger = structlog.get_logger()
 
