@@ -471,6 +471,7 @@ services:
       - ./ai-brain/api:/app/api
       - ./ai-brain/fulfillment_engine:/app/fulfillment_engine
       - ./ai-brain/orchestration:/app/orchestration
+      - ./ai-brain/streaming:/app/streaming
       
       # Multi-brain system directories (CRITICAL - these were missing!)
       - ./ai-brain/brains:/app/brains

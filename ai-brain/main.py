@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from pydantic import BaseModel
 import structlog
 import os
@@ -50,6 +50,10 @@ from integrations.automation_client import AutomationServiceClient
 from integrations.network_client import NetworkAnalyzerClient
 from integrations.communication_client import CommunicationServiceClient
 from integrations.prefect_client import PrefectClient
+
+# Streaming infrastructure imports
+from streaming.stream_manager import initialize_global_stream_manager, get_global_stream_manager
+from api.thinking_websocket import initialize_websocket_manager, thinking_websocket_endpoint, progress_websocket_endpoint
 
 # Configure structured logging
 structlog.configure(
@@ -106,6 +110,14 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Orchestration router not available: {str(e)}")
 
+# Include Streaming router
+try:
+    from api.streaming_router import router as streaming_router
+    app.include_router(streaming_router)
+    logger.info("✅ Streaming API router included")
+except ImportError as e:
+    logger.warning(f"⚠️  Streaming router not available: {str(e)}")
+
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 default_model = os.getenv("DEFAULT_MODEL", "codellama:7b")
@@ -154,6 +166,17 @@ ai_brain_service = AIBrainService()
 logger.info("🌊 Initializing Prefect Flow Engine")
 prefect_flow_engine = PrefectFlowEngine()
 
+# Add WebSocket routes for real-time thinking visualization
+@app.websocket("/ws/thinking/{session_id}")
+async def thinking_websocket(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time thinking visualization"""
+    await thinking_websocket_endpoint(websocket, session_id)
+
+@app.websocket("/ws/progress/{session_id}")
+async def progress_websocket(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time progress updates"""
+    await progress_websocket_endpoint(websocket, session_id)
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI engine on startup"""
@@ -200,6 +223,21 @@ async def startup_event():
             logger.info("🔗 Orchestration services linked to API router")
         except Exception as e:
             logger.warning(f"⚠️ Failed to link orchestration services to API: {e}")
+        
+        # Initialize streaming infrastructure
+        logger.info("📡 Initializing streaming infrastructure...")
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        streaming_success = await initialize_global_stream_manager(redis_url)
+        if streaming_success:
+            logger.info("🚀 Streaming infrastructure initialized successfully")
+            
+            # Initialize WebSocket manager
+            stream_manager = get_global_stream_manager()
+            if stream_manager:
+                initialize_websocket_manager(stream_manager.redis_stream_manager)
+                logger.info("🔌 WebSocket manager initialized")
+        else:
+            logger.warning("⚠️ Streaming infrastructure initialization failed - continuing without real-time features")
     except Exception as e:
         print(f"❌ STARTUP EXCEPTION: {e}")
         logger.error(f"❌ Exception during startup: {e}")
@@ -227,6 +265,12 @@ async def shutdown_event():
         if hasattr(ai_brain_service, 'cleanup'):
             await ai_brain_service.cleanup()
             logger.info("🎼 AI Brain Orchestration Service cleanup completed")
+        
+        # Cleanup streaming infrastructure
+        stream_manager = get_global_stream_manager()
+        if stream_manager:
+            await stream_manager.shutdown()
+            logger.info("📡 Streaming infrastructure cleanup completed")
             
     except Exception as e:
         logger.error(f"❌ Exception during AI Brain System shutdown: {e}")
