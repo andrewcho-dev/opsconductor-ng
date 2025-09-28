@@ -481,6 +481,12 @@ services:
       - ./ai-brain/learning:/app/learning
       - ./ai-brain/taxonomy:/app/taxonomy
       
+      # Phase 3: Intelligence system files
+      - ./ai-brain/intelligence/__init__.py:/app/intelligence/__init__.py
+      - ./ai-brain/intelligence/progress_intelligence.py:/app/intelligence/progress_intelligence.py
+      - ./ai-brain/intelligence/operation_analyzer.py:/app/intelligence/operation_analyzer.py
+      - ./ai-brain/intelligence/progress_messaging.py:/app/intelligence/progress_messaging.py
+      
       # Shared libraries
       - ./shared:/app/shared
       
