@@ -670,7 +670,7 @@ routes:
       - PUT
       - DELETE
       - OPTIONS
-    strip_path: false
+    strip_path: true
     preserve_host: false
 
   # Network Analyzer Service Routes (already has /api/v1/ prefix)

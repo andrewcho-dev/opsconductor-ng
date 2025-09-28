@@ -11,7 +11,7 @@ from datetime import datetime
 
 # Core integrations
 from integrations.prefect_client import PrefectClient
-from integrations.llm_client import LLMEngine
+from integrations.llm_service_factory import LLMServiceFactory
 from integrations.automation_client import AutomationServiceClient
 from integrations.asset_client import AssetServiceClient
 
@@ -40,7 +40,7 @@ class AIBrainService:
         
         # Initialize clients with proper configuration
         self.prefect_client = PrefectClient()
-        self.llm_client = LLMEngine(
+        self.llm_client = LLMServiceFactory.create_client(
             ollama_host=os.getenv("OLLAMA_HOST", "http://ollama:11434"),
             default_model=os.getenv("DEFAULT_MODEL", "codellama:7b")
         )

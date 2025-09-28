@@ -56,9 +56,13 @@
 ### **🔌 WebSocket Endpoints:**
 
 ```
-ws://localhost:3005/ws/thinking/{session_id}   # Debug mode thinking stream
-ws://localhost:3005/ws/progress/{session_id}   # Progress updates stream
+ws://{host}:{port}/ws/thinking/{session_id}   # Debug mode thinking stream
+ws://{host}:{port}/ws/progress/{session_id}   # Progress updates stream
 ```
+
+**Environment-specific endpoints:**
+- **Docker/Local**: `ws://ai-brain:3005/ws/...` (internal network) or `ws://localhost:3005/ws/...` (external access)
+- **Production**: Use your deployed AI Brain service URL
 
 ### **📡 API Endpoints:**
 

@@ -118,6 +118,14 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  Streaming router not available: {str(e)}")
 
+# Include Thinking LLM router
+try:
+    from api.thinking_llm_router import router as thinking_llm_router
+    app.include_router(thinking_llm_router)
+    logger.info("✅ Thinking LLM API router included")
+except ImportError as e:
+    logger.warning(f"⚠️  Thinking LLM router not available: {str(e)}")
+
 # Initialize LLM Engine
 ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 default_model = os.getenv("DEFAULT_MODEL", "codellama:7b")

@@ -265,3 +265,11 @@ async def close_session(session_id: str):
     if manager:
         return await manager.close_session(session_id)
     return False
+
+
+async def get_session_stats(session_id: str):
+    """Get session statistics"""
+    manager = get_global_stream_manager()
+    if manager:
+        return await manager.get_session_stats(session_id)
+    return None
