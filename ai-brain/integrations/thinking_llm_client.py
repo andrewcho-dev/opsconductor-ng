@@ -1,12 +1,19 @@
 """
-OUIOE Phase 3: Intelligent Thinking-Aware Ollama Client
+OUIOE Phase 4: Advanced Decision-Aware Thinking LLM Client
 
-This module provides an enhanced LLM client that integrates with the streaming infrastructure
-and intelligence systems to provide real-time thinking visualization, intelligent progress 
-updates, and contextual progress communication.
+This module provides an enhanced LLM client that integrates with the streaming infrastructure,
+intelligence systems, and decision engine to provide revolutionary AI transparency with:
+- Real-time thinking step streaming and decision visualization
+- Collaborative multi-agent reasoning and decision making
+- Intelligent progress updates with context-aware messaging
+- Dynamic decision tree generation and interactive exploration
+- Multi-model coordination and consensus building
 
 Key Features:
 - Real-time thinking step streaming during LLM processing
+- Collaborative decision making with specialized AI agents
+- Interactive decision tree visualization and exploration
+- Multi-model coordination and consensus building
 - Intelligent progress updates with context-aware messaging
 - Dynamic milestone detection and complexity assessment
 - Adaptive progress communication based on operation context
@@ -49,14 +56,31 @@ from intelligence import (
     create_smart_progress_messaging
 )
 
+# Import Phase 4 decision engine systems
+from decision import (
+    DecisionEngine,
+    ModelCoordinator,
+    DecisionVisualizer,
+    CollaborativeReasoner,
+    DecisionRequest,
+    DecisionResult,
+    DecisionType,
+    DecisionPriority,
+    DecisionContext,
+    AgentRole,
+    ModelCapability,
+    VisualizationMode
+)
+
 logger = structlog.get_logger()
 
 @dataclass
 class ThinkingConfig:
-    """Configuration for thinking-aware LLM operations with intelligence"""
+    """Configuration for thinking-aware LLM operations with intelligence and decision engine"""
     enable_thinking_stream: bool = True
     enable_progress_stream: bool = True
     enable_intelligence: bool = True  # Enable Phase 3 intelligence features
+    enable_decision_engine: bool = True  # Enable Phase 4 decision engine features
     thinking_detail_level: str = "detailed"  # minimal, standard, detailed, verbose
     progress_update_frequency: float = 2.0  # seconds between progress updates
     max_thinking_steps: int = 50
@@ -71,15 +95,28 @@ class ThinkingConfig:
     enable_adaptive_communication: bool = True
     message_tone: MessageTone = MessageTone.FRIENDLY
     operation_analysis_depth: str = "standard"  # minimal, standard, comprehensive
+    
+    # Phase 4 Decision Engine Configuration
+    enable_collaborative_reasoning: bool = True
+    enable_decision_visualization: bool = True
+    enable_multi_model_coordination: bool = True
+    enable_real_time_decision_trees: bool = True
+    decision_visualization_mode: VisualizationMode = VisualizationMode.TREE
+    max_reasoning_agents: int = 5
+    consensus_threshold: float = 0.8
+    decision_timeout: float = 120.0  # 2 minutes max decision time
+    require_consensus_for_complex: bool = True
 
 class ThinkingLLMClient:
     """
-    Enhanced LLM client with real-time thinking visualization, intelligent progress 
-    streaming, and contextual progress communication.
+    Advanced Decision-Aware Thinking LLM Client with revolutionary AI transparency
     
-    This client wraps the existing LLMEngine and adds thinking capabilities:
-    - Streams thinking steps during LLM processing
-    - Provides intelligent progress updates with context awareness
+    This client wraps the existing LLMEngine and adds comprehensive AI capabilities:
+    - Real-time thinking step streaming and decision visualization
+    - Collaborative multi-agent reasoning and decision making
+    - Interactive decision tree generation and exploration
+    - Multi-model coordination and consensus building
+    - Intelligent progress updates with context awareness
     - Dynamic milestone detection and complexity assessment
     - Adaptive progress communication based on operation context
     - Supports both debug mode (detailed thinking) and normal mode (progress only)
@@ -88,7 +125,7 @@ class ThinkingLLMClient:
     
     def __init__(self, ollama_host: str, default_model: str, 
                  thinking_config: Optional[ThinkingConfig] = None):
-        """Initialize the intelligent thinking-aware LLM client"""
+        """Initialize the advanced decision-aware thinking LLM client"""
         self.base_client = LLMEngine(ollama_host, default_model)
         self.thinking_config = thinking_config or ThinkingConfig()
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
@@ -99,13 +136,37 @@ class ThinkingLLMClient:
             self.progress_intelligence = create_progress_intelligence_engine()
             self.operation_analyzer = create_operation_analyzer()
             self.smart_messaging = create_smart_progress_messaging()
-            logger.info("Intelligence systems initialized for thinking client")
+            logger.info("Phase 3 intelligence systems initialized")
         else:
             self.progress_intelligence = None
             self.operation_analyzer = None
             self.smart_messaging = None
         
-        logger.info("Intelligent thinking-aware LLM client initialized", 
+        # Initialize Phase 4 decision engine systems
+        if self.thinking_config.enable_decision_engine:
+            self.model_coordinator = ModelCoordinator(
+                performance_callback=self._handle_model_performance_update
+            )
+            self.decision_visualizer = DecisionVisualizer(
+                visualization_callback=self._handle_visualization_update
+            )
+            self.collaborative_reasoner = CollaborativeReasoner(
+                reasoning_callback=self._handle_reasoning_update
+            )
+            self.decision_engine = DecisionEngine(
+                model_coordinator=self.model_coordinator,
+                decision_visualizer=self.decision_visualizer,
+                collaborative_reasoner=self.collaborative_reasoner,
+                progress_callback=self._handle_decision_progress
+            )
+            logger.info("Phase 4 decision engine systems initialized")
+        else:
+            self.model_coordinator = None
+            self.decision_visualizer = None
+            self.collaborative_reasoner = None
+            self.decision_engine = None
+        
+        logger.info("Advanced decision-aware thinking LLM client initialized", 
                    config=self.thinking_config.__dict__)
     
     async def initialize(self) -> bool:
@@ -897,6 +958,321 @@ class ThinkingLLMClient:
         except Exception as e:
             logger.error("Failed to predict operation trajectory", error=str(e))
             return {"error": str(e)}
+    
+    # Phase 4: Decision Engine Methods
+    
+    async def _handle_model_performance_update(self, performance_data: Dict[str, Any]):
+        """Handle model performance updates from coordinator"""
+        try:
+            # Stream performance update if in debug mode
+            for session_id, session_info in self.active_sessions.items():
+                if session_info.get("debug_mode", False):
+                    await self._stream_thinking_step(
+                        session_id=session_id,
+                        thinking_type="model_performance",
+                        content=f"Model performance update: {performance_data.get('type', 'unknown')}",
+                        reasoning_chain=[f"Model: {performance_data.get('model_id', 'unknown')}"],
+                        confidence=0.8,
+                        metadata=performance_data
+                    )
+        except Exception as e:
+            logger.warning("Failed to handle model performance update", error=str(e))
+    
+    async def _handle_visualization_update(self, visualization_data: Dict[str, Any]):
+        """Handle decision visualization updates"""
+        try:
+            # Stream visualization update if enabled
+            for session_id, session_info in self.active_sessions.items():
+                if (session_info.get("debug_mode", False) and 
+                    self.thinking_config.enable_decision_visualization):
+                    await self._stream_thinking_step(
+                        session_id=session_id,
+                        thinking_type="decision_visualization",
+                        content=f"Decision tree update: {visualization_data.get('type', 'unknown')}",
+                        reasoning_chain=[f"Tree: {visualization_data.get('tree_id', 'unknown')}"],
+                        confidence=0.9,
+                        metadata=visualization_data
+                    )
+        except Exception as e:
+            logger.warning("Failed to handle visualization update", error=str(e))
+    
+    async def _handle_reasoning_update(self, reasoning_data: Dict[str, Any]):
+        """Handle collaborative reasoning updates"""
+        try:
+            # Stream reasoning update if enabled
+            for session_id, session_info in self.active_sessions.items():
+                if (session_info.get("debug_mode", False) and 
+                    self.thinking_config.enable_collaborative_reasoning):
+                    await self._stream_thinking_step(
+                        session_id=session_id,
+                        thinking_type="collaborative_reasoning",
+                        content=f"Reasoning update: {reasoning_data.get('type', 'unknown')}",
+                        reasoning_chain=[f"Session: {reasoning_data.get('session_id', 'unknown')}"],
+                        confidence=0.85,
+                        metadata=reasoning_data
+                    )
+        except Exception as e:
+            logger.warning("Failed to handle reasoning update", error=str(e))
+    
+    async def _handle_decision_progress(self, progress_data: Dict[str, Any]):
+        """Handle decision engine progress updates"""
+        try:
+            # Stream decision progress if enabled
+            for session_id, session_info in self.active_sessions.items():
+                if self.thinking_config.enable_decision_engine:
+                    await self._stream_progress_update(
+                        session_id=session_id,
+                        progress_type="decision_progress",
+                        message=f"Decision: {progress_data.get('type', 'unknown')}",
+                        progress_percentage=progress_data.get('progress', 0) * 100,
+                        current_step=progress_data.get('step', 'Processing'),
+                        metadata=progress_data
+                    )
+        except Exception as e:
+            logger.warning("Failed to handle decision progress", error=str(e))
+    
+    async def make_collaborative_decision(self, question: str, context: Dict[str, Any] = None,
+                                        decision_type: DecisionType = DecisionType.COMPLEX,
+                                        priority: DecisionPriority = DecisionPriority.NORMAL,
+                                        required_agents: List[AgentRole] = None,
+                                        user_id: str = "default",
+                                        session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Make a collaborative decision using the decision engine"""
+        
+        if not self.thinking_config.enable_decision_engine or not self.decision_engine:
+            return {"error": "Decision engine not enabled"}
+        
+        # Create session if not provided
+        if session_id is None and self.thinking_config.auto_create_session:
+            session_id = await self.create_thinking_session(
+                user_id=user_id,
+                operation_type="collaborative_decision",
+                user_request=question,
+                debug_mode=True  # Enable debug for decision visualization
+            )
+        
+        try:
+            # Create decision context
+            decision_context = DecisionContext(
+                user_id=user_id,
+                session_id=session_id or "default",
+                time_limit=int(self.thinking_config.decision_timeout),
+                quality_threshold=self.thinking_config.consensus_threshold,
+                require_consensus=self.thinking_config.require_consensus_for_complex
+            )
+            
+            # Create decision request
+            decision_request = DecisionRequest(
+                question=question,
+                decision_type=decision_type,
+                priority=priority,
+                context=decision_context,
+                additional_data=context or {}
+            )
+            
+            # Start collaborative reasoning session if enabled
+            reasoning_session_id = None
+            if self.thinking_config.enable_collaborative_reasoning:
+                reasoning_session_id = await self.collaborative_reasoner.start_reasoning_session(
+                    topic=f"Decision: {question}",
+                    question=question,
+                    context=context or {},
+                    required_roles=required_agents or [],
+                    max_iterations=self.thinking_config.max_reasoning_agents
+                )
+            
+            # Create decision tree visualization if enabled
+            decision_tree_id = None
+            if self.thinking_config.enable_decision_visualization:
+                decision_tree = await self.decision_visualizer.create_decision_tree(
+                    decision_id=decision_request.id,
+                    title=f"Decision: {question[:50]}...",
+                    description=f"Collaborative decision making for: {question}"
+                )
+                decision_tree_id = decision_tree.id
+                
+                # Set visualization mode
+                await self.decision_visualizer.set_tree_layout(
+                    decision_tree_id, self.thinking_config.decision_visualization_mode
+                )
+            
+            # Execute decision making
+            decision_result = await self.decision_engine.make_decision(decision_request)
+            
+            # Conduct collaborative reasoning if enabled
+            reasoning_result = None
+            if reasoning_session_id:
+                reasoning_result = await self.collaborative_reasoner.conduct_reasoning(
+                    reasoning_session_id
+                )
+            
+            # Build comprehensive result
+            result = {
+                "decision_id": decision_request.id,
+                "question": question,
+                "decision": decision_result.decision,
+                "confidence": decision_result.confidence,
+                "reasoning": decision_result.reasoning,
+                "evidence": decision_result.evidence,
+                "alternatives": decision_result.alternatives,
+                "consensus_score": decision_result.consensus_score,
+                "quality_score": decision_result.quality_score,
+                "processing_time": decision_result.processing_time,
+                "models_used": decision_result.models_used,
+                "decision_steps": [step.__dict__ for step in decision_result.steps],
+                "session_id": session_id,
+                "decision_tree_id": decision_tree_id,
+                "reasoning_session_id": reasoning_session_id
+            }
+            
+            # Add collaborative reasoning results
+            if reasoning_result:
+                result["collaborative_reasoning"] = {
+                    "recommendation": reasoning_result.recommendation,
+                    "consensus_score": reasoning_result.consensus_score,
+                    "key_arguments": [arg.to_dict() for arg in reasoning_result.key_arguments],
+                    "agent_participation": reasoning_result.agent_participation,
+                    "reasoning_quality": reasoning_result.reasoning_quality
+                }
+            
+            # Add decision tree analytics
+            if decision_tree_id:
+                tree_analytics = self.decision_visualizer.get_tree_analytics(decision_tree_id)
+                if tree_analytics:
+                    result["decision_tree_analytics"] = tree_analytics
+            
+            logger.info("Collaborative decision completed", 
+                       decision_id=decision_request.id, 
+                       confidence=decision_result.confidence,
+                       consensus_score=decision_result.consensus_score)
+            
+            return result
+            
+        except Exception as e:
+            logger.error("Collaborative decision failed", error=str(e))
+            return {"error": str(e)}
+        
+        finally:
+            # Clean up session if auto-created
+            if session_id and self.thinking_config.auto_create_session:
+                await self.close_thinking_session(session_id)
+    
+    async def get_decision_tree_visualization(self, decision_tree_id: str) -> Dict[str, Any]:
+        """Get decision tree visualization data"""
+        if not self.decision_visualizer:
+            return {"error": "Decision visualizer not available"}
+        
+        try:
+            tree = self.decision_visualizer.get_decision_tree(decision_tree_id)
+            if not tree:
+                return {"error": "Decision tree not found"}
+            
+            return tree.to_dict()
+        except Exception as e:
+            logger.error("Failed to get decision tree visualization", error=str(e))
+            return {"error": str(e)}
+    
+    async def update_decision_tree_layout(self, decision_tree_id: str, 
+                                        layout_mode: VisualizationMode) -> Dict[str, Any]:
+        """Update decision tree layout mode"""
+        if not self.decision_visualizer:
+            return {"error": "Decision visualizer not available"}
+        
+        try:
+            await self.decision_visualizer.set_tree_layout(decision_tree_id, layout_mode)
+            return {"success": True, "layout_mode": layout_mode.value}
+        except Exception as e:
+            logger.error("Failed to update decision tree layout", error=str(e))
+            return {"error": str(e)}
+    
+    async def get_available_reasoning_agents(self) -> Dict[str, Any]:
+        """Get available reasoning agents"""
+        if not self.collaborative_reasoner:
+            return {"error": "Collaborative reasoner not available"}
+        
+        try:
+            agents = self.collaborative_reasoner.get_available_agents()
+            return {
+                "agents": [agent.to_dict() for agent in agents],
+                "total_agents": len(agents),
+                "agent_roles": list(set(agent.role.value for agent in agents))
+            }
+        except Exception as e:
+            logger.error("Failed to get available reasoning agents", error=str(e))
+            return {"error": str(e)}
+    
+    async def get_model_coordinator_status(self) -> Dict[str, Any]:
+        """Get model coordinator status and metrics"""
+        if not self.model_coordinator:
+            return {"error": "Model coordinator not available"}
+        
+        try:
+            metrics = self.model_coordinator.get_coordinator_metrics()
+            available_models = self.model_coordinator.get_available_models()
+            
+            return {
+                "metrics": metrics,
+                "available_models": [model.to_dict() for model in available_models],
+                "total_models": len(available_models)
+            }
+        except Exception as e:
+            logger.error("Failed to get model coordinator status", error=str(e))
+            return {"error": str(e)}
+    
+    async def select_optimal_models(self, task_description: str, 
+                                  required_capabilities: List[ModelCapability] = None,
+                                  max_models: int = 3) -> Dict[str, Any]:
+        """Select optimal models for a task"""
+        if not self.model_coordinator:
+            return {"error": "Model coordinator not available"}
+        
+        try:
+            from decision.model_coordinator import ModelRequest
+            
+            # Create model request
+            request = ModelRequest(
+                task_type=task_description,
+                required_capabilities=set(required_capabilities or []),
+                max_models=max_models,
+                min_models=1,
+                quality_threshold=self.thinking_config.consensus_threshold
+            )
+            
+            # Select models
+            selection = await self.model_coordinator.select_models(request)
+            
+            return {
+                "selected_models": selection.selected_models,
+                "selection_reasoning": selection.selection_reasoning,
+                "confidence": selection.confidence,
+                "fallback_models": selection.fallback_models,
+                "estimated_response_time": selection.estimated_response_time,
+                "load_distribution": selection.load_distribution
+            }
+        except Exception as e:
+            logger.error("Failed to select optimal models", error=str(e))
+            return {"error": str(e)}
+    
+    def get_decision_engine_capabilities(self) -> Dict[str, Any]:
+        """Get decision engine capabilities and configuration"""
+        return {
+            "decision_engine_enabled": self.thinking_config.enable_decision_engine,
+            "collaborative_reasoning": self.thinking_config.enable_collaborative_reasoning,
+            "decision_visualization": self.thinking_config.enable_decision_visualization,
+            "multi_model_coordination": self.thinking_config.enable_multi_model_coordination,
+            "real_time_decision_trees": self.thinking_config.enable_real_time_decision_trees,
+            "visualization_mode": self.thinking_config.decision_visualization_mode.value,
+            "max_reasoning_agents": self.thinking_config.max_reasoning_agents,
+            "consensus_threshold": self.thinking_config.consensus_threshold,
+            "decision_timeout": self.thinking_config.decision_timeout,
+            "require_consensus_for_complex": self.thinking_config.require_consensus_for_complex,
+            "decision_systems": {
+                "decision_engine": self.decision_engine is not None,
+                "model_coordinator": self.model_coordinator is not None,
+                "decision_visualizer": self.decision_visualizer is not None,
+                "collaborative_reasoner": self.collaborative_reasoner is not None
+            }
+        }
     
     def configure_intelligence(self, **config_updates):
         """Update intelligence configuration"""

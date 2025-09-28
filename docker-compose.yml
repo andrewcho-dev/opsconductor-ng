@@ -487,6 +487,13 @@ services:
       - ./ai-brain/intelligence/operation_analyzer.py:/app/intelligence/operation_analyzer.py
       - ./ai-brain/intelligence/progress_messaging.py:/app/intelligence/progress_messaging.py
       
+      # Phase 4: Decision engine system files
+      - ./ai-brain/decision/__init__.py:/app/decision/__init__.py
+      - ./ai-brain/decision/decision_engine.py:/app/decision/decision_engine.py
+      - ./ai-brain/decision/model_coordinator.py:/app/decision/model_coordinator.py
+      - ./ai-brain/decision/decision_visualizer.py:/app/decision/decision_visualizer.py
+      - ./ai-brain/decision/collaborative_reasoner.py:/app/decision/collaborative_reasoner.py
+      
       # Shared libraries
       - ./shared:/app/shared
       
