@@ -494,6 +494,13 @@ services:
       - ./ai-brain/decision/decision_visualizer.py:/app/decision/decision_visualizer.py
       - ./ai-brain/decision/collaborative_reasoner.py:/app/decision/collaborative_reasoner.py
       
+      # Phase 5: Multi-Step Intelligent Workflows system files
+      - ./ai-brain/workflows/__init__.py:/app/workflows/__init__.py
+      - ./ai-brain/workflows/workflow_models.py:/app/workflows/workflow_models.py
+      - ./ai-brain/workflows/intelligent_workflow_generator.py:/app/workflows/intelligent_workflow_generator.py
+      - ./ai-brain/workflows/adaptive_execution_engine.py:/app/workflows/adaptive_execution_engine.py
+      - ./ai-brain/workflows/workflow_orchestrator.py:/app/workflows/workflow_orchestrator.py
+      
       # Shared libraries
       - ./shared:/app/shared
       
