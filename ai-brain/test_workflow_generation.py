@@ -35,7 +35,7 @@ class MockLLMEngine:
                NAME: Schedule Ping Job
                DESCRIPTION: Set up recurring execution every 10 seconds using celery-beat
                COMMAND: celery -A automation_service.celery beat --schedule-file=/tmp/celerybeat-schedule --loglevel=info
-               TARGET: localhost
+               TARGET: automation-service
                TIMEOUT: 60 seconds
                DEPENDENCIES: 1
                VALIDATION: verify celery beat is running

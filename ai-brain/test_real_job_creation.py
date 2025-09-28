@@ -24,10 +24,10 @@ async def test_real_job_creation():
     try:
         # Make request to AI brain service
         async with httpx.AsyncClient(timeout=60.0) as client:
-            print("🔗 Connecting to AI brain service at http://localhost:3005...")
+            print("🔗 Connecting to AI brain service at http://ai-brain:3005...")
             
             response = await client.post(
-                "http://localhost:3005/chat",
+                "http://ai-brain:3005/chat",
                 json=test_request
             )
             

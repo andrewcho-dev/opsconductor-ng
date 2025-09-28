@@ -43,8 +43,8 @@ check_status() {
     echo ""
 }
 
-# Database connection parameters
-DB_HOST=${DB_HOST:-localhost}
+# Database connection parameters - use Docker service name for internal communication
+DB_HOST=${DB_HOST:-postgres}
 DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_NAME:-opsconductor}
 DB_USER=${DB_USER:-postgres}
@@ -168,16 +168,22 @@ if ! docker compose ps | grep -q "Up"; then
 fi
 
 if command -v curl >/dev/null 2>&1; then
-    # Try to connect to the network analyzer service
-    if curl -s -f http://localhost:3006/health > /dev/null 2>&1; then
-        check_status "Network Analyzer Service Health" "PASS" "Service is running and responding on port 3006"
+    # Get dynamic host IP for external service testing
+    HOST_IP=$(hostname -I | awk '{print $1}')
+    if [ -z "$HOST_IP" ]; then
+        HOST_IP="127.0.0.1"
+    fi
+    
+    # Try to connect to the network analyzer service using host IP
+    if curl -s -f http://${HOST_IP}:3006/health > /dev/null 2>&1; then
+        check_status "Network Analyzer Service Health" "PASS" "Service is running and responding on port 3006 at ${HOST_IP}"
     else
         # Give it another try after a short wait
         sleep 3
-        if curl -s -f http://localhost:3006/health > /dev/null 2>&1; then
-            check_status "Network Analyzer Service Health" "PASS" "Service is running and responding on port 3006"
+        if curl -s -f http://${HOST_IP}:3006/health > /dev/null 2>&1; then
+            check_status "Network Analyzer Service Health" "PASS" "Service is running and responding on port 3006 at ${HOST_IP}"
         else
-            check_status "Network Analyzer Service Health" "WARN" "Service not responding - check service logs"
+            check_status "Network Analyzer Service Health" "WARN" "Service not responding at ${HOST_IP}:3006 - check service logs"
         fi
     fi
 else

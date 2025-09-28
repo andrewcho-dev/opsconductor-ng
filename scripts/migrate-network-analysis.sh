@@ -8,7 +8,7 @@ set -e
 echo "🔄 Migrating OpsConductor database to include Network Analysis schema..."
 
 # Database connection parameters
-DB_HOST=${DB_HOST:-localhost}
+DB_HOST=${DB_HOST:-postgres}
 DB_PORT=${DB_PORT:-5432}
 DB_NAME=${DB_NAME:-opsconductor}
 DB_USER=${DB_USER:-postgres}

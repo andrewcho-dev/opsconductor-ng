@@ -22,6 +22,9 @@ MONITOR_PORT=8090
 HEALTH_CHECK_TIMEOUT=60
 DEPLOYMENT_LOG="redis-streams-deployment.log"
 
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+
 # Logging function
 log() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1" | tee -a "$DEPLOYMENT_LOG"
@@ -90,7 +93,7 @@ check_redis_streams() {
 
 # Function to check monitor dashboard
 check_monitor() {
-    curl -f http://localhost:$MONITOR_PORT/health >/dev/null 2>&1
+    curl -f http://${HOST_IP}:$MONITOR_PORT/health >/dev/null 2>&1
 }
 
 # Function to display deployment banner
@@ -260,8 +263,8 @@ show_summary() {
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     
     echo -e "\n${CYAN}📊 REDIS STREAMS SERVICES:${NC}"
-    echo -e "  🔴 Redis Streams:     http://localhost:$REDIS_STREAMS_PORT"
-    echo -e "  📊 Monitor Dashboard: http://localhost:$MONITOR_PORT"
+    echo -e "  🔴 Redis Streams:     http://${HOST_IP}:$REDIS_STREAMS_PORT"
+    echo -e "  📊 Monitor Dashboard: http://${HOST_IP}:$MONITOR_PORT"
     echo -e "  ⚙️  Message Processor: Running in background"
     
     echo -e "\n${CYAN}🔧 SERVICE STATUS:${NC}"
@@ -282,7 +285,7 @@ show_summary() {
     echo -e "  🌊 Active Streams: $stream_count"
     
     echo -e "\n${CYAN}🚀 NEXT STEPS:${NC}"
-    echo -e "  1. Visit the monitor dashboard: ${YELLOW}http://localhost:$MONITOR_PORT${NC}"
+    echo -e "  1. Visit the monitor dashboard: ${YELLOW}http://${HOST_IP}:$MONITOR_PORT${NC}"
     echo -e "  2. Check service logs: ${YELLOW}docker logs opsconductor-streams-processor${NC}"
     echo -e "  3. Test message publishing: ${YELLOW}./test-redis-streams.sh${NC}"
     echo -e "  4. Integrate with OpsConductor services"

@@ -26,16 +26,20 @@ class Colors:
 
 class ServiceMonitorDashboard:
     def __init__(self):
+        # Get host IP from environment, fallback to 127.0.0.1
+        host_ip = os.getenv('HOST_IP', '127.0.0.1')
+        
         self.services = {
-            "postgres": {"url": "http://localhost:5432", "type": "database"},
-            "redis": {"url": "http://localhost:6379", "type": "cache"},
-            "keycloak": {"url": "http://localhost:8090", "type": "auth"},
-            "kong": {"url": "http://localhost:3000", "type": "gateway"},
-            "identity-service": {"url": "http://localhost:3001", "type": "service"},
-            "asset-service": {"url": "http://localhost:3002", "type": "service"},
-            "automation-service": {"url": "http://localhost:3003", "type": "service"},
-            "communication-service": {"url": "http://localhost:3004", "type": "service"},
-            "frontend": {"url": "http://localhost:80", "type": "frontend"}
+            "postgres": {"url": f"postgresql://{host_ip}:5432", "type": "database"},
+            "redis": {"url": f"redis://{host_ip}:6379", "type": "cache"},
+            "keycloak": {"url": f"http://{host_ip}:8090", "type": "auth"},
+            "kong": {"url": f"http://{host_ip}:8080", "type": "gateway"},
+            "identity-service": {"url": f"http://{host_ip}:3001", "type": "service"},
+            "asset-service": {"url": f"http://{host_ip}:3002", "type": "service"},
+            "automation-service": {"url": f"http://{host_ip}:3003", "type": "service"},
+            "communication-service": {"url": f"http://{host_ip}:3004", "type": "service"},
+            "ai-brain": {"url": f"http://{host_ip}:3005", "type": "service"},
+            "frontend": {"url": f"http://{host_ip}:3000", "type": "frontend"}
         }
         self.last_check = {}
         self.status_history = {}

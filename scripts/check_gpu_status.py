@@ -12,8 +12,17 @@ from typing import Dict, List, Any
 import time
 
 # AI Services to check
+import subprocess
+def get_host_ip():
+    try:
+        result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+        return result.stdout.strip().split()[0]
+    except:
+        return "127.0.0.1"
+
+HOST_IP = get_host_ip()
 AI_SERVICES = {
-    "ai-brain": "http://localhost:3000"
+    "ai-brain": f"http://{HOST_IP}:3000"
 }
 
 class GPUStatusChecker:

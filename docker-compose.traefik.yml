@@ -36,7 +36,7 @@ services:
       - "traefik.enable=true"
       
       # Dashboard router
-      - "traefik.http.routers.dashboard.rule=Host(`localhost`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)"
       - "traefik.http.routers.dashboard.service=api@internal"
       - "traefik.http.routers.dashboard.entrypoints=traefik"
       
@@ -45,7 +45,7 @@ services:
       - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$2y$$10$$2b2cu/0P6eBi4Ej1iBXXhOaohvZabfQANjU7fCzCqz9OeUPuVJ3Pu"
       
       # Metrics endpoint
-      - "traefik.http.routers.metrics.rule=Host(`localhost`) && Path(`/metrics`)"
+      - "traefik.http.routers.metrics.rule=Path(`/metrics`)"
       - "traefik.http.routers.metrics.service=prometheus@internal"
       - "traefik.http.routers.metrics.entrypoints=traefik"
     healthcheck:

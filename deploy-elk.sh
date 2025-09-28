@@ -7,6 +7,15 @@ set -e
 
 echo "🚀 Starting ELK Stack Deployment for OpsConductor..."
 
+# Get host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using fallback: $HOST_IP"
+else
+    echo "🌐 Detected host IP: $HOST_IP"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -56,7 +65,7 @@ docker-compose -f docker-compose.elk.yml up -d
 print_status "Waiting for Elasticsearch to be ready..."
 timeout=300
 counter=0
-while ! curl -s http://localhost:9200/_cluster/health > /dev/null; do
+while ! curl -s http://$HOST_IP:9200/_cluster/health > /dev/null; do
     if [ $counter -ge $timeout ]; then
         print_error "Elasticsearch failed to start within $timeout seconds"
         exit 1
@@ -71,7 +80,7 @@ print_success "Elasticsearch is ready!"
 # Wait for Kibana to be ready
 print_status "Waiting for Kibana to be ready..."
 counter=0
-while ! curl -s http://localhost:5601/api/status > /dev/null; do
+while ! curl -s http://$HOST_IP:5601/api/status > /dev/null; do
     if [ $counter -ge $timeout ]; then
         print_error "Kibana failed to start within $timeout seconds"
         exit 1
@@ -85,7 +94,7 @@ print_success "Kibana is ready!"
 
 # Create index template for OpsConductor logs
 print_status "Creating Elasticsearch index template..."
-curl -X PUT "localhost:9200/_index_template/opsconductor-logs" \
+curl -X PUT "$HOST_IP:9200/_index_template/opsconductor-logs" \
   -H "Content-Type: application/json" \
   -d '{
     "index_patterns": ["opsconductor-logs-*"],
@@ -138,15 +147,15 @@ echo "📊 ELK Stack Status:"
 echo "==================="
 
 # Elasticsearch
-if curl -s http://localhost:9200/_cluster/health | grep -q "green\|yellow"; then
-    print_success "✅ Elasticsearch: Running (http://localhost:9200)"
+if curl -s http://$HOST_IP:9200/_cluster/health | grep -q "green\|yellow"; then
+    print_success "✅ Elasticsearch: Running (http://$HOST_IP:9200)"
 else
     print_error "❌ Elasticsearch: Not responding"
 fi
 
 # Kibana
-if curl -s http://localhost:5601/api/status | grep -q "available"; then
-    print_success "✅ Kibana: Running (http://localhost:5601)"
+if curl -s http://$HOST_IP:5601/api/status | grep -q "available"; then
+    print_success "✅ Kibana: Running (http://$HOST_IP:5601)"
 else
     print_error "❌ Kibana: Not responding"
 fi
@@ -163,7 +172,7 @@ print_success "🎉 ELK Stack deployment completed!"
 echo ""
 echo "📋 Next Steps:"
 echo "=============="
-echo "1. 🌐 Access Kibana Dashboard: http://localhost:5601"
+echo "1. 🌐 Access Kibana Dashboard: http://$HOST_IP:5601"
 echo "2. 🔍 Create index pattern: opsconductor-logs-*"
 echo "3. 📊 View logs in Discover tab"
 echo "4. 📈 Create dashboards for service monitoring"

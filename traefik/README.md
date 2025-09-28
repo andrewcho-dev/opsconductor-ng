@@ -2,11 +2,11 @@
 
 ## Overview
 
-Phase 5 implements Traefik as an advanced reverse proxy to replace the custom Nginx configuration, providing enterprise-grade features including automatic service discovery, SSL automation, and advanced load balancing.
+Phase 5 implements Traefik as an advanced reverse proxy, providing enterprise-grade features including automatic service discovery, SSL automation, and advanced load balancing.
 
 ## 🎯 **Objectives**
 
-- **Replace Custom Nginx**: Eliminate manual configuration with automatic service discovery
+- **Automatic Service Discovery**: Eliminate manual configuration with automatic service discovery
 - **SSL Automation**: Implement Let's Encrypt integration for automatic certificate management
 - **Advanced Load Balancing**: Health checks, circuit breakers, and intelligent routing
 - **Service Discovery**: Automatic detection and routing of Docker services
@@ -39,25 +39,25 @@ traefik/
 └── dynamic.yml           # Dynamic routing rules and middleware
 
 scripts/
-├── deploy-traefik.sh     # Deploy Traefik alongside Nginx
+├── deploy-traefik.sh     # Deploy Traefik reverse proxy
 ├── test-traefik.sh       # Comprehensive testing suite
-└── migrate-to-traefik.sh # Complete migration from Nginx
+└── migrate-to-traefik.sh # Set up Traefik as primary proxy
 
 docker-compose.traefik.yml # Traefik deployment configuration
 ```
 
 ## 🚀 **Deployment Process**
 
-### Step 1: Deploy Traefik (Parallel to Nginx)
+### Step 1: Deploy Traefik
 
 ```bash
-# Deploy Traefik alongside existing Nginx
+# Deploy Traefik reverse proxy
 ./deploy-traefik.sh
 ```
 
 This script:
 - Builds the Traefik Docker image
-- Starts Traefik on alternative ports
+- Starts Traefik on alternative ports for testing
 - Configures service discovery
 - Validates basic functionality
 
@@ -72,20 +72,19 @@ This script tests:
 - Service discovery and routing
 - Health checks and load balancing
 - Security headers and middleware
-- Performance comparison with Nginx
+- Performance comparison with Kong direct access
 - WebSocket support
 - Prometheus metrics
 
 ### Step 3: Complete Migration
 
 ```bash
-# Migrate from Nginx to Traefik
+# Set up Traefik as primary reverse proxy
 ./migrate-to-traefik.sh
 ```
 
 This script:
-- Backs up Nginx configuration
-- Stops Nginx container
+- Backs up existing configuration
 - Moves Traefik to standard ports (80/443)
 - Validates migration success
 - Provides rollback information
@@ -114,7 +113,7 @@ Services are automatically discovered using Docker labels:
 ```yaml
 labels:
   - "traefik.enable=true"
-  - "traefik.http.routers.api.rule=Host(`localhost`) && PathPrefix(`/api/`)"
+  - "traefik.http.routers.api.rule=Host(`YOUR_HOST_IP`) && PathPrefix(`/api/`)"
   - "traefik.http.routers.api.service=kong-gateway"
   - "traefik.http.services.kong-gateway.loadbalancer.server.port=8000"
 ```
@@ -123,11 +122,13 @@ labels:
 
 ### Development Environment
 
-- **Application**: http://localhost/ (via Traefik)
-- **API**: http://localhost/api/ (via Traefik)
-- **Traefik Dashboard**: http://localhost:8081/dashboard/
-- **Traefik API**: http://localhost:8081/api/
-- **Prometheus Metrics**: http://localhost:8081/metrics
+- **Application**: http://YOUR_HOST_IP/ (via Traefik)
+- **API**: http://YOUR_HOST_IP/api/ (via Traefik)
+- **Traefik Dashboard**: http://YOUR_HOST_IP:8081/dashboard/
+- **Traefik API**: http://YOUR_HOST_IP:8081/api/
+- **Prometheus Metrics**: http://YOUR_HOST_IP:8081/metrics
+
+*Replace YOUR_HOST_IP with your actual host IP address (use `hostname -I | awk '{print $1}'` to find it)*
 
 ### Dashboard Credentials
 
@@ -252,16 +253,16 @@ The Traefik dashboard provides:
 2. **Routing Issues**
    ```bash
    # Check active routers
-   curl http://localhost:8081/api/http/routers
+   curl http://$(hostname -I | awk '{print $1}'):8081/api/http/routers
    
    # Verify service health
-   curl http://localhost:8081/api/http/services
+   curl http://$(hostname -I | awk '{print $1}'):8081/api/http/services
    ```
 
 3. **SSL Certificate Issues**
    ```bash
    # Check certificate status
-   curl http://localhost:8081/api/http/routers | jq '.[] | select(.tls)'
+   curl http://$(hostname -I | awk '{print $1}'):8081/api/http/routers | jq '.[] | select(.tls)'
    
    # Verify Let's Encrypt configuration
    docker exec opsconductor-traefik cat /letsencrypt/acme.json
@@ -286,25 +287,25 @@ If issues occur during migration:
 
 1. **Immediate Rollback**
    ```bash
-   # Stop Traefik
-   docker stop opsconductor-traefik
+   # Stop Traefik production config
+   docker compose -f docker-compose.traefik-production.yml down traefik
    
-   # Restart Nginx
-   docker start opsconductor-nginx
+   # Restart original setup
+   docker compose up -d
    ```
 
 2. **Full Rollback**
    ```bash
    # Restore docker-compose.yml from backup
-   cp nginx-backup-*/docker-compose.yml.backup docker-compose.yml
+   cp traefik-migration-backup-*/docker-compose.yml docker-compose.yml
    
    # Restart all services
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ## 📋 **Migration Checklist**
 
-- [ ] Deploy Traefik alongside Nginx
+- [ ] Deploy Traefik reverse proxy
 - [ ] Run comprehensive tests
 - [ ] Verify all routes work correctly
 - [ ] Test WebSocket functionality

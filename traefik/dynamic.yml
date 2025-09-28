@@ -53,7 +53,7 @@ http:
 
     # Traefik Dashboard (development only)
     dashboard-router:
-      rule: "Host(`localhost`) && (PathPrefix(`/dashboard/`) || PathPrefix(`/api/`))"
+      rule: "PathPrefix(`/dashboard/`) || PathPrefix(`/api/`)"
       service: api@internal
       entryPoints:
         - traefik

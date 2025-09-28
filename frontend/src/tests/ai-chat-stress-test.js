@@ -14,7 +14,7 @@ const path = require('path');
 
 class AIChatStressTester {
   constructor() {
-    this.baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    this.baseUrl = process.env.REACT_APP_API_URL || 'http://nginx-gateway:8080';
     this.totalQuestions = 0;
     this.successfulResponses = 0;
     this.errorResponses = 0;

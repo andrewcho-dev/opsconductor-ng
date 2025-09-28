@@ -5,8 +5,16 @@
 
 set -e
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 echo "🧪 OpsConductor V3 - Phase 5: Traefik Testing"
 echo "=============================================="
+echo "🌐 Host IP: $HOST_IP"
 
 # Colors for output
 RED='\033[0;31m'
@@ -80,44 +88,44 @@ run_test "Traefik container is running" \
 
 # 2. Traefik Dashboard Access
 run_test "Traefik dashboard accessibility" \
-    "curl -s -f http://localhost:8081/ping" \
+    "curl -s -f http://$HOST_IP:8081/ping" \
     ""
 
 # 3. Traefik API Access
 run_test "Traefik API accessibility" \
-    "curl -s -f http://localhost:8081/api/overview" \
+    "curl -s -f http://$HOST_IP:8081/api/overview" \
     ""
 
 # 4. Service Discovery - Kong
 run_test "Kong service discovery" \
-    "curl -s http://localhost:8081/api/http/routers" \
+    "curl -s http://$HOST_IP:8081/api/http/routers" \
     "kong-api"
 
 # 5. Service Discovery - Frontend
 run_test "Frontend service discovery" \
-    "curl -s http://localhost:8081/api/http/routers" \
+    "curl -s http://$HOST_IP:8081/api/http/routers" \
     "frontend"
 
 # 6. Health Check Routing
 run_test "Health check routing via Traefik" \
-    "curl -s -f http://localhost/health" \
+    "curl -s -f http://$HOST_IP/health" \
     ""
 
 # 7. API Routing
 run_test "API routing via Traefik" \
-    "curl -s -f http://localhost/api/v1/identity/health" \
+    "curl -s -f http://$HOST_IP/api/v1/identity/health" \
     ""
 
 # 8. Frontend Routing
 run_test "Frontend routing via Traefik" \
-    "curl -s -f http://localhost/" \
+    "curl -s -f http://$HOST_IP/" \
     ""
 
 # 9. Rate Limiting Middleware
 print_status "Testing rate limiting middleware..."
 RATE_LIMIT_TEST=true
 for i in {1..5}; do
-    if ! curl -s -f http://localhost/api/v1/identity/health > /dev/null; then
+    if ! curl -s -f http://$HOST_IP/api/v1/identity/health > /dev/null; then
         RATE_LIMIT_TEST=false
         break
     fi
@@ -134,22 +142,22 @@ TESTS_TOTAL=$((TESTS_TOTAL + 1))
 
 # 10. Security Headers
 run_test "Security headers in API responses" \
-    "curl -s -I http://localhost/api/v1/identity/health" \
+    "curl -s -I http://$HOST_IP/api/v1/identity/health" \
     "X-Frame-Options"
 
 # 11. CORS Headers
 run_test "CORS headers in API responses" \
-    "curl -s -I -H 'Origin: http://localhost:3000' http://localhost/api/v1/identity/health" \
+    "curl -s -I -H 'Origin: http://$HOST_IP:3000' http://$HOST_IP/api/v1/identity/health" \
     ""
 
 # 12. Prometheus Metrics
 run_test "Prometheus metrics endpoint" \
-    "curl -s -f http://localhost:8081/metrics" \
+    "curl -s -f http://$HOST_IP:8081/metrics" \
     "traefik_"
 
 # 13. Load Balancer Health Checks
 run_test "Load balancer health checks" \
-    "curl -s http://localhost:8081/api/http/services" \
+    "curl -s http://$HOST_IP:8081/api/http/services" \
     "loadBalancer"
 
 # 14. WebSocket Support (if automation service is running)
@@ -157,7 +165,7 @@ if docker ps | grep -q "opsconductor-automation"; then
     print_status "Testing WebSocket support..."
     # Note: WebSocket testing requires special tools, so we'll just check the route exists
     run_test "WebSocket route configuration" \
-        "curl -s http://localhost:8081/api/http/routers" \
+        "curl -s http://$HOST_IP:8081/api/http/routers" \
         "automation-ws"
 else
     print_warning "Automation service not running - skipping WebSocket tests"
@@ -165,7 +173,7 @@ fi
 
 # 15. SSL/TLS Configuration (if enabled)
 print_status "Checking SSL/TLS configuration..."
-if curl -s http://localhost:8081/api/http/routers | grep -q "tls"; then
+if curl -s http://$HOST_IP:8081/api/http/routers | grep -q "tls"; then
     print_success "TLS configuration detected"
     TESTS_PASSED=$((TESTS_PASSED + 1))
 else
@@ -180,18 +188,18 @@ echo ""
 # Performance Tests
 print_status "Measuring response times..."
 
-# Test Nginx response time
-if curl -s -f http://localhost:80/health > /dev/null 2>&1; then
-    NGINX_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://localhost:80/health)
-    print_status "Nginx response time: ${NGINX_TIME}s"
+# Test Kong response time (direct)
+if curl -s -f http://$HOST_IP:3000/health > /dev/null 2>&1; then
+    KONG_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://$HOST_IP:3000/health)
+    print_status "Kong direct response time: ${KONG_TIME}s"
 else
-    print_warning "Nginx not accessible for comparison"
-    NGINX_TIME="N/A"
+    print_warning "Kong not accessible for comparison"
+    KONG_TIME="N/A"
 fi
 
 # Test Traefik response time
-if curl -s -f http://localhost/health > /dev/null 2>&1; then
-    TRAEFIK_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://localhost/health)
+if curl -s -f http://$HOST_IP/health > /dev/null 2>&1; then
+    TRAEFIK_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://$HOST_IP/health)
     print_status "Traefik response time: ${TRAEFIK_TIME}s"
 else
     print_error "Traefik not accessible"
@@ -204,15 +212,15 @@ echo ""
 
 # Service Status Summary
 echo "📊 Service Status:"
-echo "  • Traefik Dashboard: http://localhost:8081/dashboard/"
-echo "  • Traefik API: http://localhost:8081/api/"
-echo "  • Prometheus Metrics: http://localhost:8081/metrics"
+echo "  • Traefik Dashboard: http://$HOST_IP:8081/dashboard/"
+echo "  • Traefik API: http://$HOST_IP:8081/api/"
+echo "  • Prometheus Metrics: http://$HOST_IP:8081/metrics"
 echo ""
 
 # Router Summary
 echo "🔀 Active Routers:"
-if curl -s http://localhost:8081/api/http/routers 2>/dev/null | jq -r '.[].name' 2>/dev/null; then
-    curl -s http://localhost:8081/api/http/routers | jq -r '.[] | "  • \(.name): \(.rule)"' 2>/dev/null || echo "  • Unable to parse router information"
+if curl -s http://$HOST_IP:8081/api/http/routers 2>/dev/null | jq -r '.[].name' 2>/dev/null; then
+    curl -s http://$HOST_IP:8081/api/http/routers | jq -r '.[] | "  • \(.name): \(.rule)"' 2>/dev/null || echo "  • Unable to parse router information"
 else
     echo "  • Unable to retrieve router information"
 fi
@@ -226,10 +234,10 @@ echo "  • Passed: $TESTS_PASSED"
 echo "  • Failed: $TESTS_FAILED"
 echo "  • Success Rate: $(( (TESTS_PASSED * 100) / TESTS_TOTAL ))%"
 
-if [ "$NGINX_TIME" != "N/A" ] && [ "$TRAEFIK_TIME" != "N/A" ]; then
+if [ "$KONG_TIME" != "N/A" ] && [ "$TRAEFIK_TIME" != "N/A" ]; then
     echo ""
     echo "⚡ Performance Comparison:"
-    echo "  • Nginx: ${NGINX_TIME}s"
+    echo "  • Kong (direct): ${KONG_TIME}s"
     echo "  • Traefik: ${TRAEFIK_TIME}s"
 fi
 
@@ -239,7 +247,7 @@ if [ $TESTS_FAILED -eq 0 ]; then
     print_success "All tests passed! Traefik is ready for migration."
     echo ""
     echo "🚀 Next Steps:"
-    echo "  1. Review Traefik dashboard: http://localhost:8081/dashboard/"
+    echo "  1. Review Traefik dashboard: http://$HOST_IP:8081/dashboard/"
     echo "  2. Test your specific use cases"
     echo "  3. Run: ./migrate-to-traefik.sh when ready to complete migration"
     exit 0

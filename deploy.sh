@@ -1,7 +1,15 @@
 #!/bin/bash
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 echo "🚀 Deploying OpsConductor - New Architecture"
 echo "============================================"
+echo "🌐 Host IP: $HOST_IP"
 
 # Stop any existing containers
 echo "🛑 Stopping existing containers..."
@@ -31,17 +39,17 @@ echo ""
 echo "🎉 Deployment complete!"
 echo ""
 echo "📊 Service URLs:"
-echo "  API Gateway:        http://localhost:8080"
-echo "  Identity Service:   http://localhost:3001"
-echo "  Asset Service:      http://localhost:3002"
-echo "  Automation Service: http://localhost:3003"
-echo "  Communication:      http://localhost:3004"
-echo "  Frontend:           http://localhost:3000"
-echo "  Flower (Celery):    http://localhost:5555"
+echo "  API Gateway:        http://$HOST_IP:8080"
+echo "  Identity Service:   http://$HOST_IP:3001"
+echo "  Asset Service:      http://$HOST_IP:3002"
+echo "  Automation Service: http://$HOST_IP:3003"
+echo "  Communication:      http://$HOST_IP:3004"
+echo "  Frontend:           http://$HOST_IP:3000"
+echo "  Flower (Celery):    http://$HOST_IP:5555"
 echo ""
 echo "🔍 Health Checks:"
-echo "  curl http://localhost:8080/health"
-echo "  curl http://localhost:3001/health"
+echo "  curl http://$HOST_IP:8080/health"
+echo "  curl http://$HOST_IP:3001/health"
 echo ""
 echo "📝 View logs:"
 echo "  docker compose logs -f [service-name]"

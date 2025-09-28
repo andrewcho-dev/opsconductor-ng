@@ -7,7 +7,7 @@ services:
     build: ./traefik
     container_name: opsconductor-traefik
     ports:
-      - "8082:80"    # HTTP (alternative port to avoid conflict with Nginx)
+      - "8082:80"    # HTTP (alternative port for testing alongside Kong)
       - "8443:443"   # HTTPS (alternative port)
       - "8081:8081"  # Traefik dashboard
     environment:

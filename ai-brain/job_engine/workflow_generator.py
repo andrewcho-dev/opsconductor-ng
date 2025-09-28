@@ -486,7 +486,7 @@ class WorkflowGenerator:
         # Add target systems to parameters
         params = requirements.copy()
         params['target_systems'] = target_systems
-        params['target_system'] = target_systems[0] if target_systems else 'localhost'
+        params['target_system'] = target_systems[0] if target_systems else 'automation-service'
         
         # Simple parameter substitution
         for key, value in params.items():

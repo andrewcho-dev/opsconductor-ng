@@ -24,7 +24,7 @@ opsconductor-ng/
 │   └── frontend/                # React TypeScript web interface
 │
 ├── 🔧 Infrastructure
-│   ├── nginx/                   # Reverse proxy configuration
+│   ├── traefik/                 # Reverse proxy configuration
 │   ├── database/                # Complete schema and migrations
 │   └── shared/                  # Common utilities and libraries
 │
@@ -270,7 +270,7 @@ shared/
 
 ### Deployment Scripts
 - **`build.sh`** - Complete system build script
-- **`deploy.sh`** - Standard deployment with Nginx
+- **`deploy.sh`** - Standard deployment with Traefik
 - **`deploy-traefik.sh`** - Alternative deployment with Traefik
 - **`deploy-elk.sh`** - Deployment with ELK logging stack
 - **`deploy-redis-streams.sh`** - Deployment with Redis Streams messaging

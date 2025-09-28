@@ -88,8 +88,6 @@ const ServiceHealthMonitor: React.FC<ServiceHealthMonitorProps> = ({ refreshTrig
       // Frontend & Proxy
       case 'frontend':
         return <Monitor {...iconProps} />;
-      case 'nginx':
-        return <Globe {...iconProps} />;
       
       default:
         return <Server {...iconProps} />;

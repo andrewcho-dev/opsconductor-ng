@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Create Celery app
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+redis_url = os.getenv("REDIS_URL", "redis://redis:6379/3")
 app = Celery('automation-worker', broker=redis_url, backend=redis_url)
 
 # Configure Celery with enhanced monitoring and resource protection

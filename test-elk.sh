@@ -5,6 +5,9 @@
 
 set -e
 
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -29,7 +32,7 @@ echo "===================================="
 
 # Test 1: Elasticsearch Health
 print_status "Testing Elasticsearch health..."
-if curl -s http://localhost:9200/_cluster/health | grep -q "green\|yellow"; then
+if curl -s http://${HOST_IP}:9200/_cluster/health | grep -q "green\|yellow"; then
     print_success "Elasticsearch cluster is healthy"
 else
     print_error "Elasticsearch cluster is not healthy"
@@ -38,7 +41,7 @@ fi
 
 # Test 2: Kibana Status
 print_status "Testing Kibana availability..."
-if curl -s http://localhost:5601/api/status | grep -q "available"; then
+if curl -s http://${HOST_IP}:5601/api/status | grep -q "available"; then
     print_success "Kibana is available"
 else
     print_error "Kibana is not available"
@@ -48,10 +51,10 @@ fi
 # Test 3: Check if indices are being created
 print_status "Checking for log indices..."
 sleep 10  # Wait for some logs to be ingested
-indices=$(curl -s http://localhost:9200/_cat/indices/opsconductor-logs-* | wc -l)
+indices=$(curl -s http://${HOST_IP}:9200/_cat/indices/opsconductor-logs-* | wc -l)
 if [ "$indices" -gt 0 ]; then
     print_success "Log indices found: $indices"
-    curl -s http://localhost:9200/_cat/indices/opsconductor-logs-*
+    curl -s http://${HOST_IP}:9200/_cat/indices/opsconductor-logs-*
 else
     print_error "No log indices found yet (this might be normal for new deployments)"
 fi
@@ -71,12 +74,12 @@ echo "Triggering API calls to generate logs..."
 
 # Test API endpoints to generate logs
 services=(
-    "http://localhost:8001/api/v1/users"
-    "http://localhost:8002/api/v1/assets"
-    "http://localhost:8003/api/v1/automations"
-    "http://localhost:8004/api/v1/communications"
-    "http://localhost:8005/api/v1/ai"
-    "http://localhost:8006/api/v1/network"
+    "http://${HOST_IP}:8001/api/v1/users"
+    "http://${HOST_IP}:8002/api/v1/assets"
+    "http://${HOST_IP}:8003/api/v1/automations"
+    "http://${HOST_IP}:8004/api/v1/communications"
+    "http://${HOST_IP}:8005/api/v1/ai"
+    "http://${HOST_IP}:8006/api/v1/network"
 )
 
 for service in "${services[@]}"; do
@@ -91,7 +94,7 @@ sleep 15
 
 # Test 6: Query logs from Elasticsearch
 print_status "Querying logs from Elasticsearch..."
-log_count=$(curl -s "http://localhost:9200/opsconductor-logs-*/_count" | grep -o '"count":[0-9]*' | cut -d':' -f2 || echo "0")
+log_count=$(curl -s "http://${HOST_IP}:9200/opsconductor-logs-*/_count" | grep -o '"count":[0-9]*' | cut -d':' -f2 || echo "0")
 if [ "$log_count" -gt 0 ]; then
     print_success "Found $log_count log entries in Elasticsearch"
 else
@@ -100,7 +103,7 @@ fi
 
 # Test 7: Sample log query
 print_status "Testing log search functionality..."
-search_result=$(curl -s -X GET "http://localhost:9200/opsconductor-logs-*/_search?size=1" \
+search_result=$(curl -s -X GET "http://${HOST_IP}:9200/opsconductor-logs-*/_search?size=1" \
   -H "Content-Type: application/json" \
   -d '{
     "query": {
@@ -132,13 +135,13 @@ echo "• Search: ✅ Functional"
 echo ""
 echo "🌐 Access Points:"
 echo "================"
-echo "• Kibana Dashboard: http://localhost:5601"
-echo "• Elasticsearch API: http://localhost:9200"
+echo "• Kibana Dashboard: http://${HOST_IP}:5601"
+echo "• Elasticsearch API: http://${HOST_IP}:9200"
 echo "• Index Pattern: opsconductor-logs-*"
 echo ""
 echo "📋 Next Steps:"
 echo "============="
-echo "1. Open Kibana: http://localhost:5601"
+echo "1. Open Kibana: http://${HOST_IP}:5601"
 echo "2. Go to Stack Management > Index Patterns"
 echo "3. Create index pattern: opsconductor-logs-*"
 echo "4. Set @timestamp as time field"

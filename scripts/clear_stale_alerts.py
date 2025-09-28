@@ -12,8 +12,8 @@ from datetime import datetime
 async def clear_stale_monitoring_data():
     """Clear stale monitoring data from Redis"""
     
-    # Connect to Redis
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # Connect to Redis - use Docker service name for internal communication
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
     redis_client = redis.from_url(redis_url, decode_responses=True)
     
     try:

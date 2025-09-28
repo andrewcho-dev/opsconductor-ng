@@ -17,7 +17,9 @@ NC='\033[0m' # No Color
 # Configuration
 REDIS_CONTAINER="opsconductor-redis-streams"
 REDIS_PASSWORD="opsconductor-streams-2024"
-MONITOR_URL="http://localhost:8090"
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+MONITOR_URL="http://${HOST_IP}:8090"
 TEST_LOG="redis-streams-test.log"
 TEST_STREAM="opsconductor:test:events"
 TEST_GROUP="test_processors"

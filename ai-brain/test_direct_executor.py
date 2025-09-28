@@ -20,12 +20,12 @@ async def test_direct_executor():
     print("🚀 Testing Direct Executor - Ollama makes ALL decisions!")
     
     # Initialize LLM engine
-    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")  # Use localhost for testing
+    ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")  # Use Docker service name
     default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
     llm_engine = LLMEngine(ollama_host, default_model)
     
     # Initialize automation client
-    automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://localhost:3003"))
+    automation_client = AutomationServiceClient(os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"))
     
     # Initialize direct executor
     direct_executor = DirectExecutor(
@@ -34,7 +34,7 @@ async def test_direct_executor():
     )
     
     # Test with a simple request
-    test_message = "run echo hello world on localhost"
+    test_message = "run echo hello world on target-host"
     
     print(f"\n🧠 Testing with message: '{test_message}'")
     print("=" * 60)

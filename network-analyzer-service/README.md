@@ -107,7 +107,7 @@ cap_add:
 import httpx
 
 # Start packet capture
-response = httpx.post("http://localhost:3006/api/v1/network/capture", json={
+response = httpx.post("http://YOUR_HOST_IP:3006/api/v1/network/capture", json={
     "interface": "eth0",
     "filter": "tcp port 80",
     "duration": 60,
@@ -116,7 +116,7 @@ response = httpx.post("http://localhost:3006/api/v1/network/capture", json={
 session_id = response.json()["session_id"]
 
 # Get results
-results = httpx.get(f"http://localhost:3006/api/v1/network/capture/{session_id}")
+results = httpx.get(f"http://YOUR_HOST_IP:3006/api/v1/network/capture/{session_id}")
 ```
 
 ### Real-time Monitoring
@@ -125,7 +125,7 @@ import websockets
 import json
 
 async def monitor_network():
-    uri = "ws://localhost:3006/ws/monitoring/session123"
+    uri = "ws://YOUR_HOST_IP:3006/ws/monitoring/session123"
     async with websockets.connect(uri) as websocket:
         async for message in websocket:
             data = json.loads(message)
@@ -136,7 +136,7 @@ async def monitor_network():
 ### AI-Powered Diagnosis
 ```python
 # Submit network data for AI analysis
-response = httpx.post("http://localhost:3006/api/v1/analysis/ai/diagnose", json={
+response = httpx.post("http://YOUR_HOST_IP:3006/api/v1/analysis/ai/diagnose", json={
     "symptoms": ["high latency", "packet loss"],
     "network_data": {
         "interface": "eth0",
@@ -153,7 +153,7 @@ print(f"Suggestions: {diagnosis['suggestions']}")
 ### Remote Agent Deployment
 ```python
 # Deploy agent to remote target
-response = httpx.post("http://localhost:3006/api/v1/remote/deploy", json={
+response = httpx.post("http://YOUR_HOST_IP:3006/api/v1/remote/deploy", json={
     "target_id": "server-001",
     "analysis_type": "comprehensive",
     "duration": 1800

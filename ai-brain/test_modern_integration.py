@@ -14,7 +14,7 @@ from typing import Dict, Any
 class ModernIntegrationTester:
     """Test the modern AI Brain with Prefect integration"""
     
-    def __init__(self, ai_brain_url: str = "http://localhost:3005"):
+    def __init__(self, ai_brain_url: str = "http://ai-brain:3005"):
         self.ai_brain_url = ai_brain_url
         self.client = httpx.AsyncClient(timeout=30.0)
         

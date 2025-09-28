@@ -5,7 +5,7 @@ This directory contains comprehensive Grafana dashboards for monitoring the OpsC
 ## 🎯 Dashboard Overview
 
 ### 1. **OpsConductor Services Overview** 
-- **URL**: http://localhost:3200/d/opsconductor-services-overview/opsconductor-services-overview
+- **URL**: http://YOUR_HOST_IP:3200/d/opsconductor-services-overview/opsconductor-services-overview
 - **Purpose**: High-level overview of all OpsConductor services
 - **Key Metrics**:
   - HTTP request rates across all services
@@ -16,7 +16,7 @@ This directory contains comprehensive Grafana dashboards for monitoring the OpsC
   - Database and Redis health monitoring
 
 ### 2. **OpsConductor Service Details**
-- **URL**: http://localhost:3200/d/opsconductor-service-details/opsconductor-service-details
+- **URL**: http://YOUR_HOST_IP:3200/d/opsconductor-service-details/opsconductor-service-details
 - **Purpose**: Deep-dive monitoring for individual services
 - **Features**:
   - Service selector dropdown (templated dashboard)
@@ -28,7 +28,7 @@ This directory contains comprehensive Grafana dashboards for monitoring the OpsC
 - **Usage**: Select a service from the dropdown to view detailed metrics
 
 ### 3. **OpsConductor Infrastructure**
-- **URL**: http://localhost:3200/d/opsconductor-infrastructure/opsconductor-infrastructure
+- **URL**: http://YOUR_HOST_IP:3200/d/opsconductor-infrastructure/opsconductor-infrastructure
 - **Purpose**: System-level infrastructure monitoring
 - **Key Metrics**:
   - CPU usage percentage
@@ -40,7 +40,7 @@ This directory contains comprehensive Grafana dashboards for monitoring the OpsC
 
 ## 🔧 Access Information
 
-- **Grafana URL**: http://localhost:3200
+- **Grafana URL**: http://YOUR_HOST_IP:3200
 - **Username**: admin
 - **Password**: admin123
 - **Prometheus Datasource**: Automatically configured and connected
@@ -96,9 +96,9 @@ All 6 OpsConductor services are fully monitored:
 ## 🔍 Troubleshooting
 
 ### Dashboard Not Loading Data
-1. Verify Prometheus is running: http://localhost:9090
-2. Check service metrics endpoints: http://localhost:300X/metrics
-3. Verify Prometheus is scraping targets: http://localhost:9090/targets
+1. Verify Prometheus is running: http://YOUR_HOST_IP:9090
+2. Check service metrics endpoints: http://YOUR_HOST_IP:300X/metrics
+3. Verify Prometheus is scraping targets: http://YOUR_HOST_IP:9090/targets
 
 ### Missing Metrics
 1. Ensure all services have `prometheus_client==0.19.0` installed

@@ -33,8 +33,8 @@ cd opsconductor-ng
 ```
 
 **Access the platform:**
-- **Web Interface**: http://localhost:3100
-- **API Gateway**: http://localhost:3000
+- **Web Interface**: http://YOUR_HOST_IP:3100 (deployment script will show correct IP)
+- **API Gateway**: http://YOUR_HOST_IP:3000 (deployment script will show correct IP)
 - **Default Login**: admin / admin123
 
 ## 🔍 Verification and Testing
@@ -50,19 +50,19 @@ cd opsconductor-ng
 # Check all services
 docker-compose ps
 
-# Individual service health
-curl http://localhost:3000/health  # Kong Gateway
-curl http://localhost:3005/health  # AI Brain
-curl http://localhost:8090/health  # Keycloak
-curl http://localhost:3001/health  # Identity Service
-curl http://localhost:3002/health  # Asset Service
-curl http://localhost:3003/health  # Automation Service
-curl http://localhost:3004/health  # Communication Service
-curl http://localhost:3006/health  # Network Analyzer
+# Individual service health (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:3000/health  # Kong Gateway
+curl http://YOUR_HOST_IP:3005/health  # AI Brain
+curl http://YOUR_HOST_IP:8090/health  # Keycloak
+curl http://YOUR_HOST_IP:3001/health  # Identity Service
+curl http://YOUR_HOST_IP:3002/health  # Asset Service
+curl http://YOUR_HOST_IP:3003/health  # Automation Service
+curl http://YOUR_HOST_IP:3004/health  # Communication Service
+curl http://YOUR_HOST_IP:3006/health  # Network Analyzer
 
-# Infrastructure health
-curl http://localhost:8000/api/v1/heartbeat  # ChromaDB
-curl http://localhost:11434/api/tags         # Ollama
+# Infrastructure health (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:8000/api/v1/heartbeat  # ChromaDB
+curl http://YOUR_HOST_IP:11434/api/tags         # Ollama
 ```
 
 ### Database Verification
@@ -82,13 +82,13 @@ GROUP BY schemaname;"
 
 ### AI System Testing
 ```bash
-# Test AI chat interface
-curl -X POST http://localhost:3005/ai/chat \
+# Test AI chat interface (replace YOUR_HOST_IP with actual host IP)
+curl -X POST http://YOUR_HOST_IP:3005/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "show me all servers", "user_id": 1}'
 
-# Test Ollama LLM
-curl -X POST http://localhost:11434/api/generate \
+# Test Ollama LLM (replace YOUR_HOST_IP with actual host IP)
+curl -X POST http://YOUR_HOST_IP:11434/api/generate \
   -H "Content-Type: application/json" \
   -d '{"model": "codellama:7b", "prompt": "Explain Docker containers", "stream": false}'
 ```
@@ -96,13 +96,13 @@ curl -X POST http://localhost:11434/api/generate \
 ## 🎮 First Steps After Deployment
 
 ### 1. Initial Login
-- Navigate to http://localhost:3100
+- Navigate to http://YOUR_HOST_IP:3100 (deployment script will show correct IP)
 - Login with: **admin** / **admin123**
 - **Change password immediately**
 
 ### 2. Create Your First Asset
 ```bash
-curl -X POST http://localhost:3000/api/v1/assets \
+curl -X POST http://YOUR_HOST_IP:3000/api/v1/assets \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-jwt-token>" \
   -d '{
@@ -121,7 +121,7 @@ curl -X POST http://localhost:3000/api/v1/assets \
 
 ### 3. Test AI Functionality
 - Use the chat interface: "show me all my servers"
-- Try automation: "restart nginx on web servers"
+- Try automation: "restart apache on web servers"
 - Test job creation: "check disk space on all Linux servers"
 
 ### 4. Create Additional Users
@@ -157,16 +157,16 @@ docker exec opsconductor-ai-brain nvidia-smi
 
 ### Production SSL Configuration
 ```bash
-# Place SSL certificates
-mkdir -p ssl/
-cp your-cert.crt ssl/nginx.crt
-cp your-key.key ssl/nginx.key
+# SSL is handled by Kong Gateway
+# Configure SSL certificates in Kong:
+# 1. Upload certificates via Kong Admin API
+# 2. Configure SSL termination in Kong
+# 3. Update Kong routes for HTTPS
 
-# Update nginx configuration for SSL
-# Edit nginx/nginx.conf for your domain
-
-# Deploy with SSL
-docker-compose up -d nginx
+# Example Kong SSL configuration:
+curl -X POST http://kong:8001/certificates \
+  -F "cert=@your-cert.crt" \
+  -F "key=@your-key.key"
 ```
 
 ### Scaling Workers
@@ -224,22 +224,22 @@ SELECT pg_size_pretty(pg_database_size('opsconductor'));"
 
 ### AI Model Management
 ```bash
-# List available models
-curl http://localhost:11434/api/tags
+# List available models (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:11434/api/tags
 
-# Pull new models
-curl -X POST http://localhost:11434/api/pull \
+# Pull new models (replace YOUR_HOST_IP with actual host IP)
+curl -X POST http://YOUR_HOST_IP:11434/api/pull \
   -H "Content-Type: application/json" \
   -d '{"name": "codellama:latest"}'
 
-# Remove unused models
-curl -X DELETE http://localhost:11434/api/delete \
+# Remove unused models (replace YOUR_HOST_IP with actual host IP)
+curl -X DELETE http://YOUR_HOST_IP:11434/api/delete \
   -H "Content-Type: application/json" \
   -d '{"name": "old-model:tag"}'
 ```
 
 ### Performance Monitoring
-- **Celery Flower**: http://localhost:5555 (admin/admin123)
+- **Celery Flower**: http://YOUR_HOST_IP:5555 (admin/admin123) - deployment script will show correct IP
 - **Service Health**: All services provide `/health` endpoints
 - **Database Metrics**: Available through PostgreSQL queries
 - **AI Performance**: Response times and accuracy metrics
@@ -278,11 +278,11 @@ docker-compose up -d postgres
 
 #### AI Services Not Responding
 ```bash
-# Check Ollama status
-curl http://localhost:11434/api/tags
+# Check Ollama status (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:11434/api/tags
 
-# Check ChromaDB status
-curl http://localhost:8000/api/v1/heartbeat
+# Check ChromaDB status (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:8000/api/v1/heartbeat
 
 # Restart AI services
 docker-compose restart ai-brain
@@ -296,11 +296,8 @@ docker exec opsconductor-ai-brain nvidia-smi
 # Check frontend logs
 docker-compose logs frontend
 
-# Check nginx logs
-docker-compose logs nginx
-
-# Verify Kong Gateway
-curl http://localhost:3000/health
+# Verify Kong Gateway (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:3000/health
 
 # Rebuild frontend
 docker-compose up -d --build frontend
@@ -308,14 +305,14 @@ docker-compose up -d --build frontend
 
 #### Keycloak Authentication Issues
 ```bash
-# Check Keycloak status
-curl http://localhost:8090/health
+# Check Keycloak status (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:8090/health
 
 # Check Keycloak logs
 docker-compose logs keycloak
 
-# Verify realm configuration
-curl http://localhost:8090/realms/opsconductor/.well-known/openid_configuration
+# Verify realm configuration (replace YOUR_HOST_IP with actual host IP)
+curl http://YOUR_HOST_IP:8090/realms/opsconductor/.well-known/openid_configuration
 ```
 
 ### Performance Issues

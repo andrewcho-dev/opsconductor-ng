@@ -42,7 +42,7 @@ def test_job_data_format():
                 "inputs": {}
             }
         ],
-        "target_systems": step.target_systems or ["localhost"]
+        "target_systems": step.target_systems or ["automation-service"]
     }
     
     print("✅ Job data format created successfully!")

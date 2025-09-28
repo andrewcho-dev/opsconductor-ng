@@ -6,6 +6,15 @@ set -euo pipefail
 REDIS_CONTAINER="opsconductor-redis-streams"
 REDIS_PASSWORD="opsconductor-streams-2024"
 
+# Get host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using fallback: $HOST_IP"
+else
+    echo "🌐 Detected host IP: $HOST_IP"
+fi
+
 echo "🧪 Testing Redis Streams Basic Functionality"
 echo "=============================================="
 
@@ -87,7 +96,7 @@ echo ""
 echo "🎉 ALL TESTS PASSED! Redis Streams is working perfectly!"
 echo ""
 echo "📊 Redis Streams Status:"
-echo "  🔴 Redis Streams: http://localhost:6380"
+echo "  🔴 Redis Streams: http://$HOST_IP:6380"
 echo "  📦 Version: $REDIS_VERSION"
 echo "  💾 Memory Usage: $MEMORY_USAGE"
 echo "  ⚡ Performance: $MESSAGES_PER_SEC messages/second"

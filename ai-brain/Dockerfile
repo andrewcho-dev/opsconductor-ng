@@ -76,6 +76,10 @@ RUN pip install --no-cache-dir setuptools wheel
 RUN pip install --no-cache-dir sentence-transformers>=3.0.0
 RUN pip install --no-cache-dir transformers>=4.30.0
 
+# 8. Prefect workflow orchestration
+RUN pip install --no-cache-dir "prefect>=3.0.0"
+RUN pip install --no-cache-dir "prefect-docker>=0.4.0"
+
 # Copy shared utilities
 COPY shared/ ./shared/
 

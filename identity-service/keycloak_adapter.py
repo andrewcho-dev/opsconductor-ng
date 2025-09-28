@@ -20,7 +20,7 @@ class KeycloakAdapter:
     """Adapter for Keycloak integration with OpsConductor"""
     
     def __init__(self):
-        self.keycloak_url = os.getenv('KEYCLOAK_URL', 'http://localhost:8090')
+        self.keycloak_url = os.getenv('KEYCLOAK_URL', 'http://keycloak:8080')
         self.realm = os.getenv('KEYCLOAK_REALM', 'opsconductor')
         self.client_id = os.getenv('KEYCLOAK_CLIENT_ID', 'opsconductor-frontend')
         self.client_secret = os.getenv('KEYCLOAK_CLIENT_SECRET', 'frontend-secret-key-2024')

@@ -5,8 +5,16 @@
 
 set -e
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 echo "🔄 OpsConductor V3 - Phase 5: Traefik Migration"
 echo "==============================================="
+echo "🌐 Host IP: $HOST_IP"
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,12 +42,11 @@ print_error() {
 
 # Confirmation prompt
 echo ""
-print_warning "This script will migrate from Nginx to Traefik as the primary reverse proxy."
+print_warning "This script will set up Traefik as the primary reverse proxy."
 print_warning "This involves:"
-print_warning "  1. Stopping Nginx container"
-print_warning "  2. Updating Traefik to use port 80/443"
-print_warning "  3. Testing the migration"
-print_warning "  4. Backing up Nginx configuration"
+print_warning "  1. Updating Traefik to use port 80/443"
+print_warning "  2. Testing the migration"
+print_warning "  3. Backing up any existing configuration"
 echo ""
 
 read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
@@ -62,7 +69,7 @@ if ! docker ps | grep -q "opsconductor-traefik"; then
 fi
 
 # Check if Traefik is healthy
-if ! curl -s -f http://localhost:8081/ping > /dev/null; then
+if ! curl -s -f http://$HOST_IP:8081/ping > /dev/null; then
     print_error "Traefik is not healthy. Please check Traefik status."
     exit 1
 fi
@@ -73,43 +80,33 @@ print_success "Traefik is running and healthy"
 print_status "Step 2: Testing Traefik routing before migration"
 
 # Test API routing
-if ! curl -s -f http://localhost/health > /dev/null; then
+if ! curl -s -f http://$HOST_IP/health > /dev/null; then
     print_error "Traefik API routing is not working. Please fix before migration."
     exit 1
 fi
 
 # Test frontend routing
-if ! curl -s -f http://localhost/ > /dev/null; then
+if ! curl -s -f http://$HOST_IP/ > /dev/null; then
     print_error "Traefik frontend routing is not working. Please fix before migration."
     exit 1
 fi
 
 print_success "Traefik routing tests passed"
 
-# Step 3: Backup Nginx configuration
-print_status "Step 3: Backing up Nginx configuration"
+# Step 3: Backup existing configuration
+print_status "Step 3: Backing up existing configuration"
 
-BACKUP_DIR="./nginx-backup-$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="./traefik-migration-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-if [ -d "./nginx" ]; then
-    cp -r ./nginx "$BACKUP_DIR/"
-    print_success "Nginx configuration backed up to $BACKUP_DIR"
+# Backup any existing reverse proxy configurations
+if [ -f "./docker-compose.yml" ]; then
+    cp ./docker-compose.yml "$BACKUP_DIR/"
+    print_success "Docker compose configuration backed up to $BACKUP_DIR"
 fi
 
-# Step 4: Stop Nginx container
-print_status "Step 4: Stopping Nginx container"
-
-if docker ps | grep -q "opsconductor-nginx"; then
-    print_status "Stopping Nginx container..."
-    docker stop opsconductor-nginx
-    print_success "Nginx container stopped"
-else
-    print_warning "Nginx container was not running"
-fi
-
-# Step 5: Update Traefik to use standard ports
-print_status "Step 5: Updating Traefik port configuration"
+# Step 4: Update Traefik to use standard ports
+print_status "Step 4: Updating Traefik port configuration"
 
 # Create updated Traefik compose file with standard ports
 cat > docker-compose.traefik-production.yml << 'EOF'
@@ -170,16 +167,16 @@ docker compose -f docker-compose.traefik-production.yml up -d traefik
 print_status "Waiting for Traefik to restart..."
 sleep 15
 
-# Step 6: Post-migration validation
-print_status "Step 6: Post-migration validation"
+# Step 5: Post-migration validation
+print_status "Step 5: Post-migration validation"
 
 # Check if Traefik is running on port 80
-if ! curl -s -f http://localhost:80/health > /dev/null; then
+if ! curl -s -f http://$HOST_IP:80/health > /dev/null; then
     print_error "Traefik is not responding on port 80. Rolling back..."
     
-    # Rollback: restart Nginx
-    docker start opsconductor-nginx 2>/dev/null || true
-    print_error "Migration failed. Nginx has been restarted."
+    # Rollback: stop Traefik production config
+    docker compose -f docker-compose.traefik-production.yml down traefik 2>/dev/null || true
+    print_error "Migration failed. Traefik has been stopped."
     exit 1
 fi
 
@@ -187,9 +184,9 @@ print_success "Traefik is responding on port 80"
 
 # Test all critical endpoints
 ENDPOINTS=(
-    "http://localhost/health"
-    "http://localhost/api/v1/identity/health"
-    "http://localhost/"
+    "http://$HOST_IP/health"
+    "http://$HOST_IP/api/v1/identity/health"
+    "http://$HOST_IP/"
 )
 
 for endpoint in "${ENDPOINTS[@]}"; do
@@ -202,36 +199,20 @@ for endpoint in "${ENDPOINTS[@]}"; do
     fi
 done
 
-# Step 7: Update docker-compose.yml to disable Nginx
-print_status "Step 7: Updating main docker-compose.yml"
+# Step 6: Update docker-compose.yml for Traefik
+print_status "Step 6: Updating main docker-compose.yml"
 
-# Comment out Nginx service in main docker-compose.yml
-if grep -q "^  nginx:" docker-compose.yml; then
-    print_status "Commenting out Nginx service in docker-compose.yml..."
-    
-    # Create backup of docker-compose.yml
-    cp docker-compose.yml "$BACKUP_DIR/docker-compose.yml.backup"
-    
-    # Comment out Nginx service (simple approach - add # to nginx section)
-    sed -i '/^  # Nginx Reverse Proxy/,/^  [a-zA-Z]/ {
-        /^  [a-zA-Z]/!s/^/# /
-    }' docker-compose.yml || true
-    
-    print_success "Nginx service commented out in docker-compose.yml"
-fi
+# No nginx service to comment out - this step is now just informational
+print_success "Docker compose configuration is ready for Traefik"
 
-# Step 8: Clean up
-print_status "Step 8: Cleaning up"
+# Step 7: Clean up
+print_status "Step 7: Cleaning up"
 
-# Remove Nginx container
-if docker ps -a | grep -q "opsconductor-nginx"; then
-    print_status "Removing Nginx container..."
-    docker rm opsconductor-nginx
-    print_success "Nginx container removed"
-fi
+# Clean up any old containers if they exist
+print_success "Cleanup completed"
 
-# Step 9: Final validation and performance test
-print_status "Step 9: Final validation and performance test"
+# Step 8: Final validation and performance test
+print_status "Step 8: Final validation and performance test"
 
 # Run comprehensive tests
 print_status "Running final validation tests..."
@@ -243,23 +224,22 @@ fi
 
 # Performance test
 print_status "Measuring post-migration performance..."
-RESPONSE_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://localhost/health)
+RESPONSE_TIME=$(curl -s -w "%{time_total}" -o /dev/null http://$HOST_IP/health)
 print_status "Response time: ${RESPONSE_TIME}s"
 
 echo ""
 print_success "🎉 Migration to Traefik completed successfully!"
 echo ""
 echo "📊 Migration Summary:"
-echo "  • Nginx container: Stopped and removed"
 echo "  • Traefik: Now handling all traffic on port 80/443"
 echo "  • Configuration backup: $BACKUP_DIR"
 echo "  • Performance: ${RESPONSE_TIME}s response time"
 echo ""
 echo "🌐 Access Information:"
-echo "  • OpsConductor Application: http://localhost/"
-echo "  • OpsConductor API: http://localhost/api/"
-echo "  • Traefik Dashboard: http://localhost:8081/dashboard/"
-echo "  • Prometheus Metrics: http://localhost:8081/metrics"
+echo "  • OpsConductor Application: http://$HOST_IP/"
+echo "  • OpsConductor API: http://$HOST_IP/api/"
+echo "  • Traefik Dashboard: http://$HOST_IP:8081/dashboard/"
+echo "  • Prometheus Metrics: http://$HOST_IP:8081/metrics"
 echo ""
 echo "🔐 Dashboard Credentials:"
 echo "  • Username: admin"
@@ -272,7 +252,7 @@ echo "  3. Set up alerting for Traefik metrics"
 echo "  4. Update documentation and team knowledge"
 echo ""
 echo "🔧 Rollback Information:"
-echo "  • Nginx backup: $BACKUP_DIR"
-echo "  • To rollback: Restore docker-compose.yml and restart Nginx"
+echo "  • Configuration backup: $BACKUP_DIR"
+echo "  • To rollback: Stop Traefik production config and restart original setup"
 echo ""
 print_success "Phase 5: Traefik migration is complete! 🚀"

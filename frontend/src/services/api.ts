@@ -56,7 +56,7 @@ export const getApiBaseUrl = () => {
 };
 
 export const getServiceUrl = (service: string) => {
-  // Always use the nginx proxy instead of direct service ports
+  // Always use the Kong proxy instead of direct service ports
   return getApiBaseUrl();
 };
 

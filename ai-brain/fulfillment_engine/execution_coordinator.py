@@ -266,7 +266,7 @@ class ExecutionCoordinator:
                             "inputs": {}
                         }
                     ],
-                    "target_systems": step.target_systems or ["localhost"]
+                    "target_systems": step.target_systems or ["automation-service"]
                 }
                 
                 # Submit job to automation service
@@ -303,7 +303,7 @@ class ExecutionCoordinator:
                             "timeout": step.timeout_seconds
                         }
                     ],
-                    "target_systems": step.target_systems or ["localhost"]
+                    "target_systems": step.target_systems or ["automation-service"]
                 }
                 
                 job_result = await self._submit_automation_job(job_data)

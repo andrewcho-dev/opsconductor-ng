@@ -20,7 +20,7 @@ async def test_ping_job():
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                "http://localhost:3005/ai/chat",
+                "http://ai-brain:3005/ai/chat",
                 json=test_request
             )
             

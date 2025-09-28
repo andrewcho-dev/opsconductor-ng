@@ -219,7 +219,7 @@ class BaseService:
         await self.db.initialize(database_url, schema)
         
         # Initialize Redis
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         await self.redis.initialize(redis_url)
         
         # Service-specific startup
@@ -244,7 +244,7 @@ class BaseService:
     
     def _get_database_url(self) -> str:
         """Build database URL from environment variables"""
-        host = os.getenv("DB_HOST", "localhost")
+        host = os.getenv("DB_HOST", "postgres")
         port = os.getenv("DB_PORT", "5432")
         name = os.getenv("DB_NAME", "opsconductor")
         user = os.getenv("DB_USER", "postgres")

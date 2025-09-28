@@ -19,8 +19,10 @@ cd opsconductor-ng
 ```
 
 **Access the platform:**
-- **Web Interface**: http://localhost:3100
+- **Web Interface**: http://YOUR_HOST_IP:3100 (replace YOUR_HOST_IP with your actual server IP)
 - **Default Login**: admin / admin123
+
+> **Note**: Replace `localhost` with your actual server IP address in all URLs below. The deployment scripts will show you the correct IP address to use.
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -76,7 +78,6 @@ OpsConductor NG is a **production-ready, microservices-based IT operations autom
 - **PostgreSQL** (Port 5432) - Primary database with 5 schemas
 - **Redis** (Port 6379) - Caching, sessions, and message streams
 - **ChromaDB** (Port 8000) - Vector database for AI knowledge
-- **Nginx** (Port 80/443) - Reverse proxy and SSL termination
 
 #### Application Services
 - **Kong Gateway** (Port 3000) - Enterprise API gateway with OAuth2
@@ -101,7 +102,7 @@ Transform complex operations into simple conversations with no hardcoded logic:
 
 ```bash
 "Check CPU usage on all Linux servers"
-"Restart nginx service on web servers"
+"Restart apache service on web servers"
 "Show disk space alerts from last 24 hours"
 "Create a PowerShell script to restart IIS"
 "Schedule weekly disk cleanup on Windows servers"
@@ -169,9 +170,9 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 docker-compose ps
 
 # Individual health checks
-curl http://localhost:3000/health  # Kong Gateway
-curl http://localhost:3005/health  # AI Brain
-curl http://localhost:5555         # Celery Flower Dashboard
+curl http://$(hostname -I | awk '{print $1}'):3000/health  # Kong Gateway
+curl http://$(hostname -I | awk '{print $1}'):3005/health  # AI Brain
+curl http://$(hostname -I | awk '{print $1}'):5555         # Celery Flower Dashboard
 ```
 
 ---
@@ -217,9 +218,11 @@ GET  /api/v1/executions           - List job executions
 ```
 
 ### Interactive Documentation
-- **Kong Gateway**: http://localhost:3000/docs
-- **AI Brain**: http://localhost:3005/docs
+- **Kong Gateway**: http://YOUR_HOST_IP:3000/docs
+- **AI Brain**: http://YOUR_HOST_IP:3005/docs
 - **All Services**: Available at `<service-url>/docs`
+
+*Replace YOUR_HOST_IP with your actual host IP address*
 
 ---
 
@@ -240,9 +243,9 @@ python test_frontend_integration.py
 ### Manual Testing
 ```bash
 # Test AI chat
-curl -X POST http://localhost:3005/ai/chat \
+curl -X POST http://$(hostname -I | awk '{print $1}'):3005/ai/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "restart nginx on web servers", "user_id": 1}'
+  -d '{"message": "restart apache on web servers", "user_id": 1}'
 ```
 
 ---
@@ -292,7 +295,7 @@ opsconductor-ng/
 - **GPU**: Optional NVIDIA GPU for enhanced AI performance
 
 ### Monitoring Tools
-- **Celery Flower**: http://localhost:5555 (admin/admin123)
+- **Celery Flower**: http://YOUR_HOST_IP:5555 (admin/admin123)
 - **Health Checks**: All services provide `/health` endpoints
 - **Audit Logs**: Complete operation tracking in database
 
@@ -327,13 +330,13 @@ docker-compose up -d postgres
 #### AI Service Issues
 ```bash
 # Test AI service health
-curl http://localhost:3005/health
+curl http://$(hostname -I | awk '{print $1}'):3005/health
 
 # Check Ollama models
-curl http://localhost:11434/api/tags
+curl http://$(hostname -I | awk '{print $1}'):11434/api/tags
 
 # Verify ChromaDB
-curl http://localhost:8000/api/v1/heartbeat
+curl http://$(hostname -I | awk '{print $1}'):8000/api/v1/heartbeat
 ```
 
 ---

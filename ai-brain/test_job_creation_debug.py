@@ -15,9 +15,9 @@ async def test_job_creation():
     """Test the job creation pipeline with debugging"""
     
     # Initialize components
-    llm_engine = LLMEngine(ollama_host="http://localhost:11434", default_model="llama3.2:latest")
+    llm_engine = LLMEngine(ollama_host="http://ollama:11434", default_model="llama3.2:latest")
     await llm_engine.initialize()
-    automation_client = AutomationServiceClient(automation_service_url="http://localhost:3003")
+    automation_client = AutomationServiceClient(automation_service_url="http://automation-service:3003")
     job_creator = LLMJobCreator(llm_engine, automation_client)
     
     # Test request

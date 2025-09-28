@@ -5,6 +5,13 @@
 
 set -e  # Exit on any error
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,7 +48,7 @@ check_service_health() {
     local port=$2
     local endpoint=${3:-"/health"}
     
-    curl -s -f "http://localhost:${port}${endpoint}" > /dev/null 2>&1
+    curl -s -f "http://$HOST_IP:${port}${endpoint}" > /dev/null 2>&1
     return $?
 }
 
@@ -63,17 +70,17 @@ check_infrastructure_health() {
             ;;
         "chromadb")
             # Check ChromaDB health endpoint
-            curl -s -f "http://localhost:8000/api/v1/heartbeat" > /dev/null 2>&1
+            curl -s -f "http://$HOST_IP:8000/api/v1/heartbeat" > /dev/null 2>&1
             return $?
             ;;
         "ollama")
             # Check if Ollama is responding
-            curl -s -f "http://localhost:11434/api/tags" > /dev/null 2>&1
+            curl -s -f "http://$HOST_IP:11434/api/tags" > /dev/null 2>&1
             return $?
             ;;
         *)
             # Default to port check
-            nc -z localhost $port > /dev/null 2>&1
+            nc -z $HOST_IP $port > /dev/null 2>&1
             return $?
             ;;
     esac
@@ -354,7 +361,7 @@ verify_services() {
     # Check gateway services
     if echo "$running_services" | grep -q "kong"; then
         # Kong doesn't have a standard health endpoint, just check if it's responding
-        if nc -z localhost 8080 > /dev/null 2>&1; then
+        if nc -z $HOST_IP 8080 > /dev/null 2>&1; then
             log_success "kong is responding"
         else
             failed_services+=("kong")
@@ -457,34 +464,34 @@ show_info() {
     log_success "🚀 OpsConductor is ready!"
     echo
     echo -e "${CYAN}Access URLs:${NC}"
-    echo -e "  API Gateway:        ${GREEN}http://localhost:3000${NC}"
-    echo -e "  Identity Service:   ${GREEN}http://localhost:3001${NC}"
-    echo -e "  Asset Service:      ${GREEN}http://localhost:3002${NC}"
-    echo -e "  Automation Service: ${GREEN}http://localhost:3003${NC}"
-    echo -e "  Communication:      ${GREEN}http://localhost:3004${NC}"
+    echo -e "  API Gateway:        ${GREEN}http://$HOST_IP:3000${NC}"
+    echo -e "  Identity Service:   ${GREEN}http://$HOST_IP:3001${NC}"
+    echo -e "  Asset Service:      ${GREEN}http://$HOST_IP:3002${NC}"
+    echo -e "  Automation Service: ${GREEN}http://$HOST_IP:3003${NC}"
+    echo -e "  Communication:      ${GREEN}http://$HOST_IP:3004${NC}"
     
     if docker compose -f $COMPOSE_FILE config --services | grep -q "ai-brain"; then
-        echo -e "  AI Brain Service:   ${GREEN}http://localhost:3005${NC}"
+        echo -e "  AI Brain Service:   ${GREEN}http://$HOST_IP:3005${NC}"
     fi
     
     if docker compose -f $COMPOSE_FILE config --services | grep -q "network-analyzer-service"; then
-        echo -e "  Network Analyzer:   ${GREEN}http://localhost:3006${NC}"
+        echo -e "  Network Analyzer:   ${GREEN}http://$HOST_IP:3006${NC}"
     fi
     
-    echo -e "  Keycloak Admin:     ${GREEN}http://localhost:8090${NC}"
-    echo -e "  ChromaDB:           ${GREEN}http://localhost:8000${NC}"
-    echo -e "  Ollama:             ${GREEN}http://localhost:11434${NC}"
+    echo -e "  Keycloak Admin:     ${GREEN}http://$HOST_IP:8090${NC}"
+    echo -e "  ChromaDB:           ${GREEN}http://$HOST_IP:8000${NC}"
+    echo -e "  Ollama:             ${GREEN}http://$HOST_IP:11434${NC}"
     
     if docker compose -f $COMPOSE_FILE config --services | grep -q "prefect-server"; then
-        echo -e "  Prefect UI:         ${GREEN}http://localhost:4200${NC}"
+        echo -e "  Prefect UI:         ${GREEN}http://$HOST_IP:4200${NC}"
     fi
     
     if docker compose -f $COMPOSE_FILE config --services | grep -q "celery-monitor"; then
-        echo -e "  Celery Monitor:     ${GREEN}http://localhost:5555${NC}"
+        echo -e "  Celery Monitor:     ${GREEN}http://$HOST_IP:5555${NC}"
     fi
     
     if docker compose -f $COMPOSE_FILE config --services | grep -q "frontend"; then
-        echo -e "  Frontend:           ${GREEN}http://localhost${NC}"
+        echo -e "  Frontend:           ${GREEN}http://$HOST_IP${NC}"
     fi
     
     echo
@@ -492,7 +499,7 @@ show_info() {
     if [ -f "monitoring/advanced-dashboard.html" ]; then
         echo -e "  Advanced Dashboard: ${GREEN}monitoring/advanced-dashboard.html${NC}"
     fi
-    echo -e "  Service Health:     ${GREEN}curl http://localhost:3001/health${NC}"
+    echo -e "  Service Health:     ${GREEN}curl http://$HOST_IP:3001/health${NC}"
     echo -e "  Docker Logs:        ${GREEN}docker compose logs -f [service]${NC}"
     echo
     echo -e "${CYAN}Useful Commands:${NC}"

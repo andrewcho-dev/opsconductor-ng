@@ -1,12 +1,20 @@
 #!/bin/bash
 
 # OpsConductor V3 - Phase 5: Traefik Deployment Script
-# Deploy Traefik reverse proxy alongside existing Nginx
+# Deploy Traefik reverse proxy alongside existing Kong Gateway
 
 set -e
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 echo "🚀 OpsConductor V3 - Phase 5: Traefik Deployment"
 echo "=================================================="
+echo "🌐 Host IP: $HOST_IP"
 
 # Colors for output
 RED='\033[0;31m'
@@ -90,7 +98,7 @@ if docker ps | grep -q "opsconductor-traefik"; then
     print_success "Traefik container is running"
     
     # Check if Traefik dashboard is accessible
-    if curl -s -f http://localhost:8081/ping > /dev/null; then
+    if curl -s -f http://$HOST_IP:8081/ping > /dev/null; then
         print_success "Traefik dashboard is accessible"
     else
         print_warning "Traefik dashboard is not yet accessible (may still be starting)"
@@ -104,7 +112,7 @@ fi
 print_status "Checking service discovery..."
 
 # Test if Traefik can discover services
-TRAEFIK_API="http://localhost:8081/api/http/routers"
+TRAEFIK_API="http://$HOST_IP:8081/api/http/routers"
 if curl -s "$TRAEFIK_API" | grep -q "kong-api"; then
     print_success "Traefik discovered Kong Gateway service"
 else
@@ -120,14 +128,14 @@ fi
 print_status "Testing Traefik routing..."
 
 # Test API routing through Traefik (port 8082)
-if curl -s -f http://localhost:8082/health > /dev/null; then
+if curl -s -f http://$HOST_IP:8082/health > /dev/null; then
     print_success "API routing through Traefik is working"
 else
     print_warning "API routing through Traefik is not yet working (services may still be starting)"
 fi
 
 # Test frontend routing through Traefik
-if curl -s -f http://localhost:8082/ > /dev/null; then
+if curl -s -f http://$HOST_IP:8082/ > /dev/null; then
     print_success "Frontend routing through Traefik is working"
 else
     print_warning "Frontend routing through Traefik is not yet working"
@@ -137,11 +145,11 @@ echo ""
 print_success "Traefik deployment completed!"
 echo ""
 echo "📊 Access Information:"
-echo "  • Traefik Dashboard: http://localhost:8081/dashboard/"
-echo "  • Traefik API: http://localhost:8081/api/"
-echo "  • OpsConductor (via Traefik): http://localhost:8082/"
-echo "  • OpsConductor API (via Traefik): http://localhost:8082/api/"
-echo "  • Prometheus Metrics: http://localhost:8081/metrics"
+echo "  • Traefik Dashboard: http://$HOST_IP:8081/dashboard/"
+echo "  • Traefik API: http://$HOST_IP:8081/api/"
+echo "  • OpsConductor (via Traefik): http://$HOST_IP:8082/"
+echo "  • OpsConductor API (via Traefik): http://$HOST_IP:8082/api/"
+echo "  • Prometheus Metrics: http://$HOST_IP:8081/metrics"
 echo ""
 echo "🔐 Dashboard Credentials:"
 echo "  • Username: admin"
@@ -149,8 +157,8 @@ echo "  • Password: admin123"
 echo ""
 echo "📋 Next Steps:"
 echo "  1. Test all routes through Traefik (port 8082)"
-echo "  2. Compare performance with Nginx (port 80 via nginx)"
+echo "  2. Compare performance with Kong direct access (port 3000)"
 echo "  3. Run: ./test-traefik.sh to validate all functionality"
 echo "  4. When ready, run: ./migrate-to-traefik.sh to complete migration"
 echo ""
-print_warning "Note: Both Nginx and Traefik are running. Nginx is on port 80, Traefik is on port 8082 for testing."
+print_warning "Note: Traefik is running on port 8082 for testing alongside Kong on port 3000."

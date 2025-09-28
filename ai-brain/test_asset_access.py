@@ -25,7 +25,7 @@ async def test_asset_access():
     
     # Test 1: Direct asset client access
     print("\n1. Testing direct asset client access...")
-    asset_client = AssetServiceClient("http://localhost:3002")
+    asset_client = AssetServiceClient("http://asset-service:3002")
     
     # Health check
     healthy = await asset_client.health_check()
@@ -57,7 +57,7 @@ async def test_asset_access():
     
     try:
         # Initialize LLM engine
-        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
         default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
         llm_engine = LLMEngine(ollama_host, default_model)
         

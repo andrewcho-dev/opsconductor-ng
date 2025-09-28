@@ -363,13 +363,16 @@
             }
 
             async fetchServiceStatus() {
+                // Get host IP dynamically for external service access
+                const hostIP = window.location.hostname || 'YOUR_HOST_IP';
+                
                 const services = [
-                    { name: 'PostgreSQL', url: 'http://localhost:5432', type: 'database' },
-                    { name: 'Redis', url: 'redis://localhost:6379', type: 'cache' },
-                    { name: 'Keycloak', url: 'http://localhost:8080/health/ready', type: 'auth' },
-                    { name: 'Kong Gateway', url: 'http://localhost:8000', type: 'gateway' },
-                    { name: 'Identity Service', url: 'http://localhost:3001/health', type: 'service' },
-                    { name: 'Monitoring', url: 'http://localhost:3000/health', type: 'service' }
+                    { name: 'PostgreSQL', url: `http://${hostIP}:5432`, type: 'database' },
+                    { name: 'Redis', url: `redis://${hostIP}:6379`, type: 'cache' },
+                    { name: 'Keycloak', url: `http://${hostIP}:8080/health/ready`, type: 'auth' },
+                    { name: 'Kong Gateway', url: `http://${hostIP}:8000`, type: 'gateway' },
+                    { name: 'Identity Service', url: `http://${hostIP}:3001/health`, type: 'service' },
+                    { name: 'Monitoring', url: `http://${hostIP}:3000/health`, type: 'service' }
                 ];
 
                 const results = await Promise.allSettled(

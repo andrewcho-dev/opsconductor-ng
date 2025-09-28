@@ -86,7 +86,7 @@ class StreamMessage:
 class RedisStreamsClient:
     """Enterprise Redis Streams client with consumer groups and dead letter queues"""
     
-    def __init__(self, redis_url: str = "redis://localhost:6379/0", password: str = None):
+    def __init__(self, redis_url: str = "redis://redis:6379/0", password: str = None):
         self.redis_url = redis_url
         self.password = password
         self.redis_client: Optional[redis.Redis] = None
@@ -478,7 +478,7 @@ async def publish_event(client: RedisStreamsClient,
 async def create_streams_client(redis_url: str = None, password: str = None) -> RedisStreamsClient:
     """Create and initialize a Redis Streams client"""
     if redis_url is None:
-        redis_url = "redis://localhost:6380/0"  # Default to streams Redis
+        redis_url = "redis://redis:6380/0"  # Default to streams Redis
     
     client = RedisStreamsClient(redis_url, password)
     await client.initialize()

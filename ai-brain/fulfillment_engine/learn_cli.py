@@ -260,7 +260,7 @@ def quick_setup(learner, args):
     elif args.tech == 'docker':
         print("🔍 Learning Docker API...")
         success = asyncio.run(learner.learn_from_api_url(
-            "http://localhost:2376",
+            "unix:///var/run/docker.sock",
             "Docker Engine",
             "Docker container management API",
             ["docker", "container", "image", "registry"]

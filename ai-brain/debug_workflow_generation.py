@@ -23,7 +23,7 @@ async def debug_workflow_generation():
         ollama_host = "http://ollama:11434"
         default_model = "llama3.2:3b"
         llm_engine = LLMEngine(ollama_host, default_model)
-        automation_client = AutomationServiceClient("http://localhost:3003")
+        automation_client = AutomationServiceClient("http://automation-service:3003")
         
         execution_coordinator = ExecutionCoordinator(
             automation_client=automation_client,

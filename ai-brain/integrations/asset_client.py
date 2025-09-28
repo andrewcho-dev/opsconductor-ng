@@ -2,6 +2,7 @@
 Asset service client for OpsConductor AI Service
 Handles communication with the asset service to get assets
 """
+import os
 import requests
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -90,7 +91,9 @@ class AssetServiceClient:
 # Example usage and testing
 async def test_asset_client():
     """Test the asset client"""
-    client = AssetServiceClient("http://localhost:3002")
+    # Use environment variable for asset service URL, fallback to Docker service name
+    asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
+    client = AssetServiceClient(asset_service_url)
     
     print("=== Asset Service Client Test ===")
     

@@ -429,9 +429,10 @@ async def example_usage():
     # Start the registry background tasks
     await service_registry.start_background_tasks()
     
-    # Register some services
-    registrar1 = ServiceRegistrar("identity-service", "localhost", 3001)
-    registrar2 = ServiceRegistrar("identity-service", "localhost", 3002)  # Second instance
+    # Register some services - use Docker service names for containerized environments
+    # In Docker, services register with their container names, not localhost
+    registrar1 = ServiceRegistrar("identity-service", "identity-service", 3001)
+    registrar2 = ServiceRegistrar("identity-service", "identity-service-2", 3001)  # Second instance with different container name
     
     await registrar1.register(metadata={"version": "1.0.0"}, tags=["auth", "users"])
     await registrar2.register(metadata={"version": "1.0.1"}, tags=["auth", "users"])

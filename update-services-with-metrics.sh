@@ -5,6 +5,9 @@
 
 set -e
 
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+
 echo "🔧 Updating OpsConductor services with Prometheus metrics support..."
 
 # Services to update
@@ -69,8 +72,8 @@ for service in "${SERVICES[@]}"; do
         "network-analyzer-service") port=3006 ;;
     esac
     
-    echo "Testing $service metrics at http://localhost:$port/metrics"
-    if curl -s -f http://localhost:$port/metrics > /dev/null; then
+    echo "Testing $service metrics at http://${HOST_IP}:$port/metrics"
+    if curl -s -f http://${HOST_IP}:$port/metrics > /dev/null; then
         echo "✅ $service metrics endpoint working"
     else
         echo "❌ $service metrics endpoint not responding"
@@ -79,7 +82,7 @@ done
 
 echo ""
 echo "🔍 Checking Prometheus targets..."
-echo "Visit http://localhost:9090/targets to verify all services are being scraped"
+echo "Visit http://${HOST_IP}:9090/targets to verify all services are being scraped"
 echo ""
-echo "📈 Grafana available at http://localhost:3200 (admin/admin)"
-echo "📊 Prometheus available at http://localhost:9090"
+echo "📈 Grafana available at http://${HOST_IP}:3200 (admin/admin)"
+echo "📊 Prometheus available at http://${HOST_IP}:9090"

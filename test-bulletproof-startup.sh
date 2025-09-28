@@ -3,6 +3,9 @@
 # Test script for bulletproof startup system
 set -e
 
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -80,7 +83,7 @@ services=(
 for service_info in "${services[@]}"; do
     IFS=':' read -r service port endpoint <<< "$service_info"
     
-    if curl -s -f "http://localhost:${port}${endpoint}" > /dev/null 2>&1; then
+    if curl -s -f "http://${HOST_IP}:${port}${endpoint}" > /dev/null 2>&1; then
         log_success "$service endpoint is responding"
     else
         log_error "$service endpoint is not responding"
@@ -108,7 +111,7 @@ else
 fi
 
 # Test ChromaDB
-if curl -s -f "http://localhost:8000/api/v1/heartbeat" > /dev/null 2>&1; then
+if curl -s -f "http://${HOST_IP}:8000/api/v1/heartbeat" > /dev/null 2>&1; then
     log_success "ChromaDB heartbeat is responding"
 else
     log_error "ChromaDB heartbeat is not responding"
@@ -126,7 +129,7 @@ sleep 10
 max_attempts=24  # Increased timeout for service restart
 attempt=0
 while [ $attempt -lt $max_attempts ]; do
-    if curl -s -f "http://localhost:3001/ready" > /dev/null 2>&1; then
+    if curl -s -f "http://${HOST_IP}:3001/ready" > /dev/null 2>&1; then
         log_success "Identity service recovered successfully after restart"
         break
     fi

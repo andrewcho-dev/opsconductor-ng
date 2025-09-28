@@ -116,7 +116,7 @@ def main():
     """Main test function"""
     if len(sys.argv) < 2:
         print("Usage: python test-probe.py <central_analyzer_url> [probe_id]")
-        print("Example: python test-probe.py http://localhost:3006 test-probe-001")
+        print("Example: python test-probe.py http://YOUR_HOST_IP:3006 test-probe-001")
         sys.exit(1)
     
     analyzer_url = sys.argv[1].rstrip('/')

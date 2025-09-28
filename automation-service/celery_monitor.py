@@ -76,7 +76,7 @@ class CeleryMonitor:
     """Real-time Celery monitoring and management"""
     
     def __init__(self):
-        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/3")
+        self.redis_url = os.getenv("REDIS_URL", "redis://redis:6379/3")
         self.db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
         
         # Initialize Celery app for monitoring

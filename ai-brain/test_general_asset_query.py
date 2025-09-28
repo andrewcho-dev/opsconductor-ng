@@ -24,7 +24,7 @@ async def test_general_asset_query():
     print("=== Testing General Asset Query ===")
     
     # Initialize components
-    asset_client = AssetServiceClient("http://localhost:3002")
+    asset_client = AssetServiceClient("http://asset-service:3002")
     
     # Health check
     healthy = await asset_client.health_check()
@@ -35,7 +35,7 @@ async def test_general_asset_query():
         return False
     
     # Initialize LLM engine
-    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
     default_model = os.getenv("DEFAULT_MODEL", "llama3.2:3b")
     llm_engine = LLMEngine(ollama_host, default_model)
     

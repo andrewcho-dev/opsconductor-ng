@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import ollama
 
-client = ollama.Client(host="http://localhost:11434")
+client = ollama.Client(host="http://ollama:11434")
 response = client.list()
 print("Type:", type(response))
 print("Response:", response)

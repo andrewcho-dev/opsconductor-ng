@@ -112,7 +112,7 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 **Message Queue**: Redis 7.4 for service communication
 **LLM Server**: Ollama for local model serving
 **Vector Database**: ChromaDB for AI knowledge storage
-**Reverse Proxy**: Nginx for SSL termination
+**Reverse Proxy**: Traefik for SSL termination and routing
 
 #### Database Schema
 **5 Schemas**:
@@ -147,7 +147,7 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 ### Advanced Features
 - **GPU Acceleration**: NVIDIA GPU support for LLM performance
-- **Traefik Integration**: Alternative to Nginx (deploy-traefik.sh)
+- **Traefik Integration**: Primary reverse proxy solution (deploy-traefik.sh)
 - **ELK Stack**: Optional logging infrastructure (deploy-elk.sh)
 - **Redis Streams**: Advanced message processing (deploy-redis-streams.sh)
 - **Remote Probes**: Distributed network monitoring agents

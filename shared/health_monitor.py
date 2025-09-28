@@ -475,13 +475,17 @@ async def setup_monitoring():
     """Setup example monitoring configuration"""
     monitor = HealthMonitor()
     
-    # Add services
-    monitor.add_http_service("identity-service", "http://localhost:3001/health")
-    monitor.add_http_service("kong-gateway", "http://localhost:8000")
-    monitor.add_http_service("keycloak", "http://localhost:8080/health/ready")
+    # Get host IP from environment for external access
+    host_ip = os.getenv('HOST_IP', '127.0.0.1')
     
-    monitor.add_postgres("postgres", "localhost", 5432, "opsconductor", "postgres", "postgres123")
-    monitor.add_redis("redis", "redis://localhost:6379/0")
+    # Add services - use host IP for external access
+    monitor.add_http_service("identity-service", f"http://{host_ip}:3001/health")
+    monitor.add_http_service("kong-gateway", f"http://{host_ip}:8000")
+    monitor.add_http_service("keycloak", f"http://{host_ip}:8080/health/ready")
+    
+    # For database connections, use host IP for external access
+    monitor.add_postgres("postgres", host_ip, 5432, "opsconductor", "postgres", "postgres123")
+    monitor.add_redis("redis", f"redis://{host_ip}:6379/0")
     
     # Add alert callback
     monitor.add_alert_callback(log_alert)

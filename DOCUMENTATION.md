@@ -16,7 +16,7 @@
 ### For New Users
 1. Start with [README.md](README.md) for overview
 2. Follow [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for setup
-3. Access web interface at http://localhost:3100
+3. Access web interface at http://YOUR_HOST_IP:3100 (deployment script will show the correct IP)
 
 ### For Developers
 1. Review [REPO.md](REPO.md) for architecture
@@ -25,14 +25,14 @@
 
 ### For System Administrators
 1. Follow [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for production deployment
-2. Use monitoring tools: http://localhost:5555 (Celery Flower)
+2. Use monitoring tools: http://YOUR_HOST_IP:5555 (Celery Flower - deployment script will show correct IP)
 3. Check service health: `./verify-setup.sh`
 
 ## 🔧 API Documentation
 
 ### Interactive Documentation
-- **Kong Gateway**: http://localhost:3000/docs
-- **AI Brain**: http://localhost:3005/docs
+- **Kong Gateway**: http://YOUR_HOST_IP:3000/docs (deployment script will show correct IP)
+- **AI Brain**: http://YOUR_HOST_IP:3005/docs (deployment script will show correct IP)
 - **All Services**: Available at `<service-url>/docs`
 
 ### Key Endpoints
@@ -69,20 +69,20 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```bash
 ./verify-setup.sh                    # Complete system verification
 docker-compose ps                    # Service status
-curl http://localhost:3000/health    # Kong Gateway health
-curl http://localhost:3005/health    # AI Brain health
+curl http://YOUR_HOST_IP:3000/health    # Kong Gateway health (use actual host IP)
+curl http://YOUR_HOST_IP:3005/health    # AI Brain health (use actual host IP)
 ```
 
 ### Common Issues
 - **Services won't start**: Check `docker-compose logs <service-name>`
 - **Database issues**: Verify with `docker exec opsconductor-postgres psql -U postgres -d opsconductor -c "SELECT 1;"`
-- **AI not responding**: Check Ollama with `curl http://localhost:11434/api/tags`
+- **AI not responding**: Check Ollama with `curl http://YOUR_HOST_IP:11434/api/tags` (use actual host IP)
 - **GPU issues**: See [docs/GPU_VFIO_PCI_VM_FIX.md](docs/GPU_VFIO_PCI_VM_FIX.md)
 
 ## 📊 System Information
 
 ### Default Access
-- **Web Interface**: http://localhost:3100
+- **Web Interface**: http://YOUR_HOST_IP:3100 (deployment script will show correct IP)
 - **Default Login**: admin / admin123
 - **Change password immediately** after first login
 

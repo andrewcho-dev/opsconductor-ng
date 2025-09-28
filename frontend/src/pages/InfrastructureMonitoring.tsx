@@ -95,7 +95,10 @@ const InfrastructureMonitoring: React.FC = () => {
       }
     ];
 
-    const mockServices: Service[] = [
+    // Get the current host dynamically
+  const currentHost = window.location.hostname;
+  
+  const mockServices: Service[] = [
       {
         id: '1',
         name: 'PostgreSQL Database',
@@ -104,7 +107,7 @@ const InfrastructureMonitoring: React.FC = () => {
         uptime: 2592000, // 30 days in seconds
         responseTime: 12,
         lastCheck: new Date().toISOString(),
-        url: 'postgresql://localhost:5432'
+        url: `postgresql://${currentHost}:5432`
       },
       {
         id: '2',
@@ -114,7 +117,7 @@ const InfrastructureMonitoring: React.FC = () => {
         uptime: 1728000, // 20 days in seconds
         responseTime: 2,
         lastCheck: new Date().toISOString(),
-        url: 'redis://localhost:6379'
+        url: `redis://${currentHost}:6379`
       },
       {
         id: '3',
@@ -124,7 +127,7 @@ const InfrastructureMonitoring: React.FC = () => {
         uptime: 604800, // 7 days in seconds
         responseTime: 45,
         lastCheck: new Date().toISOString(),
-        url: 'http://localhost:4200'
+        url: `http://${currentHost}:4200`
       },
       {
         id: '4',
@@ -143,7 +146,7 @@ const InfrastructureMonitoring: React.FC = () => {
         uptime: 2592000, // 30 days in seconds
         responseTime: 8,
         lastCheck: new Date().toISOString(),
-        url: 'http://localhost:8000'
+        url: `http://${currentHost}:8000`
       },
       {
         id: '6',
@@ -153,7 +156,7 @@ const InfrastructureMonitoring: React.FC = () => {
         uptime: 0,
         responseTime: 0,
         lastCheck: new Date().toISOString(),
-        url: 'http://localhost:8080'
+        url: `http://${currentHost}:8080`
       }
     ];
 

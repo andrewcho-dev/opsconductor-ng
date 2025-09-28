@@ -69,7 +69,7 @@ async def test_working_ping():
     print("=" * 60)
     
     # Initialize components
-    llm_engine = LLMEngine(ollama_host="http://localhost:11434", default_model="llama3.2")
+    llm_engine = LLMEngine(ollama_host="http://ollama:11434", default_model="llama3.2")
     await llm_engine.initialize()
     fulfillment_engine = FulfillmentEngine(llm_engine=llm_engine)
     

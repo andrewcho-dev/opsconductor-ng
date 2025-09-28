@@ -25,7 +25,7 @@ import threading
 # Configuration
 @dataclass
 class ProbeConfig:
-    central_analyzer_url: str = "http://localhost:3006"
+    central_analyzer_url: str = "http://YOUR_HOST_IP:3006"
     probe_id: str = "remote-probe-001"
     probe_name: str = "Remote Network Probe"
     probe_location: str = "Remote Location"
@@ -460,7 +460,7 @@ def create_default_config(config_path: str):
     """Create default configuration file"""
     default_config = {
         'central_analyzer': {
-            'url': 'http://localhost:3006',
+            'url': 'http://YOUR_HOST_IP:3006',
             'api_key': None
         },
         'probe': {

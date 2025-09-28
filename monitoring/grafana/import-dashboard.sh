@@ -2,7 +2,9 @@
 
 # Import OpsConductor dashboards into Grafana
 
-GRAFANA_URL="http://localhost:3200"
+# Get dynamic host IP
+HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
+GRAFANA_URL="http://${HOST_IP}:3200"
 GRAFANA_USER="admin"
 GRAFANA_PASS="admin123"
 DASHBOARD_DIR="/home/opsconductor/opsconductor-ng/monitoring/grafana/dashboards"

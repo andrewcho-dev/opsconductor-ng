@@ -415,15 +415,15 @@ class BaseService:
         await self.db.initialize(database_url, schema)
         
         # Initialize Redis
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         await self.redis.initialize(redis_url)
         
         # Initialize service monitor
         self.service_monitor = ServiceMonitor(redis_url, self.name)
         await self.service_monitor.initialize()
         
-        # Register this service
-        service_url = f"http://localhost:{self.port}"
+        # Register this service - use container name for internal communication
+        service_url = f"http://{self.name}:{self.port}"
         await self.service_monitor.register_service(
             self.name, 
             service_url,
@@ -451,8 +451,8 @@ class BaseService:
     
     async def _setup_dependencies(self):
         """Setup common dependencies - override in subclasses for service-specific deps"""
-        # Database dependency
-        db_host = os.getenv("DB_HOST", "localhost")
+        # Database dependency - use Docker service name
+        db_host = os.getenv("DB_HOST", "postgres")
         db_port = int(os.getenv("DB_PORT", "5432"))
         db_name = os.getenv("DB_NAME", "opsconductor")
         db_user = os.getenv("DB_USER", "postgres")
@@ -469,8 +469,8 @@ class BaseService:
             description="PostgreSQL database connection"
         )
         
-        # Redis dependency
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        # Redis dependency - use Docker service name
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         
         async def redis_check():
             return await check_redis(redis_url)
@@ -500,7 +500,7 @@ class BaseService:
     
     def _get_database_url(self) -> str:
         """Build database URL from environment variables"""
-        host = os.getenv("DB_HOST", "localhost")
+        host = os.getenv("DB_HOST", "postgres")
         port = os.getenv("DB_PORT", "5432")
         name = os.getenv("DB_NAME", "opsconductor")
         user = os.getenv("DB_USER", "postgres")

@@ -498,7 +498,7 @@ You have access to the following specialized services. Analyze the NATURE and CO
 
 ## 🤖 AUTOMATION-SERVICE (Port: 3003) - FAST & SIMPLE
 **BEST FOR**: Immediate execution, simple operations, basic scheduling
-**NETWORK ACCESS**: Container network (through nginx proxy)
+**NETWORK ACCESS**: Container network (through Traefik proxy)
 **EXECUTION STYLE**: Fast response (< 1 second), direct execution, real-time monitoring
 **IDEAL FOR**:
 - **Single commands**: restart service, check status, run script, file operations

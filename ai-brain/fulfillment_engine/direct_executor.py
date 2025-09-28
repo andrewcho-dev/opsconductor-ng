@@ -785,7 +785,7 @@ Your decision:"""
 JOB_SOLUTION:
 JOB_NAME: [descriptive name for the automation job]
 DESCRIPTION: [comprehensive description of what this accomplishes and how it works]
-TARGET_SYSTEMS: [specific system IDs from the asset inventory, or localhost if none available]
+TARGET_SYSTEMS: [specific system IDs from the asset inventory, or automation-service if none available]
 COMMANDS:
 [actual executable commands appropriate for the target operating systems]
 SCHEDULING: [if recurring/scheduled, specify exact schedule requirements for celery-beat]
@@ -845,7 +845,7 @@ CRITICAL: You must respond with EXACTLY this format, no conversational text:
 JOB_SOLUTION:
 JOB_NAME: [descriptive name]
 DESCRIPTION: [what this job does]
-TARGET_SYSTEMS: [comma-separated list of target systems or 'localhost']
+TARGET_SYSTEMS: [comma-separated list of target systems or 'automation-service']
 COMMANDS:
 [actual executable commands, one per line]
 SCHEDULING: [none or schedule details]
@@ -1007,7 +1007,7 @@ Do NOT provide conversational responses. Do NOT make up job IDs. Follow the form
             job_name = "AI Generated Job"
             description = f"Job created for: {user_message}"
             commands = []
-            target_systems = ["localhost"]
+            target_systems = ["automation-service"]
             
             current_section = None
             for line in lines:
@@ -1127,15 +1127,15 @@ Commands:"""
         
         try:
             if not self.asset_client:
-                logger.warning("Asset client not available, using localhost")
-                return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+                logger.warning("Asset client not available, using automation-service")
+                return [{"id": "automation-service", "name": "automation-service", "hostname": "automation-service", "os_type": "linux"}]
             
             # Get all assets from asset service
             assets = await self.asset_client.get_all_assets()
             
             if not assets:
-                logger.warning("No assets found in asset service, using localhost")
-                return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+                logger.warning("No assets found in asset service, using automation-service")
+                return [{"id": "automation-service", "name": "automation-service", "hostname": "automation-service", "os_type": "linux"}]
             
             # Filter based on user message context
             if "windows" in user_message.lower():
@@ -1147,31 +1147,31 @@ Commands:"""
             
         except Exception as e:
             logger.error(f"❌ Failed to get assets from asset service: {e}")
-            return [{"id": "localhost", "name": "localhost", "hostname": "localhost", "os_type": "linux"}]
+            return [{"id": "automation-service", "name": "automation-service", "hostname": "automation-service", "os_type": "linux"}]
     
 
     def _validate_target_systems(self, parsed_targets: List[str], available_targets: List[Dict[str, Any]] = None) -> List[str]:
         """Validate target systems against available targets"""
         
         if not available_targets:
-            # If no available targets, allow localhost
-            return ["localhost"] if "localhost" in parsed_targets else ["localhost"]
+            # If no available targets, allow automation-service
+            return ["automation-service"] if "automation-service" in parsed_targets else ["automation-service"]
         
         validated_targets = []
-        available_ids = [str(t.get("id", "")) for t in available_targets] + ["localhost"]
+        available_ids = [str(t.get("id", "")) for t in available_targets] + ["automation-service"]
         
         for target in parsed_targets:
             target = target.strip()
             if target in available_ids:
                 validated_targets.append(target)
-            elif target == "localhost":
+            elif target == "automation-service":
                 validated_targets.append(target)
             else:
                 logger.warning(f"Invalid target system '{target}' not found in available targets")
         
-        # If no valid targets found, use localhost as fallback
+        # If no valid targets found, use automation-service as fallback
         if not validated_targets:
-            validated_targets = ["localhost"]
+            validated_targets = ["automation-service"]
         
         return validated_targets
     
@@ -1217,11 +1217,11 @@ Commands:"""
                         service_context += "\n"
                 else:
                     service_context += "No asset systems currently registered in asset service.\n"
-                    service_context += "You may need to use 'localhost' or help the user register their systems first.\n"
+                    service_context += "You may need to use 'automation-service' or help the user register their systems first.\n"
         except Exception as e:
             logger.warning(f"Could not fetch asset inventory: {e}")
             service_context += "\n\n=== ASSET INVENTORY STATUS ===\n"
-            service_context += "Asset inventory not currently available - will need to use localhost or user-specified targets.\n"
+            service_context += "Asset inventory not currently available - will need to use automation-service or user-specified targets.\n"
         
         return service_context
     
@@ -1318,7 +1318,7 @@ Commands:"""
             job_data = {
                 "name": "AI Generated Job",
                 "description": "Job created by AI reasoning",
-                "target_systems": ["localhost"],
+                "target_systems": ["automation-service"],
                 "commands": [],
                 "scheduling": None,
                 "notifications": None

@@ -279,10 +279,11 @@ async def example_usage():
             raise Exception("Service failed")
         return "Success"
     
-    # Using client
+    # Using client - use environment variable for host IP
+    host_ip = os.getenv('HOST_IP', '127.0.0.1')
     client = ResilientServiceClient(
         "identity-service", 
-        "http://localhost:3001",
+        f"http://{host_ip}:3001",
         CircuitBreakerConfig(failure_threshold=5, recovery_timeout=30)
     )
     

@@ -5,7 +5,15 @@
 
 set -e
 
+# Get the host IP dynamically
+HOST_IP=$(hostname -I | awk '{print $1}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="127.0.0.1"
+    echo "⚠️  Warning: Could not detect host IP, using 127.0.0.1"
+fi
+
 echo "🚀 Starting OpsConductor V3 with Monitoring Stack..."
+echo "🌐 Host IP: $HOST_IP"
 
 # Colors for output
 RED='\033[0;31m'
@@ -88,19 +96,19 @@ echo ""
 print_success "🎉 OpsConductor V3 with Monitoring Stack is starting up!"
 echo ""
 print_status "📊 Access URLs:"
-echo "  • Main Application: http://localhost (Nginx)"
-echo "  • Kong Gateway: http://localhost:3000"
-echo "  • Keycloak Admin: http://localhost:8090"
-echo "  • Grafana Dashboard: http://localhost:3100 (admin/admin123)"
-echo "  • Prometheus: http://localhost:9090"
-echo "  • AlertManager: http://localhost:9093"
-echo "  • Celery Monitor: http://localhost:5555"
+echo "  • Main Application: http://$HOST_IP"
+echo "  • Kong Gateway: http://$HOST_IP:3000"
+echo "  • Keycloak Admin: http://$HOST_IP:8090"
+echo "  • Grafana Dashboard: http://$HOST_IP:3100 (admin/admin123)"
+echo "  • Prometheus: http://$HOST_IP:9090"
+echo "  • AlertManager: http://$HOST_IP:9093"
+echo "  • Celery Monitor: http://$HOST_IP:5555"
 echo ""
 print_status "🔧 Monitoring Endpoints:"
-echo "  • Node Exporter: http://localhost:9100"
-echo "  • cAdvisor: http://localhost:8081"
-echo "  • Redis Exporter: http://localhost:9121"
-echo "  • Postgres Exporter: http://localhost:9187"
+echo "  • Node Exporter: http://$HOST_IP:9100"
+echo "  • cAdvisor: http://$HOST_IP:8081"
+echo "  • Redis Exporter: http://$HOST_IP:9121"
+echo "  • Postgres Exporter: http://$HOST_IP:9187"
 echo ""
 print_status "📝 To view logs:"
 echo "  • Core services: docker-compose logs -f [service-name]"
@@ -115,14 +123,14 @@ sleep 10
 print_status "Final health check..."
 
 # Check if Prometheus is accessible
-if curl -s http://localhost:9090/-/healthy > /dev/null; then
+if curl -s http://$HOST_IP:9090/-/healthy > /dev/null; then
     print_success "Prometheus is healthy"
 else
     print_warning "Prometheus may still be starting up"
 fi
 
 # Check if Grafana is accessible
-if curl -s http://localhost:3100/api/health > /dev/null; then
+if curl -s http://$HOST_IP:3100/api/health > /dev/null; then
     print_success "Grafana is healthy"
 else
     print_warning "Grafana may still be starting up"

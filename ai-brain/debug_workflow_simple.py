@@ -8,7 +8,7 @@ async def debug_workflow_simple():
     """Debug what workflow is being generated"""
     
     test_request = {
-        "message": "execute echo hello on server localhost",
+        "message": "execute echo hello on server",
         "user_id": 1,
         "conversation_id": "debug_simple"
     }
@@ -19,7 +19,7 @@ async def debug_workflow_simple():
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                "http://localhost:3005/ai/chat",
+                "http://ai-brain:3005/ai/chat",
                 json=test_request
             )
             

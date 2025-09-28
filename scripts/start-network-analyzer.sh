@@ -38,11 +38,13 @@ while [ $counter -lt $timeout ]; do
     if docker compose ps network-analyzer-service | grep -q "healthy\|Up"; then
         echo "✅ Network Analyzer Service is ready!"
         echo ""
+        # Get host IP for external access
+        HOST_IP=$(hostname -I | awk '{print $1}' || echo "127.0.0.1")
         echo "🌐 Service Information:"
-        echo "   - Service URL: http://localhost:3006"
-        echo "   - Health Check: http://localhost:3006/health"
-        echo "   - API Documentation: http://localhost:3006/docs"
-        echo "   - WebSocket Monitoring: ws://localhost:3006/ws/monitoring/{session_id}"
+        echo "   - Service URL: http://$HOST_IP:3006"
+        echo "   - Health Check: http://$HOST_IP:3006/health"
+        echo "   - API Documentation: http://$HOST_IP:3006/docs"
+        echo "   - WebSocket Monitoring: ws://$HOST_IP:3006/ws/monitoring/{session_id}"
         echo ""
         echo "🔧 Available Capabilities:"
         echo "   - Packet capture and analysis"

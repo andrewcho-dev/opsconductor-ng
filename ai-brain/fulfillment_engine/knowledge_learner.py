@@ -369,7 +369,7 @@ class KnowledgeLearner:
                 "description": "Docker container management APIs",
                 "keywords": ["docker", "container", "image", "registry"],
                 "learning_method": "api_discovery",
-                "api_url": "http://localhost:2376"  # Docker daemon API
+                "api_url": "unix:///var/run/docker.sock"  # Docker daemon socket
             },
             "kubernetes": {
                 "description": "Kubernetes cluster management APIs",

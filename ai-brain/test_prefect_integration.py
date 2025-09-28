@@ -167,7 +167,7 @@ async def test_full_integration():
                 "action": "ping_test",
                 "targets": ["8.8.8.8", "google.com"]
             },
-            target_systems=["localhost"],
+            target_systems=["automation-service"],
             context={"test": True}
         )
         
