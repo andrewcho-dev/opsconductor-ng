@@ -127,6 +127,24 @@ class LoginResponse(BaseModel):
 class IdentityService(BaseService):
     def __init__(self):
         super().__init__("identity-service", "1.0.0", 3001)
+        # Override the default schema for identity service
+        os.environ["DB_SCHEMA"] = "identity"
+    
+    async def setup_service_dependencies(self):
+        """Setup identity service specific dependencies"""
+        # Keycloak dependency (optional for now)
+        keycloak_url = os.getenv("KEYCLOAK_URL", "http://keycloak:8080")
+        if keycloak_url:
+            self.startup_manager.add_service_dependency(
+                "keycloak",
+                keycloak_url,
+                endpoint="/health/ready",
+                timeout=120,
+                critical=False  # Not critical for basic operation
+            )
+    
+    async def on_startup(self):
+        """Identity service startup logic"""
         self.keycloak = KeycloakAdapter()
         self._setup_routes()
 

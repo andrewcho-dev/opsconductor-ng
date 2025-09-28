@@ -7,21 +7,14 @@ import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Roles from './pages/Roles';
 import AIChatPage from './pages/AIChat';
-
-
 import Assets from './pages/Assets';
-
-
-import Jobs from './pages/Jobs';
-import JobMonitoring from './pages/JobMonitoring';
-
 import JobRuns from './pages/JobRuns';
-
-
-
 import SystemSettings from './pages/SystemSettings';
 import LegacySettings from './pages/LegacySettings';
 import RoleManagement from './pages/RoleManagement';
+import Workflows from './pages/Workflows';
+import FlowRuns from './pages/FlowRuns';
+import InfrastructureMonitoring from './pages/InfrastructureMonitoring';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -53,27 +46,33 @@ const App: React.FC = () => {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/ai-chat" element={<AIChatPage />} />
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/users/:action" element={<Users />} />
-                    <Route path="/users/:action/:id" element={<Users />} />
+                    
+                    {/* Workflows Routes */}
+                    <Route path="/workflows" element={<Workflows />} />
+                    <Route path="/workflows/:action" element={<Workflows />} />
+                    <Route path="/workflows/:action/:id" element={<Workflows />} />
+                    <Route path="/workflows/runs" element={<FlowRuns />} />
+                    <Route path="/workflows/runs/:id" element={<FlowRuns />} />
 
-                    <Route path="/roles" element={<Roles />} />
-                    <Route path="/roles/:action" element={<Roles />} />
-                    <Route path="/roles/:action/:id" element={<Roles />} />
-
+                    {/* Assets Routes */}
                     <Route path="/assets" element={<Assets />} />
                     <Route path="/assets/:action" element={<Assets />} />
                     <Route path="/assets/:action/:id" element={<Assets />} />
 
+                    {/* Infrastructure Routes */}
+                    <Route path="/infrastructure" element={<InfrastructureMonitoring />} />
 
-                    <Route path="/job-management" element={<Jobs />} />
-                    <Route path="/job-management/:action" element={<Jobs />} />
-                    <Route path="/job-management/:action/:id" element={<Jobs />} />
-
-                    <Route path="/job-monitoring" element={<JobMonitoring />} />
-
+                    {/* History Routes - Legacy Job Runs Only */}
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
                     <Route path="/history/job-runs" element={<JobRuns />} />
+
+                    {/* User & Role Management Routes */}
+                    <Route path="/users" element={<Users />} />
+                    <Route path="/users/:action" element={<Users />} />
+                    <Route path="/users/:action/:id" element={<Users />} />
+                    <Route path="/roles" element={<Roles />} />
+                    <Route path="/roles/:action" element={<Roles />} />
+                    <Route path="/roles/:action/:id" element={<Roles />} />
 
 
 

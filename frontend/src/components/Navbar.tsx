@@ -7,21 +7,17 @@ import {
   BarChart3, 
   Users, 
   Target, 
-  Search, 
   Settings, 
-  Calendar, 
   Play, 
   MessageSquare,
   LogOut,
   Menu,
   ChevronRight,
-  Code,
   Mail,
-
   History,
-
-  List,
-  Activity
+  GitBranch,
+  Server,
+  Shield
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -107,33 +103,36 @@ const Navbar: React.FC = () => {
                 AI Assistant
               </Link>
 
+              <div className="nav-divider"></div>
+              
+              {/* Operations Section */}
+              <div className="nav-section-header">Operations</div>
+              
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
-                  <span className="nav-icon"><Users size={16} /></span>
-                  Users
+                  <span className="nav-icon"><GitBranch size={16} /></span>
+                  Workflows
                   <span className="nav-chevron">
                     <ChevronRight size={14} />
                   </span>
                 </div>
                 <div className="nav-submenu">
                   <Link 
-                    to="/users" 
-                    className={`nav-submenu-item ${location.pathname === '/users' || location.pathname.startsWith('/users/') ? 'active' : ''}`} 
+                    to="/workflows" 
+                    className={`nav-submenu-item ${location.pathname === '/workflows' || location.pathname.startsWith('/workflows/') ? 'active' : ''}`} 
                     onClick={closeMenu}
                   >
-                    <span className="nav-icon"><Users size={14} /></span>
-                    User Management
+                    <span className="nav-icon"><GitBranch size={14} /></span>
+                    Flow Management
                   </Link>
-                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
-                    <Link 
-                      to="/roles" 
-                      className={`nav-submenu-item ${location.pathname === '/roles' || location.pathname.startsWith('/roles/') ? 'active' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Settings size={14} /></span>
-                      Role Management
-                    </Link>
-                  )}
+                  <Link 
+                    to="/workflows/runs" 
+                    className={`nav-submenu-item ${location.pathname === '/workflows/runs' || location.pathname.startsWith('/workflows/runs/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Play size={14} /></span>
+                    Flow Runs
+                  </Link>
                 </div>
               </div>
 
@@ -154,35 +153,6 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Target size={14} /></span>
                     Asset Management
                   </Link>
-
-                </div>
-              </div>
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><Settings size={16} /></span>
-                  Jobs
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/job-management" 
-                    className={`nav-submenu-item ${location.pathname === '/job-management' ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><List size={14} /></span>
-                    Manage Jobs
-                  </Link>
-                  <Link 
-                    to="/job-monitoring" 
-                    className={`nav-submenu-item ${location.pathname === '/job-monitoring' ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Activity size={14} /></span>
-                    Job Monitoring
-                  </Link>
-
                 </div>
               </div>
 
@@ -201,23 +171,75 @@ const Navbar: React.FC = () => {
                     onClick={closeMenu}
                   >
                     <span className="nav-icon"><Play size={14} /></span>
-                    Job Runs
+                    Legacy Job Runs
                   </Link>
-
-
                 </div>
               </div>
+
               <div className="nav-divider"></div>
+              
+              {/* Infrastructure Section */}
+              <div className="nav-section-header">Infrastructure</div>
+              
+              <Link 
+                to="/infrastructure" 
+                className={`nav-menu-item ${isActive('/infrastructure') ? 'active' : ''}`} 
+                onClick={closeMenu}
+              >
+                <span className="nav-icon"><Server size={16} /></span>
+                Infrastructure Monitoring
+              </Link>
+
+
+
+              <div className="nav-divider"></div>
+              
+              {/* Identity & Access Section */}
+              <div className="nav-section-header">Identity & Access</div>
+              
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
-                  <span className="nav-icon"><Settings size={16} /></span>
-                  Settings
+                  <span className="nav-icon"><Users size={16} /></span>
+                  Users & Roles
                   <span className="nav-chevron">
                     <ChevronRight size={14} />
                   </span>
                 </div>
                 <div className="nav-submenu">
-
+                  <Link 
+                    to="/users" 
+                    className={`nav-submenu-item ${location.pathname === '/users' || location.pathname.startsWith('/users/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Users size={14} /></span>
+                    User Management
+                  </Link>
+                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
+                    <Link 
+                      to="/roles" 
+                      className={`nav-submenu-item ${location.pathname === '/roles' || location.pathname.startsWith('/roles/') ? 'active' : ''}`} 
+                      onClick={closeMenu}
+                    >
+                      <span className="nav-icon"><Shield size={14} /></span>
+                      Role Management
+                    </Link>
+                  )}
+                </div>
+              </div>
+              <div className="nav-divider"></div>
+              
+              {/* Settings Section */}
+              <div className="nav-section-header">Settings</div>
+              
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><Settings size={16} /></span>
+                  System
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
                   <Link 
                     to="/settings/smtp" 
                     className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SMTP_CONFIG) ? 'disabled' : ''}`} 

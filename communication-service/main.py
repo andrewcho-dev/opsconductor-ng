@@ -216,7 +216,18 @@ class CommunicationService(BaseService):
             "processed_count": 0,
             "last_activity": datetime.utcnow().isoformat()
         }
-        self._setup_routes()
+    
+    async def setup_service_dependencies(self):
+        """Setup communication service specific dependencies"""
+        # Identity service dependency
+        identity_url = os.getenv("IDENTITY_SERVICE_URL", "http://identity-service:3001")
+        self.startup_manager.add_service_dependency(
+            "identity-service",
+            identity_url,
+            endpoint="/ready",
+            timeout=60,
+            critical=True
+        )
     
     def _get_current_user_id(self) -> int:
         """Get current user ID from authentication context
@@ -227,7 +238,7 @@ class CommunicationService(BaseService):
     async def on_startup(self):
         """Set the database schema to communication"""
         os.environ["DB_SCHEMA"] = "communication"
-        await super().on_startup()
+        self._setup_routes()
     
     def _setup_routes(self):
         @self.app.get("/notifications", response_model=NotificationListResponse)

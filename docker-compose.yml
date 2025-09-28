@@ -88,7 +88,7 @@ services:
     build: ./kong
     container_name: opsconductor-kong
     ports:
-      - "3000:8000"  # Kong proxy port (map to 3000 to replace old API Gateway)
+      - "8080:8000"  # Kong proxy port 
       - "8001:8001"  # Kong admin API port
     environment:
       KONG_DATABASE: "off"
@@ -146,10 +146,11 @@ services:
       - ./identity-service/keycloak_adapter.py:/app/keycloak_adapter.py
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:3001/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
   asset-service:
@@ -190,10 +191,11 @@ services:
       - ./asset-service/tests/test_asset_service_integration.py:/app/tests/test_asset_service_integration.py
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:3002/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
   automation-service:
@@ -232,10 +234,11 @@ services:
       - ./automation-service/libraries:/app/libraries
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:3003/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 90s
     restart: unless-stopped
 
   communication-service:
@@ -269,10 +272,11 @@ services:
       - ./communication-service/main.py:/app/main.py
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:3004/ready"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
   # Network Analyzer Service (Central Coordination Hub)
@@ -496,7 +500,7 @@ services:
     environment:
       - PREFECT_SERVER_API_HOST=0.0.0.0
       - PREFECT_SERVER_API_PORT=4200
-      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql://postgres:postgres123@postgres:5432/opsconductor
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres123@postgres:5432/opsconductor
       - PREFECT_API_DATABASE_ECHO=false
       - PREFECT_SERVER_ANALYTICS_ENABLED=false
     command: prefect server start --host 0.0.0.0 --port 4200
@@ -688,6 +692,8 @@ services:
   frontend:
     build: ./frontend
     container_name: opsconductor-frontend
+    ports:
+      - "3000:3000"  # Frontend React app port
     # Removed REACT_APP_API_URL to use dynamic URL detection
     depends_on:
       kong:
@@ -703,23 +709,7 @@ services:
       - ./frontend/.env:/app/.env
     restart: unless-stopped
 
-  # Nginx Reverse Proxy
-  nginx:
-    build: ./nginx
-    container_name: opsconductor-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-      - "3100:443"  # Additional HTTPS port for compatibility
-      - "8080:8080"  # Forward proxy port for outbound connections
-    depends_on:
-      - kong
-      - frontend
-    networks:
-      - opsconductor-net
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-    restart: unless-stopped
+
 
 networks:
   opsconductor-net:

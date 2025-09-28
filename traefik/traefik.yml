@@ -48,12 +48,12 @@ certificatesResolvers:
 
 # Providers
 providers:
-  # Docker provider for automatic service discovery
-  docker:
-    endpoint: "unix:///var/run/docker.sock"
-    exposedByDefault: false
-    network: opsconductor-net
-    watch: true
+  # Docker provider for automatic service discovery (disabled to avoid conflicts)
+  # docker:
+  #   endpoint: "unix:///var/run/docker.sock"
+  #   exposedByDefault: false
+  #   network: opsconductor-net
+  #   watch: true
 
   # File provider for static configuration
   file:

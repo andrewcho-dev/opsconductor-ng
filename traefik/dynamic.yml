@@ -7,7 +7,7 @@ http:
   routers:
     # API Routes - Route to Kong Gateway
     api-router:
-      rule: "Host(`localhost`) && PathPrefix(`/api/`)"
+      rule: "PathPrefix(`/api/`)"
       service: kong-gateway
       entryPoints:
         - web
@@ -21,7 +21,7 @@ http:
 
     # Health Check Route
     health-router:
-      rule: "Host(`localhost`) && Path(`/status`)"
+      rule: "Path(`/status`)"
       service: kong-gateway
       entryPoints:
         - web
@@ -31,7 +31,7 @@ http:
 
     # WebSocket Routes - Direct to Automation Service
     websocket-router:
-      rule: "Host(`localhost`) && PathPrefix(`/api/v1/automation/monitoring/ws`)"
+      rule: "PathPrefix(`/api/v1/automation/monitoring/ws`)"
       service: automation-websocket
       entryPoints:
         - web
@@ -41,7 +41,7 @@ http:
 
     # Frontend Routes - React Application
     frontend-router:
-      rule: "Host(`localhost`)"
+      rule: "PathPrefix(`/`)"
       service: frontend
       entryPoints:
         - web
@@ -117,7 +117,6 @@ http:
       headers:
         customRequestHeaders:
           X-Forwarded-Proto: "http"
-          X-Forwarded-Host: "localhost"
         customResponseHeaders:
           X-Frame-Options: "DENY"
           X-Content-Type-Options: "nosniff"
@@ -129,9 +128,7 @@ http:
           - "DELETE"
           - "OPTIONS"
         accessControlAllowOriginList:
-          - "http://localhost"
-          - "http://localhost:80"
-          - "http://localhost:3000"
+          - "*"
         accessControlAllowCredentials: true
         accessControlAllowHeaders:
           - "Content-Type"

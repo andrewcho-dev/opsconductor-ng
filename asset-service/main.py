@@ -321,6 +321,21 @@ class ConsolidatedAssetService(BaseService):
         super().__init__("asset-service", port=3002)
         # Use the shared CredentialManager
         self.credential_manager = CredentialManager()
+    
+    async def setup_service_dependencies(self):
+        """Setup asset service specific dependencies"""
+        # Identity service dependency
+        identity_url = os.getenv("IDENTITY_SERVICE_URL", "http://identity-service:3001")
+        self.startup_manager.add_service_dependency(
+            "identity-service",
+            identity_url,
+            endpoint="/ready",
+            timeout=60,
+            critical=True
+        )
+    
+    async def on_startup(self):
+        """Asset service startup logic"""
         self.setup_routes()
     
     async def _get_current_user_id(self) -> Optional[int]:

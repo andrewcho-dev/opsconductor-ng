@@ -36,9 +36,9 @@ export const getApiBaseUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   
-  // If running on development port 3000, use nginx proxy
+  // If running on development port 3000, use Kong proxy on port 8080
   if (window.location.port === '3000') {
-    return 'http://localhost';
+    return `http://${window.location.hostname}:8080`;
   }
   
   // Use current window location but ensure correct protocol

@@ -5,6 +5,7 @@ Provides common functionality for all OpsConductor services
 
 import os
 import sys
+import time
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -19,6 +20,10 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 import structlog
+
+# Import our new startup and monitoring components
+from startup_manager import StartupManager, check_postgres, check_redis
+from service_monitor import ServiceMonitor
 
 # Prometheus metrics
 try:
@@ -359,6 +364,10 @@ class BaseService:
         self.redis = RedisClient()
         self.metrics = ServiceMetrics(name)
         
+        # Initialize startup manager and service monitor
+        self.startup_manager = StartupManager(name)
+        self.service_monitor = None
+        
         # Create FastAPI app with lifespan
         self.app = FastAPI(
             title=f"OpsConductor {name.title()} Service",
@@ -390,7 +399,16 @@ class BaseService:
         self.logger.info("Service stopped")
     
     async def _startup(self):
-        """Service startup logic"""
+        """Service startup logic with bulletproof dependency checking"""
+        self.logger.info("Starting service with bulletproof startup...")
+        
+        # Setup dependencies
+        await self._setup_dependencies()
+        
+        # Wait for dependencies
+        if not await self.startup_manager.wait_for_dependencies():
+            raise Exception(f"Failed to start {self.name}: dependencies not ready")
+        
         # Initialize database
         database_url = self._get_database_url()
         schema = os.getenv("DB_SCHEMA", "public")
@@ -400,17 +418,77 @@ class BaseService:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         await self.redis.initialize(redis_url)
         
+        # Initialize service monitor
+        self.service_monitor = ServiceMonitor(redis_url, self.name)
+        await self.service_monitor.initialize()
+        
+        # Register this service
+        service_url = f"http://localhost:{self.port}"
+        await self.service_monitor.register_service(
+            self.name, 
+            service_url,
+            {"version": self.version, "started_at": self.start_time.isoformat()}
+        )
+        
         # Service-specific startup
         await self.on_startup()
+        
+        # Mark as ready
+        self.startup_manager.mark_ready()
     
     async def _shutdown(self):
         """Service shutdown logic"""
         # Service-specific shutdown
         await self.on_shutdown()
         
+        # Close service monitor
+        if self.service_monitor:
+            await self.service_monitor.close()
+        
         # Close connections
         await self.db.close()
         await self.redis.close()
+    
+    async def _setup_dependencies(self):
+        """Setup common dependencies - override in subclasses for service-specific deps"""
+        # Database dependency
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = int(os.getenv("DB_PORT", "5432"))
+        db_name = os.getenv("DB_NAME", "opsconductor")
+        db_user = os.getenv("DB_USER", "postgres")
+        db_password = os.getenv("DB_PASSWORD", "postgres123")
+        
+        async def postgres_check():
+            return await check_postgres(db_host, db_port, db_name, db_user, db_password)
+        
+        self.startup_manager.add_custom_check(
+            "postgres",
+            postgres_check,
+            timeout=60,
+            critical=True,
+            description="PostgreSQL database connection"
+        )
+        
+        # Redis dependency
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        
+        async def redis_check():
+            return await check_redis(redis_url)
+        
+        self.startup_manager.add_custom_check(
+            "redis",
+            redis_check,
+            timeout=30,
+            critical=True,
+            description="Redis connection"
+        )
+        
+        # Call service-specific dependency setup
+        await self.setup_service_dependencies()
+    
+    async def setup_service_dependencies(self):
+        """Override in subclasses to add service-specific dependencies"""
+        pass
     
     async def on_startup(self):
         """Override in subclasses for service-specific startup logic"""
@@ -587,6 +665,53 @@ class BaseService:
             # Generate metrics
             metrics_data = generate_latest()
             return Response(content=metrics_data, media_type=CONTENT_TYPE_LATEST)
+        
+        @self.app.get("/ready")
+        async def readiness_check():
+            """Kubernetes-style readiness probe"""
+            if self.startup_manager.state.value in ["healthy", "starting"]:
+                return {"status": "ready", "service": self.name}
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"status": "not ready", "service": self.name, "error": self.startup_manager.last_error}
+                )
+        
+        @self.app.get("/live")
+        async def liveness_check():
+            """Kubernetes-style liveness probe"""
+            return {"status": "alive", "service": self.name, "uptime": (datetime.now(timezone.utc) - self.start_time).total_seconds()}
+        
+        @self.app.get("/startup-status")
+        async def startup_status():
+            """Detailed startup status"""
+            return self.startup_manager.get_status()
+        
+        @self.app.get("/services")
+        async def service_discovery():
+            """Service discovery endpoint"""
+            if self.service_monitor:
+                services = await self.service_monitor.get_all_services()
+                return {
+                    "services": {
+                        name: {
+                            "url": service.url,
+                            "status": service.status.value,
+                            "last_check": service.last_check,
+                            "response_time_ms": service.response_time_ms,
+                            "version": service.version
+                        }
+                        for name, service in services.items()
+                    }
+                }
+            return {"services": {}}
+        
+        @self.app.get("/circuit-breakers")
+        async def circuit_breaker_status():
+            """Circuit breaker status"""
+            if self.service_monitor:
+                return self.service_monitor.get_circuit_breaker_status()
+            return {}
         
         # Global exception handler
         @self.app.exception_handler(Exception)

@@ -91,13 +91,13 @@ services:
       - "traefik.enable=true"
       
       # API routes
-      - "traefik.http.routers.kong-api.rule=Host(`localhost`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.kong-api.rule=PathPrefix(`/api/`)"
       - "traefik.http.routers.kong-api.service=kong-api"
       - "traefik.http.routers.kong-api.entrypoints=web,websecure"
       - "traefik.http.routers.kong-api.middlewares=api-rate-limit,api-headers"
       
       # Health check route
-      - "traefik.http.routers.kong-health.rule=Host(`localhost`) && Path(`/health`)"
+      - "traefik.http.routers.kong-health.rule=Path(`/health`)"
       - "traefik.http.routers.kong-health.service=kong-api"
       - "traefik.http.routers.kong-health.entrypoints=web,websecure"
       
@@ -123,8 +123,6 @@ services:
       - "3100:3000"
     environment:
       - NODE_ENV=development
-      - REACT_APP_API_URL=http://localhost/api
-      - REACT_APP_WS_URL=ws://localhost/api/v1/automation/monitoring/ws
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     networks:
@@ -142,7 +140,7 @@ services:
       - "traefik.enable=true"
       
       # Frontend routes (lower priority than API)
-      - "traefik.http.routers.frontend.rule=Host(`localhost`)"
+      - "traefik.http.routers.frontend.rule=HostRegexp(`{host:.+}`)"
       - "traefik.http.routers.frontend.service=frontend"
       - "traefik.http.routers.frontend.entrypoints=web,websecure"
       - "traefik.http.routers.frontend.priority=1"
@@ -218,7 +216,7 @@ services:
       - "traefik.enable=true"
       
       # WebSocket routes
-      - "traefik.http.routers.automation-ws.rule=Host(`localhost`) && PathPrefix(`/api/v1/automation/monitoring/ws`)"
+      - "traefik.http.routers.automation-ws.rule=PathPrefix(`/api/v1/automation/monitoring/ws`)"
       - "traefik.http.routers.automation-ws.service=automation-ws"
       - "traefik.http.routers.automation-ws.entrypoints=web,websecure"
       - "traefik.http.routers.automation-ws.middlewares=websocket-headers"

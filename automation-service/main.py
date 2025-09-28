@@ -217,8 +217,28 @@ class AutomationService(BaseService):
         super().__init__("automation-service", "1.0.0", 3003)
         # Initialize Celery monitor
         self.monitor = CeleryMonitor()
-        self._setup_routes()
-        self._setup_monitoring_routes()
+    
+    async def setup_service_dependencies(self):
+        """Setup automation service specific dependencies"""
+        # Identity service dependency
+        identity_url = os.getenv("IDENTITY_SERVICE_URL", "http://identity-service:3001")
+        self.startup_manager.add_service_dependency(
+            "identity-service",
+            identity_url,
+            endpoint="/ready",
+            timeout=60,
+            critical=True
+        )
+        
+        # Asset service dependency
+        asset_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
+        self.startup_manager.add_service_dependency(
+            "asset-service",
+            asset_url,
+            endpoint="/ready",
+            timeout=60,
+            critical=True
+        )
     
     def _get_current_user_id(self) -> int:
         """Get current user ID from authentication context
@@ -242,7 +262,11 @@ class AutomationService(BaseService):
         print("AUTOMATION SERVICE STARTUP CALLED")  # Debug print
         self.logger.info("AUTOMATION SERVICE STARTUP CALLED")
         os.environ["DB_SCHEMA"] = "automation"
-        await super().on_startup()
+        
+        # Setup routes
+        self._setup_routes()
+        self._setup_monitoring_routes()
+        
         # Start the Celery monitor
         self.logger.info("About to start Celery monitoring...")
         try:
