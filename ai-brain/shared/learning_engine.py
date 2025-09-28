@@ -231,11 +231,20 @@ class LearningOrchestrator:
     
     async def get_learning_statistics(self) -> Dict[str, Any]:
         """Get learning engine statistics"""
+        # Count different types of learning data
+        job_outcomes = len([item for item in self.learning_system.learning_data 
+                           if item.get('type') == LearningType.JOB_OUTCOME])
+        user_feedback = len([item for item in self.learning_system.learning_data 
+                            if item.get('type') == LearningType.FEEDBACK_INTEGRATION])
+        patterns = len([item for item in self.learning_system.learning_data 
+                       if item.get('type') == LearningType.PATTERN_RECOGNITION])
+        
         return {
-            "total_job_outcomes": len(self.learning_system.job_outcomes),
-            "total_user_feedback": len(self.learning_system.user_feedback),
-            "total_insights": len(self.learning_system.learning_insights),
-            "performance_metrics": len(self.learning_system.performance_metrics),
+            "total_job_outcomes": job_outcomes,
+            "total_user_feedback": user_feedback,
+            "total_patterns": patterns,
+            "total_learning_data": len(self.learning_system.learning_data),
+            "user_preferences_count": len(self.learning_system.user_preferences),
             "last_updated": datetime.utcnow().isoformat()
         }
     
@@ -266,3 +275,98 @@ class LearningOrchestrator:
         """Reset all learning data"""
         self.learning_system = LearningSystem()
         logger.info("Reset all learning data")
+
+
+class LearningEngine:
+    """
+    High-level learning engine that provides a simplified interface
+    for Phase 7 conversation intelligence components.
+    """
+    
+    def __init__(self, vector_store: OpsConductorVectorStore):
+        self.orchestrator = LearningOrchestrator(vector_store)
+        self.vector_store = vector_store
+        
+    async def learn_from_conversation(self, user_id: str, conversation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Learn from conversation interactions"""
+        try:
+            # Store conversation learning data
+            learning_data = {
+                "user_id": user_id,
+                "conversation_data": conversation_data,
+                "timestamp": datetime.utcnow().isoformat(),
+                "learning_type": "conversation"
+            }
+            
+            # Store in vector store
+            await self.vector_store.store_document(
+                collection_name="conversation_learning",
+                document_id=f"conv_{user_id}_{datetime.utcnow().timestamp()}",
+                content=f"User {user_id} conversation learning data",
+                metadata=learning_data
+            )
+            
+            return {"status": "learned", "user_id": user_id}
+            
+        except Exception as e:
+            logger.error(f"Error learning from conversation: {e}")
+            return {"error": str(e)}
+    
+    async def learn_user_preferences(self, user_id: str, preferences: Dict[str, Any]) -> Dict[str, Any]:
+        """Learn user preferences"""
+        try:
+            # Create user feedback object
+            feedback = UserFeedback(
+                user_id=user_id,
+                feedback_type="preferences",
+                context=preferences
+            )
+            
+            # Process through learning system
+            result = await self.orchestrator.learning_system.process_user_feedback(feedback)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error learning user preferences: {e}")
+            return {"error": str(e)}
+    
+    async def get_user_insights(self, user_id: str) -> Dict[str, Any]:
+        """Get learning insights for a user"""
+        try:
+            # Get user preferences from learning system
+            preferences = await self.orchestrator.learning_system.get_user_preferences(user_id)
+            
+            # Get user patterns from pattern learner
+            patterns = await self.orchestrator.pattern_learner.get_user_patterns(user_id)
+            
+            return {
+                "user_id": user_id,
+                "preferences": preferences,
+                "patterns": patterns,
+                "insights_count": len(patterns)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting user insights: {e}")
+            return {"error": str(e)}
+    
+    async def adapt_behavior(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Adapt system behavior based on learned patterns"""
+        try:
+            # Simple adaptation logic
+            adaptations = []
+            
+            if "user_id" in context:
+                user_insights = await self.get_user_insights(context["user_id"])
+                if user_insights.get("preferences"):
+                    adaptations.append("Applied user preferences")
+            
+            return {
+                "adaptations": adaptations,
+                "context": context,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error adapting behavior: {e}")
+            return {"error": str(e)}

@@ -508,6 +508,19 @@ services:
       - ./ai-brain/analysis/deductive_analysis_engine.py:/app/analysis/deductive_analysis_engine.py
       - ./ai-brain/analysis/recommendation_engine.py:/app/analysis/recommendation_engine.py
       
+      # Phase 7: Conversational Intelligence system files
+      - ./ai-brain/conversation/__init__.py:/app/conversation/__init__.py
+      - ./ai-brain/conversation/conversation_models.py:/app/conversation/conversation_models.py
+      - ./ai-brain/conversation/conversation_memory_engine.py:/app/conversation/conversation_memory_engine.py
+      - ./ai-brain/conversation/clarification_intelligence.py:/app/conversation/clarification_intelligence.py
+      - ./ai-brain/conversation/user_preference_learning.py:/app/conversation/user_preference_learning.py
+      - ./ai-brain/conversation/context_awareness_system.py:/app/conversation/context_awareness_system.py
+      - ./ai-brain/conversation/conversation_analytics.py:/app/conversation/conversation_analytics.py
+      
+      # Knowledge Engine system files
+      - ./ai-brain/knowledge_engine/__init__.py:/app/knowledge_engine/__init__.py
+      - ./ai-brain/knowledge_engine/learning_system.py:/app/knowledge_engine/learning_system.py
+      
       # Shared libraries
       - ./shared:/app/shared
       
