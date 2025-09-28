@@ -501,6 +501,13 @@ services:
       - ./ai-brain/workflows/adaptive_execution_engine.py:/app/workflows/adaptive_execution_engine.py
       - ./ai-brain/workflows/workflow_orchestrator.py:/app/workflows/workflow_orchestrator.py
       
+      # Phase 6: Deductive Analysis & Intelligent Insights system files
+      - ./ai-brain/analysis/__init__.py:/app/analysis/__init__.py
+      - ./ai-brain/analysis/analysis_models.py:/app/analysis/analysis_models.py
+      - ./ai-brain/analysis/pattern_recognition.py:/app/analysis/pattern_recognition.py
+      - ./ai-brain/analysis/deductive_analysis_engine.py:/app/analysis/deductive_analysis_engine.py
+      - ./ai-brain/analysis/recommendation_engine.py:/app/analysis/recommendation_engine.py
+      
       # Shared libraries
       - ./shared:/app/shared
       
