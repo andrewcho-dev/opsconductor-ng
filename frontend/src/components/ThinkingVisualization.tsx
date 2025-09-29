@@ -121,13 +121,15 @@ const ThinkingVisualization: React.FC<ThinkingVisualizationProps> = ({
   };
 
   const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString('en-US', {
+    const date = new Date(timestamp);
+    const timeString = date.toLocaleTimeString('en-US', {
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 1
+      second: '2-digit'
     });
+    const milliseconds = Math.floor(date.getMilliseconds() / 100);
+    return `${timeString}.${milliseconds}`;
   };
 
   if (!isActive) {

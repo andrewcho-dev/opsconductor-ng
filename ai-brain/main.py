@@ -1242,6 +1242,8 @@ class ChatResponse(BaseModel):
     intent_classification: Optional[Dict[str, Any]] = None
     timestamp: Optional[str] = None
     _routing: Optional[Dict[str, Any]] = None
+    # Real-time thinking visualization
+    thinking_session_id: Optional[str] = None
 
 @app.get("/health")
 async def health_check():
@@ -1411,7 +1413,45 @@ async def validate_job_request(request: dict):
 async def chat_endpoint(request: ChatRequest):
     """PURE LLM CHAT INTERFACE - NO MORE NLP PATTERN MATCHING BULLSHIT!"""
     result = await pure_llm_chat_endpoint(request, intent_brain)
-    return ChatResponse(**result)
+    
+    # Ensure the result matches ChatResponse format
+    if isinstance(result, dict):
+        # Map the result to ChatResponse fields
+        chat_response = {
+            "response": result.get("response", result.get("message", "No response generated")),
+            "intent": result.get("intent", result.get("ai_brain_decision", "unknown")),
+            "confidence": result.get("confidence", 0.8),
+            "conversation_id": result.get("conversation_id", request.conversation_id),
+            "job_id": result.get("job_id"),
+            "execution_id": result.get("execution_id"),
+            "automation_job_id": result.get("automation_job_id"),
+            "workflow": result.get("workflow"),
+            "execution_started": result.get("execution_started", False),
+            "clarification_needed": result.get("clarification_needed", False),
+            "clarifying_questions": result.get("clarifying_questions"),
+            "missing_information": result.get("missing_information"),
+            "risk_assessment": result.get("risk_assessment"),
+            "field_confidence_scores": result.get("field_confidence_scores"),
+            "validation_issues": result.get("validation_issues"),
+            "intent_classification": result.get("intent_classification"),
+            "timestamp": datetime.now().isoformat(),
+            "_routing": result.get("_routing")
+        }
+        
+        # Add thinking session ID if available
+        if "thinking_session_id" in result:
+            chat_response["thinking_session_id"] = result["thinking_session_id"]
+        
+        return ChatResponse(**chat_response)
+    else:
+        # Fallback for non-dict responses
+        return ChatResponse(
+            response=str(result),
+            intent="unknown",
+            confidence=0.5,
+            conversation_id=request.conversation_id,
+            timestamp=datetime.now().isoformat()
+        )
 
 @app.get("/ai/fulfillment/status/{request_id}")
 async def get_fulfillment_status(request_id: str):
