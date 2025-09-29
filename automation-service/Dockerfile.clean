@@ -1,0 +1,39 @@
+# Clean Automation Service Dockerfile
+# Simple execution API - No Celery, No Background Processing
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    openssh-client \
+    sshpass \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.clean.txt requirements.txt
+
+# Install Python dependencies (remove Celery-related packages)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Copy shared libraries
+COPY shared/ /app/shared/
+
+# Create non-root user
+RUN useradd -m -u 1000 automation && chown -R automation:automation /app
+USER automation
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3003/health || exit 1
+
+# Expose port
+EXPOSE 3003
+
+# Start clean automation service
+CMD ["python", "main_clean.py"]

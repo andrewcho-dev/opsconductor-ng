@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Bug, Eye } from 'lucide-react';
+import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
 import { userApi, assetApi, jobApi } from '../services/api';
 
@@ -27,26 +27,7 @@ const AIChatPage: React.FC = () => {
   const [editingTitle, setEditingTitle] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
   
-  // Debug mode state
-  const [debugMode, setDebugMode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('opsconductor_ai_debug_mode');
-      return saved === 'true';
-    } catch {
-      return false;
-    }
-  });
 
-  // Toggle debug mode
-  const toggleDebugMode = () => {
-    const newDebugMode = !debugMode;
-    setDebugMode(newDebugMode);
-    try {
-      localStorage.setItem('opsconductor_ai_debug_mode', newDebugMode.toString());
-    } catch (error) {
-      console.error('Failed to save debug mode preference:', error);
-    }
-  };
 
   // Save chat sessions to localStorage
   const saveChatSessions = (sessions: ChatSession[]) => {
@@ -209,8 +190,10 @@ const AIChatPage: React.FC = () => {
     // Clear the main chat history for the new chat
     localStorage.removeItem('opsconductor_ai_chat_history');
     
-    // Force the AIChat component to reload (which will now load empty history)
-    aiChatRef.current?.clearChat();
+    // Clear the AIChat component
+    if (aiChatRef.current) {
+      aiChatRef.current.clearChat();
+    }
   };
 
   // Switch to a different chat session
@@ -239,8 +222,10 @@ const AIChatPage: React.FC = () => {
       localStorage.removeItem('opsconductor_ai_chat_history');
     }
     
-    // Force the AIChat component to reload its history
-    aiChatRef.current?.clearChat();
+    // Refresh the AIChat component to load the new chat
+    if (aiChatRef.current) {
+      aiChatRef.current.clearChat();
+    }
   };
 
   // Update chat session when messages change
@@ -278,7 +263,10 @@ const AIChatPage: React.FC = () => {
   };
 
   const handleClearChat = () => {
-    aiChatRef.current?.clearChatHistory();
+    // Clear the AIChat component
+    if (aiChatRef.current) {
+      aiChatRef.current.clearChat();
+    }
     // Also clear the session-specific history
     if (activeChatId) {
       const chatHistoryKey = `opsconductor_ai_chat_history_${activeChatId}`;
@@ -747,20 +735,12 @@ const AIChatPage: React.FC = () => {
         <div className="chat-main">
           <div className="section-header">
             <span>AI Assistant</span>
-            <button
-              onClick={toggleDebugMode}
-              className={`debug-toggle-icon ${debugMode ? 'active' : ''}`}
-              title={debugMode ? 'Disable debug mode' : 'Enable debug mode'}
-            >
-              <Bug size={16} />
-            </button>
           </div>
           <div className="compact-content" style={{ padding: '8px' }}>
             <AIChat 
               ref={aiChatRef} 
               onFirstMessage={handleFirstMessage}
               activeChatId={activeChatId}
-              debugMode={debugMode}
             />
           </div>
         </div>

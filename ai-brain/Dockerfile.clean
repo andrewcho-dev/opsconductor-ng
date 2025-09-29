@@ -1,0 +1,41 @@
+# Clean AI Brain Dockerfile
+# Simplified Architecture - Decision + Orchestration Coordination Only
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.clean.txt requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Prefect
+RUN pip install prefect==3.0.0
+
+# Copy application code
+COPY . .
+
+# Copy clean architecture files
+COPY orchestration/ai_brain_service_clean.py /app/orchestration/ai_brain_service.py
+
+# Create non-root user
+RUN useradd -m -u 1000 aiuser && chown -R aiuser:aiuser /app
+USER aiuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3005/health || exit 1
+
+# Expose port
+EXPOSE 3005
+
+# Start clean AI brain service
+CMD ["python", "main_clean.py"]

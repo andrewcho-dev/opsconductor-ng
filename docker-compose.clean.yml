@@ -1,0 +1,208 @@
+version: '3.8'
+
+networks:
+  opsconductor-clean:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_models:
+  prefect_data:
+
+services:
+  # Core Infrastructure
+  postgres:
+    image: postgres:17-alpine
+    container_name: opsconductor-postgres-clean
+    environment:
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: opsconductor
+      POSTGRES_PASSWORD: opsconductor_secure_2024
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init-schema.sql:/docker-entrypoint-initdb.d/init-schema.sql
+    networks:
+      - opsconductor-clean
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsconductor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: opsconductor-redis-clean
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - opsconductor-clean
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # AI Infrastructure
+  ollama:
+    image: ollama/ollama:0.11.11
+    container_name: opsconductor-ollama-clean
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - opsconductor-clean
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Orchestration Engine
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: opsconductor-prefect-clean
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_API_URL: http://prefect-server:4200/api
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+    volumes:
+      - prefect_data:/root/.prefect
+    networks:
+      - opsconductor-clean
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # AI Brain - Decision Maker + Orchestration Coordinator
+  ai-brain:
+    build:
+      context: ./ai-brain
+      dockerfile: Dockerfile.clean
+    container_name: opsconductor-ai-brain-clean
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      PREFECT_API_URL: http://prefect-server:4200/api
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      AUTOMATION_SERVICE_URL: http://automation-service:8001
+      ASSET_SERVICE_URL: http://asset-service:8002
+      NETWORK_SERVICE_URL: http://network-service:8003
+      COMMUNICATION_SERVICE_URL: http://communication-service:8004
+    ports:
+      - "3005:3005"
+    networks:
+      - opsconductor-clean
+    depends_on:
+      ollama:
+        condition: service_healthy
+      prefect-server:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Specialized Services
+  automation-service:
+    build:
+      context: ./automation-service
+      dockerfile: Dockerfile.clean
+    container_name: opsconductor-automation-clean
+    environment:
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8001:3003"
+    networks:
+      - opsconductor-clean
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  asset-service:
+    build:
+      context: ./asset-service
+      dockerfile: Dockerfile
+    container_name: opsconductor-assets-clean
+    environment:
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8002:3002"
+    networks:
+      - opsconductor-clean
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  network-service:
+    build:
+      context: ./network-analyzer-service
+      dockerfile: Dockerfile
+    container_name: opsconductor-network-clean
+    environment:
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      REDIS_URL: redis://redis:6379
+    networks:
+      - opsconductor-clean
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  communication-service:
+    build:
+      context: ./communication-service
+      dockerfile: Dockerfile
+    container_name: opsconductor-communication-clean
+    environment:
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      REDIS_URL: redis://redis:6379
+    networks:
+      - opsconductor-clean
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

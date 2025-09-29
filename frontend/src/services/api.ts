@@ -765,7 +765,6 @@ export const aiApi = {
     message: string;
     user_id: string;
     conversation_id?: string;
-    debug_mode?: boolean;
   }): Promise<{
     response: string;
     intent: string;
@@ -856,6 +855,80 @@ export const aiApi = {
 
   resetCircuitBreaker: async (serviceName: string): Promise<void> => {
     await api.post(`/api/v1/ai/circuit-breaker/reset/${serviceName}`);
+  },
+
+  // OUIOE Brain API - Revolutionary AI System
+  ouioe: {
+    think: async (request: {
+      message: string;
+      conversation_id?: string;
+      user_id?: string;
+      context?: Record<string, any>;
+    }): Promise<{
+      status: string;
+      message: string;
+      session_id: string;
+      results?: Record<string, any>;
+      conversation_id?: string;
+      timestamp: string;
+    }> => {
+      console.log('🧠 Sending OUIOE Brain request:', request);
+      const response = await api.post('/api/v1/ai/ouioe/think', request);
+      console.log('✅ OUIOE Brain response received:', response.data);
+      return response.data;
+    },
+
+    getConversationHistory: async (conversationId: string): Promise<{
+      conversation_id: string;
+      history: Array<{
+        user_message: string;
+        ai_response: string;
+        timestamp: string;
+        session_id: string;
+      }>;
+      total_messages: number;
+    }> => {
+      const response = await api.get(`/api/v1/ai/ouioe/conversations/${conversationId}/history`);
+      return response.data;
+    },
+
+    getCollaborativeAgents: async (): Promise<{
+      agents: Array<{
+        name: string;
+        role: string;
+        specialization: string;
+      }>;
+      total_agents: number;
+      collaboration_enabled: boolean;
+    }> => {
+      const response = await api.get('/api/v1/ai/ouioe/agents');
+      return response.data;
+    },
+
+    getSystemStatus: async (): Promise<{
+      status: string;
+      message: string;
+      active_sessions: number;
+      total_conversations: number;
+      collaborative_agents: number;
+      services_available: number;
+      architecture_layers: string[];
+      timestamp: string;
+    }> => {
+      const response = await api.get('/api/v1/ai/ouioe/system/status');
+      return response.data;
+    },
+
+    simulateThinking: async (request: { message: string }): Promise<{
+      status: string;
+      message: string;
+      session_id: string;
+      steps_simulated: number;
+      timestamp: string;
+    }> => {
+      const response = await api.post('/api/v1/ai/ouioe/debug/simulate', request);
+      return response.data;
+    }
   },
 
   getKnowledgeStats: async (): Promise<any> => {
