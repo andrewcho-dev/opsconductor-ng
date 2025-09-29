@@ -457,7 +457,16 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                         step_function = getattr(library_module, function_name)
                     except (ImportError, AttributeError) as e:
                         print(f"Error importing library function {library_name}.{function_name}: {e}")
-                        raise Exception(f"Library function {library_name}.{function_name} not found")
+                        # Return error result instead of raising
+                        step_result = {
+                            'step_id': step_id,
+                            'step_name': step_name,
+                            'status': 'failed',
+                            'error': f"Library function {library_name}.{function_name} not found: {str(e)}",
+                            'inputs': step_inputs
+                        }
+                        results.append(step_result)
+                        continue
                     
                     # Execute the function
                     if asyncio.iscoroutinefunction(step_function):
@@ -519,7 +528,14 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                         else:
                             # NO FALLBACKS ALLOWED - FAIL HARD
                             execution_time = time.time() - start_time
-                            raise RuntimeError(f"NO FALLBACKS ALLOWED: No target systems specified for command execution: {command}")
+                            step_result = {
+                                'step_id': step_id,
+                                'step_name': step_name,
+                                'status': 'failed',
+                                'error': f"NO FALLBACKS ALLOWED: No target systems specified for command execution: {command}",
+                                'execution_time': execution_time,
+                                'command': command
+                            }
                     except Exception as e:
                         execution_time = time.time() - start_time
                         error_output = {
@@ -664,8 +680,9 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
                 print(f"Updated job execution {execution_id} to {db_status} status")
             except Exception as e:
                 print(f"Critical: Failed to update job execution completion status: {e}")
-                # NO FALLBACKS ALLOWED - FAIL HARD
-                raise RuntimeError(f"NO FALLBACKS ALLOWED: Job execution status update failed: {e}")
+                # NO FALLBACKS ALLOWED - FAIL HARD - but don't raise to avoid serialization issues
+                final_results['error'] = f"NO FALLBACKS ALLOWED: Job execution status update failed: {e}"
+                final_results['status'] = 'failed'
         
         return final_results
         
@@ -684,7 +701,19 @@ def execute_job(self, job_id=None, workflow_definition=None, input_data=None):
             state='FAILURE',
             meta={'error': str(exc), 'job_id': job_id}
         )
-        raise
+        
+        # Return error result instead of raising to avoid serialization issues
+        return {
+            'status': 'failed',
+            'results': [],
+            'message': f'Job {job_id} failed with error: {str(exc)}',
+            'error': str(exc),
+            'step_summary': {
+                'total_steps': 0,
+                'successful_steps': 0,
+                'failed_steps': 0
+            }
+        }
 
 def _execute_remote_command(command, target_system):
     """Execute command on remote system using appropriate method"""
@@ -700,8 +729,15 @@ def _execute_remote_command(command, target_system):
             db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
             conn = await asyncpg.connect(db_url)
             try:
+                # Try to lookup by IP address first
                 query = "SELECT * FROM assets.assets WHERE ip_address = $1"
                 result = await conn.fetchrow(query, target_system)
+                
+                # If not found and target_system looks like an ID (numeric), try lookup by ID
+                if not result and str(target_system).isdigit():
+                    query = "SELECT * FROM assets.assets WHERE id = $1"
+                    result = await conn.fetchrow(query, int(target_system))
+                
                 return result
             finally:
                 await conn.close()
@@ -749,6 +785,15 @@ def _execute_remote_command(command, target_system):
                 'stderr': f'No password available for target system {target_system}'
             }
         
+        # Get the actual connection target (IP address or hostname)
+        connection_target = asset.get('ip_address') or asset.get('hostname')
+        if not connection_target:
+            return {
+                'returncode': 1,
+                'stdout': '',
+                'stderr': f'Asset {asset.get("id", target_system)} has no IP address or hostname configured'
+            }
+        
         # For Windows systems, use WinRM
         if asset['os_type'] and 'windows' in asset['os_type'].lower():
             if WindowsPowerShellLibrary is None:
@@ -761,7 +806,7 @@ def _execute_remote_command(command, target_system):
             # Execute PowerShell command via WinRM
             ps = WindowsPowerShellLibrary()
             result = ps.execute_powershell(
-                target_host=target_system,
+                target_host=connection_target,
                 username=asset.get('username', 'administrator'),
                 password=password,
                 script=command,

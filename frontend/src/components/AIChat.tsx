@@ -233,7 +233,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       
       const data = await aiApi.chat({
         message: userMessage.content,
-        user_id: 1, // TODO: Get from auth context
+        user_id: "1", // TODO: Get from auth context
         conversation_id: conversationId,
         debug_mode: debugMode
       });
@@ -256,7 +256,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       }
       
       // Create AI message with routing info if available
-      let aiContent = data.response;
+      let aiContent = data.response || data.error || 'No response received';
       if (data._routing && !debugMode) {
         const cached = data._routing.cached ? ' (cached)' : '';
         const responseTime = (data._routing.response_time && typeof data._routing.response_time === 'number') 
@@ -992,6 +992,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   };
 
   const formatMessageContent = (content: string, messageId: string) => {
+    // Safety check for undefined content
+    if (!content || typeof content !== 'string') {
+      return <span>No content available</span>;
+    }
+    
     // Detect code blocks with triple backticks
     const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
     const parts = [];

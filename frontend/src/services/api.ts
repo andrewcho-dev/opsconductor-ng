@@ -763,7 +763,7 @@ export const communicationApi = {
 export const aiApi = {
   chat: async (request: {
     message: string;
-    user_id?: number;
+    user_id: string;
     conversation_id?: string;
     debug_mode?: boolean;
   }): Promise<{
@@ -812,8 +812,15 @@ export const aiApi = {
     error?: string;
   }> => {
     console.log('🚀 Sending AI chat request:', request);
-    const response = await api.post('/api/v1/ai/chat', request);
+    const response = await api.post('/api/v1/ai/orchestration/chat', request);
     console.log('✅ AI chat response received:', response.data);
+    
+    // Handle new backend response format: {success: true, data: {...}}
+    if (response.data && response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    
+    // Fallback to old format if the new format is not detected
     return response.data;
   },
 

@@ -644,18 +644,19 @@ services:
     container_name: opsconductor-worker-1
     command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-1@%h
     environment:
-      DB_HOST: postgres
+      # Use host IP for services since we're on host network
+      DB_HOST: ${HOST_IP:-172.18.0.1}
       DB_PORT: 5432
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
       DB_SCHEMA: automation
-      REDIS_URL: redis://redis:6379/3
-      IDENTITY_SERVICE_URL: http://identity-service:3001
-      ASSET_SERVICE_URL: http://asset-service:3002
-      COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      HTTP_PROXY: http://kong:8000
-      HTTPS_PROXY: http://kong:8000
+      REDIS_URL: redis://${HOST_IP:-172.18.0.1}:6379/3
+      IDENTITY_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3001
+      ASSET_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3002
+      COMMUNICATION_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3004
+      HTTP_PROXY: http://${HOST_IP:-172.18.0.1}:8080
+      HTTPS_PROXY: http://${HOST_IP:-172.18.0.1}:8080
       SERVICE_NAME: asset-service
       ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
       ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
@@ -666,8 +667,8 @@ services:
         condition: service_healthy
       automation-service:
         condition: service_healthy
-    networks:
-      - opsconductor-net
+    # Use host network for direct access to external systems
+    network_mode: host
     volumes:
       - ./automation-service/main.py:/app/main.py
       - ./automation-service/worker.py:/app/worker.py
@@ -682,18 +683,19 @@ services:
     container_name: opsconductor-worker-2
     command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-2@%h
     environment:
-      DB_HOST: postgres
+      # Use host IP for services since we're on host network
+      DB_HOST: ${HOST_IP:-172.18.0.1}
       DB_PORT: 5432
       DB_NAME: opsconductor
       DB_USER: postgres
       DB_PASSWORD: postgres123
       DB_SCHEMA: automation
-      REDIS_URL: redis://redis:6379/3
-      IDENTITY_SERVICE_URL: http://identity-service:3001
-      ASSET_SERVICE_URL: http://asset-service:3002
-      COMMUNICATION_SERVICE_URL: http://communication-service:3004
-      HTTP_PROXY: http://kong:8000
-      HTTPS_PROXY: http://kong:8000
+      REDIS_URL: redis://${HOST_IP:-172.18.0.1}:6379/3
+      IDENTITY_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3001
+      ASSET_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3002
+      COMMUNICATION_SERVICE_URL: http://${HOST_IP:-172.18.0.1}:3004
+      HTTP_PROXY: http://${HOST_IP:-172.18.0.1}:8080
+      HTTPS_PROXY: http://${HOST_IP:-172.18.0.1}:8080
       SERVICE_NAME: asset-service
       ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
       ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
@@ -704,8 +706,8 @@ services:
         condition: service_healthy
       automation-service:
         condition: service_healthy
-    networks:
-      - opsconductor-net
+    # Use host network for direct access to external systems
+    network_mode: host
     volumes:
       - ./automation-service/main.py:/app/main.py
       - ./automation-service/worker.py:/app/worker.py

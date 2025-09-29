@@ -782,7 +782,7 @@ class AutomationService(BaseService):
                 task_result = celery_app.AsyncResult(task_id)
                 
                 # Get basic task info
-                status = task_result.status
+                task_status = task_result.status
                 result = task_result.result
                 traceback = task_result.traceback
                 
@@ -790,7 +790,7 @@ class AutomationService(BaseService):
                 response_data = {
                     "job_id": job_id,
                     "task_id": task_id,
-                    "status": status,
+                    "status": task_status,
                     "result": result,
                     "traceback": traceback,
                     "ready": task_result.ready(),

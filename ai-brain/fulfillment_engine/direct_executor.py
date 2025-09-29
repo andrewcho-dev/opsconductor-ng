@@ -856,7 +856,21 @@ Your decision:"""
         service_context = await self._get_comprehensive_service_context(user_message)
         
         # Get enhanced analysis of the user request using dynamic catalog
-        request_analysis = self.service_catalog.get_relevant_context(user_message, max_domains=5)
+        catalog_context = self.service_catalog.get_relevant_context(user_message, max_domains=5)
+        
+        # Extract relevant information from catalog context
+        relevant_domains = catalog_context.get('request_analysis', {}).get('relevant_domains', [])
+        domain_contexts = catalog_context.get('domain_contexts', {})
+        
+        # Build analysis summary from catalog context
+        analysis_summary = f"Relevant domains: {', '.join(relevant_domains)}"
+        if domain_contexts:
+            capabilities = []
+            for domain_id, context in domain_contexts.items():
+                if 'capabilities' in context:
+                    capabilities.extend(list(context['capabilities'].keys()))
+            if capabilities:
+                analysis_summary += f"\nAvailable capabilities: {', '.join(capabilities[:5])}"
         
         reasoning_prompt = f"""CRITICAL: You MUST respond with EXACTLY this format:
 
@@ -873,11 +887,8 @@ USER REQUEST: "{user_message}"
 
 CONTEXT FROM ANALYSIS: {extraction_text}
 
-AUTOMATED REQUEST ANALYSIS:
-Services Identified: {', '.join(request_analysis['identified_services'])}
-Reasoning: {'; '.join(request_analysis['reasoning'])}
-Suggested Workflow: {'; '.join(request_analysis['suggested_workflow'])}
-Key Insights: {'; '.join(request_analysis['key_insights'])}
+SERVICE CATALOG ANALYSIS:
+{analysis_summary}
 
 {service_context}
 
