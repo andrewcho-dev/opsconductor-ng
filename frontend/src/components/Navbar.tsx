@@ -16,7 +16,12 @@ import {
   History,
   GitBranch,
   Server,
-  Shield
+  Shield,
+  Bell,
+  FileText,
+  Network,
+  Calendar,
+  Brain
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -123,6 +128,14 @@ const Navbar: React.FC = () => {
                     <span className="nav-icon"><Play size={14} /></span>
                     Flow Runs
                   </Link>
+                  <Link 
+                    to="/schedules" 
+                    className={`nav-submenu-item ${location.pathname === '/schedules' || location.pathname.startsWith('/schedules/') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Calendar size={14} /></span>
+                    Schedules
+                  </Link>
                 </div>
               </div>
 
@@ -171,16 +184,84 @@ const Navbar: React.FC = () => {
               {/* Infrastructure Section */}
               <div className="nav-section-header">Infrastructure</div>
               
-              <Link 
-                to="/infrastructure" 
-                className={`nav-menu-item ${isActive('/infrastructure') ? 'active' : ''}`} 
-                onClick={closeMenu}
-              >
-                <span className="nav-icon"><Server size={16} /></span>
-                Infrastructure Monitoring
-              </Link>
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><Server size={16} /></span>
+                  Infrastructure
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/infrastructure" 
+                    className={`nav-submenu-item ${isActive('/infrastructure') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Server size={14} /></span>
+                    System Monitoring
+                  </Link>
+                  <Link 
+                    to="/network-analysis" 
+                    className={`nav-submenu-item ${isActive('/network-analysis') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Network size={14} /></span>
+                    Network Analysis
+                  </Link>
+                  <Link 
+                    to="/ai-monitoring" 
+                    className={`nav-submenu-item ${isActive('/ai-monitoring') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Brain size={14} /></span>
+                    AI Monitoring
+                  </Link>
+                </div>
+              </div>
 
 
+
+              <div className="nav-divider"></div>
+              
+              {/* Communication Section */}
+              <div className="nav-section-header">Communication</div>
+              
+              <div className="nav-menu-item-group">
+                <div className="nav-menu-item">
+                  <span className="nav-icon"><MessageSquare size={16} /></span>
+                  Notifications
+                  <span className="nav-chevron">
+                    <ChevronRight size={14} />
+                  </span>
+                </div>
+                <div className="nav-submenu">
+                  <Link 
+                    to="/notifications" 
+                    className={`nav-submenu-item ${isActive('/notifications') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Bell size={14} /></span>
+                    Notifications
+                  </Link>
+                  <Link 
+                    to="/templates" 
+                    className={`nav-submenu-item ${isActive('/templates') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><FileText size={14} /></span>
+                    Templates
+                  </Link>
+                  <Link 
+                    to="/audit-logs" 
+                    className={`nav-submenu-item ${isActive('/audit-logs') ? 'active' : ''}`} 
+                    onClick={closeMenu}
+                  >
+                    <span className="nav-icon"><Shield size={14} /></span>
+                    Audit Logs
+                  </Link>
+                </div>
+              </div>
 
               <div className="nav-divider"></div>
               

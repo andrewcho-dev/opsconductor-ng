@@ -2436,6 +2436,25 @@ def knowledge_stats():
         }
 
 # ============================================================================
+# STRIPPED PATH ENDPOINTS FOR KONG GATEWAY
+# ============================================================================
+
+@app.get("/monitoring/dashboard")
+async def monitoring_dashboard():
+    """Monitoring dashboard endpoint for Kong gateway routing (stripped path)"""
+    return await api_v1_monitoring_dashboard()
+
+@app.post("/circuit-breaker/reset/{service_name}")
+async def reset_circuit_breaker(service_name: str):
+    """Circuit breaker reset endpoint for Kong gateway routing (stripped path)"""
+    return await api_v1_reset_circuit_breaker(service_name)
+
+@app.get("/knowledge-stats")
+def knowledge_stats_stripped():
+    """Knowledge stats endpoint for Kong gateway routing (stripped path)"""
+    return api_v1_knowledge_stats()
+
+# ============================================================================
 # FULFILLMENT ENGINE API ENDPOINTS
 # ============================================================================
 

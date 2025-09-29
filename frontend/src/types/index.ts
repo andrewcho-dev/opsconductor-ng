@@ -378,5 +378,256 @@ export interface RoleListResponse {
   total: number; // For backward compatibility
 }
 
+// Notification Types (matching backend communication service)
+export interface Notification {
+  id: number;
+  notification_id: string;
+  template_id?: number;
+  channel_id?: number;
+  recipient: string;
+  subject?: string;
+  message: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  error_message?: string;
+  metadata: Record<string, any>;
+  scheduled_at: string;
+  sent_at?: string;
+  created_at: string;
+}
+
+export interface NotificationCreate {
+  template_id?: number;
+  channel_id?: number;
+  recipient: string;
+  subject?: string;
+  message: string;
+  metadata?: Record<string, any>;
+  scheduled_at?: string;
+}
+
+export interface NotificationListResponse {
+  notifications: Notification[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Template Types (matching backend communication service)
+export interface Template {
+  id: number;
+  name: string;
+  template_type: string;
+  subject_template?: string;
+  body_template: string;
+  metadata: Record<string, any>;
+  is_active: boolean;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TemplateCreate {
+  name: string;
+  template_type: string;
+  subject_template?: string;
+  body_template: string;
+  metadata?: Record<string, any>;
+  is_active?: boolean;
+}
+
+export interface TemplateListResponse {
+  templates: Template[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Audit Log Types (matching backend communication service)
+export interface AuditLog {
+  id: number;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  user_id?: number;
+  action: string;
+  details: Record<string, any>;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  audit_logs: AuditLog[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Network Analysis Types
+export interface NetworkProbe {
+  id: number;
+  name: string;
+  description?: string;
+  host: string;
+  port?: number;
+  probe_type: 'ping' | 'port_scan' | 'service_discovery' | 'packet_capture';
+  configuration: Record<string, any>;
+  is_active: boolean;
+  last_run?: string;
+  next_run?: string;
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NetworkProbeCreate {
+  name: string;
+  description?: string;
+  host: string;
+  port?: number;
+  probe_type: 'ping' | 'port_scan' | 'service_discovery' | 'packet_capture';
+  configuration?: Record<string, any>;
+  is_active?: boolean;
+}
+
+export interface NetworkAnalysis {
+  id: number;
+  probe_id: number;
+  analysis_type: 'connectivity' | 'performance' | 'security' | 'discovery';
+  results: Record<string, any>;
+  ai_insights?: string;
+  anomalies_detected: boolean;
+  risk_score?: number;
+  recommendations?: string[];
+  started_at: string;
+  completed_at?: string;
+  status: 'running' | 'completed' | 'failed';
+}
+
+export interface NetworkAnalysisListResponse {
+  analyses: NetworkAnalysis[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Schedule Types
+export interface Schedule {
+  id: number;
+  name: string;
+  description?: string;
+  cron_expression: string;
+  timezone: string;
+  job_id: number;
+  job_name?: string;
+  is_active: boolean;
+  last_run?: string;
+  next_run?: string;
+  run_count: number;
+  failure_count: number;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleCreate {
+  name: string;
+  description?: string;
+  cron_expression: string;
+  timezone?: string;
+  job_id: number;
+  is_active?: boolean;
+}
+
+export interface ScheduleListResponse {
+  schedules: Schedule[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Step Library Types
+export interface StepLibrary {
+  id: number;
+  name: string;
+  description?: string;
+  category: string;
+  step_type: string;
+  parameters_schema: Record<string, any>;
+  implementation: Record<string, any>;
+  version: string;
+  is_active: boolean;
+  usage_count: number;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StepLibraryCreate {
+  name: string;
+  description?: string;
+  category: string;
+  step_type: string;
+  parameters_schema: Record<string, any>;
+  implementation: Record<string, any>;
+  version?: string;
+  is_active?: boolean;
+}
+
+export interface StepLibraryListResponse {
+  steps: StepLibrary[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+// Asset Discovery Types
+export interface AssetDiscovery {
+  id: number;
+  name: string;
+  description?: string;
+  discovery_type: 'network_scan' | 'cloud_discovery' | 'agent_based';
+  target_range: string;
+  configuration: Record<string, any>;
+  is_active: boolean;
+  last_run?: string;
+  next_run?: string;
+  assets_discovered: number;
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetDiscoveryCreate {
+  name: string;
+  description?: string;
+  discovery_type: 'network_scan' | 'cloud_discovery' | 'agent_based';
+  target_range: string;
+  configuration?: Record<string, any>;
+  is_active?: boolean;
+}
+
+// Asset Group Types
+export interface AssetGroup {
+  id: number;
+  name: string;
+  description?: string;
+  group_type: 'static' | 'dynamic';
+  criteria?: Record<string, any>;
+  asset_count: number;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetGroupCreate {
+  name: string;
+  description?: string;
+  group_type: 'static' | 'dynamic';
+  criteria?: Record<string, any>;
+}
+
 
 

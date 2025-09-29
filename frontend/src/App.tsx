@@ -15,6 +15,12 @@ import RoleManagement from './pages/RoleManagement';
 import Workflows from './pages/Workflows';
 import FlowRuns from './pages/FlowRuns';
 import InfrastructureMonitoring from './pages/InfrastructureMonitoring';
+import NotificationsPage from './pages/NotificationsPage';
+import TemplatesPage from './pages/TemplatesPage';
+import AuditLogsPage from './pages/AuditLogsPage';
+import NetworkAnalysisPage from './pages/NetworkAnalysisPage';
+import SchedulesPage from './pages/SchedulesPage';
+import AIMonitoringPage from './pages/AIMonitoringPage';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -53,6 +59,7 @@ const App: React.FC = () => {
                     <Route path="/workflows/:action/:id" element={<Workflows />} />
                     <Route path="/workflows/runs" element={<FlowRuns />} />
                     <Route path="/workflows/runs/:id" element={<FlowRuns />} />
+                    <Route path="/schedules" element={<SchedulesPage />} />
 
                     {/* Assets Routes */}
                     <Route path="/assets" element={<Assets />} />
@@ -61,6 +68,13 @@ const App: React.FC = () => {
 
                     {/* Infrastructure Routes */}
                     <Route path="/infrastructure" element={<InfrastructureMonitoring />} />
+                    <Route path="/network-analysis" element={<NetworkAnalysisPage />} />
+                    <Route path="/ai-monitoring" element={<AIMonitoringPage />} />
+
+                    {/* Communication Routes */}
+                    <Route path="/notifications" element={<NotificationsPage />} />
+                    <Route path="/templates" element={<TemplatesPage />} />
+                    <Route path="/audit-logs" element={<AuditLogsPage />} />
 
                     {/* History Routes - Legacy Job Runs Only */}
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />

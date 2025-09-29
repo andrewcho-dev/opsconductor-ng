@@ -11,7 +11,16 @@ import {
   SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse,
   CommunicationChannel, CommunicationChannelCreate, CommunicationChannelUpdate,
   CommunicationTestRequest, CommunicationTestResponse,
-  SlackSettings, TeamsSettings, DiscordSettings, WebhookSettings
+  SlackSettings, TeamsSettings, DiscordSettings, WebhookSettings,
+
+  // New types
+  Notification, NotificationCreate, NotificationListResponse,
+  Template, TemplateCreate, TemplateListResponse,
+  AuditLog, AuditLogListResponse,
+  NetworkProbe, NetworkProbeCreate, NetworkAnalysis, NetworkAnalysisListResponse,
+  Schedule, ScheduleCreate, ScheduleListResponse,
+  StepLibrary, StepLibraryCreate, StepLibraryListResponse,
+  AssetDiscovery, AssetDiscoveryCreate, AssetGroup, AssetGroupCreate
 } from '../types';
 import { AssetCreate } from '../types/asset';
 
@@ -866,6 +875,334 @@ export const automationApi = {
   }> => {
     const response = await api.post('/api/v1/automation/test-connection', connectionData);
     return response.data;
+  }
+};
+
+// Notifications API
+export const notificationApi = {
+  list: async (skip = 0, limit = 100, filters?: any): Promise<NotificationListResponse> => {
+    const params: any = { skip, limit };
+    if (filters) {
+      Object.assign(params, filters);
+    }
+    const response = await api.get('/api/v1/notifications', { params });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Notification> => {
+    const response = await api.get(`/api/v1/notifications/${id}`);
+    return response.data;
+  },
+
+  create: async (notificationData: NotificationCreate): Promise<Notification> => {
+    const response = await api.post('/api/v1/notifications', notificationData);
+    return response.data;
+  },
+
+  update: async (id: number, notificationData: Partial<NotificationCreate>): Promise<Notification> => {
+    const response = await api.put(`/api/v1/notifications/${id}`, notificationData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/notifications/${id}`);
+  },
+
+  // Note: markAsRead and markAllAsRead not implemented in backend
+};
+
+// Templates API
+export const templateApi = {
+  list: async (skip = 0, limit = 100, filters?: any): Promise<TemplateListResponse> => {
+    const params: any = { skip, limit };
+    if (filters) {
+      Object.assign(params, filters);
+    }
+    const response = await api.get('/api/v1/templates', { params });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Template> => {
+    const response = await api.get(`/api/v1/templates/${id}`);
+    return response.data;
+  },
+
+  create: async (templateData: TemplateCreate): Promise<Template> => {
+    const response = await api.post('/api/v1/templates', templateData);
+    return response.data;
+  },
+
+  update: async (id: number, templateData: Partial<TemplateCreate>): Promise<Template> => {
+    const response = await api.put(`/api/v1/templates/${id}`, templateData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/templates/${id}`);
+  },
+
+  preview: async (templateData: { template_type: string; subject_template?: string; body_template: string; variables: Record<string, any> }): Promise<{ subject?: string; body: string }> => {
+    const response = await api.post('/api/v1/templates/preview', templateData);
+    return response.data;
+  }
+};
+
+// Audit Logs API
+export const auditApi = {
+  list: async (skip = 0, limit = 100, filters?: any): Promise<AuditLogListResponse> => {
+    const params: any = { skip, limit };
+    if (filters) {
+      Object.assign(params, filters);
+    }
+    const response = await api.get('/api/v1/audit', { params });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<AuditLog> => {
+    const response = await api.get(`/api/v1/audit/${id}`);
+    return response.data;
+  },
+
+  export: async (filters?: any): Promise<Blob> => {
+    const params = filters || {};
+    const response = await api.get('/api/v1/audit/export', { 
+      params,
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+};
+
+// Network Analysis API
+export const networkApi = {
+  // Probes
+  listProbes: async (skip = 0, limit = 100): Promise<{ probes: NetworkProbe[]; total: number }> => {
+    const response = await api.get('/api/v1/network/probes', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  getProbe: async (id: number): Promise<NetworkProbe> => {
+    const response = await api.get(`/api/v1/network/probes/${id}`);
+    return response.data;
+  },
+
+  createProbe: async (probeData: NetworkProbeCreate): Promise<NetworkProbe> => {
+    const response = await api.post('/api/v1/network/probes', probeData);
+    return response.data;
+  },
+
+  updateProbe: async (id: number, probeData: Partial<NetworkProbeCreate>): Promise<NetworkProbe> => {
+    const response = await api.put(`/api/v1/network/probes/${id}`, probeData);
+    return response.data;
+  },
+
+  deleteProbe: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/network/probes/${id}`);
+  },
+
+  runProbe: async (id: number): Promise<{ execution_id: string }> => {
+    const response = await api.post(`/api/v1/network/probes/${id}/run`);
+    return response.data;
+  },
+
+  // Analysis
+  listAnalyses: async (skip = 0, limit = 100, probeId?: number): Promise<NetworkAnalysisListResponse> => {
+    const params: any = { skip, limit };
+    if (probeId) {
+      params.probe_id = probeId;
+    }
+    const response = await api.get('/api/v1/network/analyses', { params });
+    return response.data;
+  },
+
+  getAnalysis: async (id: number): Promise<NetworkAnalysis> => {
+    const response = await api.get(`/api/v1/network/analyses/${id}`);
+    return response.data;
+  },
+
+  // Monitoring
+  getNetworkHealth: async (): Promise<any> => {
+    const response = await api.get('/api/v1/network/health');
+    return response.data;
+  },
+
+  getNetworkStats: async (): Promise<any> => {
+    const response = await api.get('/api/v1/network/stats');
+    return response.data;
+  }
+};
+
+// Schedules API
+export const scheduleApi = {
+  list: async (skip = 0, limit = 100): Promise<ScheduleListResponse> => {
+    const response = await api.get('/api/v1/schedules', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Schedule> => {
+    const response = await api.get(`/api/v1/schedules/${id}`);
+    return response.data;
+  },
+
+  create: async (scheduleData: ScheduleCreate): Promise<Schedule> => {
+    const response = await api.post('/api/v1/schedules', scheduleData);
+    return response.data;
+  },
+
+  update: async (id: number, scheduleData: Partial<ScheduleCreate>): Promise<Schedule> => {
+    const response = await api.put(`/api/v1/schedules/${id}`, scheduleData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/schedules/${id}`);
+  },
+
+  enable: async (id: number): Promise<void> => {
+    await api.post(`/api/v1/schedules/${id}/enable`);
+  },
+
+  disable: async (id: number): Promise<void> => {
+    await api.post(`/api/v1/schedules/${id}/disable`);
+  },
+
+  trigger: async (id: number): Promise<{ execution_id: string }> => {
+    const response = await api.post(`/api/v1/schedules/${id}/trigger`);
+    return response.data;
+  }
+};
+
+// Step Libraries API
+export const stepLibraryApi = {
+  list: async (skip = 0, limit = 100, category?: string): Promise<StepLibraryListResponse> => {
+    const params: any = { skip, limit };
+    if (category) {
+      params.category = category;
+    }
+    const response = await api.get('/api/v1/step-libraries', { params });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<StepLibrary> => {
+    const response = await api.get(`/api/v1/step-libraries/${id}`);
+    return response.data;
+  },
+
+  create: async (stepData: StepLibraryCreate): Promise<StepLibrary> => {
+    const response = await api.post('/api/v1/step-libraries', stepData);
+    return response.data;
+  },
+
+  update: async (id: number, stepData: Partial<StepLibraryCreate>): Promise<StepLibrary> => {
+    const response = await api.put(`/api/v1/step-libraries/${id}`, stepData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/step-libraries/${id}`);
+  },
+
+  getCategories: async (): Promise<string[]> => {
+    const response = await api.get('/api/v1/step-libraries/categories');
+    return response.data.categories;
+  },
+
+  export: async (): Promise<Blob> => {
+    const response = await api.get('/api/v1/step-libraries/export', {
+      responseType: 'blob'
+    });
+    return response.data;
+  },
+
+  import: async (file: File): Promise<{ imported: number; errors: string[] }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/api/v1/step-libraries/import', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  }
+};
+
+// Asset Discovery API
+export const assetDiscoveryApi = {
+  list: async (skip = 0, limit = 100): Promise<{ discoveries: AssetDiscovery[]; total: number }> => {
+    const response = await api.get('/api/v1/discovery', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<AssetDiscovery> => {
+    const response = await api.get(`/api/v1/discovery/${id}`);
+    return response.data;
+  },
+
+  create: async (discoveryData: AssetDiscoveryCreate): Promise<AssetDiscovery> => {
+    const response = await api.post('/api/v1/discovery', discoveryData);
+    return response.data;
+  },
+
+  update: async (id: number, discoveryData: Partial<AssetDiscoveryCreate>): Promise<AssetDiscovery> => {
+    const response = await api.put(`/api/v1/discovery/${id}`, discoveryData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/discovery/${id}`);
+  },
+
+  run: async (id: number): Promise<{ execution_id: string }> => {
+    const response = await api.post(`/api/v1/discovery/${id}/run`);
+    return response.data;
+  }
+};
+
+// Asset Groups API
+export const assetGroupApi = {
+  list: async (skip = 0, limit = 100): Promise<{ groups: AssetGroup[]; total: number }> => {
+    const response = await api.get('/api/v1/target-groups', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<AssetGroup> => {
+    const response = await api.get(`/api/v1/target-groups/${id}`);
+    return response.data;
+  },
+
+  create: async (groupData: AssetGroupCreate): Promise<AssetGroup> => {
+    const response = await api.post('/api/v1/target-groups', groupData);
+    return response.data;
+  },
+
+  update: async (id: number, groupData: Partial<AssetGroupCreate>): Promise<AssetGroup> => {
+    const response = await api.put(`/api/v1/target-groups/${id}`, groupData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/target-groups/${id}`);
+  },
+
+  getAssets: async (id: number): Promise<any[]> => {
+    const response = await api.get(`/api/v1/target-groups/${id}/assets`);
+    return response.data.assets;
+  },
+
+  addAssets: async (id: number, assetIds: number[]): Promise<void> => {
+    await api.post(`/api/v1/target-groups/${id}/assets`, { asset_ids: assetIds });
+  },
+
+  removeAssets: async (id: number, assetIds: number[]): Promise<void> => {
+    await api.delete(`/api/v1/target-groups/${id}/assets`, { data: { asset_ids: assetIds } });
   }
 };
 
