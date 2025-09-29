@@ -296,7 +296,7 @@ class CommunicationService(BaseService):
         # Network Analyzer
         self.health_monitor.add_http_service(
             "Network Analyzer",
-            f"http://{os.getenv('NETWORK_ANALYZER_HOST', 'network-analyzer-service')}:{os.getenv('NETWORK_ANALYZER_PORT', '3006')}/ready"
+            f"http://{os.getenv('NETWORK_ANALYZER_HOST', 'network-analyzer-service')}:{os.getenv('NETWORK_ANALYZER_PORT', '3006')}/health"
         )
         
         # Ollama LLM Server
