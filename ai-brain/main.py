@@ -3,10 +3,12 @@ from pydantic import BaseModel
 import structlog
 import os
 import json
+import asyncio
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import uuid
 import sys
+from contextlib import asynccontextmanager
 
 # Add current directory to Python path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -81,17 +83,153 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+def create_lifespan(service_instance):
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        """Initialize AI engine on startup and cleanup on shutdown"""
+        print("🚀 AI BRAIN STARTUP EVENT CALLED!")
+        logger.info("🚀 AI BRAIN STARTUP EVENT CALLED!")
+        
+        print("🔧 About to call base service startup...")
+        logger.info("🔧 About to call base service startup...")
+        
+        # Initialize base service components (database, redis) first
+        await service_instance._startup()
+        logger.info("Base service components initialized")
+        
+        try:
+            
+            print(f"🔗 About to initialize LLM engine: {llm_engine}")
+            logger.info(f"🔗 About to initialize LLM engine: {llm_engine}")
+            
+            # Initialize LLM engine first
+            print("🔗 Initializing LLM engine...")
+            logger.info("🔗 Initializing LLM engine...")
+            
+            print(f"🔧 LLM engine type: {type(llm_engine)}")
+            print(f"🔧 LLM engine host: {llm_engine.ollama_host}")
+            print(f"🔧 LLM engine default model: {llm_engine.default_model}")
+            
+            # Test Ollama connection directly first
+            try:
+                print("🔧 Testing direct Ollama connection...")
+                import ollama
+                test_client = ollama.Client(host=llm_engine.ollama_host)
+                test_response = test_client.list()
+                print(f"🔧 Direct Ollama test successful: {len(test_response.models)} models")
+            except Exception as e:
+                print(f"🔧 Direct Ollama test failed: {e}")
+            
+            try:
+                llm_success = await llm_engine.initialize()
+                
+                if llm_success:
+                    logger.info("🚀 LLM engine initialized successfully")
+                else:
+                    logger.error("❌ Failed to initialize LLM engine")
+            except Exception as e:
+                logger.error(f"❌ LLM engine initialization failed with exception: {e}")
+                llm_success = False
+            
+            # Intent brain is ready (no initialization needed)
+            logger.info("🚀 Intent Brain System ready")
+            logger.info("🧠 Intent analysis and job creation ready")
+            
+            # Initialize AI Brain Orchestration Service
+            logger.info("🎼 Initializing AI Brain Orchestration Service...")
+            orchestration_success = await ai_brain_service.initialize()
+            if orchestration_success:
+                logger.info("🚀 AI Brain Orchestration Service initialized successfully")
+            else:
+                logger.warning("⚠️ AI Brain Orchestration Service initialization failed - continuing without orchestration")
+            
+            # Initialize Prefect Flow Engine
+            logger.info("🌊 Initializing Prefect Flow Engine...")
+            prefect_success = await prefect_flow_engine.initialize()
+            if prefect_success:
+                logger.info("🚀 Prefect Flow Engine initialized successfully")
+            else:
+                logger.warning("⚠️ Prefect Flow Engine initialization failed - continuing without Prefect")
+            
+            # Set orchestration services for API router
+            try:
+                set_orchestration_services(ai_brain_service, prefect_flow_engine)
+                logger.info("🔗 Orchestration services linked to API router")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to link orchestration services to API: {e}")
+            
+            # Initialize streaming infrastructure
+            logger.info("📡 Initializing streaming infrastructure...")
+            redis_url = os.getenv("REDIS_URL", "redis://redis:6379/9")
+            logger.info(f"🔗 Using Redis URL: {redis_url}")
+            streaming_success = await initialize_global_stream_manager(redis_url)
+            if streaming_success:
+                logger.info("🚀 Streaming infrastructure initialized successfully")
+                
+                # Initialize WebSocket manager
+                stream_manager = get_global_stream_manager()
+                if stream_manager:
+                    initialize_websocket_manager(stream_manager.redis_stream_manager)
+                    logger.info("🔌 WebSocket manager initialized")
+            else:
+                logger.warning("⚠️ Streaming infrastructure initialization failed - continuing without real-time features")
+        except Exception as e:
+            print(f"❌ AI BRAIN STARTUP EXCEPTION: {e}")
+            logger.error(f"❌ Exception during AI Brain startup: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        yield  # This is where the app runs
+        
+        # Shutdown AI Brain components
+        logger.info("Shutting down AI Brain System...")
+        try:
+            # Cleanup Intent Brain
+            if hasattr(intent_brain, 'cleanup'):
+                await intent_brain.cleanup()
+                logger.info("🧠 Intent Brain System cleanup completed")
+            else:
+                logger.info("🧠 Intent Brain System shutdown completed")
+            
+            # Cleanup Prefect Flow Engine
+            if hasattr(prefect_flow_engine, 'cleanup'):
+                await prefect_flow_engine.cleanup()
+                logger.info("🌊 Prefect Flow Engine cleanup completed")
+            
+            # Cleanup AI Brain Orchestration Service
+            if hasattr(ai_brain_service, 'cleanup'):
+                await ai_brain_service.cleanup()
+                logger.info("🎼 AI Brain Orchestration Service cleanup completed")
+            
+            # Cleanup streaming infrastructure
+            stream_manager = get_global_stream_manager()
+            if stream_manager:
+                await stream_manager.shutdown()
+                logger.info("📡 Streaming infrastructure cleanup completed")
+                
+        except Exception as e:
+            logger.error(f"❌ Exception during AI Brain System shutdown: {e}")
+        
+        # Finally, shutdown base service components
+        await service_instance._shutdown()
+        logger.info("Base service components shutdown")
+    
+    return lifespan
+
 class AIService(BaseService):
     def __init__(self):
+        # Create the lifespan function with self reference
+        lifespan_func = create_lifespan(self)
         super().__init__(
             name="ai-service",
             version="2.0.0-HARDCODE-FREE",
-            port=3005
+            port=3005,
+            lifespan=lifespan_func
         )
         
 # Hardcoded logic prevention removed - was blocking legitimate functionality
 
-# Initialize service components
+# Initialize service components - must be after lifespan function definition
 service = AIService()
 app = service.app
 
@@ -190,7 +328,7 @@ async def progress_websocket(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time progress updates"""
     await progress_websocket_endpoint(websocket, session_id)
 
-@app.post("/api/v1/ai/init-streaming")
+@app.post("/api/v1/init-streaming")
 async def manual_init_streaming():
     """Manual endpoint to initialize streaming infrastructure"""
     try:
@@ -216,104 +354,7 @@ async def manual_init_streaming():
         logger.error(f"❌ Manual initialization failed: {e}")
         return {"status": "error", "message": f"Initialization failed: {str(e)}"}
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize AI engine on startup"""
-    try:
-        print("🚀 STARTUP EVENT CALLED!")
-        logger.info("🚀 STARTUP EVENT CALLED!")
-        logger.info("Initializing Intent Brain System...")
-        
-        print(f"🔗 About to initialize LLM engine: {llm_engine}")
-        logger.info(f"🔗 About to initialize LLM engine: {llm_engine}")
-        
-        # Initialize LLM engine first
-        logger.info("🔗 Initializing LLM engine...")
-        llm_success = await llm_engine.initialize()
-        if llm_success:
-            logger.info("🚀 LLM engine initialized successfully")
-        else:
-            logger.error("❌ Failed to initialize LLM engine")
-            return
-        
-        # Intent brain is ready (no initialization needed)
-        logger.info("🚀 Intent Brain System ready")
-        logger.info("🧠 Intent analysis and job creation ready")
-        
-        # Initialize AI Brain Orchestration Service
-        logger.info("🎼 Initializing AI Brain Orchestration Service...")
-        orchestration_success = await ai_brain_service.initialize()
-        if orchestration_success:
-            logger.info("🚀 AI Brain Orchestration Service initialized successfully")
-        else:
-            logger.warning("⚠️ AI Brain Orchestration Service initialization failed - continuing without orchestration")
-        
-        # Initialize Prefect Flow Engine
-        logger.info("🌊 Initializing Prefect Flow Engine...")
-        prefect_success = await prefect_flow_engine.initialize()
-        if prefect_success:
-            logger.info("🚀 Prefect Flow Engine initialized successfully")
-        else:
-            logger.warning("⚠️ Prefect Flow Engine initialization failed - continuing without Prefect")
-        
-        # Set orchestration services for API router
-        try:
-            set_orchestration_services(ai_brain_service, prefect_flow_engine)
-            logger.info("🔗 Orchestration services linked to API router")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to link orchestration services to API: {e}")
-        
-        # Initialize streaming infrastructure
-        logger.info("📡 Initializing streaming infrastructure...")
-        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/9")
-        logger.info(f"🔗 Using Redis URL: {redis_url}")
-        streaming_success = await initialize_global_stream_manager(redis_url)
-        if streaming_success:
-            logger.info("🚀 Streaming infrastructure initialized successfully")
-            
-            # Initialize WebSocket manager
-            stream_manager = get_global_stream_manager()
-            if stream_manager:
-                initialize_websocket_manager(stream_manager.redis_stream_manager)
-                logger.info("🔌 WebSocket manager initialized")
-        else:
-            logger.warning("⚠️ Streaming infrastructure initialization failed - continuing without real-time features")
-    except Exception as e:
-        print(f"❌ STARTUP EXCEPTION: {e}")
-        logger.error(f"❌ Exception during startup: {e}")
-        import traceback
-        traceback.print_exc()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup intent brain and orchestration services on shutdown"""
-    logger.info("Shutting down AI Brain System...")
-    try:
-        # Cleanup Intent Brain
-        if hasattr(intent_brain, 'cleanup'):
-            await intent_brain.cleanup()
-            logger.info("🧠 Intent Brain System cleanup completed")
-        else:
-            logger.info("🧠 Intent Brain System shutdown completed")
-        
-        # Cleanup Prefect Flow Engine
-        if hasattr(prefect_flow_engine, 'cleanup'):
-            await prefect_flow_engine.cleanup()
-            logger.info("🌊 Prefect Flow Engine cleanup completed")
-        
-        # Cleanup AI Brain Orchestration Service
-        if hasattr(ai_brain_service, 'cleanup'):
-            await ai_brain_service.cleanup()
-            logger.info("🎼 AI Brain Orchestration Service cleanup completed")
-        
-        # Cleanup streaming infrastructure
-        stream_manager = get_global_stream_manager()
-        if stream_manager:
-            await stream_manager.shutdown()
-            logger.info("📡 Streaming infrastructure cleanup completed")
-            
-    except Exception as e:
-        logger.error(f"❌ Exception during AI Brain System shutdown: {e}")
+# Old startup/shutdown events removed - now using lifespan context manager
 
 # PURE AI BRAIN DECISION MAKING - NO HARDCODED LOGIC!
 async def pure_llm_chat_endpoint(request, intent_brain_instance):
@@ -1319,7 +1360,7 @@ async def service_info():
         "nlm_eliminated": True
     }
 
-@app.get("/ai/system-capabilities")
+@app.get("/system-capabilities")
 async def get_system_capabilities():
     """Get comprehensive system capabilities and self-awareness information"""
     try:
@@ -1333,7 +1374,7 @@ async def get_system_capabilities():
         logger.error("Failed to get system capabilities", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to get system capabilities: {str(e)}")
 
-@app.post("/ai/validate-job")
+@app.post("/validate-job")
 async def validate_job_request(request: dict):
     """Validate job request before creation"""
     try:
@@ -1409,7 +1450,7 @@ async def validate_job_request(request: dict):
         logger.error(f"Job validation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
-@app.post("/ai/chat")
+@app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
     """PURE LLM CHAT INTERFACE - NO MORE NLP PATTERN MATCHING BULLSHIT!"""
     result = await pure_llm_chat_endpoint(request, intent_brain)
@@ -1453,7 +1494,7 @@ async def chat_endpoint(request: ChatRequest):
             timestamp=datetime.now().isoformat()
         )
 
-@app.get("/ai/fulfillment/status/{request_id}")
+@app.get("/fulfillment/status/{request_id}")
 async def get_fulfillment_status(request_id: str):
     """Get the status of a fulfillment request"""
     try:
@@ -1473,7 +1514,7 @@ async def get_fulfillment_status(request_id: str):
         logger.error(f"Failed to get fulfillment status for {request_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
-@app.get("/ai/fulfillment/requests")
+@app.get("/fulfillment/requests")
 async def list_fulfillment_requests(limit: int = 50, offset: int = 0):
     """List recent fulfillment requests"""
     try:
@@ -1503,7 +1544,7 @@ class ProceedWithRiskRequest(BaseModel):
     acknowledge_risks: bool = False
     user_notes: Optional[str] = None
 
-@app.post("/ai/proceed-with-risk")
+@app.post("/proceed-with-risk")
 async def proceed_with_risk(request: ProceedWithRiskRequest):
     """Allow user to proceed with job creation despite risks after acknowledging them"""
     try:
@@ -1543,7 +1584,7 @@ async def proceed_with_risk(request: ProceedWithRiskRequest):
 
 # System queries and script generation are now handled through the main chat interface
 
-@app.get("/ai/knowledge-stats")
+@app.get("/knowledge-stats")
 def get_knowledge_stats():
     """Get AI knowledge base statistics"""
     try:
@@ -1561,7 +1602,7 @@ def get_knowledge_stats():
         logger.error("Failed to get knowledge stats", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
-@app.post("/ai/store-knowledge")
+@app.post("/store-knowledge")
 async def store_knowledge_endpoint(request: dict):
     """Store new knowledge in the AI system"""
     try:
@@ -1586,7 +1627,7 @@ async def store_knowledge_endpoint(request: dict):
         logger.error("Failed to store knowledge", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to store knowledge: {str(e)}")
 
-@app.post("/ai/protocol/execute")
+@app.post("/protocol/execute")
 async def execute_protocol_operation(request: dict):
     """Execute operation using specified protocol"""
     try:
@@ -1613,9 +1654,9 @@ async def execute_protocol_operation(request: dict):
         logger.error("Protocol operation failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Protocol operation failed: {str(e)}")
 
-# Protocol-specific operations are now handled through the main chat interface and /ai/protocol/execute endpoint
+# Protocol-specific operations are now handled through the main chat interface and /protocol/execute endpoint
 
-@app.get("/ai/protocols/capabilities")
+@app.get("/protocols/capabilities")
 async def get_protocol_capabilities():
     """Get all supported protocol capabilities"""
     try:
@@ -1648,7 +1689,7 @@ def _map_operation_to_intent(operation: str) -> str:
     }
     return operation_to_intent_map.get(operation, "system_maintenance")
 
-@app.post("/ai/create-job", response_model=JobResponse)
+@app.post("/create-job", response_model=JobResponse)
 async def create_job(request: JobRequest):
     """Create a new automation job from natural language description"""
     try:
@@ -1806,7 +1847,7 @@ async def create_job(request: JobRequest):
         logger.error("Failed to create job", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to create job: {str(e)}")
 
-@app.post("/ai/analyze-text", response_model=TextAnalysisResponse)
+@app.post("/analyze-text", response_model=TextAnalysisResponse)
 async def analyze_text(request: TextAnalysisRequest):
     """Analyze text for automation intent"""
     try:
@@ -1849,7 +1890,7 @@ async def analyze_text(request: TextAnalysisRequest):
         logger.error("Failed to analyze text", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to analyze text: {str(e)}")
 
-@app.post("/ai/execute-job", response_model=ExecuteJobResponse)
+@app.post("/execute-job", response_model=ExecuteJobResponse)
 async def execute_job(request: ExecuteJobRequest):
     """Create and execute a job immediately"""
     try:
@@ -1990,7 +2031,7 @@ async def execute_job(request: ExecuteJobRequest):
         logger.error("Failed to execute job", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to execute job: {str(e)}")
 
-@app.get("/ai/test-nlp")
+@app.get("/test-nlp")
 async def test_nlp():
     """Test endpoint for NLP functionality"""
     test_requests = [
@@ -2020,7 +2061,7 @@ async def test_nlp():
     
     return {"test_results": results}
 
-@app.get("/ai/test-workflow")
+@app.get("/test-workflow")
 async def test_workflow():
     """Test endpoint for workflow generation"""
     test_request = "update stationcontroller on CIS servers"
@@ -2079,7 +2120,7 @@ async def test_workflow():
         "workflow": workflow_dict
     }
 
-@app.get("/ai/test-assets")
+@app.get("/test-assets")
 async def test_assets():
     """Test endpoint for asset service integration"""
     try:
@@ -2110,7 +2151,7 @@ async def test_assets():
             "asset_service_healthy": False
         }
 
-@app.get("/ai/test-automation")
+@app.get("/test-automation")
 async def test_automation():
     """Test endpoint for automation service integration"""
     try:
@@ -2143,7 +2184,7 @@ async def test_automation():
             "automation_service_healthy": False
         }
 
-@app.get("/ai/test-integration")
+@app.get("/test-integration")
 async def test_integration():
     """Test full AI to Automation integration"""
     try:
@@ -2271,7 +2312,7 @@ async def test_integration():
 
 
 # Predictive Analytics Endpoints
-@app.get("/ai/predictive/insights")
+@app.get("/predictive/insights")
 async def get_predictive_insights():
     """Get comprehensive predictive insights"""
     try:
@@ -2285,7 +2326,7 @@ async def get_predictive_insights():
         logger.error(f"Failed to get predictive insights: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ai/predictive/analyze-performance")
+@app.post("/predictive/analyze-performance")
 async def analyze_performance(metrics: Dict[str, float]):
     """Analyze system performance and generate insights"""
     try:
@@ -2299,7 +2340,7 @@ async def analyze_performance(metrics: Dict[str, float]):
         logger.error(f"Failed to analyze performance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ai/predictive/detect-anomalies")
+@app.post("/predictive/detect-anomalies")
 async def detect_anomalies(request: Dict[str, Any]):
     """Detect advanced anomalies in system behavior"""
     try:
@@ -2317,7 +2358,7 @@ async def detect_anomalies(request: Dict[str, Any]):
         logger.error(f"Failed to detect anomalies: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/ai/predictive/maintenance-schedule")
+@app.get("/predictive/maintenance-schedule")
 async def get_maintenance_schedule():
     """Get predictive maintenance recommendations"""
     try:
@@ -2339,7 +2380,7 @@ async def get_maintenance_schedule():
         logger.error(f"Failed to get maintenance schedule: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ai/predictive/security-monitor")
+@app.post("/predictive/security-monitor")
 async def monitor_security(log_entries: List[Dict[str, Any]]):
     """Monitor log entries for security events"""
     try:
@@ -2354,7 +2395,7 @@ async def monitor_security(log_entries: List[Dict[str, Any]]):
         logger.error(f"Failed to monitor security: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/ai/status")
+@app.get("/status")
 async def get_ai_status():
     """Get the status of the AI Brain Engine components"""
     try:
@@ -2387,7 +2428,7 @@ async def get_ai_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 # API v1 routes for dashboard compatibility
-@app.get("/api/v1/ai/health")
+@app.get("/api/v1/health")
 async def api_v1_health_check():
     """API v1 compatible health check endpoint for dashboard"""
     try:
@@ -2425,7 +2466,7 @@ async def api_v1_health_check():
             "timestamp": datetime.utcnow().isoformat()
         }
 
-@app.get("/api/v1/ai/monitoring/dashboard")
+@app.get("/api/v1/monitoring/dashboard")
 async def api_v1_monitoring_dashboard():
     """API v1 compatible monitoring dashboard endpoint"""
     try:
@@ -2515,7 +2556,7 @@ async def api_v1_monitoring_dashboard():
             }
         }
 
-@app.post("/api/v1/ai/circuit-breaker/reset/{service_name}")
+@app.post("/api/v1/circuit-breaker/reset/{service_name}")
 async def api_v1_reset_circuit_breaker(service_name: str):
     """API v1 compatible circuit breaker reset endpoint"""
     try:
@@ -2538,7 +2579,7 @@ async def api_v1_reset_circuit_breaker(service_name: str):
         logger.error(f"Circuit breaker reset failed for {service_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to reset circuit breaker: {str(e)}")
 
-@app.get("/api/v1/ai/knowledge-stats")
+@app.get("/api/v1/knowledge-stats")
 def api_v1_knowledge_stats():
     """API v1 compatible knowledge stats endpoint"""
     try:
@@ -2566,7 +2607,7 @@ def api_v1_knowledge_stats():
             "timestamp": datetime.utcnow().isoformat()
         }
 
-@app.get("/ai/knowledge-stats")
+@app.get("/knowledge-stats")
 def knowledge_stats():
     """Knowledge stats endpoint for API gateway routing"""
     try:

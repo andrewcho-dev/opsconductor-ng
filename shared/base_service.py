@@ -171,7 +171,7 @@ class RedisClient:
 # ============================================================================
 
 class BaseService:
-    def __init__(self, name: str, version: str = "1.0.0", port: int = 3000):
+    def __init__(self, name: str, version: str = "1.0.0", port: int = 3000, lifespan=None):
         self.name = name
         self.version = version
         self.port = port
@@ -181,12 +181,15 @@ class BaseService:
         self.db = DatabasePool()
         self.redis = RedisClient()
         
+        # Use custom lifespan if provided, otherwise use default
+        app_lifespan = lifespan if lifespan is not None else self.lifespan
+        
         # Create FastAPI app with lifespan
         self.app = FastAPI(
             title=f"OpsConductor {name.title()} Service",
             version=version,
             description=f"OpsConductor {name} service API",
-            lifespan=self.lifespan
+            lifespan=app_lifespan
         )
         
         # Add middleware

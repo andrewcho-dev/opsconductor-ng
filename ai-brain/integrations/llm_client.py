@@ -36,11 +36,20 @@ class LLMEngine:
     async def initialize(self) -> bool:
         """Initialize the LLM engine"""
         try:
+            logger.info(f"🔧 Starting LLM engine initialization with host: {self.ollama_host}")
+            
             # Configure Ollama client
+            logger.info("🔧 Creating Ollama client...")
             self.client = ollama.Client(host=self.ollama_host)
+            logger.info("✅ Ollama client created successfully")
             
             # Test connection and get available models
+            logger.info("🔧 Getting available models...")
             self.available_models = await self.get_available_models()
+            if not self.available_models:
+                logger.error("❌ No models available")
+                return False
+            logger.info(f"✅ Retrieved {len(self.available_models)} available models: {self.available_models}")
             
             # Ensure default model is available
             if self.default_model not in self.available_models:
@@ -49,12 +58,14 @@ class LLMEngine:
                 if not success:
                     logger.error(f"Failed to pull default model '{self.default_model}'")
                     return False
+            else:
+                logger.info(f"✅ Default model '{self.default_model}' is available")
             
-            logger.info(f"LLM engine initialized with {len(self.available_models)} models")
+            logger.info(f"🚀 LLM engine initialized successfully with {len(self.available_models)} models")
             return True
             
         except Exception as e:
-            logger.error("Failed to initialize LLM engine", error=str(e))
+            logger.error("❌ Failed to initialize LLM engine", error=str(e))
             return False
     
     def _enforce_model_restriction(self, requested_model: Optional[str]) -> str:
@@ -83,17 +94,19 @@ class LLMEngine:
         """Get list of available models"""
         try:
             if not self.client:
+                logger.warning("🔧 Client not initialized, returning empty models list")
                 return []
             
-            # Run synchronous ollama call in thread pool to avoid blocking
+            # Use asyncio.to_thread to avoid blocking the event loop
             models_response = await asyncio.to_thread(self.client.list)
+            
             models = [model.model for model in models_response.models]
             self.available_models = models
-            logger.info(f"Available models: {models}")
+            logger.info(f"✅ Available models: {models}")
             return models
             
         except Exception as e:
-            logger.error("Failed to get available models", error=str(e))
+            logger.error("❌ Failed to get available models", error=str(e))
             return []
     
     async def pull_model(self, model_name: str) -> bool:
