@@ -8,8 +8,8 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import structlog
 
-from ..streaming.stream_manager import get_global_stream_manager
-from ..streaming.thinking_data_models import StreamConfig, ThinkingContext
+from streaming.stream_manager import get_global_stream_manager
+from streaming.thinking_data_models import StreamConfig, ThinkingContext
 
 logger = structlog.get_logger()
 
@@ -118,7 +118,7 @@ async def stream_thinking_step(request: StreamThinkingRequest):
             raise HTTPException(status_code=503, detail="Streaming infrastructure not available")
         
         # Validate thinking type
-        from ..streaming.thinking_data_models import ThinkingType
+        from streaming.thinking_data_models import ThinkingType
         try:
             thinking_type = ThinkingType(request.thinking_type)
         except ValueError:

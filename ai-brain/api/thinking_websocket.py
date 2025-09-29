@@ -273,11 +273,33 @@ def get_websocket_manager() -> ThinkingWebSocketManager:
 # WebSocket endpoint handlers
 async def thinking_websocket_endpoint(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for thinking stream"""
-    manager = get_websocket_manager()
-    await manager.handle_websocket_session(websocket, session_id)
+    try:
+        if websocket_manager is None:
+            await websocket.close(code=1011, reason="WebSocket manager not initialized")
+            return
+        
+        await websocket_manager.handle_websocket_session(websocket, session_id)
+    except Exception as e:
+        logger.error("❌ Error in thinking WebSocket endpoint", 
+                    session_id=session_id, error=str(e))
+        try:
+            await websocket.close(code=1011, reason="Internal server error")
+        except:
+            pass
 
 
 async def progress_websocket_endpoint(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for progress stream"""
-    manager = get_websocket_manager()
-    await manager.handle_websocket_session(websocket, session_id)
+    try:
+        if websocket_manager is None:
+            await websocket.close(code=1011, reason="WebSocket manager not initialized")
+            return
+        
+        await websocket_manager.handle_websocket_session(websocket, session_id)
+    except Exception as e:
+        logger.error("❌ Error in progress WebSocket endpoint", 
+                    session_id=session_id, error=str(e))
+        try:
+            await websocket.close(code=1011, reason="Internal server error")
+        except:
+            pass

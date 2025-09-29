@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
 import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check, Bug, Eye, Brain, Target, Zap, Shield, TrendingUp, Activity, AlertTriangle, Info } from 'lucide-react';
 import { aiApi } from '../services/api';
+import ThinkingVisualization from './ThinkingVisualization';
 
 interface ChatMessage {
   id: string;
@@ -154,6 +155,9 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       return false;
     }
   });
+  const [showThinkingVisualization, setShowThinkingVisualization] = useState(false);
+  const [thinkingSessionId, setThinkingSessionId] = useState<string | null>(null);
+  const [isThinkingConnected, setIsThinkingConnected] = useState(false);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Remove auto-scroll entirely - let users scroll manually
@@ -224,6 +228,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     setIsChatLoading(true);
     setChatError(null);
 
+    // Clear thinking session ID - will be set from backend response
+    if (debugMode && showThinkingVisualization) {
+      setThinkingSessionId(null);
+    }
+
     try {
       // Get the last AI message to extract conversation_id if available
       const lastAiMessage = chatMessages.slice().reverse().find(msg => msg.type === 'ai');
@@ -238,6 +247,12 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       // Check if there's an error in the response
       if (data.error) {
         throw new Error(data.error);
+      }
+      
+      // Update thinking session ID if provided by backend
+      if ((data as any).thinking_session_id && debugMode && showThinkingVisualization) {
+        console.log('🧠 Setting thinking session ID from backend:', (data as any).thinking_session_id);
+        setThinkingSessionId((data as any).thinking_session_id);
       }
       
       // Create AI message with routing info if available
@@ -329,6 +344,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   const toggleDebugMode = () => {
     const newDebugMode = !debugMode;
     setDebugMode(newDebugMode);
+    setShowThinkingVisualization(newDebugMode);
     try {
       localStorage.setItem('opsconductor_ai_debug_mode', newDebugMode.toString());
     } catch (error) {
@@ -1580,6 +1596,15 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           {debugMode ? 'Normal View' : 'Debug Mode'}
         </button>
       </div>
+
+      {/* Real-time Thinking Visualization */}
+      {showThinkingVisualization && thinkingSessionId && (
+        <ThinkingVisualization
+          sessionId={thinkingSessionId}
+          isActive={isChatLoading}
+          onConnectionChange={setIsThinkingConnected}
+        />
+      )}
 
       {/* Messages Area */}
       <div className="chat-messages-area">

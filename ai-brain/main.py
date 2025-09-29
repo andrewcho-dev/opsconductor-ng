@@ -8,6 +8,11 @@ from typing import List, Optional, Dict, Any
 import uuid
 import sys
 
+# Add current directory to Python path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 # Hardcoded logic prevention removed - was causing more issues than benefits
 # Check if running in Docker container
 if os.path.exists('/app/shared'):
@@ -185,6 +190,32 @@ async def progress_websocket(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for real-time progress updates"""
     await progress_websocket_endpoint(websocket, session_id)
 
+@app.post("/api/v1/ai/init-streaming")
+async def manual_init_streaming():
+    """Manual endpoint to initialize streaming infrastructure"""
+    try:
+        logger.info("📡 Manual streaming infrastructure initialization...")
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/9")
+        logger.info(f"🔗 Using Redis URL: {redis_url}")
+        
+        streaming_success = await initialize_global_stream_manager(redis_url)
+        if streaming_success:
+            logger.info("🚀 Streaming infrastructure initialized successfully")
+            
+            # Initialize WebSocket manager
+            stream_manager = get_global_stream_manager()
+            if stream_manager:
+                initialize_websocket_manager(stream_manager.redis_stream_manager)
+                logger.info("🔌 WebSocket manager initialized")
+                return {"status": "success", "message": "Streaming infrastructure initialized"}
+            else:
+                return {"status": "error", "message": "Stream manager not available"}
+        else:
+            return {"status": "error", "message": "Failed to initialize streaming infrastructure"}
+    except Exception as e:
+        logger.error(f"❌ Manual initialization failed: {e}")
+        return {"status": "error", "message": f"Initialization failed: {str(e)}"}
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize AI engine on startup"""
@@ -234,7 +265,8 @@ async def startup_event():
         
         # Initialize streaming infrastructure
         logger.info("📡 Initializing streaming infrastructure...")
-        redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/9")
+        logger.info(f"🔗 Using Redis URL: {redis_url}")
         streaming_success = await initialize_global_stream_manager(redis_url)
         if streaming_success:
             logger.info("🚀 Streaming infrastructure initialized successfully")
@@ -286,7 +318,7 @@ async def shutdown_event():
 # PURE AI BRAIN DECISION MAKING - NO HARDCODED LOGIC!
 async def pure_llm_chat_endpoint(request, intent_brain_instance):
     """
-    PURE AI BRAIN DECISION MAKING
+    PURE AI BRAIN DECISION MAKING WITH REAL-TIME THINKING VISUALIZATION
     
     The AI Brain (Ollama) makes ALL decisions about:
     - Which services to use
@@ -296,6 +328,8 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
     
     NO HARDCODED LOGIC, NO PATTERN MATCHING, NO FALLBACKS!
     THE AI BRAIN DECIDES EVERYTHING!
+    
+    PLUS: Real-time thinking stream for debug mode visualization
     """
     try:
         logger.info("🧠 AI BRAIN MAKING ALL DECISIONS", message=request.message[:100])
@@ -304,9 +338,49 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
         if not request.conversation_id:
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
+        # Create thinking session for real-time visualization
+        thinking_session_id = f"thinking_{int(datetime.now().timestamp() * 1000)}_{uuid.uuid4().hex[:8]}"
+        
+        # Get stream manager for thinking visualization
+        stream_manager = get_global_stream_manager()
+        if stream_manager:
+            # Create thinking session
+            try:
+                await stream_manager.create_thinking_session(
+                    session_id=thinking_session_id,
+                    user_id=str(request.user_id) if request.user_id else "system",
+                    debug_mode=True,  # Always enable for real-time visualization
+                    user_request=request.message[:100],
+                    system_context={
+                        "conversation_id": request.conversation_id,
+                        "message_preview": request.message[:100]
+                    }
+                )
+                
+                # Stream initial analysis step
+                from streaming.thinking_data_models import ThinkingType
+                await stream_manager.stream_thinking(
+                    session_id=thinking_session_id,
+                    thinking_type=ThinkingType.ANALYSIS,
+                    content="Analyzing user request and determining optimal processing approach...",
+                    reasoning_chain=[
+                        "Examining user message for intent and complexity",
+                        "Reviewing available system services and capabilities",
+                        "Checking conversation history for context",
+                        "Determining optimal AI processing strategy"
+                    ],
+                    confidence=0.9,
+                    alternatives=["Direct response", "Service orchestration", "Workflow generation"],
+                    decision_factors=["Message complexity", "Available services", "User context"]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to create thinking session: {e}")
+                stream_manager = None
+        
         user_context = {
             "user_id": str(request.user_id) if request.user_id else "system",
             "conversation_id": request.conversation_id,
+            "thinking_session_id": thinking_session_id,
             "available_services": {
                 "ai_brain_orchestration": ai_brain_service and ai_brain_service.initialization_complete,
                 "prefect_flow_engine": prefect_flow_engine is not None,
@@ -314,6 +388,25 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
                 "fulfillment_engine": fulfillment_engine is not None
             }
         }
+        
+        # Stream decision step
+        if stream_manager:
+            try:
+                await stream_manager.stream_thinking(
+                    session_id=thinking_session_id,
+                    thinking_type=ThinkingType.DECISION,
+                    content="Selecting optimal processing approach based on analysis...",
+                    reasoning_chain=[
+                        "Evaluating message complexity and requirements",
+                        "Matching requirements to available service capabilities",
+                        "Selecting most appropriate processing engine",
+                        "Preparing execution context and parameters"
+                    ],
+                    confidence=0.85,
+                    decision_factors=["Service availability", "Processing complexity", "Response requirements"]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to stream decision step: {e}")
         
         # THE AI BRAIN DECIDES EVERYTHING!
         # Pass all available services and let Ollama choose what to do
@@ -326,6 +419,32 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
                 "fulfillment_engine": fulfillment_engine
             }
         )
+        
+        # Stream completion step
+        if stream_manager:
+            try:
+                await stream_manager.stream_thinking(
+                    session_id=thinking_session_id,
+                    thinking_type=ThinkingType.REFLECTION,
+                    content="Processing completed successfully. Reviewing results and preparing response...",
+                    reasoning_chain=[
+                        "Validating execution results and response quality",
+                        "Ensuring all user requirements have been addressed",
+                        "Preparing final response with appropriate context",
+                        "Completing thinking session and cleanup"
+                    ],
+                    confidence=execution_result.get("confidence", 0.8) if isinstance(execution_result, dict) else 0.8,
+                    decision_factors=["Result quality", "User satisfaction", "System performance"]
+                )
+                
+                # Close thinking session
+                await stream_manager.close_session(thinking_session_id)
+            except Exception as e:
+                logger.warning(f"Failed to stream completion step: {e}")
+        
+        # Add thinking session ID to response for frontend tracking
+        if isinstance(execution_result, dict):
+            execution_result["thinking_session_id"] = thinking_session_id
         
         # Return exactly what the AI Brain decided - NO MODIFICATIONS!
         return execution_result

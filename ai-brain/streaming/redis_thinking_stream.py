@@ -64,8 +64,8 @@ class RedisThinkingStreamManager:
                 "session_id": session_id,
                 "user_id": user_id,
                 "timestamp": datetime.now().isoformat(),
-                "debug_mode": config.debug_mode,
-                "context": context.dict()
+                "debug_mode": str(config.debug_mode),
+                "context": json.dumps(context.dict())
             }
             
             await self.redis_client.xadd(thinking_stream, startup_message)
@@ -113,11 +113,11 @@ class RedisThinkingStreamManager:
                 "thinking_type": thinking_step.thinking_type.value,
                 "content": thinking_step.content,
                 "reasoning_chain": json.dumps(thinking_step.reasoning_chain),
-                "confidence_level": thinking_step.confidence_level,
+                "confidence_level": str(thinking_step.confidence_level),
                 "alternatives_considered": json.dumps(thinking_step.alternatives_considered),
                 "decision_factors": json.dumps(thinking_step.decision_factors),
-                "context_used": json.dumps(thinking_step.context_used) if thinking_step.context_used else None,
-                "estimated_duration": thinking_step.estimated_duration
+                "context_used": json.dumps(thinking_step.context_used) if thinking_step.context_used else "",
+                "estimated_duration": str(thinking_step.estimated_duration) if thinking_step.estimated_duration else ""
             }
             
             # Add to Redis stream
@@ -164,13 +164,13 @@ class RedisThinkingStreamManager:
                 "timestamp": progress_update.timestamp.isoformat(),
                 "update_type": progress_update.update_type.value,
                 "message": progress_update.message,
-                "progress_percentage": progress_update.progress_percentage,
-                "current_step": progress_update.current_step,
-                "total_steps": progress_update.total_steps,
-                "estimated_remaining": progress_update.estimated_remaining,
-                "intermediate_findings": json.dumps(progress_update.intermediate_findings) if progress_update.intermediate_findings else None,
-                "current_activity": progress_update.current_activity,
-                "confidence": progress_update.confidence
+                "progress_percentage": str(progress_update.progress_percentage) if progress_update.progress_percentage is not None else "",
+                "current_step": progress_update.current_step or "",
+                "total_steps": str(progress_update.total_steps) if progress_update.total_steps is not None else "",
+                "estimated_remaining": progress_update.estimated_remaining or "",
+                "intermediate_findings": json.dumps(progress_update.intermediate_findings) if progress_update.intermediate_findings else "",
+                "current_activity": progress_update.current_activity or "",
+                "confidence": str(progress_update.confidence) if progress_update.confidence is not None else ""
             }
             
             # Add to Redis stream
