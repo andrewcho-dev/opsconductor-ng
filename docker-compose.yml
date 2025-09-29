@@ -526,6 +526,7 @@ services:
       - ./ai-brain/integration/advanced_features_manager.py:/app/integration/advanced_features_manager.py
       - ./ai-brain/integration/phase8_system_integrator.py:/app/integration/phase8_system_integrator.py
       - ./ai-brain/integration/production_readiness_validator.py:/app/integration/production_readiness_validator.py
+      - ./ai-brain/integration/production_systems_initializer.py:/app/integration/production_systems_initializer.py
       
       # Test files (CRITICAL - these were missing!)
       - ./ai-brain/test_phase8_final.py:/app/test_phase8_final.py
@@ -533,6 +534,7 @@ services:
       - ./ai-brain/test_phase8_fixed.py:/app/test_phase8_fixed.py
       - ./ai-brain/test_phase8_real.py:/app/test_phase8_real.py
       - ./ai-brain/test_phase8_simple.py:/app/test_phase8_simple.py
+      - ./ai-brain/verify_psutil.py:/app/verify_psutil.py
       - ./ai-brain/test_phase7_comprehensive.py:/app/test_phase7_comprehensive.py
       - ./ai-brain/test_phase7_conversation.py:/app/test_phase7_conversation.py
       - ./ai-brain/test_phase7_fixed.py:/app/test_phase7_fixed.py
@@ -547,6 +549,11 @@ services:
       
       # Shared libraries
       - ./shared:/app/shared
+      
+      # Production systems (NEW!)
+      - ./ai-brain/monitoring:/app/monitoring
+      - ./ai-brain/security:/app/security
+      - ./ai-brain/resilience:/app/resilience
       
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]

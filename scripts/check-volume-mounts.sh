@@ -47,7 +47,7 @@ for service in "${SERVICES[@]}"; do
             
             # Skip files in directories that are mounted entirely
             skip_file=false
-            for mounted_dir in libraries data config templates static brains coordination communication confidence learning orchestration taxonomy job_engine integrations api fulfillment_engine streaming models analyzers agents utils; do
+            for mounted_dir in libraries data config templates static brains coordination communication confidence learning orchestration taxonomy job_engine integrations api fulfillment_engine streaming models analyzers agents utils monitoring security resilience; do
                 if [[ "$file" == *"/$mounted_dir/"* ]] && grep -q "./$service/$mounted_dir:/app/$mounted_dir" docker-compose.yml; then
                     skip_file=true
                     break

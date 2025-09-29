@@ -176,6 +176,9 @@ class Phase8SystemIntegrator:
         logger.info("🔗 Starting complete system integration")
         
         try:
+            # Phase 0: Initialize production systems first
+            await self._initialize_production_systems()
+            
             # Phase 1: Initialize core infrastructure
             await self._integrate_streaming_infrastructure()
             
@@ -202,6 +205,9 @@ class Phase8SystemIntegrator:
             await self._integrate_service_clients()
             await self._validate_system_integration()
             await self._optimize_system_performance()
+            
+            # Phase 9: Production readiness validation
+            await self._validate_production_readiness()
             
             # Calculate integration metrics
             integration_time = (datetime.now() - start_time).total_seconds()
@@ -790,3 +796,77 @@ class Phase8SystemIntegrator:
             "service_integrations": self.capabilities.service_integrations,
             "advanced_features": self.capabilities.advanced_features
         }
+    
+    async def _initialize_production_systems(self):
+        """Initialize all production-ready systems"""
+        try:
+            logger.info("🚀 Initializing production systems")
+            
+            # Import and initialize production systems
+            from integration.production_systems_initializer import initialize_all_production_systems
+            
+            # Initialize all production systems
+            results = await initialize_all_production_systems()
+            
+            # Log results
+            successful = sum(1 for r in results.values() if r.status.value == "completed")
+            total = len(results)
+            
+            logger.info("🚀 Production systems initialization complete", 
+                       successful=successful, 
+                       total=total,
+                       success_rate=f"{(successful/total)*100:.1f}%")
+            
+            # Update capabilities based on successful initializations
+            if "metrics_collection" in results and results["metrics_collection"].status.value == "completed":
+                self.capabilities.advanced_features["metrics_collection"] = True
+            
+            if "alerting_system" in results and results["alerting_system"].status.value == "completed":
+                self.capabilities.advanced_features["alerting_system"] = True
+            
+            if "circuit_breakers" in results and results["circuit_breakers"].status.value == "completed":
+                self.capabilities.advanced_features["circuit_breakers"] = True
+            
+            if "rate_limiting" in results and results["rate_limiting"].status.value == "completed":
+                self.capabilities.advanced_features["rate_limiting"] = True
+            
+            if "dashboard_system" in results and results["dashboard_system"].status.value == "completed":
+                self.capabilities.advanced_features["dashboard_system"] = True
+            
+            if "distributed_tracing" in results and results["distributed_tracing"].status.value == "completed":
+                self.capabilities.advanced_features["distributed_tracing"] = True
+            
+        except Exception as e:
+            logger.error("❌ Failed to initialize production systems", error=str(e))
+    
+    async def _validate_production_readiness(self):
+        """Validate production readiness"""
+        try:
+            logger.info("🛡️ Validating production readiness")
+            
+            from integration.production_readiness_validator import ProductionReadinessValidator
+            
+            # Create validator with current system integrator
+            validator = ProductionReadinessValidator(self)
+            
+            # Run production readiness validation
+            result = await validator.validate_production_readiness()
+            
+            # Store production readiness metrics
+            self.performance_metrics.update({
+                "production_readiness_level": result.readiness_level.value,
+                "production_overall_score": result.overall_score,
+                "production_security_score": result.security.security_score,
+                "production_performance_score": result.performance.performance_score,
+                "production_error_handling_score": result.error_handling.error_handling_score,
+                "production_monitoring_score": result.monitoring.monitoring_score,
+                "production_deployment_ready": result.deployment_ready
+            })
+            
+            logger.info("🛡️ Production readiness validation complete",
+                       level=result.readiness_level.value,
+                       score=f"{result.overall_score:.1%}",
+                       deployment_ready=result.deployment_ready)
+            
+        except Exception as e:
+            logger.error("❌ Production readiness validation failed", error=str(e))

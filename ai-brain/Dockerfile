@@ -51,6 +51,7 @@ RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn==0.24.0 pydantic>=2.8.0 
 RUN pip install --no-cache-dir python-multipart==0.0.6
 RUN pip install --no-cache-dir structlog==23.2.0 requests==2.31.0
 RUN pip install --no-cache-dir ollama==0.1.7
+RUN pip install --no-cache-dir psutil>=5.9.0
 
 # 3. NumPy with binary wheels (CRITICAL: --only-binary=all)
 RUN pip install --no-cache-dir --only-binary=all "numpy>=1.19.0,<2.0"

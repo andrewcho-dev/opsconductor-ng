@@ -669,8 +669,13 @@ class ProductionReadinessValidator:
     async def _check_rate_limiting(self) -> bool:
         """Check rate limiting"""
         try:
-            # Check if rate limiting is implemented
-            return False  # Rate limiting not implemented yet
+            # Check if rate limiting system is available and working
+            from security.rate_limiter import get_rate_limit_manager
+            rate_limit_manager = await get_rate_limit_manager()
+            
+            # Check if rate limiting is configured
+            metrics = await rate_limit_manager.get_metrics()
+            return metrics.get("total_configs", 0) > 0
         except:
             return False
     
@@ -807,8 +812,13 @@ class ProductionReadinessValidator:
     async def _check_circuit_breakers(self) -> bool:
         """Check circuit breaker implementation"""
         try:
-            # Check if circuit breakers are implemented
-            return False  # Circuit breakers not implemented yet
+            # Check if circuit breaker system is available and working
+            from resilience.circuit_breaker import get_circuit_breaker_manager
+            cb_manager = get_circuit_breaker_manager()
+            
+            # Check if circuit breakers are configured
+            summary = cb_manager.get_summary()
+            return summary.get("total_circuit_breakers", 0) > 0
         except:
             return False
     
@@ -864,8 +874,13 @@ class ProductionReadinessValidator:
     async def _check_metrics_collection(self) -> bool:
         """Check metrics collection"""
         try:
+            # Check if metrics collector is available and working
+            from monitoring.metrics_collector import get_metrics_collector
+            metrics_collector = await get_metrics_collector()
+            
             # Check if metrics are being collected
-            return False  # Metrics collection not fully implemented yet
+            summary = await metrics_collector.get_metrics_summary()
+            return summary.get("total_metrics", 0) > 0 and summary.get("is_collecting", False)
         except:
             return False
     
@@ -880,24 +895,39 @@ class ProductionReadinessValidator:
     async def _check_tracing(self) -> bool:
         """Check distributed tracing"""
         try:
-            # Check if tracing is enabled
-            return False  # Tracing not implemented yet
+            # Check if distributed tracing is available and working
+            from monitoring.distributed_tracing import get_tracing_system
+            tracing_system = await get_tracing_system()
+            
+            # Check if tracing is active
+            metrics = await tracing_system.get_metrics()
+            return metrics.get("total_spans", 0) > 0
         except:
             return False
     
     async def _check_alerting(self) -> bool:
         """Check alerting setup"""
         try:
+            # Check if alerting system is available and working
+            from monitoring.alerting_system import get_alerting_system
+            alerting_system = await get_alerting_system()
+            
             # Check if alerting is configured
-            return False  # Alerting not implemented yet
+            summary = await alerting_system.get_alert_summary()
+            return summary.get("total_rules", 0) > 0 and summary.get("is_evaluating", False)
         except:
             return False
     
     async def _check_dashboards(self) -> bool:
         """Check monitoring dashboards"""
         try:
+            # Check if dashboard system is available and working
+            from monitoring.dashboard_system import get_dashboard_system
+            dashboard_system = await get_dashboard_system()
+            
             # Check if dashboards are available
-            return False  # Dashboards not implemented yet
+            dashboards = await dashboard_system.list_dashboards()
+            return len(dashboards) > 0
         except:
             return False
     
