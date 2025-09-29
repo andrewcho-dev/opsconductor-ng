@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X } from 'lucide-react';
+import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Bug, Eye } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
 import { userApi, assetApi, jobApi } from '../services/api';
 
@@ -26,6 +26,27 @@ const AIChatPage: React.FC = () => {
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const editInputRef = useRef<HTMLInputElement>(null);
+  
+  // Debug mode state
+  const [debugMode, setDebugMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('opsconductor_ai_debug_mode');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Toggle debug mode
+  const toggleDebugMode = () => {
+    const newDebugMode = !debugMode;
+    setDebugMode(newDebugMode);
+    try {
+      localStorage.setItem('opsconductor_ai_debug_mode', newDebugMode.toString());
+    } catch (error) {
+      console.error('Failed to save debug mode preference:', error);
+    }
+  };
 
   // Save chat sessions to localStorage
   const saveChatSessions = (sessions: ChatSession[]) => {
@@ -478,6 +499,31 @@ const AIChatPage: React.FC = () => {
             opacity: 0.5;
             cursor: not-allowed;
           }
+          .debug-toggle-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--neutral-500);
+            cursor: pointer;
+            transition: all 0.15s ease;
+          }
+          .debug-toggle-icon:hover {
+            background: var(--neutral-100);
+            color: var(--neutral-700);
+          }
+          .debug-toggle-icon.active {
+            background: var(--warning-orange-light);
+            color: var(--warning-orange);
+          }
+          .debug-toggle-icon.active:hover {
+            background: var(--warning-orange);
+            color: white;
+          }
           .chat-list {
             flex: 1;
             overflow-y: auto;
@@ -701,12 +747,20 @@ const AIChatPage: React.FC = () => {
         <div className="chat-main">
           <div className="section-header">
             <span>AI Assistant</span>
+            <button
+              onClick={toggleDebugMode}
+              className={`debug-toggle-icon ${debugMode ? 'active' : ''}`}
+              title={debugMode ? 'Disable debug mode' : 'Enable debug mode'}
+            >
+              <Bug size={16} />
+            </button>
           </div>
           <div className="compact-content" style={{ padding: '8px' }}>
             <AIChat 
               ref={aiChatRef} 
               onFirstMessage={handleFirstMessage}
               activeChatId={activeChatId}
+              debugMode={debugMode}
             />
           </div>
         </div>

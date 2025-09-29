@@ -267,7 +267,7 @@ class ProgressiveIntentLearner:
             Return only the questions, one per line, without numbering or bullets.
             """
             
-            response = await self.llm_service.generate_response(prompt)
+            response = await self.llm_service.generate(prompt)
             
             if response and isinstance(response, dict) and "generated_text" in response:
                 suggestions_text = response["generated_text"].strip()

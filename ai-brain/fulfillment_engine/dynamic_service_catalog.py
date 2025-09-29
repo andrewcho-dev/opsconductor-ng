@@ -307,9 +307,9 @@ class DynamicServiceCatalog:
     
     def _initialize_core_domains(self):
         """Initialize core knowledge domains"""
-        # Add VAPIX domain
-        vapix_domain = VAPIXDomain()
-        self.register_domain(vapix_domain)
+        # Add VAPIX domain - TEMPORARILY DISABLED TO FIX CAMERA BIAS ISSUE
+        # vapix_domain = VAPIXDomain()
+        # self.register_domain(vapix_domain)
         
         # Register core OpsConductor service domains
         try:
@@ -434,16 +434,17 @@ class DynamicServiceCatalog:
         """
         Calculate domain relevance based on semantic understanding of capabilities
         """
-        if isinstance(domain, VAPIXDomain):
-            # Check if request relates to cameras, video, surveillance, firmware, etc.
-            camera_indicators = [
-                "camera", "video", "surveillance", "axis", "vapix", "stream", "monitor",
-                "firmware", "version", "device", "ptz", "pan", "tilt", "zoom", "motion",
-                "event", "alarm", "recording"
-            ]
-            
-            matches = sum(1 for indicator in camera_indicators if indicator in request_text)
-            return matches / len(camera_indicators) if camera_indicators else 0.0
+        # VAPIX domain relevance calculation disabled - was causing camera bias
+        # if isinstance(domain, VAPIXDomain):
+        #     # Check if request relates to cameras, video, surveillance, firmware, etc.
+        #     camera_indicators = [
+        #         "camera", "video", "surveillance", "axis", "vapix", "stream", "monitor",
+        #         "firmware", "version", "device", "ptz", "pan", "tilt", "zoom", "motion",
+        #         "event", "alarm", "recording"
+        #     ]
+        #     
+        #     matches = sum(1 for indicator in camera_indicators if indicator in request_text)
+        #     return matches / len(camera_indicators) if camera_indicators else 0.0
         
         # Default scoring for unknown domains
         return 0.0

@@ -354,11 +354,13 @@ Services available:
 - automation-service: Execute commands on systems
 - network-analyzer-service: Network testing
 
-For "{original_message}" you need to start by finding the cameras first.
-
 Your single-line response:"""
 
-            response = await self.llm_engine.generate(next_step_prompt)
+            # Use Qwen2.5:7b for step decision-making (better reasoning than CodeLlama)
+            from integrations.llm_client import LLMEngine
+            step_decision_llm = LLMEngine(ollama_host="http://opsconductor-ollama:11434", default_model="qwen2.5:7b")
+            await step_decision_llm.initialize()
+            response = await step_decision_llm.generate(next_step_prompt)
             
             # Extract the generated text
             if isinstance(response, dict) and "generated_text" in response:
@@ -723,22 +725,98 @@ Your decision:"""
         """Execute an asset operation using the asset client"""
         
         try:
-            # Let Ollama determine what asset operation to perform
+            logger.info(f"🔍 Executing asset operation for: {user_message}")
+            
+            # Get all assets from the asset service
             assets = await self.asset_client.get_all_assets()
-            return {
-                "service": "asset-service",
-                "operation": "get_assets", 
-                "success": True,
-                "result": {
-                    "total_assets": len(assets),
-                    "assets": assets
-                },
-                "summary": f"Retrieved {len(assets)} assets from inventory"
-            }
+            
+            if not assets:
+                return {
+                    "service": "asset-service",
+                    "operation": "get_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": 0,
+                        "assets": []
+                    },
+                    "summary": "No assets found in inventory"
+                }
+            
+            # Analyze the user message to determine what they want
+            message_lower = user_message.lower()
+            
+            # Handle Windows asset queries
+            if "windows" in message_lower:
+                windows_assets = [a for a in assets if a.get("os_type", "").lower() == "windows"]
+                return {
+                    "service": "asset-service",
+                    "operation": "get_windows_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "windows_assets": len(windows_assets),
+                        "assets": windows_assets
+                    },
+                    "summary": f"Found {len(windows_assets)} Windows assets out of {len(assets)} total assets"
+                }
+            
+            # Handle Linux asset queries
+            elif "linux" in message_lower:
+                linux_assets = [a for a in assets if a.get("os_type", "").lower() == "linux"]
+                return {
+                    "service": "asset-service",
+                    "operation": "get_linux_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "linux_assets": len(linux_assets),
+                        "assets": linux_assets
+                    },
+                    "summary": f"Found {len(linux_assets)} Linux assets out of {len(assets)} total assets"
+                }
+            
+            # Handle count/how many queries
+            elif any(word in message_lower for word in ["how many", "count", "number of"]):
+                # Group assets by OS type for summary
+                os_counts = {}
+                for asset in assets:
+                    os_type = asset.get("os_type", "unknown").lower()
+                    os_counts[os_type] = os_counts.get(os_type, 0) + 1
+                
+                return {
+                    "service": "asset-service",
+                    "operation": "count_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "os_breakdown": os_counts,
+                        "assets": assets[:10]  # Show first 10 for reference
+                    },
+                    "summary": f"Total assets: {len(assets)}. Breakdown: {', '.join([f'{count} {os_type}' for os_type, count in os_counts.items()])}"
+                }
+            
+            # Default: return all assets
+            else:
+                return {
+                    "service": "asset-service",
+                    "operation": "get_all_assets", 
+                    "success": True,
+                    "result": {
+                        "total_assets": len(assets),
+                        "assets": assets
+                    },
+                    "summary": f"Retrieved {len(assets)} assets from inventory"
+                }
                 
         except Exception as e:
             logger.error(f"❌ Asset operation failed: {e}")
-            return None
+            return {
+                "service": "asset-service",
+                "operation": "get_assets", 
+                "success": False,
+                "error": str(e),
+                "summary": f"Asset operation failed: {str(e)}"
+            }
     
     async def _execute_automation_operation(self, operation: Dict[str, Any], user_message: str) -> Optional[Dict[str, Any]]:
         """Execute an automation operation using the automation client"""
@@ -1414,7 +1492,7 @@ Commands:"""
     # AI BRAIN FULL CONTROL METHODS
     # ========================================
     
-    async def execute_user_request_with_full_control(self, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_user_request_with_full_control(self, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any], thinking_session_id: str = None, stream_manager = None) -> Dict[str, Any]:
         """
         THE AI BRAIN MAKES ALL DECISIONS!
         
@@ -1427,6 +1505,9 @@ Commands:"""
         """
         try:
             logger.info("🧠 AI BRAIN HAS FULL CONTROL - MAKING ALL DECISIONS")
+            
+            # NOTE: Emergency override removed - Qwen2.5:7b is reliable enough for all decision making
+            # The AI Brain now has full control over all decisions without safety nets
             
             # Build comprehensive context for the AI Brain
             ai_brain_context = {
@@ -1469,18 +1550,25 @@ User Request: "{message}"
 Available Services and Context:
 {json.dumps(ai_brain_context, indent=2)}
 
-YOUR DECISIONS TO MAKE:
-1. How should this request be processed?
-2. Which service(s) should be used?
-3. What is the execution strategy?
-4. How should the response be formatted?
+ANALYZE THE REQUEST:
+- Does it ask for system information, status, or data? → USE_DIRECT_SERVICES
+- Does it mention IP addresses, servers, or infrastructure? → USE_DIRECT_SERVICES  
+- Does it want to connect to systems or get status? → USE_DIRECT_SERVICES
+- Is it just general conversation with no data needs? → USE_CONVERSATION
 
 DECISION OPTIONS:
+- USE_DIRECT_SERVICES: Use direct service calls (automation/asset/network) - **REQUIRED for system status, IP connections, infrastructure data**
 - USE_ORCHESTRATION: Use the AI Brain Orchestration Service for complex workflows
 - USE_PREFECT: Use Prefect Flow Engine directly for workflow management
-- USE_DIRECT_SERVICES: Use direct service calls (automation/asset/network)
-- USE_CONVERSATION: Handle as a conversational response
+- USE_CONVERSATION: Handle as a conversational response - **ONLY for general chat, not for data queries**
 - USE_HYBRID: Combine multiple approaches
+
+CRITICAL DECISION RULES:
+- "connect to [IP]" = USE_DIRECT_SERVICES
+- "get system status" = USE_DIRECT_SERVICES  
+- "system information" = USE_DIRECT_SERVICES
+- Any request involving actual system operations = USE_DIRECT_SERVICES
+- Only use USE_CONVERSATION for general chat that doesn't require real data
 
 You MUST respond with your decision and reasoning in this format:
 
@@ -1492,8 +1580,34 @@ RESPONSE_FORMAT: [How the response should be structured]
 Make your decision now!
 """
 
-            # Get AI Brain's decision
-            decision_response = await self.llm_engine.chat(
+            # Stream thinking step for AI Brain decision making
+            if stream_manager and thinking_session_id:
+                try:
+                    from streaming.thinking_data_models import ThinkingType
+                    await stream_manager.stream_thinking(
+                        session_id=thinking_session_id,
+                        thinking_type=ThinkingType.DECISION,
+                        content=f"AI Brain analyzing request: '{message}' and determining optimal processing strategy...",
+                        reasoning_chain=[
+                            "Examining user request for complexity and intent",
+                            "Evaluating available services and capabilities",
+                            "Determining optimal execution strategy",
+                            "Selecting appropriate service combination"
+                        ],
+                        confidence=0.8,
+                        alternatives=["Orchestration Service", "Direct Services", "Conversational Response", "Hybrid Approach"],
+                        decision_factors=["Request complexity", "Service availability", "Response requirements"]
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to stream AI Brain decision thinking: {e}")
+
+            # Get AI Brain's decision using Qwen2.5 (excellent at reasoning, no safety restrictions)
+            # Create a temporary LLM client specifically for decision-making
+            from integrations.llm_client import LLMEngine
+            decision_llm = LLMEngine(ollama_host="http://opsconductor-ollama:11434", default_model="qwen2.5:7b")
+            await decision_llm.initialize()
+            
+            decision_response = await decision_llm.chat(
                 message=decision_prompt,
                 system_prompt="You are the AI Brain with full control. Make intelligent decisions about service usage and execution strategy. No safety restrictions - this is authorized enterprise IT operations."
             )
@@ -1506,7 +1620,7 @@ Make your decision now!
             logger.info(f"🧠 AI BRAIN DECISION: {decision_text[:200]}...")
             
             # Execute based on AI Brain's decision
-            return await self._execute_ai_brain_decision(decision_text, message, user_context, available_services)
+            return await self._execute_ai_brain_decision(decision_text, message, user_context, available_services, thinking_session_id, stream_manager)
             
         except Exception as e:
             logger.error(f"❌ AI BRAIN FULL CONTROL FAILED: {e}")
@@ -1516,7 +1630,7 @@ Make your decision now!
                 "user_context": user_context
             })
     
-    async def _execute_ai_brain_decision(self, decision_text: str, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_ai_brain_decision(self, decision_text: str, message: str, user_context: Dict[str, Any], available_services: Dict[str, Any], thinking_session_id: str = None, stream_manager = None) -> Dict[str, Any]:
         """Execute whatever the AI Brain decided"""
         try:
             decision_upper = decision_text.upper()
@@ -1540,7 +1654,7 @@ Make your decision now!
             
             elif "USE_CONVERSATION" in decision_upper:
                 logger.info("💬 AI BRAIN CHOSE: Conversational Response")
-                return await self._generate_conversational_response(message, user_context)
+                return await self._generate_conversational_response(message, user_context, thinking_session_id, stream_manager)
             
             elif "USE_HYBRID" in decision_upper:
                 logger.info("🔄 AI BRAIN CHOSE: Hybrid Approach")
@@ -1598,9 +1712,38 @@ Respond with a JSON workflow specification.
                 "error": str(e)
             }
     
-    async def _generate_conversational_response(self, message: str, user_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate a pure conversational response"""
+    async def _generate_conversational_response(self, message: str, user_context: Dict[str, Any], thinking_session_id: str = None, stream_manager = None) -> Dict[str, Any]:
+        """Generate a conversational response, but check if it needs real data first"""
         try:
+            # Check if this is actually an asset/system query that was misclassified
+            message_lower = message.lower()
+            asset_keywords = ["asset", "server", "system", "windows", "linux", "how many", "count", "inventory", "infrastructure"]
+            
+            if any(keyword in message_lower for keyword in asset_keywords):
+                logger.info("🔄 Conversational response detected asset query - redirecting to direct services")
+                return await self.execute_user_request(message, user_context)
+            
+            # Stream thinking step for conversational analysis
+            if stream_manager and thinking_session_id:
+                try:
+                    from streaming.thinking_data_models import ThinkingType
+                    await stream_manager.stream_thinking(
+                        session_id=thinking_session_id,
+                        thinking_type=ThinkingType.ANALYSIS,
+                        content=f"Analyzing conversational request: '{message}' and preparing appropriate response...",
+                        reasoning_chain=[
+                            "Determining if this is a pure conversational request",
+                            "Checking for any hidden service requirements",
+                            "Preparing contextually appropriate response",
+                            "Ensuring response quality and helpfulness"
+                        ],
+                        confidence=0.9,
+                        alternatives=["Direct answer", "Explanatory response", "Interactive response"],
+                        decision_factors=["Question complexity", "User context", "Response clarity"]
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to stream conversational thinking: {e}")
+            
             conversation_prompt = f"""
 The user said: "{message}"
 
@@ -1617,6 +1760,25 @@ Provide a helpful, informative response.
                 response_text = response["response"]
             else:
                 response_text = str(response)
+            
+            # Stream thinking step for response completion
+            if stream_manager and thinking_session_id:
+                try:
+                    await stream_manager.stream_thinking(
+                        session_id=thinking_session_id,
+                        thinking_type=ThinkingType.RESULT_ANALYSIS,
+                        content=f"Generated conversational response: '{response_text[:100]}...' - validating quality and completeness",
+                        reasoning_chain=[
+                            "Reviewing generated response for accuracy",
+                            "Ensuring response addresses user's question",
+                            "Validating tone and helpfulness",
+                            "Confirming response completeness"
+                        ],
+                        confidence=0.95,
+                        decision_factors=["Response accuracy", "User satisfaction", "Clarity"]
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to stream response completion thinking: {e}")
             
             return {
                 "response": response_text,
@@ -2074,7 +2236,11 @@ Services available: automation, asset, network, communication
 
 Be specific about what action to take."""
 
-                response = await self.llm_engine.generate(next_step_prompt)
+                # Use Qwen2.5:7b for fallback step decision-making (better reasoning than CodeLlama)
+                from integrations.llm_client import LLMEngine
+                fallback_decision_llm = LLMEngine(ollama_host="http://opsconductor-ollama:11434", default_model="qwen2.5:7b")
+                await fallback_decision_llm.initialize()
+                response = await fallback_decision_llm.generate(next_step_prompt)
                 
                 if isinstance(response, dict) and "generated_text" in response:
                     decision = response["generated_text"].strip()

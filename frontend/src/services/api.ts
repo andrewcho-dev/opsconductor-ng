@@ -765,6 +765,7 @@ export const aiApi = {
     message: string;
     user_id?: number;
     conversation_id?: string;
+    debug_mode?: boolean;
   }): Promise<{
     response: string;
     intent: string;

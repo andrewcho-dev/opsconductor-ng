@@ -101,18 +101,31 @@ class ThinkingWebSocketManager:
     async def stream_thinking_to_websockets(self, session_id: str):
         """Stream thinking steps from Redis to WebSockets"""
         try:
+            logger.info("🧠 Starting thinking stream task", session_id=session_id)
+            
             if session_id not in self.active_connections:
+                logger.warning("🧠 No active connections for session", session_id=session_id)
                 return
             
             last_id = "0"
+            poll_count = 0
             
             while session_id in self.active_connections:
+                poll_count += 1
+                
                 # Read new messages from Redis stream
                 thinking_messages = await self.stream_manager.read_thinking_stream(
                     session_id, last_id, count=10
                 )
                 
+                if thinking_messages:
+                    logger.info(f"🧠 Found {len(thinking_messages)} thinking messages", 
+                               session_id=session_id, poll_count=poll_count)
+                
                 for message in thinking_messages:
+                    logger.info("🧠 Broadcasting thinking step", 
+                               session_id=session_id, message_id=message.get("id"))
+                    
                     # Broadcast to WebSockets
                     await self.broadcast_to_session(session_id, {
                         "type": "thinking_step",
@@ -121,9 +134,17 @@ class ThinkingWebSocketManager:
                     
                     last_id = message["id"]
                 
+                # Log periodic status
+                if poll_count % 100 == 0:
+                    logger.debug(f"🧠 Thinking stream polling (count: {poll_count})", 
+                                session_id=session_id, last_id=last_id)
+                
                 # Wait before next poll
                 await asyncio.sleep(0.1)
                 
+        except asyncio.CancelledError:
+            logger.info("🧠 Thinking stream task cancelled", session_id=session_id)
+            raise
         except Exception as e:
             logger.error("❌ Error streaming thinking to WebSockets", 
                         session_id=session_id, error=str(e))
@@ -166,6 +187,8 @@ class ThinkingWebSocketManager:
             if not connected:
                 return
             
+            logger.info("🔌 Starting WebSocket streaming tasks", session_id=session_id)
+            
             # Start streaming tasks
             thinking_task = asyncio.create_task(
                 self.stream_thinking_to_websockets(session_id)
@@ -173,6 +196,8 @@ class ThinkingWebSocketManager:
             progress_task = asyncio.create_task(
                 self.stream_progress_to_websockets(session_id)
             )
+            
+            logger.info("🔌 WebSocket streaming tasks started", session_id=session_id)
             
             try:
                 # Keep connection alive and handle incoming messages
@@ -194,12 +219,19 @@ class ThinkingWebSocketManager:
                         })
                         
             except WebSocketDisconnect:
-                logger.info("WebSocket disconnected normally", session_id=session_id)
+                logger.info("🔌 WebSocket disconnected normally", session_id=session_id)
                 
             finally:
                 # Cancel streaming tasks
+                logger.info("🔌 Cancelling WebSocket streaming tasks", session_id=session_id)
                 thinking_task.cancel()
                 progress_task.cancel()
+                
+                # Wait for tasks to complete cancellation
+                try:
+                    await asyncio.gather(thinking_task, progress_task, return_exceptions=True)
+                except Exception:
+                    pass
                 
                 # Disconnect WebSocket
                 await self.disconnect(websocket)

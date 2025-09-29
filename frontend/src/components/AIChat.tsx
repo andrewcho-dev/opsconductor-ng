@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useImperativeHandle } from 'react';
-import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check, Bug, Eye, Brain, Target, Zap, Shield, TrendingUp, Activity, AlertTriangle, Info } from 'lucide-react';
+import { Send, Bot, User, Loader, AlertCircle, CheckCircle, Clock, Trash2, RefreshCw, Copy, Check, Bug, Eye, Brain, Target, Zap, Shield, TrendingUp, Activity, AlertTriangle, Info, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { aiApi } from '../services/api';
 import ThinkingVisualization from './ThinkingVisualization';
 
@@ -109,6 +109,7 @@ interface AIChatProps {
   onClearChat?: () => void;
   onFirstMessage?: (message: string) => void;
   activeChatId?: string | null;
+  debugMode?: boolean;
 }
 
 export interface AIChatRef {
@@ -116,7 +117,7 @@ export interface AIChatRef {
   clearChatHistory: () => void;
 }
 
-const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstMessage, activeChatId }, ref) => {
+const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstMessage, activeChatId, debugMode = false }, ref) => {
   // AI Chat state
   const loadChatHistory = (): ChatMessage[] => {
     try {
@@ -147,17 +148,11 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [debugMode, setDebugMode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('opsconductor_ai_debug_mode');
-      return saved === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [showThinkingVisualization, setShowThinkingVisualization] = useState(false);
+  const showThinkingVisualization = debugMode;
   const [thinkingSessionId, setThinkingSessionId] = useState<string | null>(null);
   const [isThinkingConnected, setIsThinkingConnected] = useState(false);
+  const [expandedDebugPanels, setExpandedDebugPanels] = useState<Set<string>>(new Set());
+  const [debugModalMessage, setDebugModalMessage] = useState<ChatMessage | null>(null);
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   // Remove auto-scroll entirely - let users scroll manually
@@ -228,10 +223,8 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     setIsChatLoading(true);
     setChatError(null);
 
-    // Clear thinking session ID - will be set from backend response
-    if (debugMode && showThinkingVisualization) {
-      setThinkingSessionId(null);
-    }
+    // Clear thinking session ID when starting new chat - will be set from backend response
+    setThinkingSessionId(null);
 
     try {
       // Get the last AI message to extract conversation_id if available
@@ -241,7 +234,8 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       const data = await aiApi.chat({
         message: userMessage.content,
         user_id: 1, // TODO: Get from auth context
-        conversation_id: conversationId
+        conversation_id: conversationId,
+        debug_mode: debugMode
       });
       
       // Check if there's an error in the response
@@ -250,9 +244,15 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
       }
       
       // Update thinking session ID if provided by backend
-      if ((data as any).thinking_session_id && debugMode && showThinkingVisualization) {
+      console.log('🔍 Backend response data:', data);
+      console.log('🔍 Debug mode:', debugMode);
+      console.log('🔍 Thinking session ID from backend:', (data as any).thinking_session_id);
+      
+      if ((data as any).thinking_session_id && debugMode) {
         console.log('🧠 Setting thinking session ID from backend:', (data as any).thinking_session_id);
         setThinkingSessionId((data as any).thinking_session_id);
+      } else {
+        console.log('🔍 Not setting thinking session ID - debugMode:', debugMode, 'thinking_session_id:', (data as any).thinking_session_id);
       }
       
       // Create AI message with routing info if available
@@ -341,15 +341,16 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
     }
   };
 
-  const toggleDebugMode = () => {
-    const newDebugMode = !debugMode;
-    setDebugMode(newDebugMode);
-    setShowThinkingVisualization(newDebugMode);
-    try {
-      localStorage.setItem('opsconductor_ai_debug_mode', newDebugMode.toString());
-    } catch (error) {
-      console.warn('Failed to save debug mode preference:', error);
-    }
+  const toggleDebugPanel = (messageId: string) => {
+    setExpandedDebugPanels(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
   };
 
   useImperativeHandle(ref, () => ({
@@ -402,21 +403,35 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
 
     const intent = message.debugInfo.intent_classification;
     const routing = message.debugInfo.routing;
+    const isExpanded = expandedDebugPanels.has(message.id);
 
     return (
       <div className="debug-info-panel">
-        {/* Header */}
-        <div className="debug-panel-header">
+        {/* Collapsible Header */}
+        <div 
+          className="debug-panel-header clickable"
+          onClick={() => toggleDebugPanel(message.id)}
+        >
           <div className="debug-panel-title">
+            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             <Brain className="debug-section-icon" />
             AI Debug Information
+            {!isExpanded && (
+              <span className="debug-summary">
+                {intent?.intent_type && ` • ${intent.intent_type}`}
+                {intent?.confidence && ` • ${formatConfidence(intent.confidence)}`}
+                {routing?.response_time && ` • ${routing.response_time}ms`}
+              </span>
+            )}
           </div>
           <div className="debug-panel-badge">
             {intent?.metadata?.engine || 'AI Engine'}
           </div>
         </div>
 
-        <div className="debug-sections-grid">
+        {/* Expandable Content */}
+        {isExpanded && (
+          <div className="debug-sections-grid">
           {/* Intent Classification Section */}
           {intent && (
             <div className="debug-section">
@@ -768,6 +783,210 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             </div>
           )}
         </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderDebugInfoModal = (message: ChatMessage) => {
+    if (!message.debugInfo) return null;
+
+    const intent = message.debugInfo.intent_classification;
+    const routing = message.debugInfo.routing;
+
+    return (
+      <div className="debug-sections-grid">
+        {/* Intent Classification Section */}
+        {intent && (
+          <div className="debug-section">
+            <div className="debug-section-header">
+              <div className="debug-section-title">
+                <Target className="debug-section-icon" />
+                Intent Classification
+              </div>
+              <span className={`confidence-indicator ${getConfidenceClass(intent.confidence)}`}>
+                {formatConfidence(intent.confidence)}
+              </span>
+            </div>
+
+            <div className="debug-field">
+              <span className="debug-field-label">Intent Type</span>
+              <span className="debug-field-value code">{intent.intent_type || 'Unknown'}</span>
+            </div>
+
+            <div className="debug-field">
+              <span className="debug-field-label">Method</span>
+              <span className="debug-field-value">{intent.method || 'Unknown'}</span>
+            </div>
+
+            <div className="debug-field">
+              <span className="debug-field-label">Engine</span>
+              <span className="debug-field-value">{intent.metadata?.engine || 'Unknown'}</span>
+            </div>
+
+            {intent.reasoning && (
+              <div className="debug-field">
+                <span className="debug-field-label">AI Reasoning</span>
+                <span className="debug-field-value">{intent.reasoning}</span>
+              </div>
+            )}
+
+            {intent.alternatives && intent.alternatives.length > 0 && (
+              <div className="debug-field">
+                <span className="debug-field-label">Alternative Intents</span>
+                <div className="alternatives-list">
+                  {intent.alternatives.map((alt, index) => (
+                    <div key={index} className="alternative-item">
+                      <span className="alt-intent">{alt.intent}</span>
+                      <span className={`alt-confidence ${getConfidenceClass(alt.confidence)}`}>
+                        {formatConfidence(alt.confidence)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {intent.entities && intent.entities.length > 0 && (
+              <div className="debug-field">
+                <span className="debug-field-label">Entities</span>
+                <div className="entities-list">
+                  {intent.entities.map((entity, index) => (
+                    <div key={index} className="entity-item">
+                      <span className="entity-value">{entity.value}</span>
+                      <span className="entity-type">{entity.type}</span>
+                      <span className={`entity-confidence ${getConfidenceClass(entity.confidence)}`}>
+                        {formatConfidence(entity.confidence)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {intent.context_analysis && (
+              <div className="debug-field">
+                <span className="debug-field-label">Context Analysis</span>
+                <div className="context-analysis">
+                  <div className="context-metrics">
+                    <span className="context-item">
+                      <strong>Confidence:</strong> 
+                      <span className={`confidence-badge ${getConfidenceClass(intent.context_analysis.confidence_score)}`}>
+                        {formatConfidence(intent.context_analysis.confidence_score)}
+                      </span>
+                    </span>
+                    <span className="context-item">
+                      <strong>Risk Level:</strong> 
+                      <span className={`risk-badge risk-${intent.context_analysis.risk_level?.toLowerCase()}`}>
+                        {intent.context_analysis.risk_level}
+                      </span>
+                    </span>
+                    <span className="context-item">
+                      <strong>Requirements:</strong> {intent.context_analysis.requirements_count}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Routing Information Section */}
+        {routing && (
+          <div className="debug-section">
+            <div className="debug-section-header">
+              <div className="debug-section-title">
+                <Zap className="debug-section-icon" />
+                Routing Information
+              </div>
+            </div>
+
+            <div className="performance-metrics">
+              <div className="metric-item">
+                <div className="metric-value">{routing.response_time?.toFixed(2) || '0.00'}s</div>
+                <div className="metric-label">Response Time</div>
+              </div>
+              <div className="metric-item">
+                <div className="metric-value">{routing.cached ? 'YES' : 'NO'}</div>
+                <div className="metric-label">Cached</div>
+              </div>
+            </div>
+
+            <div className="debug-field">
+              <span className="debug-field-label">Service</span>
+              <span className="debug-field-value code">{routing.service}</span>
+            </div>
+
+            <div className="debug-field">
+              <span className="debug-field-label">Service Type</span>
+              <span className="debug-field-value">{routing.service_type}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Multi-Brain Consultations Section */}
+        {intent && (intent.metadata as any)?.brains_consulted && (intent.metadata as any).brains_consulted.length > 0 && (
+          <div className="debug-section">
+            <div className="debug-section-header">
+              <div className="debug-section-title">
+                <Brain className="debug-section-icon" />
+                Multi-Brain Consultations
+              </div>
+            </div>
+            
+            <div className="brains-consulted-list">
+              {(intent.metadata as any).brains_consulted.map((brain: string, index: number) => (
+                <div key={index} className="brain-consulted-item">
+                  <span className="brain-name">{brain}</span>
+                  <span className="brain-status">✓ Consulted</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* SME Consultations Section */}
+        {intent && (intent.metadata as any)?.sme_consultations && Object.keys((intent.metadata as any).sme_consultations).length > 0 && (
+          <div className="debug-section">
+            <div className="debug-section-header">
+              <div className="debug-section-title">
+                <Shield className="debug-section-icon" />
+                SME Consultations
+              </div>
+            </div>
+            
+            <div className="sme-consultations-list">
+              {Object.entries((intent.metadata as any).sme_consultations).map(([sme, details]: [string, any], index) => (
+                <div key={index} className="sme-consultation-item">
+                  <div className="sme-header">
+                    <span className="sme-name">{sme}</span>
+                    <span className={`sme-status ${details.consulted ? 'consulted' : 'not-consulted'}`}>
+                      {details.consulted ? '✓ Consulted' : '✗ Not Consulted'}
+                    </span>
+                  </div>
+                  {details.reasoning && (
+                    <div className="sme-reasoning">{details.reasoning}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Raw Response Section */}
+        {message.debugInfo.raw_response && (
+          <div className="debug-section" style={{ gridColumn: '1 / -1' }}>
+            <div className="debug-section-header">
+              <div className="debug-section-title">
+                <Info className="debug-section-icon" />
+                Raw Response Data
+              </div>
+            </div>
+            <div className="debug-json">
+              {JSON.stringify(message.debugInfo.raw_response, null, 2)}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -837,8 +1056,26 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             height: 100%;
             background: var(--neutral-50);
           }
-          .chat-messages-area {
+
+          .chat-main-content {
+            display: flex;
             flex: 1;
+            gap: 16px;
+            overflow: hidden;
+          }
+          .chat-main-content.full-width {
+            gap: 0;
+          }
+          .thinking-panel {
+            flex: 0 0 25%;
+            min-width: 0;
+            overflow-y: auto;
+            border-right: 2px solid var(--neutral-200);
+            padding-right: 16px;
+          }
+          .chat-messages-area {
+            flex: 0 0 75%;
+            min-width: 0;
             overflow-y: auto;
             padding: 20px 0;
             display: flex;
@@ -873,14 +1110,15 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             border-bottom-right-radius: 4px;
           }
           .chat-bubble-ai {
-            background: transparent;
+            background: var(--neutral-50);
             color: var(--neutral-800);
             align-self: stretch;
-            border: none;
-            border-radius: 0;
+            border: 1px solid var(--neutral-200);
+            border-radius: 12px;
             width: 100%;
-            padding: 16px 0;
+            padding: 16px;
             line-height: 1.6;
+            position: relative;
           }
           .chat-bubble-system {
             background: var(--warning-orange-light);
@@ -1030,39 +1268,6 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           }
           .copy-button.copied {
             background: var(--success-green);
-            color: white;
-          }
-          
-          .debug-toggle-area {
-            padding: 8px 16px;
-            background: var(--neutral-100);
-            border-bottom: 1px solid var(--neutral-200);
-            display: flex;
-            justify-content: flex-end;
-          }
-          
-          .debug-toggle-btn {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background: var(--neutral-200);
-            border: 1px solid var(--neutral-300);
-            border-radius: 6px;
-            color: var(--neutral-700);
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-          }
-          
-          .debug-toggle-btn:hover {
-            background: var(--neutral-300);
-            border-color: var(--neutral-400);
-          }
-          
-          .debug-toggle-btn.active {
-            background: var(--primary-blue);
-            border-color: var(--primary-blue);
             color: white;
           }
           
@@ -1232,6 +1437,18 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             border-bottom: 1px solid var(--neutral-300);
           }
           
+          .debug-panel-header.clickable {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            padding: 8px;
+            margin: -8px;
+            border-radius: 6px;
+          }
+          
+          .debug-panel-header.clickable:hover {
+            background-color: var(--neutral-100);
+          }
+          
           .debug-panel-title {
             display: flex;
             align-items: center;
@@ -1239,6 +1456,13 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             font-weight: bold;
             color: var(--primary-blue-dark);
             font-size: 12px;
+          }
+          
+          .debug-summary {
+            color: var(--neutral-600);
+            font-weight: normal;
+            font-size: 11px;
+            margin-left: 8px;
           }
           
           .debug-panel-badge {
@@ -1582,32 +1806,138 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             background: var(--neutral-200);
             color: var(--neutral-600);
           }
+
+          /* Debug Info Icon Styles */
+          .debug-info-icon {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--neutral-100);
+            border: 1px solid var(--neutral-300);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--primary-blue);
+            z-index: 10;
+          }
+
+          .debug-info-icon:hover {
+            background: var(--primary-blue-light);
+            border-color: var(--primary-blue);
+            transform: scale(1.05);
+          }
+
+          /* Debug Modal Styles */
+          .debug-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+          }
+
+          .debug-modal {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            max-width: 90vw;
+            max-height: 90vh;
+            width: 800px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+          }
+
+          .debug-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--neutral-200);
+            background: var(--neutral-50);
+          }
+
+          .debug-modal-header h3 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--neutral-800);
+          }
+
+          .debug-modal-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            color: var(--neutral-500);
+            transition: all 0.2s ease;
+          }
+
+          .debug-modal-close:hover {
+            background: var(--neutral-200);
+            color: var(--neutral-700);
+          }
+
+          .debug-modal-content {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+          }
+
+          /* Make chat bubbles relative positioned for the debug icon */
+          .chat-bubble {
+            position: relative;
+          }
         `}
       </style>
 
-      {/* Debug Mode Toggle */}
-      <div className="debug-toggle-area">
-        <button
-          onClick={toggleDebugMode}
-          className={`debug-toggle-btn ${debugMode ? 'active' : ''}`}
-          title={debugMode ? 'Hide debug information' : 'Show debug information'}
-        >
-          {debugMode ? <Eye size={16} /> : <Bug size={16} />}
-          {debugMode ? 'Normal View' : 'Debug Mode'}
-        </button>
-      </div>
 
-      {/* Real-time Thinking Visualization */}
-      {showThinkingVisualization && thinkingSessionId && (
-        <ThinkingVisualization
-          sessionId={thinkingSessionId}
-          isActive={isChatLoading}
-          onConnectionChange={setIsThinkingConnected}
-        />
-      )}
 
-      {/* Messages Area */}
-      <div className="chat-messages-area">
+      {/* Main Content Area - Split Layout */}
+      <div className={`chat-main-content ${!showThinkingVisualization ? 'full-width' : ''}`}>
+        {/* Real-time Thinking Visualization */}
+        {showThinkingVisualization && (
+          <div className="thinking-panel">
+            {thinkingSessionId ? (
+              <ThinkingVisualization
+                sessionId={thinkingSessionId}
+                isActive={true}
+                onConnectionChange={setIsThinkingConnected}
+              />
+            ) : (
+              <div style={{ 
+                padding: '20px', 
+                textAlign: 'center', 
+                color: 'var(--neutral-500)',
+                fontSize: '14px'
+              }}>
+                <Brain size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                <div>AI Thinking Stream</div>
+                <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                  Send a message to see real-time AI thinking
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Messages Area */}
+        <div className="chat-messages-area">
         <div className="chat-content-wrapper">
           <div className="chat-messages-column">
             {chatMessages.length === 0 ? (
@@ -1641,6 +1971,16 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                 <div key={message.id}>
                   <div className={`chat-bubble chat-bubble-${message.type}`}>
                     {message.type === 'ai' ? formatMessageContent(message.content, message.id) : message.content}
+                    {/* Debug Info Icon - only show for AI messages with debug info */}
+                    {debugMode && message.type === 'ai' && message.debugInfo && (
+                      <button
+                        className="debug-info-icon"
+                        onClick={() => setDebugModalMessage(message)}
+                        title="View AI Debug Information"
+                      >
+                        <Brain size={14} />
+                      </button>
+                    )}
                   </div>
                   {/* Intent Analysis Display - Always visible for AI messages */}
                   {message.type === 'ai' && message.debugInfo?.intent_classification && (
@@ -1679,7 +2019,6 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
                       </div>
                     </div>
                   )}
-                  {renderDebugInfo(message)}
                 </div>
               ))
             )}
@@ -1695,6 +2034,7 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
             )}
           </div>
         </div>
+      </div>
       </div>
 
       {/* Fixed Input Area */}
@@ -1720,6 +2060,29 @@ const AIChat = React.forwardRef<AIChatRef, AIChatProps>(({ onClearChat, onFirstM
           {currentConversationId ? `Conversation: ${currentConversationId}` : 'No conversation ID yet'}
         </div>
       </div>
+
+      {/* Debug Info Modal */}
+      {debugModalMessage && (
+        <div className="debug-modal-overlay" onClick={() => setDebugModalMessage(null)}>
+          <div className="debug-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="debug-modal-header">
+              <h3>
+                <Brain size={20} />
+                AI Debug Information
+              </h3>
+              <button
+                className="debug-modal-close"
+                onClick={() => setDebugModalMessage(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="debug-modal-content">
+              {renderDebugInfoModal(debugModalMessage)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

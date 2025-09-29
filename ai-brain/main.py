@@ -354,6 +354,106 @@ async def manual_init_streaming():
         logger.error(f"❌ Manual initialization failed: {e}")
         return {"status": "error", "message": f"Initialization failed: {str(e)}"}
 
+@app.get("/api/v1/websocket-status")
+async def websocket_status():
+    """Get WebSocket manager status"""
+    try:
+        from api.thinking_websocket import get_websocket_manager
+        ws_manager = get_websocket_manager()
+        
+        active_sessions = list(ws_manager.active_connections.keys())
+        connection_counts = {
+            session_id: len(connections) 
+            for session_id, connections in ws_manager.active_connections.items()
+        }
+        
+        return {
+            "status": "success",
+            "websocket_manager_initialized": True,
+            "active_sessions": active_sessions,
+            "connection_counts": connection_counts,
+            "total_sessions": len(active_sessions)
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "websocket_manager_initialized": False,
+            "error": str(e)
+        }
+
+@app.post("/api/v1/test-websocket-streaming/{session_id}")
+async def test_websocket_streaming(session_id: str):
+    """Test WebSocket streaming for a specific session"""
+    try:
+        from api.thinking_websocket import get_websocket_manager
+        from streaming.stream_manager import get_global_stream_manager
+        
+        # Get managers
+        ws_manager = get_websocket_manager()
+        stream_manager = get_global_stream_manager()
+        
+        if not stream_manager:
+            return {"status": "error", "message": "Stream manager not available"}
+        
+        # Check if session has active connections
+        has_connections = session_id in ws_manager.active_connections
+        connection_count = len(ws_manager.active_connections.get(session_id, []))
+        
+        # Check if session has stream configuration
+        has_config = session_id in stream_manager.redis_stream_manager.stream_configs
+        
+        # Check Redis streams
+        redis_client = stream_manager.redis_stream_manager.redis_client
+        thinking_stream = f"thinking:{session_id}"
+        progress_stream = f"progress:{session_id}"
+        
+        thinking_exists = await redis_client.exists(thinking_stream)
+        progress_exists = await redis_client.exists(progress_stream)
+        
+        thinking_length = await redis_client.xlen(thinking_stream) if thinking_exists else 0
+        progress_length = await redis_client.xlen(progress_stream) if progress_exists else 0
+        
+        # Try to read some messages
+        thinking_messages = []
+        progress_messages = []
+        
+        if thinking_length > 0:
+            thinking_data = await redis_client.xrange(thinking_stream, count=3)
+            thinking_messages = [{"id": msg_id, "data": fields} for msg_id, fields in thinking_data]
+        
+        if progress_length > 0:
+            progress_data = await redis_client.xrange(progress_stream, count=3)
+            progress_messages = [{"id": msg_id, "data": fields} for msg_id, fields in progress_data]
+        
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "websocket_connections": {
+                "has_connections": has_connections,
+                "connection_count": connection_count
+            },
+            "stream_configuration": {
+                "has_config": has_config,
+                "config_details": stream_manager.redis_stream_manager.stream_configs.get(session_id).__dict__ if has_config else None
+            },
+            "redis_streams": {
+                "thinking_stream": {
+                    "exists": thinking_exists,
+                    "length": thinking_length,
+                    "sample_messages": thinking_messages
+                },
+                "progress_stream": {
+                    "exists": progress_exists,
+                    "length": progress_length,
+                    "sample_messages": progress_messages
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ WebSocket streaming test failed: {e}")
+        return {"status": "error", "message": f"Exception: {str(e)}"}
+
 # Old startup/shutdown events removed - now using lifespan context manager
 
 # PURE AI BRAIN DECISION MAKING - NO HARDCODED LOGIC!
@@ -373,24 +473,33 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
     PLUS: Real-time thinking stream for debug mode visualization
     """
     try:
+        print(f"🔥 PURE LLM CHAT ENDPOINT CALLED with debug_mode: {request.debug_mode}")
+        logger.error(f"🔥 PURE LLM CHAT ENDPOINT CALLED with debug_mode: {request.debug_mode}")
         logger.info("🧠 AI BRAIN MAKING ALL DECISIONS", message=request.message[:100])
         
         # Generate conversation_id if not provided
         if not request.conversation_id:
             request.conversation_id = f"chat-{uuid.uuid4()}"
         
+        print(f"🔍 About to create thinking session")
+        logger.error(f"🔍 About to create thinking session")
+        
         # Create thinking session for real-time visualization
         thinking_session_id = f"thinking_{int(datetime.now().timestamp() * 1000)}_{uuid.uuid4().hex[:8]}"
         
+        print(f"🔍 Created thinking session ID: {thinking_session_id}")
+        logger.error(f"🔍 Created thinking session ID: {thinking_session_id}")
+        
         # Get stream manager for thinking visualization
         stream_manager = get_global_stream_manager()
+        logger.info(f"🔍 Stream manager: {stream_manager is not None}")
         if stream_manager:
             # Create thinking session
             try:
                 await stream_manager.create_thinking_session(
                     session_id=thinking_session_id,
                     user_id=str(request.user_id) if request.user_id else "system",
-                    debug_mode=True,  # Always enable for real-time visualization
+                    debug_mode=request.debug_mode,  # Use actual debug mode from request
                     user_request=request.message[:100],
                     system_context={
                         "conversation_id": request.conversation_id,
@@ -400,7 +509,8 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
                 
                 # Stream initial analysis step
                 from streaming.thinking_data_models import ThinkingType
-                await stream_manager.stream_thinking(
+                logger.info(f"🔍 About to call stream_thinking for session {thinking_session_id}")
+                result = await stream_manager.stream_thinking(
                     session_id=thinking_session_id,
                     thinking_type=ThinkingType.ANALYSIS,
                     content="Analyzing user request and determining optimal processing approach...",
@@ -414,6 +524,7 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
                     alternatives=["Direct response", "Service orchestration", "Workflow generation"],
                     decision_factors=["Message complexity", "Available services", "User context"]
                 )
+                logger.info(f"🔍 stream_thinking result: {result}")
             except Exception as e:
                 logger.warning(f"Failed to create thinking session: {e}")
                 stream_manager = None
@@ -451,6 +562,8 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
         
         # THE AI BRAIN DECIDES EVERYTHING!
         # Pass all available services and let Ollama choose what to do
+        print(f"🔍 About to call direct_executor")
+        logger.error(f"🔍 About to call direct_executor")
         execution_result = await direct_executor.execute_user_request_with_full_control(
             message=request.message, 
             user_context=user_context,
@@ -458,7 +571,9 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
                 "ai_brain_service": ai_brain_service,
                 "prefect_flow_engine": prefect_flow_engine,
                 "fulfillment_engine": fulfillment_engine
-            }
+            },
+            thinking_session_id=thinking_session_id,
+            stream_manager=stream_manager
         )
         
         # Stream completion step
@@ -466,7 +581,7 @@ async def pure_llm_chat_endpoint(request, intent_brain_instance):
             try:
                 await stream_manager.stream_thinking(
                     session_id=thinking_session_id,
-                    thinking_type=ThinkingType.REFLECTION,
+                    thinking_type=ThinkingType.RESULT_ANALYSIS,
                     content="Processing completed successfully. Reviewing results and preparing response...",
                     reasoning_chain=[
                         "Validating execution results and response quality",
@@ -1261,6 +1376,7 @@ class ChatRequest(BaseModel):
     message: str
     user_id: Optional[int] = None
     conversation_id: Optional[str] = None
+    debug_mode: bool = False
 
 class ChatResponse(BaseModel):
     response: str
@@ -1449,6 +1565,133 @@ async def validate_job_request(request: dict):
     except Exception as e:
         logger.error(f"Job validation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+@app.post("/test-thinking")
+async def test_thinking_endpoint():
+    """Test endpoint to verify thinking visualization works"""
+    try:
+        # Create thinking session for testing
+        thinking_session_id = f"thinking_test_{int(datetime.now().timestamp() * 1000)}_{uuid.uuid4().hex[:8]}"
+        
+        # Get stream manager for thinking visualization
+        stream_manager = get_global_stream_manager()
+        print(f"🔍 Test - Stream manager: {stream_manager is not None}")
+        logger.error(f"🔍 Test - Stream manager: {stream_manager is not None}")
+        
+        if stream_manager:
+            # Create thinking session
+            try:
+                await stream_manager.create_thinking_session(
+                    session_id=thinking_session_id,
+                    user_id="test_user",
+                    debug_mode=True,  # Always use debug mode for test
+                    user_request="Test thinking visualization",
+                    system_context={
+                        "test": True,
+                        "purpose": "Testing thinking visualization"
+                    }
+                )
+                
+                # Stream test thinking step
+                from streaming.thinking_data_models import ThinkingType
+                print(f"🔍 Test - About to stream thinking step")
+                logger.error(f"🔍 Test - About to stream thinking step")
+                
+                result = await stream_manager.stream_thinking(
+                    session_id=thinking_session_id,
+                    thinking_type=ThinkingType.ANALYSIS,
+                    content="Testing thinking visualization system...",
+                    reasoning_chain=[
+                        "Initializing test thinking session",
+                        "Verifying Redis stream connectivity",
+                        "Testing thinking step streaming",
+                        "Confirming debug mode functionality"
+                    ],
+                    confidence=0.95,
+                    alternatives=["Direct test", "Mock test", "Integration test"],
+                    decision_factors=["Stream availability", "Redis connectivity", "Debug mode"]
+                )
+                
+                print(f"🔍 Test - Stream thinking result: {result}")
+                logger.error(f"🔍 Test - Stream thinking result: {result}")
+                
+                # Check Redis directly using the same async client - IMMEDIATELY after streaming
+                import redis.asyncio as redis
+                redis_client = redis.from_url("redis://opsconductor-redis:6379/9", decode_responses=True)
+                
+                try:
+                    # Test connection and verify database
+                    await redis_client.ping()
+                    db_info = await redis_client.info('keyspace')
+                    logger.error(f"🔍 Test - Independent client connected, keyspace info: {db_info}")
+                    
+                    # Check for thinking streams
+                    keys = await redis_client.keys('thinking:*')
+                    logger.error(f"🔍 Test - Redis keys found IMMEDIATELY: {keys}")
+                    
+                    stream_lengths = {}
+                    for key in keys:
+                        length = await redis_client.xlen(key)
+                        stream_lengths[key] = length
+                        logger.error(f"🔍 Test - Stream {key} has {length} entries")
+                        
+                        if length > 0:
+                            entries = await redis_client.xrange(key, count=2)
+                            logger.error(f"🔍 Test - Sample entries: {entries}")
+                    
+                    # Also check using the stream manager's Redis client directly
+                    if stream_manager and hasattr(stream_manager, 'redis_stream_manager') and stream_manager.redis_stream_manager.redis_client:
+                        sm_redis = stream_manager.redis_stream_manager.redis_client
+                        sm_keys = await sm_redis.keys('thinking:*')
+                        logger.error(f"🔍 Test - Stream manager Redis keys: {sm_keys}")
+                        
+                        # Check if our session is in the stream configs
+                        stream_configs = stream_manager.redis_stream_manager.stream_configs
+                        logger.error(f"🔍 Test - Active stream configs: {list(stream_configs.keys())}")
+                        logger.error(f"🔍 Test - Our session in configs: {thinking_session_id in stream_configs}")
+                        
+                        for key in sm_keys:
+                            sm_length = await sm_redis.xlen(key)
+                            logger.error(f"🔍 Test - Stream manager sees {key} with {sm_length} entries")
+                    
+                    await redis_client.close()
+                    
+                except Exception as redis_e:
+                    logger.error(f"🔍 Test - Redis check error: {redis_e}")
+                    stream_lengths = {"error": str(redis_e)}
+                
+                return {
+                    "status": "success",
+                    "thinking_session_id": thinking_session_id,
+                    "stream_manager_available": True,
+                    "thinking_step_streamed": result,
+                    "redis_streams": stream_lengths
+                }
+                
+            except Exception as e:
+                print(f"🔍 Test - Exception in thinking session: {e}")
+                logger.error(f"🔍 Test - Exception in thinking session: {e}")
+                return {
+                    "status": "error",
+                    "thinking_session_id": thinking_session_id,
+                    "stream_manager_available": True,
+                    "error": str(e)
+                }
+        else:
+            return {
+                "status": "error",
+                "thinking_session_id": thinking_session_id,
+                "stream_manager_available": False,
+                "error": "Stream manager not available"
+            }
+            
+    except Exception as e:
+        print(f"🔍 Test - Top level exception: {e}")
+        logger.error(f"🔍 Test - Top level exception: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):

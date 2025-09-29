@@ -44,6 +44,7 @@ class RedisThinkingStreamManager:
                            config: StreamConfig, context: ThinkingContext) -> StreamingSession:
         """Create a new streaming session"""
         try:
+            logger.error(f"🔍 Creating Redis session {session_id} with debug_mode: {config.debug_mode}")
             session = StreamingSession(
                 session_id=session_id,
                 user_id=user_id,
@@ -95,15 +96,22 @@ class RedisThinkingStreamManager:
             session_id = thinking_step.session_id
             config = self.stream_configs.get(session_id)
             
+            logger.error(f"🔍 stream_thinking_step called for session {session_id}")
+            logger.error(f"🔍 Config found: {config is not None}")
+            if config:
+                logger.error(f"🔍 Debug mode: {config.debug_mode}")
+            
             if not config:
                 logger.warning("No stream config found for session", session_id=session_id)
                 return False
             
             # Only stream thinking steps in debug mode
             if not config.debug_mode:
+                logger.error(f"🔍 Debug mode is False, not streaming")
                 return True
             
             stream_name = f"{config.thinking_stream_name}:{session_id}"
+            logger.error(f"🔍 Stream name: {stream_name}")
             
             # Convert thinking step to Redis message
             message_data = {
@@ -120,11 +128,33 @@ class RedisThinkingStreamManager:
                 "estimated_duration": str(thinking_step.estimated_duration) if thinking_step.estimated_duration else ""
             }
             
-            # Add to Redis stream
-            await self.redis_client.xadd(stream_name, message_data)
+            logger.error(f"🔍 About to write to Redis stream: {stream_name}")
+            logger.error(f"🔍 Message data: {message_data}")
+            
+            try:
+                # Add to Redis stream
+                result = await self.redis_client.xadd(stream_name, message_data)
+                logger.error(f"🔍 Successfully wrote to Redis stream, result: {result}")
+                
+                # Verify the write
+                stream_length = await self.redis_client.xlen(stream_name)
+                logger.error(f"🔍 Stream length after write: {stream_length}")
+                
+            except Exception as e:
+                logger.error(f"🔍 ERROR writing to Redis stream: {e}")
+                logger.error(f"🔍 Exception type: {type(e)}")
+                import traceback
+                logger.error(f"🔍 Traceback: {traceback.format_exc()}")
+                raise
             
             # Trim stream to max length
-            await self.redis_client.xtrim(stream_name, maxlen=config.max_stream_length, approximate=True)
+            logger.error(f"🔍 About to trim stream {stream_name} to max length {config.max_stream_length}")
+            trim_result = await self.redis_client.xtrim(stream_name, maxlen=config.max_stream_length, approximate=True)
+            logger.error(f"🔍 Trim result: {trim_result}")
+            
+            # Verify stream still exists after trim
+            final_length = await self.redis_client.xlen(stream_name)
+            logger.error(f"🔍 Stream length after trim: {final_length}")
             
             # Update session stats
             if session_id in self.active_sessions:
@@ -201,11 +231,15 @@ class RedisThinkingStreamManager:
             if not self.redis_client:
                 return []
             
+            # Try to get config from memory first
             config = self.stream_configs.get(session_id)
-            if not config:
-                return []
-            
-            stream_name = f"{config.thinking_stream_name}:{session_id}"
+            if config:
+                stream_name = f"{config.thinking_stream_name}:{session_id}"
+            else:
+                # Fallback: use default stream naming pattern
+                # This allows reading even if config is not in memory
+                stream_name = f"thinking:{session_id}"
+                logger.warning(f"🔍 No config found for session {session_id}, using default stream name: {stream_name}")
             
             # Read from stream
             messages = await self.redis_client.xread({stream_name: last_id}, count=count)
@@ -246,11 +280,15 @@ class RedisThinkingStreamManager:
             if not self.redis_client:
                 return []
             
+            # Try to get config from memory first
             config = self.stream_configs.get(session_id)
-            if not config:
-                return []
-            
-            stream_name = f"{config.progress_stream_name}:{session_id}"
+            if config:
+                stream_name = f"{config.progress_stream_name}:{session_id}"
+            else:
+                # Fallback: use default stream naming pattern
+                # This allows reading even if config is not in memory
+                stream_name = f"progress:{session_id}"
+                logger.warning(f"🔍 No config found for session {session_id}, using default progress stream name: {stream_name}")
             
             # Read from stream
             messages = await self.redis_client.xread({stream_name: last_id}, count=count)
