@@ -1,0 +1,3590 @@
+{
+  "test_run_info": {
+    "timestamp": "2025-09-29T01:11:03.094101",
+    "test_type": "Final Comprehensive Integration Test",
+    "total_ai_understanding_tests": 10,
+    "successful_ai_responses": 0,
+    "high_quality_responses": 0,
+    "job_execution_tests": 4,
+    "successful_job_executions": 4,
+    "average_response_time": 0.11451427936553955,
+    "average_understanding_score": 0.0
+  },
+  "ai_brain_analysis": {
+    "workflow_understanding": 0,
+    "automation_understanding": 0,
+    "technical_understanding": 0,
+    "actionable_responses": 0
+  },
+  "difficulty_analysis": {
+    "difficulty_11_15": {
+      "tested": 5,
+      "successful": 0,
+      "avg_score": 0.0
+    },
+    "difficulty_16_20": {
+      "tested": 5,
+      "successful": 0,
+      "avg_score": 0.0
+    }
+  },
+  "job_execution_analysis": {
+    "jobs_tested": [
+      {
+        "job_id": 220,
+        "job_details": {
+          "success": true,
+          "data": {
+            "id": 220,
+            "name": "Check Firmware Versions on Axis Cameras",
+            "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+            "workflow_definition": {
+              "name": "Check Firmware Versions on Axis Cameras",
+              "steps": [
+                {
+                  "id": "step_0",
+                  "name": "Execute: Query the firmware management endpoint of each cam...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_1",
+                  "name": "Execute: Compare the current firmware version with a predet...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_2",
+                  "name": "Execute: If the current firmware version is lower than the ...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                  "timeout": 300
+                }
+              ],
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "target_systems": [
+                "15",
+                "16",
+                "17",
+                "18",
+                "19"
+              ],
+              "scheduling_requirements": "none",
+              "notification_requirements": "none"
+            },
+            "schedule_expression": null,
+            "is_enabled": true,
+            "tags": [
+              "ai-generated",
+              "automated"
+            ],
+            "metadata": {
+              "confidence": null,
+              "ai_generated": true,
+              "created_by_ai": true,
+              "source_request": null,
+              "submission_time": "2025-09-26T07:29:38.112806"
+            },
+            "job_type": "ai_generated",
+            "created_by": 1,
+            "updated_by": 1,
+            "created_at": "2025-09-26T07:29:38.284311+00:00",
+            "updated_at": "2025-09-26T07:29:38.284311+00:00"
+          }
+        },
+        "execution_triggered": true,
+        "execution_response": {
+          "success": true,
+          "message": "Job execution started",
+          "data": {
+            "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+            "job_id": 220,
+            "job_name": "Check Firmware Versions on Axis Cameras",
+            "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+            "status": "queued",
+            "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+            "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+          }
+        },
+        "error": null
+      },
+      {
+        "job_id": 219,
+        "job_details": {
+          "success": true,
+          "data": {
+            "id": 219,
+            "name": "System Information Collection Job",
+            "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+            "workflow_definition": {
+              "name": "System Information Collection Job",
+              "steps": [
+                {
+                  "id": "step_1",
+                  "name": "Execute: To accomplish this task, you can use the following...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "To accomplish this task, you can use the following commands:",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_2",
+                  "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_3",
+                  "name": "Execute: ```powershell...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "```powershell",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_4",
+                  "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_5",
+                  "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "while ($endTime -gt (Get-Date)) {",
+                  "timeout": 300
+                }
+              ],
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "target_systems": [
+                "The job will run on all Windows machines on the network, including the localhost."
+              ]
+            },
+            "schedule_expression": null,
+            "is_enabled": true,
+            "tags": [
+              "ai-generated",
+              "automated"
+            ],
+            "metadata": {
+              "confidence": null,
+              "ai_generated": true,
+              "created_by_ai": true,
+              "source_request": null,
+              "submission_time": "2025-09-26T02:11:16.743544"
+            },
+            "job_type": "ai_generated",
+            "created_by": 1,
+            "updated_by": 1,
+            "created_at": "2025-09-26T02:11:16.927017+00:00",
+            "updated_at": "2025-09-26T02:11:16.927017+00:00"
+          }
+        },
+        "execution_triggered": true,
+        "execution_response": {
+          "success": true,
+          "message": "Job execution started",
+          "data": {
+            "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+            "job_id": 219,
+            "job_name": "System Information Collection Job",
+            "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+            "status": "queued",
+            "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+            "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+          }
+        },
+        "error": null
+      },
+      {
+        "job_id": 218,
+        "job_details": {
+          "success": true,
+          "data": {
+            "id": 218,
+            "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+            "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+            "workflow_definition": {
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "steps": [
+                {
+                  "id": "step_1",
+                  "name": "Execute: cmd /c dir c:\\...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "cmd /c dir c:\\",
+                  "timeout": 300
+                }
+              ],
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "target_systems": [
+                "192.168.50.211"
+              ]
+            },
+            "schedule_expression": null,
+            "is_enabled": true,
+            "tags": [
+              "ai-generated",
+              "automated"
+            ],
+            "metadata": {
+              "confidence": null,
+              "ai_generated": true,
+              "created_by_ai": true,
+              "source_request": null,
+              "submission_time": "2025-09-26T02:05:35.237522"
+            },
+            "job_type": "ai_generated",
+            "created_by": 1,
+            "updated_by": 1,
+            "created_at": "2025-09-26T02:05:35.426603+00:00",
+            "updated_at": "2025-09-26T02:05:35.426603+00:00"
+          }
+        },
+        "execution_triggered": true,
+        "execution_response": {
+          "success": true,
+          "message": "Job execution started",
+          "data": {
+            "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+            "job_id": 218,
+            "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+            "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+            "status": "queued",
+            "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+            "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+          }
+        },
+        "error": null
+      },
+      {
+        "job_id": 217,
+        "job_details": {
+          "success": true,
+          "data": {
+            "id": 217,
+            "name": "Connect and Run Dir Command on 192.168.50.215",
+            "description": "This job automates the process of connecting to a remote system and running the dir command.",
+            "workflow_definition": {
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "steps": [
+                {
+                  "id": "step_1",
+                  "name": "Execute: ssh username@192.168.50.215...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "ssh username@192.168.50.215",
+                  "timeout": 300
+                },
+                {
+                  "id": "step_2",
+                  "name": "Execute: dir...",
+                  "type": "command",
+                  "inputs": {},
+                  "command": "dir",
+                  "timeout": 300
+                }
+              ],
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "target_systems": [
+                "192.168.50.215"
+              ]
+            },
+            "schedule_expression": null,
+            "is_enabled": true,
+            "tags": [
+              "ai-generated",
+              "automated"
+            ],
+            "metadata": {
+              "confidence": null,
+              "ai_generated": true,
+              "created_by_ai": true,
+              "source_request": null,
+              "submission_time": "2025-09-26T01:41:03.478504"
+            },
+            "job_type": "ai_generated",
+            "created_by": 1,
+            "updated_by": 1,
+            "created_at": "2025-09-26T01:41:03.656664+00:00",
+            "updated_at": "2025-09-26T01:41:03.656664+00:00"
+          }
+        },
+        "execution_triggered": true,
+        "execution_response": {
+          "success": true,
+          "message": "Job execution started",
+          "data": {
+            "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+            "job_id": 217,
+            "job_name": "Connect and Run Dir Command on 192.168.50.215",
+            "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+            "status": "queued",
+            "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+            "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+          }
+        },
+        "error": null
+      }
+    ],
+    "execution_success_rate": "100.0%"
+  },
+  "detailed_results": [
+    {
+      "test_name": "Basic Request Understanding",
+      "difficulty": 11,
+      "user_request": "Can you help me ping a server?",
+      "success": false,
+      "response_time": 0.12321233749389648,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Simple Workflow Request",
+      "difficulty": 12,
+      "user_request": "I need to create a workflow that pings google.com and reports the results",
+      "success": false,
+      "response_time": 0.1138918399810791,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Multi-Step Automation",
+      "difficulty": 13,
+      "user_request": "Create an automation that scans network ports 22, 80, 443 on multiple hosts and generates a security report",
+      "success": false,
+      "response_time": 0.11090493202209473,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Conditional Logic Workflow",
+      "difficulty": 14,
+      "user_request": "Build a workflow that checks if a server is responding, and if not, creates an alert ticket and notifies the admin team",
+      "success": false,
+      "response_time": 0.11063385009765625,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Scheduled Monitoring Task",
+      "difficulty": 15,
+      "user_request": "Set up automated monitoring that checks system health every 15 minutes, analyzes trends, and escalates if performance degrades",
+      "success": false,
+      "response_time": 0.13364505767822266,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Data Processing Pipeline",
+      "difficulty": 16,
+      "user_request": "Create a data pipeline that collects logs from multiple sources, processes them for security incidents, correlates events, and generates threat intelligence reports",
+      "success": false,
+      "response_time": 0.11034202575683594,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Incident Response Automation",
+      "difficulty": 17,
+      "user_request": "Design an incident response system that detects anomalies, automatically isolates affected systems, gathers forensic data, and initiates recovery procedures",
+      "success": false,
+      "response_time": 0.10989975929260254,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Compliance Audit Framework",
+      "difficulty": 18,
+      "user_request": "Build a comprehensive compliance framework that scans infrastructure for security policies, generates audit reports, tracks remediation, and maintains compliance dashboards",
+      "success": false,
+      "response_time": 0.11106610298156738,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "ML-Powered Predictive Maintenance",
+      "difficulty": 19,
+      "user_request": "Implement a machine learning system that analyzes system performance metrics, predicts failures, schedules preventive maintenance, and optimizes resource allocation",
+      "success": false,
+      "response_time": 0.10954165458679199,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "test_name": "Adaptive Self-Healing Infrastructure",
+      "difficulty": 20,
+      "user_request": "Create an adaptive infrastructure that monitors its own health, learns from failures, automatically implements fixes, scales resources based on demand, and evolves its response strategies over time",
+      "success": false,
+      "response_time": 0.11200523376464844,
+      "ai_response": null,
+      "response_quality": {
+        "mentions_workflows": false,
+        "mentions_automation": false,
+        "shows_technical_understanding": false,
+        "provides_actionable_steps": false,
+        "understanding_score": 0
+      },
+      "error": "HTTP 422: {\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"user_id\"],\"msg\":\"Input should be a valid string\",\"input\":1}]}",
+      "job_execution_tests": [
+        {
+          "job_id": 220,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 220,
+              "name": "Check Firmware Versions on Axis Cameras",
+              "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+              "workflow_definition": {
+                "name": "Check Firmware Versions on Axis Cameras",
+                "steps": [
+                  {
+                    "id": "step_0",
+                    "name": "Execute: Query the firmware management endpoint of each cam...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Query the firmware management endpoint of each camera to get its current firmware version.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_1",
+                    "name": "Execute: Compare the current firmware version with a predet...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "Compare the current firmware version with a predetermined minimum firmware version that you have decided on for security reasons.",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: If the current firmware version is lower than the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "If the current firmware version is lower than the minimum required version, an alert will be sent to the communication service with information about which cameras need updating.",
+                    "timeout": 300
+                  }
+                ],
+                "description": "Connect to all Axis cameras in asset inventory and check their firmware versions using the VAPIX Camera Control service.",
+                "target_systems": [
+                  "15",
+                  "16",
+                  "17",
+                  "18",
+                  "19"
+                ],
+                "scheduling_requirements": "none",
+                "notification_requirements": "none"
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T07:29:38.112806"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T07:29:38.284311+00:00",
+              "updated_at": "2025-09-26T07:29:38.284311+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "job_id": 220,
+              "job_name": "Check Firmware Versions on Axis Cameras",
+              "task_id": "7b050845-a77c-4031-9afe-ff41703794fb",
+              "status": "queued",
+              "status_url": "/tasks/7b050845-a77c-4031-9afe-ff41703794fb/status",
+              "job_status_url": "/jobs/220/status/7b050845-a77c-4031-9afe-ff41703794fb"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 219,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 219,
+              "name": "System Information Collection Job",
+              "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+              "workflow_definition": {
+                "name": "System Information Collection Job",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: To accomplish this task, you can use the following...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "To accomplish this task, you can use the following commands:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: 1. To connect to each Windows machine and get the ...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "1. To connect to each Windows machine and get the system information every 15 minutes until 11:00pm tonight, you can use the `Invoke-Command` cmdlet in PowerShell remoting. Here's an example of how to do it:",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_3",
+                    "name": "Execute: ```powershell...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "```powershell",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_4",
+                    "name": "Execute: $endTime = Get-Date -Hour 23 -Minute 00 -Second 00...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "$endTime = Get-Date -Hour 23 -Minute 00 -Second 00",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_5",
+                    "name": "Execute: while ($endTime -gt (Get-Date)) {...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "while ($endTime -gt (Get-Date)) {",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job collects system information from each Windows machine on the network and emails it to drewcho@hotmail.com every 15 minutes until 11:00pm tonight.",
+                "target_systems": [
+                  "The job will run on all Windows machines on the network, including the localhost."
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:11:16.743544"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:11:16.927017+00:00",
+              "updated_at": "2025-09-26T02:11:16.927017+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "job_id": 219,
+              "job_name": "System Information Collection Job",
+              "task_id": "811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7",
+              "status": "queued",
+              "status_url": "/tasks/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7/status",
+              "job_status_url": "/jobs/219/status/811ddb25-ec3d-47b9-bd3d-0eae7f41d2a7"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 218,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 218,
+              "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+              "workflow_definition": {
+                "name": "Get Directory Listing for C:\\ on 192.168.50.211",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: cmd /c dir c:\\...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "cmd /c dir c:\\",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job will connect to 192.168.50.211 and get the directory listing for c:\\.",
+                "target_systems": [
+                  "192.168.50.211"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T02:05:35.237522"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T02:05:35.426603+00:00",
+              "updated_at": "2025-09-26T02:05:35.426603+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "job_id": 218,
+              "job_name": "Get Directory Listing for C:\\ on 192.168.50.211",
+              "task_id": "a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b",
+              "status": "queued",
+              "status_url": "/tasks/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b/status",
+              "job_status_url": "/jobs/218/status/a95fe7f9-1a28-40c9-bc67-69dde8dc4b6b"
+            }
+          },
+          "error": null
+        },
+        {
+          "job_id": 217,
+          "job_details": {
+            "success": true,
+            "data": {
+              "id": 217,
+              "name": "Connect and Run Dir Command on 192.168.50.215",
+              "description": "This job automates the process of connecting to a remote system and running the dir command.",
+              "workflow_definition": {
+                "name": "Connect and Run Dir Command on 192.168.50.215",
+                "steps": [
+                  {
+                    "id": "step_1",
+                    "name": "Execute: ssh username@192.168.50.215...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "ssh username@192.168.50.215",
+                    "timeout": 300
+                  },
+                  {
+                    "id": "step_2",
+                    "name": "Execute: dir...",
+                    "type": "command",
+                    "inputs": {},
+                    "command": "dir",
+                    "timeout": 300
+                  }
+                ],
+                "description": "This job automates the process of connecting to a remote system and running the dir command.",
+                "target_systems": [
+                  "192.168.50.215"
+                ]
+              },
+              "schedule_expression": null,
+              "is_enabled": true,
+              "tags": [
+                "ai-generated",
+                "automated"
+              ],
+              "metadata": {
+                "confidence": null,
+                "ai_generated": true,
+                "created_by_ai": true,
+                "source_request": null,
+                "submission_time": "2025-09-26T01:41:03.478504"
+              },
+              "job_type": "ai_generated",
+              "created_by": 1,
+              "updated_by": 1,
+              "created_at": "2025-09-26T01:41:03.656664+00:00",
+              "updated_at": "2025-09-26T01:41:03.656664+00:00"
+            }
+          },
+          "execution_triggered": true,
+          "execution_response": {
+            "success": true,
+            "message": "Job execution started",
+            "data": {
+              "execution_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "job_id": 217,
+              "job_name": "Connect and Run Dir Command on 192.168.50.215",
+              "task_id": "a3481c8c-8fe0-4107-a588-c663d75d8a60",
+              "status": "queued",
+              "status_url": "/tasks/a3481c8c-8fe0-4107-a588-c663d75d8a60/status",
+              "job_status_url": "/jobs/217/status/a3481c8c-8fe0-4107-a588-c663d75d8a60"
+            }
+          },
+          "error": null
+        }
+      ]
+    }
+  ],
+  "system_integration_assessment": {
+    "ai_brain_status": "Issues Detected",
+    "understanding_quality": "Needs Improvement",
+    "automation_integration": "Functional",
+    "overall_assessment": "Development Phase"
+  }
+}

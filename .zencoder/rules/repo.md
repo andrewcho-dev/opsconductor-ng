@@ -159,3 +159,16 @@ docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 - **RBAC**: Role-based access with fine-grained permissions
 - **Audit Logging**: Comprehensive activity tracking
 - **TLS/SSL**: Secure communication with certificate management
+
+## Testing Framework
+
+### E2E Testing (Python-based)
+**Framework**: Python asyncio with httpx for HTTP testing
+**Test Location**: `tests/e2e/`
+**Target Framework**: Python-based integration tests for microservices
+**Key Features**:
+- Comprehensive AI Brain → Prefect → Automation Engine integration testing
+- Incremental difficulty scaling (1-10 difficulty levels)
+- Real-time monitoring of service interactions
+- Detailed logging and reporting
+- JSON-based test result storage
