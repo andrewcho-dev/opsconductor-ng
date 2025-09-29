@@ -1458,9 +1458,25 @@ async def chat_endpoint(request: ChatRequest):
     # Ensure the result matches ChatResponse format
     if isinstance(result, dict):
         # Map the result to ChatResponse fields
+        # Handle ai_brain_decision which might be a dict or string
+        ai_brain_decision = result.get("ai_brain_decision", "unknown")
+        
+        if isinstance(ai_brain_decision, dict):
+            # Extract string value from dict if needed
+            intent_value = ai_brain_decision.get("intent", ai_brain_decision.get("type", str(ai_brain_decision)))
+        else:
+            intent_value = str(ai_brain_decision)
+            
+        # Check if result.get("intent") is also a dict and handle it
+        result_intent = result.get("intent")
+        if isinstance(result_intent, dict):
+            final_intent = str(result_intent)  # Convert dict to string
+        else:
+            final_intent = result_intent if result_intent else intent_value
+            
         chat_response = {
             "response": result.get("response", result.get("message", "No response generated")),
-            "intent": result.get("intent", result.get("ai_brain_decision", "unknown")),
+            "intent": final_intent,
             "confidence": result.get("confidence", 0.8),
             "conversation_id": result.get("conversation_id", request.conversation_id),
             "job_id": result.get("job_id"),
