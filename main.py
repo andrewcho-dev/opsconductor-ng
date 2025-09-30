@@ -27,14 +27,22 @@ from datetime import datetime
 sys.path.append('/app')
 
 # Import pipeline components
+from pipeline.orchestrator import (
+    PipelineOrchestrator, 
+    PipelineResult,
+    get_pipeline_orchestrator,
+    process_user_request
+)
 from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
 from pipeline.stages.stage_b.tool_registry import ToolRegistry
 from pipeline.stages.stage_c.planner import StageCPlanner
+from pipeline.stages.stage_d.answerer import StageDAnswerer
 from llm.ollama_client import OllamaClient
 from pipeline.schemas.decision_v1 import DecisionV1
 from pipeline.schemas.selection_v1 import SelectionV1
 from pipeline.schemas.plan_v1 import PlanV1
+from pipeline.schemas.response_v1 import ResponseV1
 
 # Configure logging
 logging.basicConfig(
@@ -70,6 +78,7 @@ class PipelineResponse(BaseModel):
 stage_a_classifier: Optional[StageAClassifier] = None
 stage_b_selector: Optional[StageBSelector] = None
 stage_c_planner: Optional[StageCPlanner] = None
+stage_d_answerer: Optional[StageDAnswerer] = None
 tool_registry: Optional[ToolRegistry] = None
 llm_client: Optional[OllamaClient] = None
 
@@ -80,7 +89,7 @@ llm_client: Optional[OllamaClient] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management"""
-    global stage_a_classifier, stage_b_selector, stage_c_planner, tool_registry, llm_client
+    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer, tool_registry, llm_client
     
     logger.info("🚀 Starting NEWIDEA.MD Pipeline")
     logger.info("📋 Architecture: 4-Stage AI Pipeline")
@@ -111,11 +120,14 @@ async def lifespan(app: FastAPI):
         # Initialize Stage C Planner
         stage_c_planner = StageCPlanner(llm_client)
         
+        # Initialize Stage D Answerer
+        stage_d_answerer = StageDAnswerer(llm_client)
+        
         logger.info("✅ NEWIDEA.MD Pipeline started successfully")
         logger.info("🏗️  Phase 1: Stage A Classifier - READY")
         logger.info("🏗️  Phase 2: Stage B Selector - READY")
         logger.info("🏗️  Phase 3: Stage C Planner - READY")
-        logger.info("⏳ Phase 4: Stage D Answerer - Coming Next")
+        logger.info("🏗️  Phase 4: Stage D Answerer - READY")
         
         yield
         
@@ -172,12 +184,14 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    global stage_a_classifier, stage_b_selector, llm_client
+    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer, llm_client
     
     # Check Ollama availability
     ollama_available = False
     stage_a_healthy = False
     stage_b_healthy = False
+    stage_c_healthy = False
+    stage_d_healthy = False
     
     try:
         if llm_client:
@@ -190,27 +204,39 @@ async def health_check():
         if stage_b_selector and ollama_available:
             health_status = await stage_b_selector.health_check()
             stage_b_healthy = health_status["stage_b_selector"] == "healthy"
+            
+        if stage_c_planner:
+            health_status = stage_c_planner.get_health_status()
+            stage_c_healthy = health_status["stage_c_planner"] == "healthy"
+            
+        if stage_d_answerer:
+            health_status = stage_d_answerer.get_health_status()
+            stage_d_healthy = health_status["stage_d_answerer"] == "healthy"
     except:
         pass
     
+    all_stages_healthy = (ollama_available and stage_a_healthy and 
+                         stage_b_healthy and stage_c_healthy and stage_d_healthy)
+    
     return {
-        "status": "healthy" if (ollama_available and stage_a_healthy and stage_b_healthy) else "degraded",
+        "status": "healthy" if all_stages_healthy else "degraded",
         "architecture": "newidea-pipeline",
         "version": "1.0.0",
-        "phase": "Phase 3 - Stage C Planner",
-        "next_phase": "Phase 4 - Stage D Answerer",
+        "phase": "Phase 4 - Stage D Answerer",
+        "next_phase": "Phase 5 - Integration & Testing",
         "ollama_available": ollama_available,
         "pipeline_stages": {
             "stage_a_classifier": "✅ Implemented" if stage_a_healthy else "⚠️ Degraded",
             "stage_b_selector": "✅ Implemented" if stage_b_healthy else "⚠️ Degraded", 
-            "stage_c_planner": "✅ Implemented" if stage_c_planner else "⚠️ Degraded",
-            "stage_d_answerer": "Not implemented"
+            "stage_c_planner": "✅ Implemented" if stage_c_healthy else "⚠️ Degraded",
+            "stage_d_answerer": "✅ Implemented" if stage_d_healthy else "⚠️ Degraded"
         },
         "critical_dependencies": {
             "ollama_llm": ollama_available,
             "stage_a_classifier": stage_a_healthy,
             "stage_b_selector": stage_b_healthy,
-            "stage_c_planner": stage_c_planner is not None
+            "stage_c_planner": stage_c_healthy,
+            "stage_d_answerer": stage_d_healthy
         }
     }
 
@@ -223,10 +249,10 @@ async def process_request(request: PipelineRequest):
     1. Stage A: Classify intent and extract entities
     2. Stage B: Select tools and assess risk
     3. Stage C: Generate execution plan with safety
-    4. [Stage D: Information retrieval if needed]
+    4. Stage D: Generate user-friendly response
     5. Execute with monitoring and rollback
     """
-    global stage_a_classifier, stage_b_selector, stage_c_planner
+    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer
     
     # Generate request ID
     request_id = str(uuid.uuid4())
@@ -250,6 +276,12 @@ async def process_request(request: PipelineRequest):
             raise HTTPException(
                 status_code=503,
                 detail="Stage C Planner not available - LLM backend required"
+            )
+        
+        if not stage_d_answerer:
+            raise HTTPException(
+                status_code=503,
+                detail="Stage D Answerer not available - LLM backend required"
             )
         
         # Prepare context
@@ -281,22 +313,30 @@ async def process_request(request: PipelineRequest):
         logger.info(f"📋 Plan: {plan.execution_metadata.total_estimated_time}s estimated, {len(plan.plan.safety_checks)} safety checks")
         logger.info(f"🔒 Safety: {len(plan.plan.rollback_plan)} rollback procedures, {len(plan.execution_metadata.approval_points)} approval points")
         
+        # Stage D: Generate user-friendly response
+        response = await stage_d_answerer.generate_response(decision, selection, plan, context)
+        
+        logger.info(f"✅ Stage D complete: {response.response_type.value} response generated")
+        logger.info(f"💬 Response: {response.message[:100]}...")
+        logger.info(f"🎯 Confidence: {response.confidence.value}, Approval required: {response.approval_required}")
+        
         # Convert to dicts for response
         decision_dict = decision.model_dump()
         selection_dict = selection.model_dump()
         plan_dict = plan.model_dump()
+        response_dict = response.model_dump()
         
         return PipelineResponse(
             success=True,
             request_id=request_id,
             result={
-                "stage": "stage_c_complete",
+                "stage": "stage_d_complete",
                 "decision": decision_dict,
                 "selection": selection_dict,
                 "plan": plan_dict,
-                "next_stage": "stage_d_answerer",
-                "message": f"Created execution plan with {len(plan.plan.steps)} steps for {decision.intent.category}/{decision.intent.action}",
-                "phase": "Phase 3 - Stage C Planner",
+                "response": response_dict,
+                "message": response.message,
+                "phase": "Phase 4 - Stage D Answerer",
                 "timestamp": datetime.utcnow().isoformat()
             },
             architecture="newidea-pipeline"
@@ -310,6 +350,133 @@ async def process_request(request: PipelineRequest):
             error=str(e),
             architecture="newidea-pipeline"
         )
+
+@app.post("/pipeline", response_model=PipelineResponse)
+async def process_pipeline_request(request: PipelineRequest):
+    """
+    Process user request through the integrated OpsConductor pipeline (Phase 5)
+    
+    This endpoint uses the new PipelineOrchestrator for seamless end-to-end processing
+    with comprehensive monitoring, error handling, and performance tracking.
+    
+    Flow:
+    User Request → Stage A (Classifier) → Stage B (Selector) → Stage C (Planner) → Stage D (Answerer) → User Response
+    """
+    request_id = str(uuid.uuid4())
+    
+    logger.info(f"🚀 Processing pipeline request: {request.request[:100]}...")
+    
+    try:
+        # Get the global pipeline orchestrator
+        orchestrator = get_pipeline_orchestrator()
+        
+        # Process the request through the integrated pipeline
+        pipeline_result = await orchestrator.process_request(
+            user_request=request.request,
+            request_id=request_id
+        )
+        
+        if pipeline_result.success:
+            logger.info(f"✅ Pipeline processing successful")
+            logger.info(f"📊 Total duration: {pipeline_result.metrics.total_duration_ms:.1f}ms")
+            logger.info(f"🎯 Response type: {pipeline_result.response.type.value}")
+            logger.info(f"💬 Response: {pipeline_result.response.message[:100]}...")
+            
+            # Log stage performance
+            for stage, duration in pipeline_result.metrics.stage_durations.items():
+                logger.info(f"  {stage}: {duration:.1f}ms")
+            
+            return PipelineResponse(
+                success=True,
+                request_id=request_id,
+                result={
+                    "stage": "pipeline_complete",
+                    "response": pipeline_result.response.model_dump(),
+                    "metrics": {
+                        "total_duration_ms": pipeline_result.metrics.total_duration_ms,
+                        "stage_durations": pipeline_result.metrics.stage_durations,
+                        "memory_usage_mb": pipeline_result.metrics.memory_usage_mb,
+                        "status": pipeline_result.metrics.status.value
+                    },
+                    "intermediate_results": {
+                        stage: result.model_dump() if hasattr(result, 'model_dump') else str(result)
+                        for stage, result in pipeline_result.intermediate_results.items()
+                    },
+                    "message": pipeline_result.response.message,
+                    "phase": "Phase 5 - Integrated Pipeline",
+                    "timestamp": datetime.utcnow().isoformat()
+                },
+                architecture="integrated-pipeline"
+            )
+        else:
+            logger.error(f"❌ Pipeline processing failed: {pipeline_result.error_message}")
+            return PipelineResponse(
+                success=False,
+                request_id=request_id,
+                error=pipeline_result.error_message,
+                result={
+                    "stage": "pipeline_failed",
+                    "metrics": {
+                        "total_duration_ms": pipeline_result.metrics.total_duration_ms,
+                        "stage_durations": pipeline_result.metrics.stage_durations,
+                        "status": pipeline_result.metrics.status.value,
+                        "error_details": pipeline_result.metrics.error_details
+                    },
+                    "phase": "Phase 5 - Integrated Pipeline",
+                    "timestamp": datetime.utcnow().isoformat()
+                },
+                architecture="integrated-pipeline"
+            )
+            
+    except Exception as e:
+        logger.error(f"❌ Pipeline orchestrator failed: {e}")
+        return PipelineResponse(
+            success=False,
+            request_id=request_id,
+            error=f"Pipeline orchestrator error: {str(e)}",
+            architecture="integrated-pipeline"
+        )
+
+@app.get("/pipeline/health")
+async def get_pipeline_health():
+    """Get integrated pipeline health status"""
+    try:
+        orchestrator = get_pipeline_orchestrator()
+        health_status = orchestrator.get_health_status()
+        
+        return {
+            "status": health_status["status"],
+            "timestamp": health_status["timestamp"],
+            "pipeline_metrics": health_status["metrics"],
+            "stage_health": health_status["stages"],
+            "architecture": "integrated-pipeline",
+            "phase": "Phase 5 - Integration & Testing"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "architecture": "integrated-pipeline"
+        }
+
+@app.get("/pipeline/metrics")
+async def get_pipeline_metrics():
+    """Get detailed pipeline performance metrics"""
+    try:
+        orchestrator = get_pipeline_orchestrator()
+        metrics = orchestrator.get_performance_metrics()
+        
+        return {
+            "performance_metrics": metrics,
+            "architecture": "integrated-pipeline",
+            "phase": "Phase 5 - Integration & Testing",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "architecture": "integrated-pipeline"
+        }
 
 @app.get("/stage-a/capabilities")
 async def get_stage_a_capabilities():
@@ -468,6 +635,63 @@ async def get_stage_c_statistics():
         }
     }
 
+@app.get("/stage-d/health")
+async def get_stage_d_health():
+    """Get Stage D health status"""
+    global stage_d_answerer
+    
+    if not stage_d_answerer:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage D Answerer not available"
+        )
+    
+    return stage_d_answerer.get_health_status()
+
+@app.get("/stage-d/capabilities")
+async def get_stage_d_capabilities():
+    """Get Stage D answering capabilities"""
+    global stage_d_answerer
+    
+    if not stage_d_answerer:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage D Answerer not available"
+        )
+    
+    return stage_d_answerer.get_capabilities()
+
+@app.get("/stage-d/statistics")
+async def get_stage_d_statistics():
+    """Get Stage D response generation statistics"""
+    global stage_d_answerer
+    
+    if not stage_d_answerer:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage D Answerer not available"
+        )
+    
+    return {
+        "component": "stage_d_answerer",
+        "statistics": stage_d_answerer.stats,
+        "performance_metrics": {
+            "average_response_time_ms": stage_d_answerer.stats["average_response_time_ms"],
+            "response_success_rate": (
+                stage_d_answerer.stats["responses_generated"] / 
+                max(stage_d_answerer.stats["responses_generated"], 1) * 100
+            ) if stage_d_answerer.stats["responses_generated"] > 0 else 0,
+            "approval_request_rate": (
+                stage_d_answerer.stats["approval_requests_created"] / 
+                max(stage_d_answerer.stats["responses_generated"], 1) * 100
+            ) if stage_d_answerer.stats["responses_generated"] > 0 else 0,
+            "clarification_request_rate": (
+                stage_d_answerer.stats["clarifications_requested"] / 
+                max(stage_d_answerer.stats["responses_generated"], 1) * 100
+            ) if stage_d_answerer.stats["responses_generated"] > 0 else 0
+        }
+    }
+
 @app.get("/architecture")
 async def get_architecture_info():
     """Get NEWIDEA.MD pipeline architecture information"""
@@ -492,26 +716,28 @@ async def get_architecture_info():
                 "name": "Planner",
                 "purpose": "Execution planning with safety mechanisms",
                 "output": "Plan v1 JSON with DAG",
-                "status": "Not implemented"
+                "status": "✅ Implemented"
             },
             "stage_d": {
                 "name": "Answerer",
-                "purpose": "Information retrieval and RAG",
-                "output": "Answer v1 JSON",
-                "status": "Not implemented"
+                "purpose": "User-friendly response generation",
+                "output": "Response v1 JSON",
+                "status": "✅ Implemented"
             }
         },
-        "flow": "User → Stage A → Stage B → Stage C → [Stage D] → Execution",
+        "flow": "User → Stage A → Stage B → Stage C → Stage D → Execution",
         "features": {
             "json_validation": "Built-in validation and repair",
             "risk_assessment": "Automatic risk level calculation",
             "approval_workflows": "Production approval mechanisms",
-            "safety_mechanisms": "Rollback and failure detection",
+            "safety_mechanisms": "Comprehensive safety checks",
             "dag_execution": "Parallel execution with dependencies",
-            "audit_trails": "Complete operation logging"
+            "audit_trails": "Complete operation logging",
+            "user_friendly_responses": "Context-aware response generation",
+            "approval_handling": "Intelligent approval workflow management"
         },
-        "phase": "Phase 2 - Stage B Selector Complete",
-        "next_milestone": "Phase 3 - Stage C Planner Implementation"
+        "phase": "Phase 4 - Stage D Answerer Complete",
+        "next_milestone": "Phase 5 - Integration & Testing"
     }
 
 @app.get("/pipeline/status")
