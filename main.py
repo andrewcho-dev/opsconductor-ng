@@ -30,9 +30,11 @@ sys.path.append('/app')
 from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
 from pipeline.stages.stage_b.tool_registry import ToolRegistry
+from pipeline.stages.stage_c.planner import StageCPlanner
 from llm.ollama_client import OllamaClient
 from pipeline.schemas.decision_v1 import DecisionV1
 from pipeline.schemas.selection_v1 import SelectionV1
+from pipeline.schemas.plan_v1 import PlanV1
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +69,7 @@ class PipelineResponse(BaseModel):
 
 stage_a_classifier: Optional[StageAClassifier] = None
 stage_b_selector: Optional[StageBSelector] = None
+stage_c_planner: Optional[StageCPlanner] = None
 tool_registry: Optional[ToolRegistry] = None
 llm_client: Optional[OllamaClient] = None
 
@@ -77,7 +80,7 @@ llm_client: Optional[OllamaClient] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management"""
-    global stage_a_classifier, stage_b_selector, tool_registry, llm_client
+    global stage_a_classifier, stage_b_selector, stage_c_planner, tool_registry, llm_client
     
     logger.info("🚀 Starting NEWIDEA.MD Pipeline")
     logger.info("📋 Architecture: 4-Stage AI Pipeline")
@@ -105,10 +108,14 @@ async def lifespan(app: FastAPI):
         # Initialize Stage B Selector
         stage_b_selector = StageBSelector(llm_client, tool_registry)
         
+        # Initialize Stage C Planner
+        stage_c_planner = StageCPlanner(llm_client)
+        
         logger.info("✅ NEWIDEA.MD Pipeline started successfully")
         logger.info("🏗️  Phase 1: Stage A Classifier - READY")
         logger.info("🏗️  Phase 2: Stage B Selector - READY")
-        logger.info("⏳ Phase 3: Stage C Planner - Coming Next")
+        logger.info("🏗️  Phase 3: Stage C Planner - READY")
+        logger.info("⏳ Phase 4: Stage D Answerer - Coming Next")
         
         yield
         
@@ -190,19 +197,20 @@ async def health_check():
         "status": "healthy" if (ollama_available and stage_a_healthy and stage_b_healthy) else "degraded",
         "architecture": "newidea-pipeline",
         "version": "1.0.0",
-        "phase": "Phase 2 - Stage B Selector",
-        "next_phase": "Phase 3 - Stage C Planner",
+        "phase": "Phase 3 - Stage C Planner",
+        "next_phase": "Phase 4 - Stage D Answerer",
         "ollama_available": ollama_available,
         "pipeline_stages": {
             "stage_a_classifier": "✅ Implemented" if stage_a_healthy else "⚠️ Degraded",
             "stage_b_selector": "✅ Implemented" if stage_b_healthy else "⚠️ Degraded", 
-            "stage_c_planner": "Not implemented",
+            "stage_c_planner": "✅ Implemented" if stage_c_planner else "⚠️ Degraded",
             "stage_d_answerer": "Not implemented"
         },
         "critical_dependencies": {
             "ollama_llm": ollama_available,
             "stage_a_classifier": stage_a_healthy,
-            "stage_b_selector": stage_b_healthy
+            "stage_b_selector": stage_b_healthy,
+            "stage_c_planner": stage_c_planner is not None
         }
     }
 
@@ -218,7 +226,7 @@ async def process_request(request: PipelineRequest):
     4. [Stage D: Information retrieval if needed]
     5. Execute with monitoring and rollback
     """
-    global stage_a_classifier, stage_b_selector
+    global stage_a_classifier, stage_b_selector, stage_c_planner
     
     # Generate request ID
     request_id = str(uuid.uuid4())
@@ -236,6 +244,12 @@ async def process_request(request: PipelineRequest):
             raise HTTPException(
                 status_code=503,
                 detail="Stage B Selector not available - LLM backend required"
+            )
+        
+        if not stage_c_planner:
+            raise HTTPException(
+                status_code=503,
+                detail="Stage C Planner not available - LLM backend required"
             )
         
         # Prepare context
@@ -260,20 +274,29 @@ async def process_request(request: PipelineRequest):
         logger.info(f"🔧 Tools: {', '.join([tool.tool_name for tool in selection.selected_tools])}")
         logger.info(f"📋 Policy: {selection.policy.risk_level.value} risk, approval={selection.policy.requires_approval}")
         
+        # Stage C: Create execution plan
+        plan = stage_c_planner.create_plan(decision, selection)
+        
+        logger.info(f"✅ Stage C complete: {len(plan.plan.steps)} steps planned")
+        logger.info(f"📋 Plan: {plan.execution_metadata.total_estimated_time}s estimated, {len(plan.plan.safety_checks)} safety checks")
+        logger.info(f"🔒 Safety: {len(plan.plan.rollback_plan)} rollback procedures, {len(plan.execution_metadata.approval_points)} approval points")
+        
         # Convert to dicts for response
         decision_dict = decision.model_dump()
         selection_dict = selection.model_dump()
+        plan_dict = plan.model_dump()
         
         return PipelineResponse(
             success=True,
             request_id=request_id,
             result={
-                "stage": "stage_b_complete",
+                "stage": "stage_c_complete",
                 "decision": decision_dict,
                 "selection": selection_dict,
-                "next_stage": selection.next_stage,
-                "message": f"Selected {selection.total_tools} tools for {decision.intent.category}/{decision.intent.action}",
-                "phase": "Phase 2 - Stage B Selector",
+                "plan": plan_dict,
+                "next_stage": "stage_d_answerer",
+                "message": f"Created execution plan with {len(plan.plan.steps)} steps for {decision.intent.category}/{decision.intent.action}",
+                "phase": "Phase 3 - Stage C Planner",
                 "timestamp": datetime.utcnow().isoformat()
             },
             architecture="newidea-pipeline"
@@ -366,6 +389,83 @@ async def get_available_tools():
             for tool in tools
         ],
         "registry_stats": tool_registry.get_registry_stats()
+    }
+
+@app.get("/stage-c/health")
+async def get_stage_c_health():
+    """Get Stage C health status"""
+    global stage_c_planner
+    
+    if not stage_c_planner:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage C Planner not available"
+        )
+    
+    return stage_c_planner.get_health_status()
+
+@app.get("/stage-c/capabilities")
+async def get_stage_c_capabilities():
+    """Get Stage C planning capabilities"""
+    global stage_c_planner
+    
+    if not stage_c_planner:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage C Planner not available"
+        )
+    
+    return {
+        "component": "stage_c_planner",
+        "capabilities": [
+            "execution_step_generation",
+            "dependency_resolution",
+            "safety_planning",
+            "resource_planning",
+            "rollback_procedures",
+            "observability_configuration"
+        ],
+        "supported_tools": [
+            "systemctl", "ps", "journalctl", "file_manager",
+            "network_tools", "docker", "config_manager", "info_display"
+        ],
+        "planning_features": [
+            "intelligent_step_sequencing",
+            "parallel_execution_optimization",
+            "risk_based_safety_checks",
+            "comprehensive_rollback_plans",
+            "resource_constraint_planning",
+            "approval_point_identification"
+        ],
+        "safety_levels": ["low", "medium", "high", "critical"],
+        "llm_integration": "available" if stage_c_planner.llm_client else "disabled"
+    }
+
+@app.get("/stage-c/statistics")
+async def get_stage_c_statistics():
+    """Get Stage C planning statistics"""
+    global stage_c_planner
+    
+    if not stage_c_planner:
+        raise HTTPException(
+            status_code=503,
+            detail="Stage C Planner not available"
+        )
+    
+    return {
+        "component": "stage_c_planner",
+        "statistics": stage_c_planner.stats,
+        "performance_metrics": {
+            "average_processing_time_ms": stage_c_planner.stats["average_processing_time_ms"],
+            "success_rate": (
+                (stage_c_planner.stats["plans_created"] - stage_c_planner.stats["errors_encountered"]) 
+                / max(stage_c_planner.stats["plans_created"], 1) * 100
+            ) if stage_c_planner.stats["plans_created"] > 0 else 0,
+            "fallback_usage_rate": (
+                stage_c_planner.stats["fallback_plans_used"] 
+                / max(stage_c_planner.stats["plans_created"], 1) * 100
+            ) if stage_c_planner.stats["plans_created"] > 0 else 0
+        }
     }
 
 @app.get("/architecture")

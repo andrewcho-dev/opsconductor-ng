@@ -266,6 +266,103 @@ class ResponseParser:
             raise ValueError(f"Failed to parse tool selection response: {e}")
     
     @staticmethod
+    def parse_planning_response(response: str) -> Dict[str, Any]:
+        """
+        Parse planning response from Stage C
+        
+        Args:
+            response: Raw LLM response with execution plan
+            
+        Returns:
+            Parsed planning data
+            
+        Raises:
+            ValueError: If response format is invalid
+        """
+        try:
+            # Parse JSON response
+            data = ResponseParser.parse_json_response(response)
+            
+            # Validate required fields
+            required_fields = ["steps", "safety_checks", "rollback_plan"]
+            for field in required_fields:
+                if field not in data:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            # Validate steps
+            steps = data["steps"]
+            if not isinstance(steps, list):
+                raise ValueError("'steps' must be a list")
+            
+            for i, step in enumerate(steps):
+                if not isinstance(step, dict):
+                    raise ValueError(f"Step {i} must be a dictionary")
+                
+                step_required = ["id", "description", "tool", "estimated_duration"]
+                for field in step_required:
+                    if field not in step:
+                        raise ValueError(f"Step {i} missing required field: {field}")
+                
+                # Set defaults for optional fields
+                step.setdefault("inputs", {})
+                step.setdefault("preconditions", [])
+                step.setdefault("success_criteria", [])
+                step.setdefault("failure_handling", "Log error and continue")
+                step.setdefault("depends_on", [])
+                
+                # Validate types
+                if not isinstance(step["estimated_duration"], int):
+                    try:
+                        step["estimated_duration"] = int(step["estimated_duration"])
+                    except ValueError:
+                        raise ValueError(f"Step {i} 'estimated_duration' must be an integer")
+            
+            # Validate safety checks
+            safety_checks = data["safety_checks"]
+            if not isinstance(safety_checks, list):
+                raise ValueError("'safety_checks' must be a list")
+            
+            for i, check in enumerate(safety_checks):
+                if not isinstance(check, dict):
+                    raise ValueError(f"Safety check {i} must be a dictionary")
+                
+                check_required = ["check", "stage", "failure_action"]
+                for field in check_required:
+                    if field not in check:
+                        raise ValueError(f"Safety check {i} missing required field: {field}")
+                
+                # Validate stage values
+                valid_stages = ["before", "during", "after"]
+                if check["stage"] not in valid_stages:
+                    raise ValueError(f"Safety check {i} 'stage' must be one of: {valid_stages}")
+                
+                # Validate failure action values
+                valid_actions = ["abort", "warn", "continue"]
+                if check["failure_action"] not in valid_actions:
+                    raise ValueError(f"Safety check {i} 'failure_action' must be one of: {valid_actions}")
+            
+            # Validate rollback plan
+            rollback_plan = data["rollback_plan"]
+            if not isinstance(rollback_plan, list):
+                raise ValueError("'rollback_plan' must be a list")
+            
+            for i, rollback in enumerate(rollback_plan):
+                if not isinstance(rollback, dict):
+                    raise ValueError(f"Rollback {i} must be a dictionary")
+                
+                rollback_required = ["step_id", "rollback_action"]
+                for field in rollback_required:
+                    if field not in rollback:
+                        raise ValueError(f"Rollback {i} missing required field: {field}")
+            
+            return data
+            
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in planning response: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to parse planning response: {e}")
+    
+    @staticmethod
     def validate_response_format(response: str, expected_type: str) -> bool:
         """
         Validate response format without parsing

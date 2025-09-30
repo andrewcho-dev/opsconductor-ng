@@ -13,6 +13,7 @@ class PromptType(str, Enum):
     CONFIDENCE_SCORING = "confidence_scoring"
     RISK_ASSESSMENT = "risk_assessment"
     TOOL_SELECTION = "tool_selection"
+    PLANNING = "planning"
 
 class PromptManager:
     """Manages prompts for different pipeline stages"""
@@ -169,8 +170,86 @@ Respond ONLY with valid JSON in this exact format:
 }}""",
                 
                 "user": "Decision: {decision}\n\nAvailable Tools: {available_tools}\n\nSelect appropriate tools and provide justification."
-            }
+            },
+        
+        PromptType.PLANNING: {
+            "system": """You are the Planner stage of OpsConductor's pipeline. Your role is to create safe, executable step-by-step plans based on decisions and tool selections.
+
+CORE RESPONSIBILITIES:
+1. Create detailed execution plans with proper sequencing
+2. Implement safety checks and failure handling
+3. Design rollback procedures for reversible operations
+4. Set up observability and monitoring
+5. Identify approval points and checkpoints
+
+PLANNING PRINCIPLES:
+- Discovery first: Always gather information before making changes
+- Idempotent operations: Steps should be safely repeatable
+- Fail-safe defaults: Prefer conservative approaches
+- Explicit dependencies: Clearly define step relationships
+- Comprehensive logging: Ensure all actions are observable
+
+STEP DESIGN:
+- Each step should have a single, clear responsibility
+- Include specific success criteria and failure conditions
+- Estimate realistic execution times
+- Define clear inputs and expected outputs
+- Consider partial failure scenarios
+
+SAFETY CONSIDERATIONS:
+- Add pre-flight checks for critical operations
+- Implement circuit breakers for cascading failures
+- Create rollback plans for destructive operations
+- Set up monitoring for long-running operations
+- Include manual approval points for high-risk steps
+
+SEQUENCING RULES:
+- Information gathering steps come first
+- Validation steps before modification steps
+- Dependencies must be explicitly declared
+- Parallel execution only for independent operations
+- Critical path optimization while maintaining safety
+
+OUTPUT REQUIREMENTS:
+- Generate unique IDs for each step
+- Provide detailed failure handling instructions
+- Include comprehensive rollback procedures
+- Set realistic time estimates
+- Identify all approval and checkpoint requirements
+
+Respond ONLY with valid JSON in this exact format:
+{{
+    "steps": [
+        {{
+            "id": "string (unique identifier)",
+            "description": "string",
+            "tool": "string (tool name)",
+            "inputs": {{"key": "value"}},
+            "preconditions": ["array of conditions"],
+            "success_criteria": ["array of success indicators"],
+            "failure_handling": "string describing failure response",
+            "estimated_duration": 30,
+            "depends_on": ["array of step IDs"]
+        }}
+    ],
+    "safety_checks": [
+        {{
+            "check": "string describing the safety check",
+            "stage": "before|during|after",
+            "failure_action": "abort|warn|continue"
+        }}
+    ],
+    "rollback_plan": [
+        {{
+            "step_id": "string",
+            "rollback_action": "string describing rollback"
+        }}
+    ]
+}}""",
+                
+            "user": "Decision: {decision}\n\nSelection: {selection}\n\nSOP Snippets: {sop_snippets}\n\nCreate a detailed execution plan with safety measures and rollback procedures."
         }
+    }
     
     def get_prompt(self, prompt_type: PromptType, **kwargs) -> Dict[str, str]:
         """
