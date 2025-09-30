@@ -83,12 +83,12 @@ services:
       retries: 3
       start_period: 30s
 
-  # AI Brain - Decision Maker + Orchestration Coordinator
-  ai-brain:
+  # NEWIDEA.MD Pipeline - 4-Stage AI Architecture
+  pipeline:
     build:
-      context: ./ai-brain
-      dockerfile: Dockerfile.clean
-    container_name: opsconductor-ai-brain-clean
+      context: .
+      dockerfile: Dockerfile
+    container_name: opsconductor-pipeline-newidea
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       PREFECT_API_URL: http://prefect-server:4200/api

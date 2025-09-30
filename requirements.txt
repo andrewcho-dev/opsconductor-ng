@@ -1,0 +1,30 @@
+# NEWIDEA.MD Pipeline Requirements
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# HTTP Client
+httpx==0.25.2
+
+# Database
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.23
+
+# Redis
+redis[hiredis]==5.0.1
+
+# JSON Schema Validation
+jsonschema==4.20.0
+
+# Testing (for development)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Logging and Monitoring
+structlog==23.2.0
+
+# Utilities
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
