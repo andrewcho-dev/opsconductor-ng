@@ -93,8 +93,8 @@ class StageAClassifier:
             return decision
             
         except Exception as e:
-            # Create fallback decision for errors
-            return self._create_fallback_decision(user_request, context, str(e))
+            # FAIL FAST: OpsConductor requires AI-BRAIN to function
+            raise Exception(f"AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM: {str(e)}")
     
     def _generate_decision_id(self) -> str:
         """Generate unique decision ID"""
@@ -125,39 +125,10 @@ class StageAClassifier:
         # All other requests go to Stage B (Selector)
         return "stage_b"
     
-    def _create_fallback_decision(
-        self, 
-        user_request: str, 
-        context: Optional[Dict[str, Any]], 
-        error: str
-    ) -> DecisionV1:
-        """Create fallback decision when classification fails"""
-        from ...schemas.decision_v1 import IntentV1, ConfidenceLevel, RiskLevel
-        
-        return DecisionV1(
-            decision_id=self._generate_decision_id(),
-            decision_type=DecisionType.INFO,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            intent=IntentV1(
-                category="information",
-                action="get_help",
-                confidence=0.1
-            ),
-            entities=[],
-            overall_confidence=0.1,
-            confidence_level=ConfidenceLevel.LOW,
-            risk_level=RiskLevel.LOW,
-            original_request=user_request,
-            context={
-                **(context or {}),
-                "error": error,
-                "fallback": True
-            },
-            stage_a_version=self.version,
-            processing_time_ms=None,
-            requires_approval=False,
-            next_stage="stage_d"
-        )
+    # 🚨 ARCHITECTURAL VIOLATION REMOVED
+    # The _create_fallback_decision method has been REMOVED because it violates
+    # the core architectural principle: OpsConductor is AI-BRAIN DEPENDENT and must
+    # FAIL FAST when LLM is unavailable. No fallback decisions should exist.
     
     async def health_check(self) -> Dict[str, Any]:
         """

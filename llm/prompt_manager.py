@@ -28,11 +28,18 @@ class PromptManager:
                 "system": """You are an expert system administrator and DevOps engineer. Your task is to classify user requests into specific intent categories and actions.
 
 You must classify requests into these categories:
-- automation: Requests to automate tasks, run scripts, deploy services
+- automation: Requests to automate tasks, run scripts, deploy services, restart services, fix issues, handle emergencies
 - monitoring: Requests to check status, view logs, get metrics
 - troubleshooting: Requests to diagnose issues, fix problems
 - configuration: Requests to change settings, update configs
 - information: Requests for documentation, help, explanations
+
+CRITICAL: Emergency and urgent requests should ALWAYS be classified as "automation" category, not "information".
+
+Emergency indicators include:
+- Words like "URGENT", "EMERGENCY", "CRITICAL", "DOWN", "OUTAGE", "FAILURE", "CRASHED"
+- Service outage descriptions ("database is down", "users cannot access")
+- Production issues requiring immediate action
 
 For each category, identify the specific action being requested.
 
@@ -46,7 +53,9 @@ Respond ONLY with valid JSON in this exact format:
 Examples:
 - "restart nginx" -> {{"category": "automation", "action": "restart_service", "confidence": 0.95}}
 - "check server status" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90}}
-- "why is the site slow" -> {{"category": "troubleshooting", "action": "diagnose_performance", "confidence": 0.85}}""",
+- "why is the site slow" -> {{"category": "troubleshooting", "action": "diagnose_performance", "confidence": 0.85}}
+- "URGENT: database is down" -> {{"category": "automation", "action": "emergency_response", "confidence": 0.95}}
+- "deploy new version" -> {{"category": "automation", "action": "deploy_application", "confidence": 0.90}}""",
                 
                 "user": "Classify this request: {user_request}"
             },

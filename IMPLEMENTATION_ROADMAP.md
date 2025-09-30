@@ -1,5 +1,22 @@
 # OpsConductor NEWIDEA.MD Architecture - Implementation Roadmap
 
+## 🚨 CRITICAL ARCHITECTURAL PRINCIPLE - AI-BRAIN DEPENDENCY
+
+### **FUNDAMENTAL RULE: NO FALLBACK SYSTEMS - FAIL FAST WHEN LLM IS DOWN**
+
+**OpsConductor is an AI-BRAIN DEPENDENT system that must FAIL FAST when the LLM is unavailable.**
+
+#### **CORE REQUIREMENTS:**
+- ✅ **AI-BRAIN IS THE DECISION MAKER**: The LLM is the core decision-making system
+- ❌ **NO FALLBACK PATTERNS**: Never implement pattern-based or rule-based fallback systems
+- ❌ **NO DEGRADED SERVICE**: System should not function in any capacity without LLM
+- ✅ **FAIL FAST**: Return clear errors when LLM is unavailable
+- ✅ **STOP PROCESSING**: Do not attempt to continue pipeline processing without LLM
+
+**REMEMBER**: OpsConductor without AI-BRAIN is like a car without an engine - it should not pretend to work!
+
+---
+
 ## OVERVIEW
 
 This document provides the **DETAILED TECHNICAL IMPLEMENTATION ROADMAP** for the complete transformation to NEWIDEA.MD architecture. Every component, every file, every configuration is specified with exact implementation details.
