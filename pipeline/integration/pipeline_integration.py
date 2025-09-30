@@ -250,7 +250,7 @@ class PipelineIntegrationTester:
         
         # Check response type
         if test_case.expected_response_type:
-            actual_type = pipeline_result.response.type
+            actual_type = pipeline_result.response.response_type
             expected_type = test_case.expected_response_type
             
             type_match = actual_type == expected_type

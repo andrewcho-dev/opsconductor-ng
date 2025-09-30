@@ -379,7 +379,7 @@ class StageCommunicationValidator:
             original_request="test request",
             context={},
             requires_approval=False,
-            next_stage="stage_c"
+            next_stage="stage_b"
         )
         return self.stage_c.create_plan(decision, stage_b_output)
     
@@ -401,7 +401,7 @@ class StageCommunicationValidator:
             next_stage="stage_d"
         )
         selection = SelectionV1(
-            selection_id=stage_c_output.selection_id,
+            selection_id=f"sel_{stage_c_output.timestamp}",
             decision_id="test_decision",
             timestamp=stage_c_output.timestamp,
             selected_tools=[],

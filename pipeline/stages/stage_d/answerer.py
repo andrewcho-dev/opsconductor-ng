@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from llm.ollama_client import OllamaClient
-from pipeline.schemas.decision_v1 import DecisionV1
+from pipeline.schemas.decision_v1 import DecisionV1, DecisionType
 from pipeline.schemas.selection_v1 import SelectionV1
 from pipeline.schemas.plan_v1 import PlanV1
 from pipeline.schemas.response_v1 import (
@@ -210,7 +210,7 @@ class StageDAnswerer:
             return ResponseType.APPROVAL_REQUEST
         
         # Check if this is an information-only request
-        if decision.intent.category in ["system_status", "log_analysis", "monitoring"]:
+        if decision.decision_type == DecisionType.INFO:
             return ResponseType.INFORMATION
         
         # Check if plan is ready for execution

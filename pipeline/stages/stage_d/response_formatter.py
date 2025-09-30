@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from llm.ollama_client import OllamaClient
+from llm.client import LLMRequest
 from pipeline.schemas.decision_v1 import DecisionV1
 from pipeline.schemas.selection_v1 import SelectionV1
 from pipeline.schemas.plan_v1 import PlanV1
@@ -52,7 +53,9 @@ class ResponseFormatter:
             
             # Generate user-friendly response using LLM
             prompt = self._create_information_response_prompt(context)
-            response = await self.llm_client.generate_response(prompt)
+            llm_request = LLMRequest(prompt=prompt)
+            llm_response = await self.llm_client.generate(llm_request)
+            response = llm_response.content
             
             return response.strip()
             
@@ -84,7 +87,9 @@ class ResponseFormatter:
             
             # Generate user-friendly plan summary using LLM
             prompt = self._create_plan_summary_prompt(context)
-            response = await self.llm_client.generate_response(prompt)
+            llm_request = LLMRequest(prompt=prompt)
+            llm_response = await self.llm_client.generate(llm_request)
+            response = llm_response.content
             
             return response.strip()
             
@@ -114,7 +119,9 @@ class ResponseFormatter:
             
             # Generate approval request using LLM
             prompt = self._create_approval_request_prompt(context)
-            response = await self.llm_client.generate_response(prompt)
+            llm_request = LLMRequest(prompt=prompt)
+            llm_response = await self.llm_client.generate(llm_request)
+            response = llm_response.content
             
             return response.strip()
             
@@ -142,7 +149,9 @@ class ResponseFormatter:
             
             # Generate execution ready message using LLM
             prompt = self._create_execution_ready_prompt(context)
-            response = await self.llm_client.generate_response(prompt)
+            llm_request = LLMRequest(prompt=prompt)
+            llm_response = await self.llm_client.generate(llm_request)
+            response = llm_response.content
             
             return response.strip()
             
@@ -169,7 +178,9 @@ class ResponseFormatter:
             
             # Generate clarification message using LLM
             prompt = self._create_clarification_prompt(context)
-            response = await self.llm_client.generate_response(prompt)
+            llm_request = LLMRequest(prompt=prompt)
+            llm_response = await self.llm_client.generate(llm_request)
+            response = llm_response.content
             
             return response.strip()
             
