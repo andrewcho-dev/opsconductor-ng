@@ -1,5 +1,5 @@
 networks:
-  opsconductor-clean:
+  opsconductor-dev:
     driver: bridge
 
 volumes:
@@ -12,7 +12,7 @@ services:
   # Core Infrastructure
   postgres:
     image: postgres:17-alpine
-    container_name: opsconductor-postgres-clean
+    container_name: opsconductor-postgres-dev
     environment:
       POSTGRES_DB: opsconductor
       POSTGRES_USER: opsconductor
@@ -21,7 +21,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init-schema.sql:/docker-entrypoint-initdb.d/init-schema.sql
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U opsconductor"]
       interval: 10s
@@ -30,12 +30,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: opsconductor-redis-clean
+    container_name: opsconductor-redis-dev
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -45,11 +45,11 @@ services:
   # AI Infrastructure
   ollama:
     image: ollama/ollama:0.11.11
-    container_name: opsconductor-ollama-clean
+    container_name: opsconductor-ollama-dev
     volumes:
       - ollama_models:/root/.ollama
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     environment:
       - OLLAMA_HOST=0.0.0.0
     healthcheck:
@@ -62,7 +62,7 @@ services:
   # Orchestration Engine
   prefect-server:
     image: prefecthq/prefect:3-latest
-    container_name: opsconductor-prefect-clean
+    container_name: opsconductor-prefect-dev
     command: prefect server start --host 0.0.0.0
     environment:
       PREFECT_SERVER_API_HOST: 0.0.0.0
@@ -72,7 +72,7 @@ services:
     volumes:
       - prefect_data:/root/.prefect
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,7 +88,7 @@ services:
     build:
       context: ./ai-brain
       dockerfile: Dockerfile.clean
-    container_name: opsconductor-ai-brain-clean
+    container_name: opsconductor-ai-brain-dev
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       PREFECT_API_URL: http://prefect-server:4200/api
@@ -100,8 +100,13 @@ services:
       COMMUNICATION_SERVICE_URL: http://communication-service:8004
     ports:
       - "3005:3005"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./ai-brain/main_clean.py:/app/main_clean.py
+      - ./ai-brain/orchestration:/app/orchestration
+      - ./shared:/app/shared
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       ollama:
         condition: service_healthy
@@ -121,14 +126,19 @@ services:
     build:
       context: ./automation-service
       dockerfile: Dockerfile.clean
-    container_name: opsconductor-automation-clean
+    container_name: opsconductor-automation-dev
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
     ports:
       - "8001:3003"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./automation-service/main_clean.py:/app/main_clean.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,14 +154,19 @@ services:
     build:
       context: ./asset-service
       dockerfile: Dockerfile
-    container_name: opsconductor-assets-clean
+    container_name: opsconductor-assets-dev
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
     ports:
       - "8002:3002"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./asset-service/main.py:/app/main.py
+      - ./asset-service/data:/app/data
+      - ./shared:/app/shared
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -167,12 +182,22 @@ services:
     build:
       context: ./network-analyzer-service
       dockerfile: Dockerfile
-    container_name: opsconductor-network-clean
+    container_name: opsconductor-network-dev
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
+    ports:
+      - "8003:8003"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./network-analyzer-service/main.py:/app/main.py
+      - ./network-analyzer-service/agents:/app/agents
+      - ./network-analyzer-service/analyzers:/app/analyzers
+      - ./network-analyzer-service/models:/app/models
+      - ./network-analyzer-service/utils:/app/utils
+      - ./shared:/app/shared
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -188,12 +213,18 @@ services:
     build:
       context: ./communication-service
       dockerfile: Dockerfile
-    container_name: opsconductor-communication-clean
+    container_name: opsconductor-communication-dev
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
+    ports:
+      - "8004:8004"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./communication-service/main.py:/app/main.py
+      - ./shared:/app/shared
     networks:
-      - opsconductor-clean
+      - opsconductor-dev
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,3 +235,55 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  identity-service:
+    build:
+      context: ./identity-service
+      dockerfile: Dockerfile
+    container_name: opsconductor-identity-dev
+    environment:
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8005:8005"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes
+      - ./identity-service/main.py:/app/main.py
+      - ./identity-service/keycloak_adapter.py:/app/keycloak_adapter.py
+      - ./shared:/app/shared
+    networks:
+      - opsconductor-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend (Development with live reload)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: opsconductor-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      # DEVELOPMENT VOLUME MOUNTS - Live file changes for React development
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/.env:/app/.env
+    networks:
+      - opsconductor-dev
+    environment:
+      - CHOKIDAR_USEPOLLING=true  # Enable hot reload in Docker
+      - REACT_APP_API_URL=http://localhost:3005
+    depends_on:
+      - ai-brain

@@ -1,4 +1,8 @@
-# ZenRule: Selective Volume Mounts for Development
+# ZenRule: Volume Mounts - UPDATED STRATEGY
+
+## ⚠️ THIS FILE IS DEPRECATED
+
+**NEW LOCATION:** See `VOLUME_MOUNT_STRATEGY.md` for the updated, simplified approach.
 
 ## CRITICAL RULE: NEVER USE FULL DIRECTORY VOLUME MOUNTS
 
@@ -8,13 +12,10 @@ volumes:
   - ./service-name:/app
 ```
 
-**ALWAYS DO THIS:**
-```yaml
-volumes:
-  - ./service-name/main.py:/app/main.py
-  - ./service-name/other-file.py:/app/other-file.py
-  - ./shared:/app/shared
-```
+**NEW SIMPLIFIED APPROACH:**
+- Use `./scripts/dev-mode.sh` for development (with volume mounts)
+- Use `./scripts/prod-mode.sh` for production (no volume mounts)
+- See `VOLUME_MOUNT_STRATEGY.md` for complete documentation
 
 ## WHY THIS RULE EXISTS
 

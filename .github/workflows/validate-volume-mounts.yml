@@ -23,22 +23,33 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Make validation script executable
-      run: chmod +x scripts/check-volume-mounts.sh
+      run: chmod +x scripts/validate-mounts.sh
       
     - name: Validate volume mounts
-      run: ./scripts/check-volume-mounts.sh
+      run: ./scripts/validate-mounts.sh
       
     - name: Check for dangerous full directory mounts
       run: |
-        if grep -E "^\s*-\s*\./[^/]+:/app\s*$" docker-compose.yml; then
-          echo "❌ CRITICAL ERROR: Full directory volume mounts detected!"
-          echo "These will break container environments and cause Python version mismatches."
-          echo ""
-          echo "Found dangerous mounts:"
-          grep -E "^\s*-\s*\./[^/]+:/app\s*$" docker-compose.yml
+        # Check both compose files for dangerous mounts
+        DANGER_FOUND=0
+        
+        for file in docker-compose.dev.yml docker-compose.clean.yml; do
+          if [ -f "$file" ]; then
+            if grep -E "^\s*-\s*\./[^/]+:/app\s*$" "$file"; then
+              echo "❌ CRITICAL ERROR: Full directory volume mounts detected in $file!"
+              echo "These will break container environments and cause Python version mismatches."
+              echo ""
+              echo "Found dangerous mounts in $file:"
+              grep -E "^\s*-\s*\./[^/]+:/app\s*$" "$file"
+              DANGER_FOUND=1
+            fi
+          fi
+        done
+        
+        if [ $DANGER_FOUND -eq 1 ]; then
           echo ""
           echo "🔧 FIX: Use selective file mounts instead."
-          echo "📖 See .zenrules/selective-volume-mounts.md for examples."
+          echo "📖 See VOLUME_MOUNT_STRATEGY.md for examples."
           exit 1
         else
           echo "✅ No dangerous full directory mounts found"
@@ -65,25 +76,28 @@ jobs:
             - This causes Python version mismatches and missing dependencies
 
             ### The Solution
-            Use selective file mounts instead:
-            \`\`\`yaml
-            # ❌ BAD - Don't do this
-            volumes:
-              - ./ai-service:/app
+            Use our new simplified approach:
 
-            # ✅ GOOD - Do this instead  
+            **For Development (live changes):**
+            \`\`\`yaml
+            # Use docker-compose.dev.yml with selective mounts
             volumes:
-              - ./ai-service/main.py:/app/main.py
-              - ./ai-service/other_file.py:/app/other_file.py
+              - ./ai-brain/main_clean.py:/app/main_clean.py
+              - ./ai-brain/orchestration:/app/orchestration
               - ./shared:/app/shared
             \`\`\`
 
-            ### Quick Fix
-            1. Run: \`./scripts/update-volume-mounts.sh <service-name>\`
-            2. Copy the generated mounts to docker-compose.yml
-            3. Update \`.zenrules/selective-volume-mounts.md\`
-            4. Test: \`./scripts/check-volume-mounts.sh\`
+            **For Production (no mounts):**
+            \`\`\`yaml
+            # Use docker-compose.clean.yml with no service mounts
+            # Everything baked into containers
+            \`\`\`
 
-            📖 See \`.zenrules/selective-volume-mounts.md\` for complete documentation.
+            ### Quick Fix
+            1. Run: \`./scripts/validate-mounts.sh\`
+            2. Use \`./scripts/dev-mode.sh\` for development
+            3. Use \`./scripts/prod-mode.sh\` for production
+
+            📖 See \`VOLUME_MOUNT_STRATEGY.md\` for complete documentation.
             `
           })
