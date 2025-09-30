@@ -588,12 +588,11 @@ class TestSafetyPlanner:
     
     def test_create_safety_plan(self):
         """Test comprehensive safety plan creation"""
-        safety_checks, rollback_steps = self.safety_planner.create_safety_plan(
+        safety_checks = self.safety_planner.create_safety_plan(
             self.steps, self.decision, self.selection
         )
         
         assert len(safety_checks) > 0
-        assert len(rollback_steps) > 0
         
         # Check for high-risk safety measures
         check_descriptions = [check.check for check in safety_checks]
@@ -604,7 +603,7 @@ class TestSafetyPlanner:
         """Test risk-based safety check generation"""
         # Test high-risk checks
         high_risk_decision = self.decision
-        safety_checks, _ = self.safety_planner.create_safety_plan(
+        safety_checks = self.safety_planner.create_safety_plan(
             self.steps, high_risk_decision, self.selection
         )
         
@@ -655,7 +654,7 @@ class TestSafetyPlanner:
             )
         ]
         
-        safety_checks, _ = self.safety_planner.create_safety_plan(
+        safety_checks = self.safety_planner.create_safety_plan(
             low_risk_steps, low_risk_decision, low_risk_selection
         )
         
@@ -675,7 +674,7 @@ class TestSafetyPlanner:
             )
         ]
         
-        safety_checks, _ = self.safety_planner.create_safety_plan(
+        safety_checks = self.safety_planner.create_safety_plan(
             systemctl_steps, self.decision, self.selection
         )
         
@@ -686,20 +685,17 @@ class TestSafetyPlanner:
         assert len(systemctl_checks) > 0
     
     def test_rollback_procedure_creation(self):
-        """Test rollback procedure creation"""
-        safety_checks, rollback_steps = self.safety_planner.create_safety_plan(
+        """Test that rollback functionality has been removed"""
+        safety_checks = self.safety_planner.create_safety_plan(
             self.steps, self.decision, self.selection
         )
         
-        assert len(rollback_steps) > 0
+        # Rollback functionality has been removed, so we just verify safety checks exist
+        assert len(safety_checks) > 0
         
-        # Check rollback for systemctl restart
-        systemctl_rollback = next(
-            (rb for rb in rollback_steps if rb.step_id == "step_001_systemctl_restart"),
-            None
-        )
-        assert systemctl_rollback is not None
-        assert "service" in systemctl_rollback.rollback_action.lower()
+        # Verify safety checks include appropriate measures
+        check_descriptions = [check.check for check in safety_checks]
+        assert any("backup" in desc.lower() for desc in check_descriptions)
     
     def test_production_environment_safety(self):
         """Test production environment safety measures"""
@@ -726,7 +722,7 @@ class TestSafetyPlanner:
             processing_time_ms=100
         )
         
-        safety_checks, _ = self.safety_planner.create_safety_plan(
+        safety_checks = self.safety_planner.create_safety_plan(
             self.steps, self.decision, prod_selection
         )
         
@@ -1009,7 +1005,7 @@ class TestStageCPlanner:
         
         assert len(plan.plan.steps) == 3
         assert len(plan.plan.safety_checks) > 5  # High-risk should have many safety checks
-        assert len(plan.plan.rollback_plan) > 0  # Should have rollback procedures
+        assert len(plan.plan.rollback_plan) == 0  # Rollback functionality removed
         assert len(plan.execution_metadata.approval_points) > 0  # Should require approvals
     
     def test_fallback_plan_creation(self):

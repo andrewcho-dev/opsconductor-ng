@@ -10,7 +10,7 @@ from enum import Enum
 
 from ...schemas.decision_v1 import DecisionV1, RiskLevel as DecisionRiskLevel
 from ...schemas.selection_v1 import SelectionV1, RiskLevel as SelectionRiskLevel
-from ...schemas.plan_v1 import ExecutionStep, SafetyCheck, RollbackStep, SafetyStage, FailureAction
+from ...schemas.plan_v1 import ExecutionStep, SafetyCheck, SafetyStage, FailureAction
 
 
 class SafetyPlanner:
@@ -19,7 +19,6 @@ class SafetyPlanner:
     
     This class is responsible for:
     - Generating safety checks for different execution stages
-    - Creating rollback procedures for reversible operations
     - Implementing risk mitigation strategies
     - Setting up failure handling mechanisms
     - Ensuring production safety compliance
@@ -47,23 +46,15 @@ class SafetyPlanner:
             "ps": self._get_ps_safety_checks,
             "info_display": self._get_info_display_safety_checks
         }
-        
-        # Rollback strategies by tool
-        self.rollback_strategies = {
-            "systemctl": self._create_systemctl_rollback,
-            "file_manager": self._create_file_manager_rollback,
-            "config_manager": self._create_config_manager_rollback,
-            "docker": self._create_docker_rollback
-        }
     
     def create_safety_plan(
         self, 
         steps: List[ExecutionStep], 
         decision: DecisionV1, 
         selection: SelectionV1
-    ) -> tuple[List[SafetyCheck], List[RollbackStep]]:
+    ) -> List[SafetyCheck]:
         """
-        Create comprehensive safety checks and rollback procedures.
+        Create comprehensive safety checks for execution plans.
         
         Args:
             steps: Execution steps to create safety measures for
@@ -71,23 +62,18 @@ class SafetyPlanner:
             selection: Tool selection context
             
         Returns:
-            Tuple of (safety_checks, rollback_steps)
+            List of safety checks
         """
         safety_checks = []
-        rollback_steps = []
         
         # Add risk-based safety checks
         risk_checks = self._create_risk_based_checks(decision, selection)
         safety_checks.extend(risk_checks)
         
-        # Add tool-specific safety checks and rollbacks
+        # Add tool-specific safety checks
         for step in steps:
             tool_checks = self._create_tool_safety_checks(step, decision, selection)
             safety_checks.extend(tool_checks)
-            
-            rollback = self._create_step_rollback(step, decision, selection)
-            if rollback:
-                rollback_steps.append(rollback)
         
         # Add environment-specific safety checks
         env_checks = self._create_environment_checks(selection)
@@ -97,7 +83,7 @@ class SafetyPlanner:
         validation_checks = self._create_validation_checks(steps, decision)
         safety_checks.extend(validation_checks)
         
-        return safety_checks, rollback_steps
+        return safety_checks
     
     def _create_risk_based_checks(
         self, 
@@ -157,28 +143,7 @@ class SafetyPlanner:
             )
         ]
     
-    def _create_step_rollback(
-        self, 
-        step: ExecutionStep, 
-        decision: DecisionV1, 
-        selection: SelectionV1
-    ) -> Optional[RollbackStep]:
-        """Create rollback procedure for a step"""
-        tool_name = step.tool
-        
-        if tool_name in self.rollback_strategies:
-            return self.rollback_strategies[tool_name](step, decision, selection)
-        
-        # Some operations don't need rollback (read-only)
-        readonly_tools = {"ps", "journalctl", "info_display"}
-        if tool_name in readonly_tools:
-            return None
-        
-        # Generic rollback for unknown tools
-        return RollbackStep(
-            step_id=step.id,
-            rollback_action=f"Manual intervention required to rollback {tool_name} operation"
-        )
+
     
     def _create_environment_checks(self, selection: SelectionV1) -> List[SafetyCheck]:
         """Create environment-specific safety checks"""
@@ -562,102 +527,3 @@ class SafetyPlanner:
                 failure_action=FailureAction.WARN
             )
         ]
-    
-    # Rollback strategy generators
-    def _create_systemctl_rollback(
-        self, 
-        step: ExecutionStep, 
-        decision: DecisionV1, 
-        selection: SelectionV1
-    ) -> Optional[RollbackStep]:
-        """Create rollback for systemctl operations"""
-        operation = step.inputs.get("action", "status")
-        service = step.inputs.get("service", "unknown")
-        
-        if operation == "start":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Execute 'systemctl stop {service}' to return service to stopped state"
-            )
-        elif operation == "stop":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Execute 'systemctl start {service}' to return service to running state"
-            )
-        elif operation == "restart":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Monitor {service} service status and restart if needed"
-            )
-        
-        return None  # Status operations don't need rollback
-    
-    def _create_file_manager_rollback(
-        self, 
-        step: ExecutionStep, 
-        decision: DecisionV1, 
-        selection: SelectionV1
-    ) -> Optional[RollbackStep]:
-        """Create rollback for file manager operations"""
-        operation = step.inputs.get("operation", "read")
-        file_path = step.inputs.get("path", "unknown")
-        
-        if operation == "write":
-            backup_path = step.inputs.get("backup_path", f"{file_path}.backup")
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Restore original file from backup: cp {backup_path} {file_path}"
-            )
-        elif operation == "backup":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Remove backup file if no longer needed"
-            )
-        
-        return None  # Read operations don't need rollback
-    
-    def _create_config_manager_rollback(
-        self, 
-        step: ExecutionStep, 
-        decision: DecisionV1, 
-        selection: SelectionV1
-    ) -> Optional[RollbackStep]:
-        """Create rollback for config manager operations"""
-        operation = step.inputs.get("operation", "read")
-        config_file = step.inputs.get("config_file", "unknown")
-        
-        if operation in ["write", "modify", "update"]:
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Restore configuration from backup and restart affected services"
-            )
-        
-        return None  # Read/validate operations don't need rollback
-    
-    def _create_docker_rollback(
-        self, 
-        step: ExecutionStep, 
-        decision: DecisionV1, 
-        selection: SelectionV1
-    ) -> Optional[RollbackStep]:
-        """Create rollback for Docker operations"""
-        operation = step.inputs.get("operation", "ps")
-        container = step.inputs.get("container", "unknown")
-        
-        if operation == "restart":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Monitor container {container} and restart if unhealthy"
-            )
-        elif operation == "stop":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Start container {container} to restore previous state"
-            )
-        elif operation == "start":
-            return RollbackStep(
-                step_id=step.id,
-                rollback_action=f"Stop container {container} to return to previous state"
-            )
-        
-        return None  # ps/logs operations don't need rollback

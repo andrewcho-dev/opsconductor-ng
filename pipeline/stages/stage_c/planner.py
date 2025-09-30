@@ -6,6 +6,7 @@ comprehensive, safe, executable step-by-step plans.
 """
 
 import time
+import threading
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -54,7 +55,8 @@ class StageCPlanner:
         self.safety_planner = SafetyPlanner()
         self.resource_planner = ResourcePlanner()
         
-        # Planning statistics
+        # Planning statistics (thread-safe)
+        self._stats_lock = threading.Lock()
         self.stats = {
             "plans_created": 0,
             "total_processing_time_ms": 0,
@@ -98,7 +100,7 @@ class StageCPlanner:
             ordered_steps = self._resolve_dependencies(steps)
             
             # Create safety measures
-            safety_checks, rollback_steps = self._create_safety_measures(
+            safety_checks = self._create_safety_measures(
                 ordered_steps, decision, selection
             )
             
@@ -111,7 +113,7 @@ class StageCPlanner:
             execution_plan = ExecutionPlan(
                 steps=ordered_steps,
                 safety_checks=safety_checks,
-                rollback_plan=rollback_steps,
+                rollback_plan=[],  # Rollback functionality removed
                 observability=observability
             )
             
@@ -183,8 +185,8 @@ class StageCPlanner:
         steps, 
         decision: DecisionV1, 
         selection: SelectionV1
-    ) -> Tuple:
-        """Create comprehensive safety checks and rollback procedures"""
+    ) -> List:
+        """Create comprehensive safety checks"""
         return self.safety_planner.create_safety_plan(steps, decision, selection)
     
     def _plan_resources(
@@ -216,7 +218,7 @@ class StageCPlanner:
         """Generate steps using LLM for intelligent planning"""
         # This would integrate with the LLM client for intelligent step generation
         # For now, fall back to rule-based generation
-        self.stats["llm_calls_made"] += 1
+        self._increment_stat("llm_calls_made")
         return self.step_generator.generate_steps(decision, selection)
     
     def _fix_dependency_issues(self, steps) -> List:
@@ -257,7 +259,7 @@ class StageCPlanner:
         error_message: str
     ) -> PlanV1:
         """Create a minimal fallback plan when main planning fails"""
-        self.stats["fallback_plans_used"] += 1
+        self._increment_stat("fallback_plans_used")
         
         # Create a single, safe information-gathering step
         from ...schemas.plan_v1 import ExecutionStep, SafetyCheck, RollbackStep, ObservabilityConfig
@@ -309,22 +311,31 @@ class StageCPlanner:
         )
     
     def _update_stats(self, processing_time_ms: int, success: bool) -> None:
-        """Update planning statistics"""
-        self.stats["plans_created"] += 1
-        self.stats["total_processing_time_ms"] += processing_time_ms
-        self.stats["average_processing_time_ms"] = (
-            self.stats["total_processing_time_ms"] // self.stats["plans_created"]
-        )
-        
-        if not success:
-            self.stats["errors_encountered"] += 1
+        """Update planning statistics (thread-safe)"""
+        with self._stats_lock:
+            self.stats["plans_created"] += 1
+            self.stats["total_processing_time_ms"] += processing_time_ms
+            self.stats["average_processing_time_ms"] = (
+                self.stats["total_processing_time_ms"] // self.stats["plans_created"]
+            )
+            
+            if not success:
+                self.stats["errors_encountered"] += 1
+    
+    def _increment_stat(self, stat_name: str, amount: int = 1) -> None:
+        """Thread-safe increment of a specific statistic"""
+        with self._stats_lock:
+            self.stats[stat_name] += amount
     
     def get_health_status(self) -> Dict[str, Any]:
-        """Get health status of the planner"""
+        """Get health status of the planner (thread-safe)"""
+        with self._stats_lock:
+            stats_copy = self.stats.copy()
+        
         return {
             "status": "healthy",
             "component": "stage_c_planner",
-            "statistics": self.stats.copy(),
+            "statistics": stats_copy,
             "components": {
                 "step_generator": "operational",
                 "dependency_resolver": "operational", 

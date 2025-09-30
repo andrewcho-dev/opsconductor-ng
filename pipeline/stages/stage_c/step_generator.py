@@ -28,7 +28,7 @@ class StepGenerator:
     
     def __init__(self):
         """Initialize the step generator"""
-        self.step_counter = 0
+        # Remove step_counter to fix concurrency issues
         
         # Tool-specific step templates
         self.tool_templates = {
@@ -70,7 +70,6 @@ class StepGenerator:
             List of execution steps
         """
         steps = []
-        self.step_counter = 0
         
         # Sort selected tools by execution order
         sorted_tools = sorted(
@@ -119,9 +118,10 @@ class StepGenerator:
             )
     
     def _generate_step_id(self, tool_name: str, suffix: str = "") -> str:
-        """Generate a unique step ID"""
-        self.step_counter += 1
-        base_id = f"step_{self.step_counter:03d}_{tool_name}"
+        """Generate a unique step ID using UUID to prevent race conditions"""
+        # Use UUID4 for thread-safe unique ID generation
+        unique_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
+        base_id = f"step_{unique_id}_{tool_name}"
         if suffix:
             base_id += f"_{suffix}"
         return base_id
