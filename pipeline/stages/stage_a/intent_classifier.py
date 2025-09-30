@@ -168,16 +168,141 @@ class IntentClassifier:
                 
             except Exception as e:
                 if attempt == max_retries:
-                    # Final fallback
-                    return IntentV1(
-                        category="information",
-                        action="get_help",
-                        confidence=0.1
-                    )
+                    # Use smart pattern-based fallback instead of defaulting to information
+                    return self._pattern_based_classification(user_request)
         
         # Should not reach here, but just in case
+        return self._pattern_based_classification(user_request)
+    
+    def _pattern_based_classification(self, user_request: str) -> IntentV1:
+        """
+        Pattern-based classification fallback when LLM is unavailable
+        
+        Args:
+            user_request: User request to classify
+            
+        Returns:
+            IntentV1 object with pattern-based classification
+        """
+        request_lower = user_request.lower()
+        
+        # Action patterns - these should be classified as ACTION, not INFO
+        action_patterns = {
+            # Service management
+            ("restart", "service"): ("automation", "restart_service", 0.8),
+            ("start", "service"): ("automation", "start_service", 0.8),
+            ("stop", "service"): ("automation", "stop_service", 0.8),
+            ("restart", "apache"): ("automation", "restart_service", 0.8),
+            ("restart", "nginx"): ("automation", "restart_service", 0.8),
+            ("restart", "mysql"): ("automation", "restart_service", 0.8),
+            
+            # Deployment and execution
+            ("deploy", "application"): ("automation", "deploy_application", 0.8),
+            ("run", "script"): ("automation", "run_script", 0.8),
+            ("execute", "command"): ("automation", "execute_command", 0.8),
+            ("backup", "data"): ("automation", "backup_data", 0.8),
+            ("restore", "data"): ("automation", "restore_data", 0.8),
+            
+            # Configuration changes
+            ("update", "config"): ("configuration", "update_config", 0.8),
+            ("change", "settings"): ("configuration", "change_settings", 0.8),
+            ("modify", "parameters"): ("configuration", "modify_parameters", 0.8),
+            ("configure", "service"): ("configuration", "configure_service", 0.8),
+            ("set", "permissions"): ("configuration", "set_permissions", 0.8),
+            
+            # Troubleshooting actions
+            ("fix", "problem"): ("troubleshooting", "fix_problem", 0.8),
+            ("diagnose", "issue"): ("troubleshooting", "diagnose_issue", 0.8),
+            ("investigate", "error"): ("troubleshooting", "investigate_error", 0.8),
+            ("debug", "application"): ("troubleshooting", "debug_application", 0.8),
+            
+            # Emergency patterns - these should always be ACTION
+            ("urgent", "database"): ("automation", "emergency_response", 0.9),
+            ("emergency", "down"): ("automation", "emergency_response", 0.9),
+            ("critical", "issue"): ("automation", "emergency_response", 0.9),
+            ("database", "down"): ("automation", "emergency_response", 0.9),
+            ("server", "down"): ("automation", "emergency_response", 0.9),
+            ("system", "down"): ("automation", "emergency_response", 0.9),
+            ("outage", "users"): ("automation", "emergency_response", 0.9),
+        }
+        
+        # Information patterns
+        info_patterns = {
+            ("show", "status"): ("information", "get_status_info", 0.8),
+            ("get", "help"): ("information", "get_help", 0.8),
+            ("explain", "concept"): ("information", "explain_concept", 0.8),
+            ("show", "documentation"): ("information", "show_documentation", 0.8),
+            ("list", "resources"): ("information", "list_resources", 0.8),
+            ("describe", "system"): ("information", "describe_system", 0.8),
+            ("what", "is"): ("information", "explain_concept", 0.7),
+            ("how", "to"): ("information", "show_examples", 0.7),
+        }
+        
+        # Monitoring patterns
+        monitoring_patterns = {
+            ("check", "status"): ("monitoring", "check_status", 0.8),
+            ("view", "logs"): ("monitoring", "view_logs", 0.8),
+            ("get", "metrics"): ("monitoring", "get_metrics", 0.8),
+            ("check", "health"): ("monitoring", "check_health", 0.8),
+            ("monitor", "performance"): ("monitoring", "monitor_performance", 0.8),
+            ("view", "dashboard"): ("monitoring", "view_dashboard", 0.8),
+            ("check", "alerts"): ("monitoring", "check_alerts", 0.8),
+        }
+        
+        # Check action patterns first (higher priority)
+        for (word1, word2), (category, action, confidence) in action_patterns.items():
+            if word1 in request_lower and word2 in request_lower:
+                return IntentV1(
+                    category=category,
+                    action=action,
+                    confidence=confidence
+                )
+        
+        # Check monitoring patterns
+        for (word1, word2), (category, action, confidence) in monitoring_patterns.items():
+            if word1 in request_lower and word2 in request_lower:
+                return IntentV1(
+                    category=category,
+                    action=action,
+                    confidence=confidence
+                )
+        
+        # Check information patterns
+        for (word1, word2), (category, action, confidence) in info_patterns.items():
+            if word1 in request_lower and word2 in request_lower:
+                return IntentV1(
+                    category=category,
+                    action=action,
+                    confidence=confidence
+                )
+        
+        # Emergency single word patterns (highest priority)
+        if any(word in request_lower for word in ["urgent", "emergency", "critical", "down", "outage", "failure", "crashed"]):
+            return IntentV1(
+                category="automation",
+                action="emergency_response",
+                confidence=0.8
+            )
+        
+        # Single word action patterns
+        if any(word in request_lower for word in ["restart", "start", "stop", "deploy", "execute", "run", "backup", "restore", "fix", "configure", "update", "modify"]):
+            return IntentV1(
+                category="automation",
+                action="execute_command",
+                confidence=0.6
+            )
+        
+        # Single word monitoring patterns  
+        if any(word in request_lower for word in ["check", "monitor", "view", "show", "get"]):
+            return IntentV1(
+                category="monitoring",
+                action="check_status",
+                confidence=0.6
+            )
+        
+        # Default fallback to information
         return IntentV1(
-            category="information", 
+            category="information",
             action="get_help",
-            confidence=0.1
+            confidence=0.3
         )
