@@ -108,21 +108,16 @@ class StageAClassifier:
         if intent.category == "information":
             return DecisionType.INFO
         
-        # Low confidence requests might need clarification (INFO)
-        if confidence_data["confidence_level"].value == "low":
-            return DecisionType.INFO
-        
-        # All other requests are ACTION type
+        # All other requests are ACTION type (let orchestrator handle low confidence)
         return DecisionType.ACTION
     
     def _determine_next_stage(self, intent, confidence_data, risk_data) -> str:
         """Determine the next pipeline stage"""
-        # Low confidence or information requests go to Stage D (Answerer)
-        if (confidence_data["confidence_level"].value == "low" or 
-            intent.category == "information"):
+        # Information requests go to Stage D (Answerer)
+        if intent.category == "information":
             return "stage_d"
         
-        # All other requests go to Stage B (Selector)
+        # All other requests go to Stage B (Selector) - let orchestrator handle low confidence
         return "stage_b"
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED

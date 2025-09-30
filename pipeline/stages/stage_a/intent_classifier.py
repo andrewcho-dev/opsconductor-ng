@@ -158,9 +158,12 @@ class IntentClassifier:
         Returns:
             IntentV1 object with classification
         """
+        last_intent = None
+        
         for attempt in range(max_retries + 1):
             try:
                 intent = await self.classify_intent(user_request)
+                last_intent = intent
                 
                 # Validate the intent
                 if self.validate_intent(intent):
@@ -174,6 +177,13 @@ class IntentClassifier:
                 if attempt == max_retries:
                     # FAIL FAST: OpsConductor requires AI-BRAIN to function
                     raise Exception(f"AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM: {str(e)}")
+        
+        # If we have an invalid intent after retries, return it with low confidence
+        # This allows the orchestrator's clarification system to handle it
+        if last_intent:
+            # Force low confidence for invalid intents to trigger clarification
+            last_intent.confidence = 0.3
+            return last_intent
         
         # Should not reach here, but just in case - FAIL FAST
         raise Exception("AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM")

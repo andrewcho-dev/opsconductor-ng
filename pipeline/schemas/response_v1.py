@@ -118,6 +118,11 @@ class ResponseV1(BaseModel):
     # Technical details (for advanced users)
     technical_details: Optional[Dict[str, Any]] = Field(None, description="Technical details for advanced users")
     
+    # Clarification support (when response_type is CLARIFICATION)
+    clarification_needed: Optional[List["ClarificationRequest"]] = Field(None, description="List of clarifications needed")
+    partial_analysis: Optional[Dict[str, Any]] = Field(None, description="Partial analysis completed so far")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    
     # Response metadata
     response_id: str = Field(..., description="Unique response identifier")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Response generation timestamp")
