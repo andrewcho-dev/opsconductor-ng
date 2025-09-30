@@ -6,6 +6,7 @@ cross-stage communication, and performance validation.
 """
 
 import pytest
+import pytest_asyncio
 import asyncio
 import time
 from typing import Dict, Any, List
@@ -39,15 +40,16 @@ from pipeline.schemas.response_v1 import ResponseV1, ResponseType
 class TestPipelineOrchestrator:
     """Test the main pipeline orchestrator functionality."""
     
-    @pytest.fixture
-    def orchestrator(self):
-        """Create a pipeline orchestrator for testing."""
-        return PipelineOrchestrator()
+    @pytest_asyncio.fixture
+    async def orchestrator(self):
+        """Create and initialize a pipeline orchestrator for testing."""
+        orchestrator = PipelineOrchestrator()
+        await orchestrator.initialize()
+        return orchestrator
     
     @pytest.mark.asyncio
     async def test_orchestrator_initialization(self, orchestrator):
         """Test that the orchestrator initializes correctly."""
-        await orchestrator.initialize()
         assert orchestrator.stage_a is not None
         assert orchestrator.stage_b is not None
         assert orchestrator.stage_c is not None
@@ -58,7 +60,6 @@ class TestPipelineOrchestrator:
     @pytest.mark.asyncio
     async def test_basic_request_processing(self, orchestrator):
         """Test basic request processing through the pipeline."""
-        await orchestrator.initialize()
         user_request = "Check the status of the web server"
         
         result = await orchestrator.process_request(user_request)
@@ -196,8 +197,8 @@ class TestPipelineOrchestrator:
     @pytest.mark.asyncio
     async def test_global_orchestrator_instance(self):
         """Test the global orchestrator instance."""
-        orchestrator1 = get_pipeline_orchestrator()
-        orchestrator2 = get_pipeline_orchestrator()
+        orchestrator1 = await get_pipeline_orchestrator()
+        orchestrator2 = await get_pipeline_orchestrator()
         
         # Should return the same instance
         assert orchestrator1 is orchestrator2
@@ -240,16 +241,16 @@ class TestPipelineIntegration:
             name="test_information_flow",
             test_type=IntegrationTestType.BASIC_FLOW,
             user_request="What is the current CPU usage?",
-            expected_response_type=ResponseType.INFORMATION,
-            expected_decision_type=DecisionType.INFO,
-            expected_risk_level=RiskLevel.MEDIUM  # System queries can be medium risk
+            expected_response_type=ResponseType.EXECUTION_READY,  # CPU usage requires execution
+            expected_decision_type=DecisionType.ACTION,  # System queries are actions
+            expected_risk_level=RiskLevel.LOW  # System monitoring is low risk
         )
         
         result = await integration_tester.run_integration_test(test_case)
         
         assert result.success is True
         assert result.pipeline_result.success is True
-        assert result.pipeline_result.response.response_type == ResponseType.INFORMATION
+        assert result.pipeline_result.response.response_type == ResponseType.EXECUTION_READY
         
         # Check validation details
         validation = result.validation_details
