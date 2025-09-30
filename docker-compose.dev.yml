@@ -46,6 +46,8 @@ services:
   ollama:
     image: ollama/ollama:0.11.11
     container_name: opsconductor-ollama-dev
+    ports:
+      - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
     networks:
