@@ -333,7 +333,7 @@ class StageCPlanner:
             stats_copy = self.stats.copy()
         
         return {
-            "status": "healthy",
+            "stage_c_planner": "healthy",
             "component": "stage_c_planner",
             "statistics": stats_copy,
             "components": {

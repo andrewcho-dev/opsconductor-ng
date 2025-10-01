@@ -91,7 +91,46 @@ class StageDAnswerer:
         try:
             logger.info(f"Generating response for {decision.intent.category}/{decision.intent.action}")
             
-            # Analyze context and determine response type
+            # 🚀 FAST PATH: Handle simple information requests without selection/plan
+            if selection is None and plan is None and decision.intent.category == "information":
+                logger.info("🚀 FAST PATH: Generating direct information response")
+                
+                # Generate direct answer using LLM for simple questions
+                direct_response = await self._generate_direct_information_response(
+                    decision.original_request, context
+                )
+                
+                processing_time_ms = int((time.time() - start_time) * 1000)
+                self.stats["responses_generated"] += 1
+                self.stats["response_types"]["information"] += 1
+                self.stats["total_processing_time_ms"] += processing_time_ms
+                
+                return ResponseV1(
+                    response_type=ResponseType.INFORMATION,
+                    message=direct_response,
+                    confidence=ConfidenceLevel.HIGH,
+                    execution_summary=None,
+                    approval_required=False,
+                    approval_points=[],
+                    suggested_actions=[],
+                    sources_consulted=["LLM Direct Response"],
+                    related_documentation=[],
+                    warnings=[],
+                    limitations=[],
+                    technical_details=None,
+                    clarification_needed=None,
+                    partial_analysis=None,
+                    metadata={
+                        "fast_path": True,
+                        "processing_method": "direct_llm_response",
+                        "bypassed_components": ["plan_analysis", "tool_selection", "approval_workflow"]
+                    },
+                    response_id=response_id,
+                    timestamp=datetime.now().isoformat(),
+                    processing_time_ms=processing_time_ms
+                )
+            
+            # Normal path: Analyze context and determine response type
             response_type = await self._determine_response_type(decision, selection, plan)
             
             # Generate appropriate response based on type
@@ -591,3 +630,56 @@ class StageDAnswerer:
             ],
             "llm_integration": "available" if self.llm_client else "disabled"
         }
+    
+    async def _generate_direct_information_response(self, user_request: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """
+        🚀 FAST PATH: Generate direct response for simple information requests
+        
+        This bypasses all the complex plan analysis and approval workflows
+        for simple questions that just need direct answers.
+        
+        Args:
+            user_request: Original user request (e.g., "what is 2+2")
+            context: Optional context information
+            
+        Returns:
+            Direct answer string
+        """
+        try:
+            # Create a simple, direct prompt for information requests
+            prompt = f"""You are a helpful assistant. Answer this question directly and concisely:
+
+Question: {user_request}
+
+Provide a clear, accurate answer without explaining OpsConductor systems or referencing plans/tools/automation. Just answer the question directly."""
+
+            # Use LLM to generate direct response
+            from llm.client import LLMRequest
+            
+            llm_request = LLMRequest(
+                prompt=prompt,
+                system_prompt="You are a helpful assistant that answers questions directly and accurately.",
+                temperature=0.1,  # Low temperature for consistent, factual responses
+                max_tokens=200   # Keep responses concise
+            )
+            
+            response = await self.llm_client.generate(llm_request)
+            
+            # Extract text from LLM response object
+            if hasattr(response, 'content'):
+                direct_answer = response.content.strip()
+            elif hasattr(response, 'response'):
+                direct_answer = response.response.strip()
+            elif hasattr(response, 'text'):
+                direct_answer = response.text.strip()
+            else:
+                direct_answer = str(response).strip()
+            
+            if not direct_answer:
+                return f"I understand you're asking about '{user_request}', but I wasn't able to generate a specific answer. Could you please rephrase your question?"
+            
+            return direct_answer
+            
+        except Exception as e:
+            logger.error(f"Failed to generate direct information response: {e}")
+            return f"I understand you're asking '{user_request}', but I'm having trouble processing that question right now. Please try rephrasing it or ask something else."

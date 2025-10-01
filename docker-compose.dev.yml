@@ -71,6 +71,8 @@ services:
       PREFECT_SERVER_API_PORT: 4200
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_SERVER_DATABASE_CONNECTION_URL: postgresql+asyncpg://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+    ports:
+      - "4200:4200"
     volumes:
       - prefect_data:/root/.prefect
     networks:
@@ -132,6 +134,8 @@ services:
       context: ./automation-service
       dockerfile: Dockerfile.clean
     container_name: opsconductor-automation-dev
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
@@ -160,6 +164,8 @@ services:
       context: ./asset-service
       dockerfile: Dockerfile
     container_name: opsconductor-assets-dev
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
@@ -219,6 +225,8 @@ services:
       context: ./communication-service
       dockerfile: Dockerfile
     container_name: opsconductor-communication-dev
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
@@ -246,6 +254,8 @@ services:
       context: ./identity-service
       dockerfile: Dockerfile
     container_name: opsconductor-identity-dev
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379

@@ -33,7 +33,7 @@ class ConnectionManager:
     """
     
     def __init__(self):
-        self.db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/opsconductor")
+        self.db_url = os.getenv("DATABASE_URL", "postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor")
         self.asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
         self.connection_cache = {}  # Simple in-memory cache
         self.cache_ttl = 300  # 5 minutes

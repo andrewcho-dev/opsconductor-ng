@@ -1607,7 +1607,7 @@ class CommunicationService(BaseService):
         """Get service URL for display - using Docker DNS names and internal ports"""
         
         if "PostgreSQL" in service_name:
-            return "postgresql://postgres:5432"
+            return "postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor"
         elif "Redis" in service_name:
             return "redis://redis:6379"
         elif "Kong" in service_name:

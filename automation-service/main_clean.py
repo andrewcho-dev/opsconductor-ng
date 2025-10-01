@@ -105,9 +105,9 @@ class CleanAutomationService(BaseService):
     
     def __init__(self):
         super().__init__(
-            service_name="automation-service",
-            service_port=3003,
-            service_description="Clean Automation Service - Direct Command Execution"
+            name="automation-service",
+            version="1.0.0",
+            port=3003
         )
         
         # Simple in-memory execution tracking

@@ -165,6 +165,37 @@ class PipelineOrchestrator:
             stage_durations["stage_a"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_a"] = classification_result
             
+            # 🚀 FAST PATH: Check if Stage A suggests skipping to a specific stage
+            print(f"DEBUG: hasattr next_stage: {hasattr(classification_result, 'next_stage')}")
+            if hasattr(classification_result, 'next_stage'):
+                print(f"DEBUG: next_stage value: '{classification_result.next_stage}'")
+                print(f"DEBUG: next_stage == 'stage_d': {classification_result.next_stage == 'stage_d'}")
+            
+            if hasattr(classification_result, 'next_stage') and classification_result.next_stage == "stage_d":
+                print("🚀 FAST PATH: Taking Stage A → Stage D shortcut!")
+                # Skip Stage B and C for simple questions
+                response_result = await self._execute_stage_d(classification_result, None, None, context)
+                stage_durations["stage_d"] = (time.time() - stage_start) * 1000
+                intermediate_results["stage_d"] = response_result
+                
+                # Calculate metrics for fast path
+                total_duration = (time.time() - start_time) * 1000
+                metrics = PipelineMetrics(
+                    total_duration_ms=total_duration,
+                    stage_durations=stage_durations,
+                    memory_usage_mb=self._get_memory_usage(),
+                    request_id=request_id,
+                    timestamp=start_time,
+                    status=PipelineStatus.COMPLETED
+                )
+                
+                return PipelineResult(
+                    response=response_result,
+                    metrics=metrics,
+                    intermediate_results=intermediate_results,
+                    success=True
+                )
+            
             # Check if clarification is needed due to low confidence
             if await self._needs_clarification(classification_result, context):
                 clarification_response = await self._handle_low_confidence_clarification(

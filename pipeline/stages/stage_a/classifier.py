@@ -102,6 +102,7 @@ class StageAClassifier:
         unique_id = str(uuid.uuid4())[:8]
         return f"dec_{timestamp}_{unique_id}"
     
+
     def _determine_decision_type(self, intent, confidence_data) -> DecisionType:
         """Determine the type of decision based on intent and confidence"""
         # Information requests are always INFO type
@@ -113,11 +114,7 @@ class StageAClassifier:
     
     def _determine_next_stage(self, intent, confidence_data, risk_data) -> str:
         """Determine the next pipeline stage"""
-        # Information requests go to Stage D (Answerer)
-        if intent.category == "information":
-            return "stage_d"
-        
-        # All other requests go to Stage B (Selector) - let orchestrator handle low confidence
+        # ALL requests go to Stage B (Selector) - full pipeline processing
         return "stage_b"
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED

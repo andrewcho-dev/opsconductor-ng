@@ -111,6 +111,9 @@ async def lifespan(app: FastAPI):
         # Initialize Tool Registry
         tool_registry = ToolRegistry()
         
+        # Declare global variables
+        global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer
+        
         # Initialize Stage A Classifier
         stage_a_classifier = StageAClassifier(llm_client)
         
@@ -242,116 +245,7 @@ async def health_check():
 
 
 
-@app.post("/process", response_model=PipelineResponse)
-async def process_request(request: PipelineRequest):
-    """
-    Process user request through NEWIDEA.MD pipeline
-    
-    Flow:
-    1. Stage A: Classify intent and extract entities
-    2. Stage B: Select tools and assess risk
-    3. Stage C: Generate execution plan with safety
-    4. Stage D: Generate user-friendly response
-    5. Execute with monitoring and rollback
-    """
-    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer
-    
-    # Generate request ID
-    request_id = str(uuid.uuid4())
-    
-    logger.info(f"🔄 Processing request: {request.request[:100]}...")
-    
-    try:
-        if not stage_a_classifier:
-            raise HTTPException(
-                status_code=503,
-                detail="Stage A Classifier not available - LLM backend required"
-            )
-        
-        if not stage_b_selector:
-            raise HTTPException(
-                status_code=503,
-                detail="Stage B Selector not available - LLM backend required"
-            )
-        
-        if not stage_c_planner:
-            raise HTTPException(
-                status_code=503,
-                detail="Stage C Planner not available - LLM backend required"
-            )
-        
-        if not stage_d_answerer:
-            raise HTTPException(
-                status_code=503,
-                detail="Stage D Answerer not available - LLM backend required"
-            )
-        
-        # Prepare context
-        context = {
-            "user_id": request.user_id,
-            "session_id": request.session_id,
-            "request_id": request_id,
-            **request.context
-        }
-        
-        # Stage A: Classify the request
-        decision = await stage_a_classifier.classify(request.request, context)
-        
-        logger.info(f"✅ Stage A complete: {decision.intent.category}/{decision.intent.action}")
-        logger.info(f"📊 Confidence: {decision.confidence_level.value} ({decision.overall_confidence:.2f})")
-        logger.info(f"⚠️  Risk: {decision.risk_level.value}")
-        
-        # Stage B: Select tools and determine policy
-        selection = await stage_b_selector.select_tools(decision, context)
-        
-        logger.info(f"✅ Stage B complete: {selection.total_tools} tools selected")
-        logger.info(f"🔧 Tools: {', '.join([tool.tool_name for tool in selection.selected_tools])}")
-        logger.info(f"📋 Policy: {selection.policy.risk_level.value} risk, approval={selection.policy.requires_approval}")
-        
-        # Stage C: Create execution plan
-        plan = stage_c_planner.create_plan(decision, selection)
-        
-        logger.info(f"✅ Stage C complete: {len(plan.plan.steps)} steps planned")
-        logger.info(f"📋 Plan: {plan.execution_metadata.total_estimated_time}s estimated, {len(plan.plan.safety_checks)} safety checks")
-        logger.info(f"🔒 Safety: {len(plan.plan.rollback_plan)} rollback procedures, {len(plan.execution_metadata.approval_points)} approval points")
-        
-        # Stage D: Generate user-friendly response
-        response = await stage_d_answerer.generate_response(decision, selection, plan, context)
-        
-        logger.info(f"✅ Stage D complete: {response.response_type.value} response generated")
-        logger.info(f"💬 Response: {response.message[:100]}...")
-        logger.info(f"🎯 Confidence: {response.confidence.value}, Approval required: {response.approval_required}")
-        
-        # Convert to dicts for response
-        decision_dict = decision.model_dump()
-        selection_dict = selection.model_dump()
-        plan_dict = plan.model_dump()
-        response_dict = response.model_dump()
-        
-        return PipelineResponse(
-            success=True,
-            request_id=request_id,
-            result={
-                "stage": "stage_d_complete",
-                "decision": decision_dict,
-                "selection": selection_dict,
-                "plan": plan_dict,
-                "response": response_dict,
-                "message": response.message,
-                "phase": "Phase 4 - Stage D Answerer",
-                "timestamp": datetime.utcnow().isoformat()
-            },
-            architecture="newidea-pipeline"
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Pipeline processing failed: {e}")
-        return PipelineResponse(
-            success=False,
-            request_id=request_id,
-            error=str(e),
-            architecture="newidea-pipeline"
-        )
+
 
 @app.post("/pipeline", response_model=PipelineResponse)
 async def process_pipeline_request(request: PipelineRequest):

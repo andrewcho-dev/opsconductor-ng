@@ -116,7 +116,12 @@ class IntentClassifier:
                 "list_resources",
                 "describe_system",
                 "show_examples",
-                "get_status_info"
+                "get_status_info",
+                "calculate",
+                "compute",
+                "math",
+                "answer_question",
+                "provide_information"
             ]
         }
     
@@ -132,61 +137,50 @@ class IntentClassifier:
         """
         supported = self.get_supported_categories()
         
+        # Category validation - must be exact match
         if intent.category not in supported:
             return False
         
-        if intent.action not in supported[intent.category]:
-            return False
+        # Action validation - allow partial matching for flexibility
+        supported_actions = supported[intent.category]
         
-        return True
+        # Exact match first
+        if intent.action in supported_actions:
+            return True
+        
+        # Flexible matching - check if action contains any supported action keywords
+        for supported_action in supported_actions:
+            if supported_action in intent.action.lower() or intent.action.lower() in supported_action:
+                return True
+        
+        # Special case: For information category, be more lenient
+        if intent.category == "information":
+            # Accept any reasonable information request
+            info_keywords = ["help", "info", "show", "get", "explain", "calculate", "compute", "math", "question", "answer"]
+            if any(keyword in intent.action.lower() for keyword in info_keywords):
+                return True
+        
+        return False
     
-    async def classify_with_fallback(self, user_request: str, max_retries: int = 2) -> IntentV1:
+    async def classify_with_fallback(self, user_request: str, max_retries: int = 0) -> IntentV1:
         """
-        Classify intent with retry logic
-        
-        🚨 CRITICAL ARCHITECTURAL PRINCIPLE: NO FALLBACK SYSTEMS
-        
-        OpsConductor is AI-BRAIN DEPENDENT and must FAIL FAST when LLM is unavailable.
-        The pattern-based fallback below VIOLATES this principle and should be REMOVED.
-        
-        TODO: Remove _pattern_based_classification and let system fail when LLM is down.
+        Classify intent - TRUST THE LLM, NO VALIDATION
         
         Args:
             user_request: User request to classify
-            max_retries: Maximum number of retries
+            max_retries: Maximum number of retries (set to 0 - trust LLM first response)
             
         Returns:
             IntentV1 object with classification
         """
-        last_intent = None
-        
-        for attempt in range(max_retries + 1):
-            try:
-                intent = await self.classify_intent(user_request)
-                last_intent = intent
+        try:
+            # TRUST THE LLM - single call, no validation bullshit
+            intent = await self.classify_intent(user_request)
+            return intent
                 
-                # Validate the intent
-                if self.validate_intent(intent):
-                    return intent
-                
-                # If invalid, try again with lower temperature
-                if attempt < max_retries:
-                    continue
-                
-            except Exception as e:
-                if attempt == max_retries:
-                    # FAIL FAST: OpsConductor requires AI-BRAIN to function
-                    raise Exception(f"AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM: {str(e)}")
-        
-        # If we have an invalid intent after retries, return it with low confidence
-        # This allows the orchestrator's clarification system to handle it
-        if last_intent:
-            # Force low confidence for invalid intents to trigger clarification
-            last_intent.confidence = 0.3
-            return last_intent
-        
-        # Should not reach here, but just in case - FAIL FAST
-        raise Exception("AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM")
+        except Exception as e:
+            # FAIL FAST: OpsConductor requires AI-BRAIN to function
+            raise Exception(f"AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM: {str(e)}")
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED
     # The _pattern_based_classification method has been REMOVED because it violates
