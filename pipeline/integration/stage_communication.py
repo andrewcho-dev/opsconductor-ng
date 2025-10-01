@@ -492,7 +492,7 @@ class StageCommunicationValidator:
         # Validate ResponseV1 specific fields
         elif isinstance(output, ResponseV1):
             # Check required fields
-            required_fields = ["type", "message", "timestamp", "request_id", "success"]
+            required_fields = ["response_type", "message", "confidence"]
             
             for field in required_fields:
                 field_present = hasattr(output, field) and getattr(output, field) is not None
@@ -506,12 +506,12 @@ class StageCommunicationValidator:
                     validation_details["overall_success"] = False
             
             # Check response type is valid
-            if hasattr(output, "type"):
-                type_valid = isinstance(output.type, ResponseType)
+            if hasattr(output, "response_type"):
+                type_valid = isinstance(output.response_type, ResponseType)
                 validation_details["checks"]["response_type_valid"] = {
                     "passed": type_valid,
                     "expected": "ResponseType enum",
-                    "actual": type(output.type).__name__
+                    "actual": type(output.response_type).__name__
                 }
                 
                 if not type_valid:

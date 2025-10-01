@@ -693,10 +693,10 @@ export const aiApi = {
     console.log('🚀 Sending AI pipeline request:', request);
     // Connect directly to AI pipeline on port 3005 (Docker mapped port)
     const aiPipelineUrl = `http://${window.location.hostname}:3005`;
-    const response = await axios.post(`${aiPipelineUrl}/process`, {
-      request,
+    const response = await axios.post(`${aiPipelineUrl}/pipeline`, {
+      request: request,
       context: context || {},
-      user_id: 'frontend-user',
+      user_id: `user_${Date.now()}`,
       session_id: `session_${Date.now()}`
     }, {
       headers: {
@@ -705,7 +705,21 @@ export const aiApi = {
       timeout: 120000
     });
     console.log('✅ AI pipeline response received:', response.data);
-    return response.data;
+    
+    // Transform response to match expected format
+    if (response.data.success) {
+      return {
+        success: true,
+        result: {
+          message: response.data.result.message
+        }
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data.error
+      };
+    }
   },
 
   health: async (): Promise<any> => {

@@ -90,9 +90,13 @@ class PipelineOrchestrator:
         
         self.llm_client = llm_client
         
+        # Initialize tool registry
+        from pipeline.stages.stage_b.tool_registry import ToolRegistry
+        self.tool_registry = ToolRegistry()
+        
         # Initialize stages with required parameters
         self.stage_a = StageAClassifier(llm_client)
-        self.stage_b = StageBSelector(llm_client)
+        self.stage_b = StageBSelector(llm_client, self.tool_registry)
         self.stage_c = StageCPlanner(llm_client)
         self.stage_d = StageDAnswerer(llm_client)
         
@@ -157,7 +161,7 @@ class PipelineOrchestrator:
         try:
             # Stage A: Classification
             stage_start = time.time()
-            classification_result = await self._execute_stage_a(user_request)
+            classification_result = await self._execute_stage_a(user_request, context)
             stage_durations["stage_a"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_a"] = classification_result
             
@@ -188,7 +192,7 @@ class PipelineOrchestrator:
             
             # Stage B: Selection
             stage_start = time.time()
-            selection_result = await self._execute_stage_b(classification_result)
+            selection_result = await self._execute_stage_b(classification_result, context)
             stage_durations["stage_b"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_b"] = selection_result
             
@@ -200,7 +204,7 @@ class PipelineOrchestrator:
             
             # Stage D: Response Generation
             stage_start = time.time()
-            response_result = await self._execute_stage_d(classification_result, selection_result, planning_result)
+            response_result = await self._execute_stage_d(classification_result, selection_result, planning_result, context)
             stage_durations["stage_d"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_d"] = response_result
             
@@ -262,20 +266,20 @@ class PipelineOrchestrator:
             if request_id in self._active_requests:
                 del self._active_requests[request_id]
     
-    async def _execute_stage_a(self, user_request: str) -> DecisionV1:
+    async def _execute_stage_a(self, user_request: str, context: Optional[Dict[str, Any]] = None) -> DecisionV1:
         """Execute Stage A: Classification."""
         try:
-            result = await self.stage_a.classify(user_request)
+            result = await self.stage_a.classify(user_request, context)
             if not isinstance(result, DecisionV1):
                 raise ValueError(f"Stage A returned invalid result type: {type(result)}")
             return result
         except Exception as e:
             raise Exception(f"Stage A failed: {str(e)}")
     
-    async def _execute_stage_b(self, classification: DecisionV1) -> Any:
+    async def _execute_stage_b(self, classification: DecisionV1, context: Optional[Dict[str, Any]] = None) -> Any:
         """Execute Stage B: Selection."""
         try:
-            result = await self.stage_b.select_tools(classification)
+            result = await self.stage_b.select_tools(classification, context)
             return result
         except Exception as e:
             raise Exception(f"Stage B failed: {str(e)}")
@@ -288,10 +292,10 @@ class PipelineOrchestrator:
         except Exception as e:
             raise Exception(f"Stage C failed: {str(e)}")
     
-    async def _execute_stage_d(self, decision: DecisionV1, selection: Any, plan: Any) -> ResponseV1:
+    async def _execute_stage_d(self, decision: DecisionV1, selection: Any, plan: Any, context: Optional[Dict[str, Any]] = None) -> ResponseV1:
         """Execute Stage D: Response Generation."""
         try:
-            result = await self.stage_d.generate_response(decision, selection, plan)
+            result = await self.stage_d.generate_response(decision, selection, plan, context)
             if not isinstance(result, ResponseV1):
                 raise ValueError(f"Stage D returned invalid result type: {type(result)}")
             return result

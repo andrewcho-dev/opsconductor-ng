@@ -240,6 +240,8 @@ async def health_check():
         }
     }
 
+
+
 @app.post("/process", response_model=PipelineResponse)
 async def process_request(request: PipelineRequest):
     """
@@ -367,8 +369,8 @@ async def process_pipeline_request(request: PipelineRequest):
     logger.info(f"🚀 Processing pipeline request: {request.request[:100]}...")
     
     try:
-        # Get the global pipeline orchestrator
-        orchestrator = get_pipeline_orchestrator()
+        # Get the global pipeline orchestrator with proper LLM client
+        orchestrator = await get_pipeline_orchestrator(llm_client)
         
         # Process the request through the integrated pipeline
         pipeline_result = await orchestrator.process_request(
@@ -379,7 +381,7 @@ async def process_pipeline_request(request: PipelineRequest):
         if pipeline_result.success:
             logger.info(f"✅ Pipeline processing successful")
             logger.info(f"📊 Total duration: {pipeline_result.metrics.total_duration_ms:.1f}ms")
-            logger.info(f"🎯 Response type: {pipeline_result.response.type.value}")
+            logger.info(f"🎯 Response type: {pipeline_result.response.response_type.value}")
             logger.info(f"💬 Response: {pipeline_result.response.message[:100]}...")
             
             # Log stage performance
@@ -441,7 +443,7 @@ async def process_pipeline_request(request: PipelineRequest):
 async def get_pipeline_health():
     """Get integrated pipeline health status"""
     try:
-        orchestrator = get_pipeline_orchestrator()
+        orchestrator = await get_pipeline_orchestrator(llm_client)
         health_status = orchestrator.get_health_status()
         
         return {
