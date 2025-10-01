@@ -1,5 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react';
 import { Send, User, Bot } from 'lucide-react';
+import { aiApi } from '../services/api';
 
 export interface AIChatRef {
   clearChat: () => void;
@@ -32,9 +33,40 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
     scrollToBottom();
   }, [messages]);
 
+  // Load chat history on mount
+  useEffect(() => {
+    const loadChatHistory = () => {
+      try {
+        const saved = localStorage.getItem('opsconductor_ai_chat_history');
+        if (saved) {
+          const history = JSON.parse(saved).map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }));
+          setMessages(history);
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+      }
+    };
+    loadChatHistory();
+  }, [props.activeChatId]);
+
+  // Save chat history when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem('opsconductor_ai_chat_history', JSON.stringify(messages));
+      } catch (error) {
+        console.error('Failed to save chat history:', error);
+      }
+    }
+  }, [messages]);
+
   useImperativeHandle(ref, () => ({
     clearChat: () => {
       setMessages([]);
+      localStorage.removeItem('opsconductor_ai_chat_history');
     }
   }));
 
@@ -57,17 +89,57 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       props.onFirstMessage(userMessage.content.substring(0, 50) + (userMessage.content.length > 50 ? '...' : ''));
     }
 
-    // Simulate AI response (replace with actual API call)
-    setTimeout(() => {
+    // Call the real AI Pipeline API
+    try {
+      const response = await aiApi.process(userMessage.content);
+      
+      let aiContent = '';
+      if (response.success && response.result) {
+        // Extract the AI response message
+        aiContent = response.result.message || response.result.response?.message || 'AI processing completed successfully.';
+        
+        // Add some context about what the AI determined
+        const decision = response.result.decision;
+        const selection = response.result.selection;
+        const plan = response.result.plan;
+        
+        if (decision) {
+          aiContent += `\n\n**Analysis:**\n`;
+          aiContent += `• Intent: ${decision.intent?.category}/${decision.intent?.action}\n`;
+          aiContent += `• Confidence: ${decision.confidence_level?.value} (${(decision.overall_confidence * 100).toFixed(1)}%)\n`;
+          aiContent += `• Risk Level: ${decision.risk_level?.value}\n`;
+        }
+        
+        if (selection && selection.selected_tools?.length > 0) {
+          aiContent += `\n**Tools Selected:** ${selection.selected_tools.map((t: any) => t.tool_name).join(', ')}\n`;
+        }
+        
+        if (plan && plan.plan?.steps?.length > 0) {
+          aiContent += `\n**Execution Plan:** ${plan.plan.steps.length} steps planned\n`;
+        }
+      } else {
+        aiContent = response.error || 'Sorry, I encountered an error processing your request.';
+      }
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `I received your message: "${userMessage.content}". This is a placeholder response. The AI chat functionality is being implemented.`,
+        content: aiContent,
         sender: 'ai',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('AI API Error:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Sorry, I'm having trouble connecting to the AI system. Please check that the backend is running.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'ai',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

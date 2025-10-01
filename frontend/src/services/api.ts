@@ -27,19 +27,6 @@ import { AssetCreate } from '../types/asset';
 console.log('🔥 API SERVICE LOADED AT', new Date().toISOString());
 
 // Base API configuration
-// Explicitly construct the API URL to ensure HTTPS and correct port
-// Service port mapping for development (kept for reference)
-// const SERVICE_PORTS = {
-//   auth: 3001,
-//   users: 3002,
-//   credentials: 3004,
-//   targets: 3005,
-//   jobs: 3006,
-//   executor: 3007,
-
-
-// };
-
 export const getApiBaseUrl = () => {
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL;
@@ -222,8 +209,6 @@ export const rolesApi = {
   }
 };
 
-
-
 // Asset API (replaces Target API)
 export const assetApi = {
   list: async (skip = 0, limit = 100, filters?: any): Promise<any> => {
@@ -264,12 +249,6 @@ export const assetApi = {
     return response.data;
   }
 };
-
-
-
-
-
-
 
 // Job API
 export const jobApi = {
@@ -335,8 +314,6 @@ export const jobRunApi = {
   }
 };
 
-
-
 // Health Monitoring API
 export const healthApi = {
   checkAllServices: async (): Promise<Record<string, any>> => {
@@ -398,272 +375,221 @@ export const healthApi = {
       (async () => {
         const startTime = Date.now();
         try {
-          // Test Kong by making a simple API call through it
-          const response = await fetch('/api/v1/users', {
+          const response = await fetch('/api/health', {
             method: 'GET',
             signal: AbortSignal.timeout(3000)
           });
           const responseTime = Date.now() - startTime;
-          // Kong is healthy if it responds (even with auth errors)
-          results['kong'] = {
-            status: (response.status < 500) ? 'healthy' : 'unhealthy',
-            service: 'kong',
+          
+          results['kong-gateway'] = {
+            status: response.ok ? 'healthy' : 'unhealthy',
+            service: 'kong-gateway',
             responseTime,
-            message: 'API Gateway responding'
+            version: 'Kong Gateway',
+            error: response.ok ? undefined : `HTTP ${response.status}`
           };
         } catch (error) {
           const responseTime = Date.now() - startTime;
-          results['kong'] = {
+          results['kong-gateway'] = {
             status: 'unhealthy',
-            service: 'kong',
+            service: 'kong-gateway',
             responseTime,
             error: error instanceof Error ? error.message : 'Unknown error'
           };
         }
       })(),
-      
-      // PostgreSQL - check via a simple query through one of the services
+
+      // PostgreSQL - check through backend health endpoint
       (async () => {
+        const startTime = Date.now();
         try {
-          // We can infer postgres health from the identity service health check
-          // which includes database connectivity
-          results['postgres'] = {
-            status: 'unknown',
-            service: 'postgres',
-            message: 'Status inferred from service health checks'
-          };
+          const response = await fetch('/api/health/database', {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000)
+          });
+          const responseTime = Date.now() - startTime;
+          
+          if (response.ok) {
+            const dbHealth = await response.json();
+            results['postgresql'] = {
+              ...dbHealth,
+              service: 'postgresql',
+              responseTime
+            };
+          } else {
+            results['postgresql'] = {
+              status: 'unhealthy',
+              service: 'postgresql',
+              responseTime,
+              error: `HTTP ${response.status}: ${response.statusText}`
+            };
+          }
         } catch (error) {
-          results['postgres'] = {
-            status: 'unknown',
-            service: 'postgres',
-            error: 'Cannot directly check database'
+          const responseTime = Date.now() - startTime;
+          results['postgresql'] = {
+            status: 'unhealthy',
+            service: 'postgresql',
+            responseTime,
+            error: error instanceof Error ? error.message : 'Unknown error'
           };
         }
       })(),
-      
-      // Redis - similar approach
+
+      // Redis - check through backend health endpoint
       (async () => {
-        results['redis'] = {
-          status: 'unknown',
-          service: 'redis',
-          message: 'Status inferred from service health checks'
-        };
-      })(),
-      
-      // ChromaDB - infer health from AI Brain service which uses it
-      (async () => {
-        // ChromaDB health will be inferred from AI Brain service health
-        // since AI Brain depends on ChromaDB for vector storage
-        results['chromadb'] = {
-          status: 'unknown',
-          service: 'chromadb',
-          message: 'Status inferred from AI Brain service health'
-        };
-      })(),
+        const startTime = Date.now();
+        try {
+          const response = await fetch('/api/health/redis', {
+            method: 'GET',
+            signal: AbortSignal.timeout(3000)
+          });
+          const responseTime = Date.now() - startTime;
+          
+          if (response.ok) {
+            const redisHealth = await response.json();
+            results['redis'] = {
+              ...redisHealth,
+              service: 'redis',
+              responseTime
+            };
+          } else {
+            results['redis'] = {
+              status: 'unhealthy',
+              service: 'redis',
+              responseTime,
+              error: `HTTP ${response.status}: ${response.statusText}`
+            };
+          }
+        } catch (error) {
+          const responseTime = Date.now() - startTime;
+          results['redis'] = {
+            status: 'unhealthy',
+            service: 'redis',
+            responseTime,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+      })()
     ];
 
     // Wait for all health checks to complete
-    await Promise.allSettled([...healthChecks, ...infraChecks]);
-
-    // Infer postgres and redis status from service health checks
-    const servicesWithDbChecks = ['identity-service', 'asset-service', 'automation-service', 'communication-service'];
-    let postgresHealthy = false;
-    let redisHealthy = false;
-
-    servicesWithDbChecks.forEach(serviceName => {
-      const serviceHealth = results[serviceName];
-      if (serviceHealth && serviceHealth.checks) {
-        serviceHealth.checks.forEach((check: any) => {
-          if (check.name === 'database' && check.status === 'healthy') {
-            postgresHealthy = true;
-          }
-          if (check.name === 'redis' && check.status === 'healthy') {
-            redisHealthy = true;
-          }
-        });
-      }
-    });
-
-    // Update postgres and redis status based on service checks
-    if (results['postgres']) {
-      results['postgres'].status = postgresHealthy ? 'healthy' : 'unhealthy';
-      results['postgres'].message = postgresHealthy ? 'Database connectivity confirmed via services' : 'Database issues detected in service checks';
-    }
-
-    if (results['redis']) {
-      results['redis'].status = redisHealthy ? 'healthy' : 'unhealthy';
-      results['redis'].message = redisHealthy ? 'Redis connectivity confirmed via services' : 'Redis issues detected in service checks';
-    }
-
-    // Infer ChromaDB status from AI Brain service health
-    const aiBrainHealth = results['ai-brain'];
-    if (results['chromadb'] && aiBrainHealth) {
-      if (aiBrainHealth.status === 'healthy') {
-        results['chromadb'].status = 'healthy';
-        results['chromadb'].message = 'ChromaDB connectivity confirmed via AI Brain service';
-      } else {
-        results['chromadb'].status = 'unhealthy';
-        results['chromadb'].message = 'ChromaDB issues detected - AI Brain service unhealthy';
-      }
-    }
+    await Promise.all([...healthChecks, ...infraChecks]);
 
     return results;
   },
 
-  checkService: async (service: string): Promise<{ status: string; service: string; responseTime?: number; error?: string }> => {
-    // For individual service checks, get all services and extract the specific one
-    try {
-      const allServices = await healthApi.checkAllServices();
-      return allServices[service] || {
-        status: 'unknown',
-        service,
-        error: 'Service not found in health report'
-      };
-    } catch (error) {
-      return {
-        status: 'unhealthy',
-        service,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  },
-
   getSystemStats: async (): Promise<any> => {
-    try {
-      // Get system stats from individual service health checks
-      const allServices = await healthApi.checkAllServices();
-      const servicesList = Object.values(allServices);
-      
-      const healthyServices = servicesList.filter((service: any) => service.status === 'healthy').length;
-      const unhealthyServices = servicesList.filter((service: any) => service.status === 'unhealthy').length;
-      const totalServices = servicesList.length;
-      
-      // Determine overall status
-      let overallStatus = 'healthy';
-      if (unhealthyServices > 0) {
-        overallStatus = unhealthyServices >= totalServices / 2 ? 'unhealthy' : 'degraded';
-      }
-      
-      const stats = {
-        overall_status: overallStatus,
-        services_count: totalServices,
-        healthy_services: healthyServices,
-        unhealthy_services: unhealthyServices,
-        timestamp: new Date().toISOString(),
-        message: `System health check completed - ${healthyServices}/${totalServices} services healthy`
-      };
-      
-      return stats;
-    } catch (error) {
-      return { 
-        error: 'Failed to fetch system stats',
-        overall_status: 'unhealthy',
-        services_count: 0,
-        healthy_services: 0,
-        unhealthy_services: 0,
-        timestamp: new Date().toISOString()
-      };
-    }
+    console.warn('getSystemStats is deprecated - use checkAllServices() instead');
+    return {
+      cpu_usage: 0,
+      memory_usage: 0,
+      disk_usage: 0,
+      network_io: 0,
+      uptime: 0
+    };
   }
 };
 
-// SMTP Settings API (using channels)
+// Credentials API
+export const credentialApi = {
+  list: async (skip = 0, limit = 100): Promise<CredentialListResponse> => {
+    const response: AxiosResponse<CredentialListResponse> = await api.get('/api/v1/credentials', {
+      params: { skip, limit }
+    });
+    return response.data;
+  },
+
+  get: async (id: number): Promise<Credential> => {
+    const response: AxiosResponse<Credential> = await api.get(`/api/v1/credentials/${id}`);
+    return response.data;
+  },
+
+  create: async (credentialData: CredentialCreate): Promise<Credential> => {
+    const response: AxiosResponse<Credential> = await api.post('/api/v1/credentials', credentialData);
+    return response.data;
+  },
+
+  update: async (id: number, credentialData: Partial<CredentialCreate>): Promise<Credential> => {
+    const response: AxiosResponse<Credential> = await api.put(`/api/v1/credentials/${id}`, credentialData);
+    return response.data;
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/v1/credentials/${id}`);
+  },
+
+  decrypt: async (id: number): Promise<CredentialDecrypted> => {
+    const response: AxiosResponse<CredentialDecrypted> = await api.post(`/api/v1/credentials/${id}/decrypt`);
+    return response.data;
+  },
+
+  test: async (id: number): Promise<{ success: boolean; message: string }> => {
+    const response: AxiosResponse<{ success: boolean; message: string }> = await api.post(`/api/v1/credentials/${id}/test`);
+    return response.data;
+  }
+};
+
+// SMTP API (legacy compatibility)
 export const smtpApi = {
   getSMTPSettings: async (): Promise<SMTPSettingsResponse> => {
-    // Get SMTP channel from channels API
-    const response = await api.get('/api/v1/channels');
-    const channels = response.data.channels || [];
-    const smtpChannel = channels.find((channel: any) => channel.channel_type === 'smtp');
-    
-    if (!smtpChannel) {
-      return {
-        success: true,
-        data: null,
-        message: 'No SMTP configuration found'
-      };
-    }
-    
-    // Transform channel data to SMTP settings format
-    const config = smtpChannel.configuration || {};
-    return {
-      success: true,
-      data: {
-        id: smtpChannel.id,
-        host: config.host || '',
-        port: config.port || 587,
-        username: config.username || '',
-        password: '***', // Never return actual password
-        use_tls: config.use_tls !== false,
-        use_ssl: config.use_ssl || false,
-        from_email: config.from_email || '',
-        from_name: config.from_name || 'OpsConductor',
-        is_active: smtpChannel.is_active,
-        is_configured: !!config.host && !!config.from_email,
-        created_at: smtpChannel.created_at,
-        updated_at: smtpChannel.updated_at
-      },
-      message: 'SMTP settings retrieved successfully'
-    };
+    return communicationApi.getSmtpSettings();
+  },
+
+  saveSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
+    return communicationApi.saveSmtpSettings(settings);
   },
 
   updateSMTPSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
-    // First, check if SMTP channel exists
-    const channelsResponse = await api.get('/api/v1/channels');
-    const channels = channelsResponse.data.channels || [];
-    const existingSmtpChannel = channels.find((channel: any) => channel.channel_type === 'smtp');
-    
-    const channelData = {
-      name: 'SMTP Email',
-      channel_type: 'smtp',
-      configuration: {
-        host: settings.host,
-        port: settings.port,
-        username: settings.username,
-        password: settings.password,
-        use_tls: settings.use_tls,
-        use_ssl: settings.use_ssl || false,
-        from_email: settings.from_email,
-        from_name: settings.from_name || 'OpsConductor'
-      },
-      is_active: true
-    };
-    
-    let response;
-    if (existingSmtpChannel) {
-      // Update existing channel
-      response = await api.put(`/api/v1/channels/${existingSmtpChannel.id}`, channelData);
-    } else {
-      // Create new channel
-      response = await api.post('/api/v1/channels', channelData);
-    }
-    
-    const channel = response.data.data || response.data;
-    const config = channel.configuration || {};
-    
-    return {
-      success: true,
-      data: {
-        id: channel.id,
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: '***', // Never return actual password
-        use_tls: config.use_tls,
-        use_ssl: config.use_ssl,
-        from_email: config.from_email,
-        from_name: config.from_name,
-        is_active: channel.is_active,
-        is_configured: true,
-        created_at: channel.created_at,
-        updated_at: channel.updated_at
-      },
-      message: 'SMTP settings saved successfully'
-    };
+    return communicationApi.saveSmtpSettings(settings);
   },
 
   testSMTPSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
+    return communicationApi.testSmtpSettings(testRequest);
+  }
+};
+
+// Communication API
+export const communicationApi = {
+  // SMTP Settings
+  getSmtpSettings: async (): Promise<SMTPSettingsResponse> => {
     try {
-      const response: AxiosResponse<SMTPTestResponse> = await api.post('/api/v1/notifications/smtp/test', testRequest);
+      const response: AxiosResponse<SMTPSettingsResponse> = await api.get('/api/v1/smtp/settings');
+      return response.data;
+    } catch (error: any) {
+      // Return default settings if none exist
+      if (error.response?.status === 404) {
+        return {
+          success: true,
+          data: {
+            id: 0,
+            host: '',
+            port: 587,
+            username: '',
+            password: '',
+            use_tls: true,
+            use_ssl: false,
+            from_email: '',
+            from_name: '',
+            is_active: false,
+            is_configured: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          },
+          message: 'Default SMTP settings returned'
+        };
+      }
+      throw error;
+    }
+  },
+
+  saveSmtpSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
+    const response: AxiosResponse<SMTPSettingsResponse> = await api.post('/api/v1/smtp/settings', settings);
+    return response.data;
+  },
+
+  testSmtpSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
+    try {
+      const response: AxiosResponse<SMTPTestResponse> = await api.post('/api/v1/smtp/test', testRequest);
       return response.data;
     } catch (error: any) {
       console.error('SMTP test failed:', error);
@@ -672,30 +598,32 @@ export const smtpApi = {
         message: error.response?.data?.detail || 'Failed to test SMTP settings'
       };
     }
-  }
-};
+  },
 
-
-
-
-
-// Communication Channels API
-export const communicationApi = {
-  // Get all channels
-  getChannels: async (): Promise<CommunicationChannel[]> => {
+  // Communication Channels
+  listChannels: async (): Promise<CommunicationChannel[]> => {
     try {
-      const response: AxiosResponse<{ channels: CommunicationChannel[] }> = await api.get('/api/v1/channels');
-      return response.data.channels;
+      const response: AxiosResponse<{ success: boolean; data: CommunicationChannel[] }> = await api.get('/api/v1/channels');
+      return response.data.data || [];
     } catch (error: any) {
-      console.error('Failed to fetch communication channels:', error);
-      throw error;
+      console.error('Failed to fetch channels:', error);
+      return [];
     }
   },
 
-  // Get channel by type
+  getChannel: async (id: number): Promise<CommunicationChannel | null> => {
+    try {
+      const response: AxiosResponse<CommunicationChannel> = await api.get(`/api/v1/channels/${id}`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to fetch channel:', error);
+      return null;
+    }
+  },
+
   getChannelByType: async (channelType: string): Promise<CommunicationChannel | null> => {
     try {
-      const channels = await communicationApi.getChannels();
+      const channels = await communicationApi.listChannels();
       return channels.find(channel => channel.channel_type === channelType) || null;
     } catch (error: any) {
       console.error('Failed to fetch channel by type:', error);
@@ -759,181 +687,55 @@ export const communicationApi = {
   }
 };
 
-// AI Chat API
+// AI Pipeline API - 4-Stage Pipeline Integration
 export const aiApi = {
-  chat: async (request: {
-    message: string;
-    user_id: string;
-    conversation_id?: string;
-  }): Promise<{
-    response: string;
-    intent: string;
-    confidence: number;
-    conversation_id?: string;
-    job_id?: string;
-    execution_id?: string;
-    automation_job_id?: number;
-    workflow?: any;
-    execution_started: boolean;
-    _routing?: {
-      service: string;
-      service_type: string;
-      response_time: number;
-      cached: boolean;
-    };
-    intent_classification?: {
-      intent_type: string;
-      confidence: number;
-      method: string;
-      alternatives: Array<{
-        intent: string;
-        confidence: number;
-      }>;
-      entities: Array<{
-        value: string;
-        type: string;
-        confidence: number;
-        normalized_value?: string;
-      }>;
-      context_analysis: {
-        confidence_score: number;
-        risk_level: string;
-        requirements_count: number;
-        recommendations: string[];
-      };
-      reasoning: string;
-      metadata: {
-        engine: string;
-        success: boolean;
-      };
-    };
-    timestamp?: string;
-    error?: string;
-  }> => {
-    console.log('🚀 Sending AI chat request:', request);
-    const response = await api.post('/api/v1/ai/orchestration/chat', request);
-    console.log('✅ AI chat response received:', response.data);
-    
-    // Handle new backend response format: {success: true, data: {...}}
-    if (response.data && response.data.success && response.data.data) {
-      return response.data.data;
-    }
-    
-    // Fallback to old format if the new format is not detected
+  process: async (request: string, context?: any): Promise<any> => {
+    console.log('🚀 Sending AI pipeline request:', request);
+    // Connect directly to AI pipeline on port 3005 (Docker mapped port)
+    const aiPipelineUrl = `http://${window.location.hostname}:3005`;
+    const response = await axios.post(`${aiPipelineUrl}/process`, {
+      request,
+      context: context || {},
+      user_id: 'frontend-user',
+      session_id: `session_${Date.now()}`
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 120000
+    });
+    console.log('✅ AI pipeline response received:', response.data);
     return response.data;
   },
 
-  health: async (): Promise<{
-    status: string;
-    services: Record<string, any>;
-    timestamp: string;
-  }> => {
-    const response = await api.get('/api/v1/ai/health');
+  health: async (): Promise<any> => {
+    // Connect directly to AI pipeline on port 3005 (Docker mapped port)
+    const aiPipelineUrl = `http://${window.location.hostname}:3005`;
+    const response = await axios.get(`${aiPipelineUrl}/health`, {
+      timeout: 10000
+    });
     return response.data;
   },
 
-  monitoringDashboard: async (): Promise<{
-    current: {
-      services: Record<string, any>;
-      overall_health: string;
+  // Legacy compatibility stubs (deprecated - these will be removed)
+  monitoringDashboard: async (): Promise<any> => {
+    console.warn('monitoringDashboard is deprecated - use aiApi.health() instead');
+    return {
+      current: { services: {}, overall_health: 'healthy' },
+      history: [],
+      analysis: { overall_health: 'healthy', alerts: [], recommendations: [] },
+      statistics: {}
     };
-    history: any[];
-    analysis: {
-      overall_health: string;
-      alerts: Array<{
-        severity: string;
-        service: string;
-        message: string;
-      }>;
-      recommendations: string[];
-    };
-    statistics: Record<string, any>;
-  }> => {
-    const response = await api.get('/api/v1/ai/monitoring/dashboard');
-    return response.data;
-  },
-
-  resetCircuitBreaker: async (serviceName: string): Promise<void> => {
-    await api.post(`/api/v1/ai/circuit-breaker/reset/${serviceName}`);
-  },
-
-  // OUIOE Brain API - Revolutionary AI System
-  ouioe: {
-    think: async (request: {
-      message: string;
-      conversation_id?: string;
-      user_id?: string;
-      context?: Record<string, any>;
-    }): Promise<{
-      status: string;
-      message: string;
-      session_id: string;
-      results?: Record<string, any>;
-      conversation_id?: string;
-      timestamp: string;
-    }> => {
-      console.log('🧠 Sending OUIOE Brain request:', request);
-      const response = await api.post('/api/v1/ai/ouioe/think', request);
-      console.log('✅ OUIOE Brain response received:', response.data);
-      return response.data;
-    },
-
-    getConversationHistory: async (conversationId: string): Promise<{
-      conversation_id: string;
-      history: Array<{
-        user_message: string;
-        ai_response: string;
-        timestamp: string;
-        session_id: string;
-      }>;
-      total_messages: number;
-    }> => {
-      const response = await api.get(`/api/v1/ai/ouioe/conversations/${conversationId}/history`);
-      return response.data;
-    },
-
-    getCollaborativeAgents: async (): Promise<{
-      agents: Array<{
-        name: string;
-        role: string;
-        specialization: string;
-      }>;
-      total_agents: number;
-      collaboration_enabled: boolean;
-    }> => {
-      const response = await api.get('/api/v1/ai/ouioe/agents');
-      return response.data;
-    },
-
-    getSystemStatus: async (): Promise<{
-      status: string;
-      message: string;
-      active_sessions: number;
-      total_conversations: number;
-      collaborative_agents: number;
-      services_available: number;
-      architecture_layers: string[];
-      timestamp: string;
-    }> => {
-      const response = await api.get('/api/v1/ai/ouioe/system/status');
-      return response.data;
-    },
-
-    simulateThinking: async (request: { message: string }): Promise<{
-      status: string;
-      message: string;
-      session_id: string;
-      steps_simulated: number;
-      timestamp: string;
-    }> => {
-      const response = await api.post('/api/v1/ai/ouioe/debug/simulate', request);
-      return response.data;
-    }
   },
 
   getKnowledgeStats: async (): Promise<any> => {
-    const response = await api.get('/api/v1/ai/knowledge-stats');
-    return response.data;
+    console.warn('getKnowledgeStats is deprecated');
+    return { total_documents: 0, indexed_documents: 0, last_updated: new Date().toISOString() };
+  },
+
+  resetCircuitBreaker: async (serviceName: string): Promise<void> => {
+    console.warn('resetCircuitBreaker is deprecated');
+    // No-op for compatibility
   }
 };
 
