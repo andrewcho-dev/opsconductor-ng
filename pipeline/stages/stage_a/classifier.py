@@ -3,6 +3,7 @@ Stage A Classifier - Main Orchestrator
 Coordinates intent classification, entity extraction, confidence scoring, and risk assessment
 """
 
+import asyncio
 import uuid
 import time
 from datetime import datetime, timezone
