@@ -79,7 +79,11 @@ class ToolRegistry:
                 "explain_process": ["documentation", "help_system"],
                 "show_configuration": ["configuration_display", "information"],
                 "query_infrastructure": ["asset_query", "infrastructure_info"],
-                "get_asset_info": ["asset_query", "infrastructure_info"]
+                "get_asset_info": ["asset_query", "infrastructure_info"],
+                "asset_count": ["asset_query", "infrastructure_info", "resource_listing"],
+                "list_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+                "get_servers": ["asset_query", "infrastructure_info", "resource_listing"],
+                "query_assets": ["asset_query", "infrastructure_info"]
             }
         }
         
