@@ -1,0 +1,625 @@
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgres:17-alpine
+    container_name: opsconductor-postgres
+    environment:
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/complete-schema.sql:/docker-entrypoint-initdb.d/complete-schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: opsconductor-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - opsconductor-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Keycloak Identity and Access Management
+  keycloak:
+    build: ./keycloak
+    container_name: opsconductor-keycloak
+    ports:
+      - "8090:8080"  # Keycloak admin and auth port (mapped to 8090 to avoid conflict)
+    environment:
+      # Database configuration
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/opsconductor
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres123
+      KC_DB_SCHEMA: keycloak
+      
+      # Admin user configuration
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+      
+      # Keycloak configuration
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_PROXY: edge
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+      
+      # Import configuration
+      KC_IMPORT_REALM: false
+    command: 
+      - start-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # Kong API Gateway
+  kong:
+    build: ./kong
+    container_name: opsconductor-kong
+    ports:
+      - "3000:8000"  # Kong proxy port (map to 3000 to replace old API Gateway)
+      - "8001:8001"  # Kong admin API port
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+      KONG_PLUGINS: "bundled"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./kong/kong.yml:/usr/local/kong/declarative/kong.yml:ro
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Core Services
+  identity-service:
+    build: ./identity-service
+    container_name: opsconductor-identity
+    ports:
+      - "3001:3001"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: identity
+      REDIS_URL: redis://redis:6379/1
+      JWT_SECRET_KEY: your-secret-key-here
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: opsconductor
+      KEYCLOAK_CLIENT_ID: opsconductor-frontend
+      KEYCLOAK_CLIENT_SECRET: frontend-secret-key-2024
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./identity-service/main.py:/app/main.py
+      - ./identity-service/keycloak_adapter.py:/app/keycloak_adapter.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  asset-service:
+    build: ./asset-service
+    container_name: opsconductor-assets
+    ports:
+      - "3002:3002"
+    environment:
+      SERVICE_NAME: asset-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: assets
+      REDIS_URL: redis://redis:6379/2
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      # Service-specific encryption key with fallback for development
+      ASSET_SERVICE_ENCRYPTION_KEY: ${ASSET_SERVICE_ENCRYPTION_KEY:-Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=}
+      # Legacy key for backward compatibility
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-Uup6urR_7deaT0yKl9fI5qhohKmPRjvSQt_MCGXSLQw=}
+      # Optional: Previous keys for key rotation (comma-separated)
+      # ASSET_SERVICE_PREVIOUS_KEYS: ${ASSET_SERVICE_PREVIOUS_KEYS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./asset-service/main.py:/app/main.py
+      - ./asset-service/data:/app/data
+      - ./asset-service/tests/test_asset_service.py:/app/tests/test_asset_service.py
+      - ./asset-service/tests/test_asset_service_integration.py:/app/tests/test_asset_service_integration.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  automation-service:
+    build: ./automation-service
+    container_name: opsconductor-automation
+    ports:
+      - "3003:3003"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  communication-service:
+    build: ./communication-service
+    container_name: opsconductor-communication
+    ports:
+      - "3004:3004"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: communication
+      REDIS_URL: redis://redis:6379/4
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USERNAME: your-email@gmail.com
+      SMTP_PASSWORD: your-app-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./communication-service/main.py:/app/main.py
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Network Analyzer Service (Central Coordination Hub)
+  network-analyzer-service:
+    build: ./network-analyzer-service
+    container_name: opsconductor-network-analyzer
+    ports:
+      - "3006:3006"  # Expose port for remote probes
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: network_analysis
+      REDIS_URL: redis://redis:6379/6
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      AI_SERVICE_URL: http://ai-brain:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./network-analyzer-service/main.py:/app/main.py
+      - ./network-analyzer-service/models:/app/models
+      - ./network-analyzer-service/analyzers:/app/analyzers
+      - ./network-analyzer-service/agents:/app/agents
+      - ./network-analyzer-service/utils:/app/utils
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Network Analytics Probe - Temporarily disabled (directory not found)
+  # Will be enabled once network-analytics-probe directory is created
+
+  # Vector Database for AI Knowledge
+  chromadb:
+    image: chromadb/chroma:0.6.1
+    container_name: opsconductor-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    networks:
+      - opsconductor-net
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_SERVER_AUTH_PROVIDER=
+      - CHROMA_SERVER_AUTH_CREDENTIALS_PROVIDER=
+      - CHROMA_AUTH_TOKEN_TRANSPORT_HEADER=
+      - ANONYMIZED_TELEMETRY=False
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # Ollama LLM Server
+  ollama:
+    image: ollama/ollama:0.11.11
+    container_name: opsconductor-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - opsconductor-net
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # AI Brain Service - Unified Intelligent AI System
+  ai-brain:
+    build: ./ai-brain
+    container_name: opsconductor-ai-brain
+    ports:
+      - "3005:3005"
+    environment:
+      # Core database and service connections
+      ASSET_SERVICE_URL: http://asset-service:3002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      REDIS_URL: redis://redis:6379/9
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      
+      # AI infrastructure
+      CHROMADB_URL: http://chromadb:8000
+      OLLAMA_HOST: http://ollama:11434
+      
+      # New AI Brain configuration
+      SYSTEM_MODEL_ENABLED: true
+      KNOWLEDGE_GRAPH_ENABLED: true
+      JOB_CREATION_ENGINE_ENABLED: true
+      INTENT_ENGINE_ENABLED: true
+      
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+      asset-service:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      # Persist ChromaDB data
+      - ai-chromadb-data:/app/chromadb_data
+      
+      # Core files
+      - ./ai-brain/main.py:/app/main.py
+      - ./ai-brain/llm_conversation_handler.py:/app/llm_conversation_handler.py
+      
+      # AI modules (ONLY what Multi-Brain AI Engine needs)
+      - ./ai-brain/job_engine:/app/job_engine
+      - ./ai-brain/integrations:/app/integrations
+      - ./ai-brain/api:/app/api
+      - ./ai-brain/fulfillment_engine:/app/fulfillment_engine
+      
+      # Multi-brain system directories (CRITICAL - these were missing!)
+      - ./ai-brain/brains:/app/brains
+      - ./ai-brain/coordination:/app/coordination
+      - ./ai-brain/communication:/app/communication
+      - ./ai-brain/confidence:/app/confidence
+      - ./ai-brain/learning:/app/learning
+      - ./ai-brain/orchestration:/app/orchestration
+      - ./ai-brain/taxonomy:/app/taxonomy
+      
+      # Shared libraries
+      - ./shared:/app/shared
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 10
+      start_period: 2000s
+    restart: unless-stopped
+
+  # Background Workers
+  automation-worker-1:
+    build: ./automation-service
+    container_name: opsconductor-worker-1
+    command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-1@%h
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      HTTP_PROXY: http://nginx:8080
+      HTTPS_PROXY: http://nginx:8080
+      SERVICE_NAME: asset-service
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+      ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  automation-worker-2:
+    build: ./automation-service
+    container_name: opsconductor-worker-2
+    command: celery -A worker worker --loglevel=info --concurrency=12 --hostname=worker-2@%h
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: opsconductor
+      DB_USER: postgres
+      DB_PASSWORD: postgres123
+      DB_SCHEMA: automation
+      REDIS_URL: redis://redis:6379/3
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      ASSET_SERVICE_URL: http://asset-service:3002
+      COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      HTTP_PROXY: http://nginx:8080
+      HTTPS_PROXY: http://nginx:8080
+      SERVICE_NAME: asset-service
+      ASSET_SERVICE_ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+      ENCRYPTION_KEY: GHPOePf-DBdVW5QOAW3jmv6ZNIyLMZmoMAat1ZmDbQI=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      automation-service:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+  automation-scheduler:
+    build: ./automation-service
+    container_name: opsconductor-scheduler
+    command: celery -A worker beat --loglevel=info
+    environment:
+      REDIS_URL: redis://redis:6379/3
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - scheduler_data:/app/data
+    restart: unless-stopped
+
+  # Celery Monitoring with Flower
+  celery-monitor:
+    build: ./automation-service
+    container_name: opsconductor-celery-monitor
+    command: celery -A worker flower --port=5555 --broker=redis://redis:6379/3
+    ports:
+      - "5555:5555"
+    environment:
+      REDIS_URL: redis://redis:6379/3
+      FLOWER_BASIC_AUTH: admin:admin123
+    depends_on:
+      redis:
+        condition: service_healthy
+      automation-worker-1:
+        condition: service_started
+      automation-worker-2:
+        condition: service_started
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./automation-service/main.py:/app/main.py
+      - ./automation-service/worker.py:/app/worker.py
+      - ./automation-service/celery_monitor.py:/app/celery_monitor.py
+      - ./automation-service/websocket_manager.py:/app/websocket_manager.py
+      - ./automation-service/libraries:/app/libraries
+      - ./shared:/app/shared
+    restart: unless-stopped
+
+
+
+  # Frontend
+  frontend:
+    build: ./frontend
+    container_name: opsconductor-frontend
+    # Removed REACT_APP_API_URL to use dynamic URL detection
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      - ./frontend/package-lock.json:/app/package-lock.json
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/.env:/app/.env
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    build: ./nginx
+    container_name: opsconductor-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3100:443"  # Additional HTTPS port for compatibility
+      - "8080:8080"  # Forward proxy port for outbound connections
+    depends_on:
+      - kong
+      - frontend
+    networks:
+      - opsconductor-net
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    restart: unless-stopped
+
+networks:
+  opsconductor-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  keycloak_data:
+  scheduler_data:
+  chromadb_data:
+  ollama_models:
+  vector_data:
+  ai-chromadb-data:

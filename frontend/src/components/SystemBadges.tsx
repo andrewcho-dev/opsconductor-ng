@@ -61,13 +61,6 @@ const SystemBadges: React.FC = () => {
 
   const badges = [
     {
-      title: 'Users',
-      value: stats.users,
-      icon: Users,
-      color: 'var(--primary-blue)',
-      onClick: () => navigate('/user-management')
-    },
-    {
       title: 'Assets',
       value: stats.assets,
       icon: Target,
@@ -79,7 +72,7 @@ const SystemBadges: React.FC = () => {
       value: stats.jobs,
       icon: Settings,
       color: 'var(--warning-orange)',
-      onClick: () => navigate('/job-management')
+      onClick: () => navigate('/workflows')
     },
     {
       title: 'Runs',

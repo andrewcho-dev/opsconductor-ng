@@ -1,15 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
+import { assetApi, jobApi, jobRunApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import AIMonitor from '../components/AIMonitor';
-import { Users, Target, Settings, Play, RefreshCw, MessageSquare } from 'lucide-react';
+import { Target, Settings, Play, RefreshCw, MessageSquare } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [stats, setStats] = useState({
-    users: 0,
     assets: 0,
     jobs: 0,
     recentRuns: 0,
@@ -25,14 +24,12 @@ const Dashboard: React.FC = () => {
   const fetchStats = async () => {
     try {
       const requests = [
-        userApi.list(0, 1),
         assetApi.list(0, 1),
         jobApi.list(0, 1),
         jobRunApi.list(0, 1)
       ];
 
       const [
-        usersRes,
         assetsRes,
         jobsRes,
         runsRes
@@ -52,13 +49,11 @@ const Dashboard: React.FC = () => {
         return res.value?.total ?? 0;
       };
       // Log failures for debugging but keep dashboard rendering
-      if (usersRes.status === 'rejected') console.warn('Users stats failed:', usersRes.reason);
       if (assetsRes.status === 'rejected') console.warn('Assets stats failed:', assetsRes.reason);
       if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
       if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
 
       setStats({
-        users: getTotal(usersRes),
         assets: getTotal(assetsRes),
         jobs: getTotal(jobsRes),
         recentRuns: getTotal(runsRes)
@@ -215,15 +210,11 @@ const Dashboard: React.FC = () => {
           <h1>Dashboard</h1>
         </div>
         <div className="header-stats">
-          <Link to="/user-management" className="stat-pill">
-            <Users size={14} />
-            <span>{stats.users} Users</span>
-          </Link>
           <Link to="/assets" className="stat-pill">
             <Target size={14} />
             <span>{stats.assets} Assets</span>
           </Link>
-          <Link to="/job-management" className="stat-pill">
+          <Link to="/workflows" className="stat-pill">
             <Settings size={14} />
             <span>{stats.jobs} Jobs</span>
           </Link>

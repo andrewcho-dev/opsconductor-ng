@@ -1,0 +1,80 @@
+{
+  "realm": "opsconductor",
+  "displayName": "OpsConductor Identity Management",
+  "displayNameHtml": "<div class=\"kc-logo-text\"><span>OpsConductor</span></div>",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "registrationEmailAsUsername": false,
+  "rememberMe": true,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 30,
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@opsconductor.local",
+      "firstName": "System",
+      "lastName": "Administrator", 
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"],
+      "attributes": {}
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "opsconductor-frontend",
+      "name": "OpsConductor Frontend Application",
+      "description": "React frontend application for OpsConductor",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:3100/*",
+        "https://localhost:3100/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:3100",
+        "https://localhost:3100"
+      ],
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrator role with full system access"
+      },
+      {
+        "name": "operator", 
+        "description": "Operator role with execution permissions"
+      },
+      {
+        "name": "viewer",
+        "description": "Read-only access to system resources"
+      }
+    ]
+  }
+}

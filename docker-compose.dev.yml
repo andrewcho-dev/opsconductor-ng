@@ -87,6 +87,65 @@ services:
       retries: 3
       start_period: 30s
 
+  # Kong API Gateway
+  kong:
+    image: kong:3.4
+    container_name: opsconductor-kong-dev
+    ports:
+      - "3000:8000"     # Main API Gateway port
+      - "8888:8001"     # Kong Admin API (moved to avoid conflict)
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+    volumes:
+      - ./kong/kong.yml:/kong/kong.yml:ro
+    networks:
+      - opsconductor-dev
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Keycloak Identity Provider
+  keycloak:
+    image: keycloak/keycloak:22.0.1
+    container_name: opsconductor-keycloak-dev
+    ports:
+      - "8090:8080"   # Keycloak admin and auth port
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://postgres:5432/opsconductor"
+      KC_DB_USERNAME: opsconductor
+      KC_DB_PASSWORD: opsconductor_secure_2024
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: OpsConductor2024!
+    command: 
+      - start
+      - --import-realm
+    volumes:
+      - ./keycloak/opsconductor-realm.json:/opt/keycloak/data/import/opsconductor-realm.json:ro
+    networks:
+      - opsconductor-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /auth/realms/master HTTP/1.1\r\nhost: http://localhost\r\nConnection: close\r\n\r\n' >&3;grep 'HTTP/1.1 200 OK' <&3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   # NEW 4-Stage AI Pipeline - NEWIDEA.MD Architecture
   ai-pipeline:
     build:
@@ -99,7 +158,7 @@ services:
       PREFECT_API_URL: http://prefect-server:4200/api
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
-      AUTOMATION_SERVICE_URL: http://automation-service:8001
+      AUTOMATION_SERVICE_URL: http://automation-service:8010
       ASSET_SERVICE_URL: http://asset-service:8002
       NETWORK_SERVICE_URL: http://network-service:8003
       COMMUNICATION_SERVICE_URL: http://communication-service:8004
@@ -140,7 +199,7 @@ services:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
     ports:
-      - "8001:3003"
+      - "8010:3003"
     volumes:
       # DEVELOPMENT VOLUME MOUNTS - Live file changes
       - ./automation-service/main_clean.py:/app/main_clean.py
@@ -286,7 +345,7 @@ services:
       dockerfile: Dockerfile
     container_name: opsconductor-frontend-dev
     ports:
-      - "3000:3000"
+      - "3100:3000"  # Expose on 3100 to avoid Kong conflict
     volumes:
       # DEVELOPMENT VOLUME MOUNTS - Live file changes for React development
       - ./frontend/src:/app/src
@@ -299,6 +358,6 @@ services:
       - opsconductor-dev
     environment:
       - CHOKIDAR_USEPOLLING=true  # Enable hot reload in Docker
-      - REACT_APP_API_URL=http://localhost:3005
+      - REACT_APP_API_URL=http://192.168.10.50:3000  # Use Kong gateway
     depends_on:
       - ai-pipeline

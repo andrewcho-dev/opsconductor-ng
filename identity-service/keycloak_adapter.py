@@ -73,11 +73,11 @@ class KeycloakAdapter:
         """Authenticate user with Keycloak"""
         try:
             async with httpx.AsyncClient() as client:
+                # For public clients, don't send client_secret
                 response = await client.post(
                     f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/token",
                     data={
                         'client_id': self.client_id,
-                        'client_secret': self.client_secret,
                         'username': username,
                         'password': password,
                         'grant_type': 'password'
@@ -114,14 +114,13 @@ class KeycloakAdapter:
             # Get signing key
             signing_key = self.jwks_client.get_signing_key_from_jwt(token)
             
-            # Decode token
+            # Decode token (skip audience verification for now as Keycloak tokens may not include expected audience)
             payload = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["RS256"],
                 issuer=self.issuer,
-                audience="account",
-                options={"verify_exp": True}
+                options={"verify_exp": True, "verify_aud": False}
             )
             
             # Extract user information

@@ -1,7 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
 import {
-  User, UserCreate, UserUpdate, UserListResponse,
-  Role, RoleCreate, RoleUpdate, RoleListResponse,
   Credential, CredentialCreate, CredentialListResponse, CredentialDecrypted,
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,

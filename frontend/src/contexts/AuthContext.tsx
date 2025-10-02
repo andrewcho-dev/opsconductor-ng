@@ -51,7 +51,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(false);
   }, []);
 
-  const login = (newToken: string, newUser: User) => {
+  const login = (newToken: string, newUser: KeycloakUser) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('access_token', newToken);

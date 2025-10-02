@@ -60,7 +60,7 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   expires_in: number;
-  user: User;
+  user: KeycloakUser;
 }
 
 // Credential Types
@@ -188,16 +188,7 @@ export interface JobRunStep {
 
 
 // List Response Types
-export interface UserListResponse {
-  data: User[];
-  meta: {
-    total_items: number;
-    skip: number;
-    limit: number;
-    has_more: boolean;
-  };
-  total: number; // For backward compatibility
-}
+// No UserListResponse needed - user management through Keycloak only
 
 export interface CredentialListResponse {
   credentials: Credential[];
@@ -342,41 +333,8 @@ export interface CommunicationTestResponse {
   details?: string;
 }
 
-// Role Types
-export interface Role {
-  id: number;
-  name: string;
-  description: string;
-  permissions: string[];
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RoleCreate {
-  name: string;
-  description: string;
-  permissions: string[];
-  is_active?: boolean;
-}
-
-export interface RoleUpdate {
-  name?: string;
-  description?: string;
-  permissions?: string[];
-  is_active?: boolean;
-}
-
-export interface RoleListResponse {
-  data: Role[];
-  meta: {
-    total_items: number;
-    skip: number;
-    limit: number;
-    has_more: boolean;
-  };
-  total: number; // For backward compatibility
-}
+// Role Types - REMOVED - Use Keycloak roles only
+// Roles are managed through Keycloak realm roles and client roles
 
 // Notification Types (matching backend communication service)
 export interface Notification {

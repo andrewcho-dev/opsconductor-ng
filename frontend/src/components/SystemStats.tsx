@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Target, Settings, Play } from 'lucide-react';
-import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
+import { Target, Settings, Play } from 'lucide-react';
+import { assetApi, jobApi, jobRunApi } from '../services/api';
 
 interface SystemStats {
-  users: number;
   assets: number;
   jobs: number;
   recentRuns: number;

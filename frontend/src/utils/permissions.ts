@@ -1,222 +1,219 @@
-// Permission checking utilities for RBAC
+// Permission checking utilities for Keycloak-based RBAC
+import { KeycloakUser } from '../types';
 
-export interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  permissions?: string[];
-  first_name?: string;
-  last_name?: string;
-}
+// Define permissions based on Keycloak realm roles
+export const KEYCLOAK_ROLES = {
+  ADMIN: 'admin',
+  MANAGER: 'manager', 
+  OPERATOR: 'operator',
+  DEVELOPER: 'developer',
+  VIEWER: 'viewer',
+} as const;
 
-// Define all available permissions in the system
+// Basic permissions - simplified since Keycloak handles complex RBAC
 export const PERMISSIONS = {
-  // User management
-  USERS_READ: 'users:read',
-  USERS_CREATE: 'users:create',
-  USERS_UPDATE: 'users:update',
-  USERS_DELETE: 'users:delete',
+  // Core system access
+  SYSTEM_ACCESS: 'system:access',
+  SYSTEM_ADMIN: 'system:admin',
   
-  // Role management
-  ROLES_READ: 'roles:read',
-  ROLES_CREATE: 'roles:create',
-  ROLES_UPDATE: 'roles:update',
-  ROLES_DELETE: 'roles:delete',
+  // Asset management
+  ASSETS_READ: 'assets:read',
+  ASSETS_WRITE: 'assets:write',
   
-  // Job management
+  // Job/workflow management
   JOBS_READ: 'jobs:read',
-  JOBS_CREATE: 'jobs:create',
-  JOBS_UPDATE: 'jobs:update',
-  JOBS_DELETE: 'jobs:delete',
+  JOBS_WRITE: 'jobs:write',
   JOBS_EXECUTE: 'jobs:execute',
-  
-  // Target management
-  TARGETS_READ: 'targets:read',
-  TARGETS_CREATE: 'targets:create',
-  TARGETS_UPDATE: 'targets:update',
-  TARGETS_DELETE: 'targets:delete',
-  
-  // Execution monitoring
-  EXECUTIONS_READ: 'executions:read',
-  
-
-  
-  // Network analysis
-  NETWORK_ANALYSIS_READ: 'network:analysis:read',
-  NETWORK_ANALYSIS_WRITE: 'network:analysis:write',
-  NETWORK_CAPTURE_START: 'network:capture:start',
-  NETWORK_CAPTURE_STOP: 'network:capture:stop',
-  NETWORK_MONITORING_READ: 'network:monitoring:read',
-  NETWORK_MONITORING_WRITE: 'network:monitoring:write',
   
   // Settings
   SETTINGS_READ: 'settings:read',
-  SETTINGS_UPDATE: 'settings:update',
+  SETTINGS_WRITE: 'settings:write',
   SMTP_CONFIG: 'smtp:config',
   
-
+  // Network analysis
+  NETWORK_ANALYSIS: 'network:analysis',
   
-  // System administration
-  SYSTEM_ADMIN: 'system:admin',
-} as const;
-
-// Permission groups for easier role management
-export const PERMISSION_GROUPS = {
-  USER_MANAGEMENT: [
-    PERMISSIONS.USERS_READ,
-    PERMISSIONS.USERS_CREATE,
-    PERMISSIONS.USERS_UPDATE,
-    PERMISSIONS.USERS_DELETE,
-  ],
-  ROLE_MANAGEMENT: [
-    PERMISSIONS.ROLES_READ,
-    PERMISSIONS.ROLES_CREATE,
-    PERMISSIONS.ROLES_UPDATE,
-    PERMISSIONS.ROLES_DELETE,
-  ],
-  JOB_MANAGEMENT: [
-    PERMISSIONS.JOBS_READ,
-    PERMISSIONS.JOBS_CREATE,
-    PERMISSIONS.JOBS_UPDATE,
-    PERMISSIONS.JOBS_DELETE,
-    PERMISSIONS.JOBS_EXECUTE,
-  ],
-  TARGET_MANAGEMENT: [
-    PERMISSIONS.TARGETS_READ,
-    PERMISSIONS.TARGETS_CREATE,
-    PERMISSIONS.TARGETS_UPDATE,
-    PERMISSIONS.TARGETS_DELETE,
-  ],
-
-  NETWORK_ANALYSIS: [
-    PERMISSIONS.NETWORK_ANALYSIS_READ,
-    PERMISSIONS.NETWORK_ANALYSIS_WRITE,
-    PERMISSIONS.NETWORK_CAPTURE_START,
-    PERMISSIONS.NETWORK_CAPTURE_STOP,
-    PERMISSIONS.NETWORK_MONITORING_READ,
-    PERMISSIONS.NETWORK_MONITORING_WRITE,
-  ],
-
-  SETTINGS_MANAGEMENT: [
-    PERMISSIONS.SETTINGS_READ,
-    PERMISSIONS.SETTINGS_UPDATE,
-    PERMISSIONS.SMTP_CONFIG,
-  ],
-
 } as const;
 
 /**
- * Check if user has a specific permission
+ * Check if Keycloak user has a specific realm role
  */
-export const hasPermission = (user: User | null, permission: string): boolean => {
-  if (!user || !user.permissions) {
+export const hasRole = (user: KeycloakUser | null, role: string): boolean => {
+  if (!user?.realm_access?.roles) {
     return false;
   }
-  
-  // Admin wildcard permission grants everything
-  if (user.permissions.includes('*')) {
-    return true;
-  }
-  
-  return user.permissions.includes(permission);
-};
-
-/**
- * Check if user has any of the specified permissions
- */
-export const hasAnyPermission = (user: User | null, permissions: string[]): boolean => {
-  if (!user || !user.permissions) {
-    return false;
-  }
-  
-  // Admin wildcard permission grants everything
-  if (user.permissions.includes('*')) {
-    return true;
-  }
-  
-  return permissions.some(permission => user.permissions!.includes(permission));
-};
-
-/**
- * Check if user has all of the specified permissions
- */
-export const hasAllPermissions = (user: User | null, permissions: string[]): boolean => {
-  if (!user || !user.permissions) {
-    return false;
-  }
-  
-  // Admin wildcard permission grants everything
-  if (user.permissions.includes('*')) {
-    return true;
-  }
-  
-  return permissions.every(permission => user.permissions!.includes(permission));
-};
-
-/**
- * Check if user has a specific role
- */
-export const hasRole = (user: User | null, role: string): boolean => {
-  if (!user) {
-    return false;
-  }
-  
-  return user.role === role;
+  return user.realm_access.roles.includes(role);
 };
 
 /**
  * Check if user has any of the specified roles
  */
-export const hasAnyRole = (user: User | null, roles: string[]): boolean => {
-  if (!user) {
+export const hasAnyRole = (user: KeycloakUser | null, roles: string[]): boolean => {
+  if (!user?.realm_access?.roles) {
     return false;
   }
-  
-  return roles.includes(user.role);
+  return roles.some(role => user.realm_access.roles.includes(role));
 };
 
 /**
- * Check if user is admin (has admin role or wildcard permission)
+ * Check if user has admin role
  */
-export const isAdmin = (user: User | null): boolean => {
-  if (!user) {
-    return false;
-  }
-  
-  return user.role === 'admin' || !!(user.permissions && user.permissions.includes('*'));
+export const isAdmin = (user: KeycloakUser | null): boolean => {
+  return hasRole(user, KEYCLOAK_ROLES.ADMIN);
 };
 
 /**
- * Get user's display name
+ * Check if user can manage system settings
  */
-export const getUserDisplayName = (user: User | null): string => {
+export const canManageSettings = (user: KeycloakUser | null): boolean => {
+  return hasAnyRole(user, [KEYCLOAK_ROLES.ADMIN, KEYCLOAK_ROLES.MANAGER]);
+};
+
+/**
+ * Check if user can execute jobs
+ */
+export const canExecuteJobs = (user: KeycloakUser | null): boolean => {
+  return hasAnyRole(user, [
+    KEYCLOAK_ROLES.ADMIN, 
+    KEYCLOAK_ROLES.MANAGER, 
+    KEYCLOAK_ROLES.OPERATOR
+  ]);
+};
+
+/**
+ * Check if user can manage assets
+ */
+export const canManageAssets = (user: KeycloakUser | null): boolean => {
+  return hasAnyRole(user, [
+    KEYCLOAK_ROLES.ADMIN, 
+    KEYCLOAK_ROLES.MANAGER, 
+    KEYCLOAK_ROLES.OPERATOR
+  ]);
+};
+
+/**
+ * Check if user can view system (basic access)
+ */
+export const canViewSystem = (user: KeycloakUser | null): boolean => {
+  // All authenticated users with any role can view
+  return user?.realm_access?.roles?.length > 0;
+};
+
+/**
+ * Get user's display name from Keycloak token
+ */
+export const getUserDisplayName = (user: KeycloakUser | null): string => {
   if (!user) {
     return 'Unknown User';
   }
   
-  if (user.first_name && user.last_name) {
-    return `${user.first_name} ${user.last_name}`;
+  if (user.name) {
+    return user.name;
   }
   
-  if (user.first_name) {
-    return user.first_name;
+  if (user.given_name && user.family_name) {
+    return `${user.given_name} ${user.family_name}`;
   }
   
-  return user.username;
+  if (user.given_name) {
+    return user.given_name;
+  }
+  
+  return user.preferred_username || user.username || user.email || 'User';
 };
 
 /**
- * Get user's role display name
+ * Get user's primary role for display
  */
-export const getRoleDisplayName = (role: string): string => {
-  const roleNames: Record<string, string> = {
-    admin: 'Administrator',
-    manager: 'Manager',
-    operator: 'Operator',
-    developer: 'Developer',
-    viewer: 'Viewer',
-  };
+export const getUserPrimaryRole = (user: KeycloakUser | null): string => {
+  if (!user?.realm_access?.roles) {
+    return 'No Role';
+  }
   
-  return roleNames[role] || role.charAt(0).toUpperCase() + role.slice(1);
+  const roles = user.realm_access.roles;
+  
+  // Priority order for displaying role
+  const rolePriority = [
+    KEYCLOAK_ROLES.ADMIN,
+    KEYCLOAK_ROLES.MANAGER,
+    KEYCLOAK_ROLES.DEVELOPER,
+    KEYCLOAK_ROLES.OPERATOR,
+    KEYCLOAK_ROLES.VIEWER
+  ];
+  
+  for (const role of rolePriority) {
+    if (roles.includes(role)) {
+      return role.charAt(0).toUpperCase() + role.slice(1);
+    }
+  }
+  
+  // Return first role if no priority match
+  return roles[0]?.charAt(0).toUpperCase() + roles[0]?.slice(1) || 'User';
 };
+
+/**
+ * LEGACY COMPATIBILITY: hasPermission function that maps to Keycloak roles
+ * This allows existing code to work while migrating to pure Keycloak RBAC
+ */
+export const hasPermission = (user: KeycloakUser | null, permission: string): boolean => {
+  if (!user) return false;
+  
+  // Admin has all permissions
+  if (isAdmin(user)) return true;
+  
+  // Map legacy permissions to Keycloak role checks
+  switch (permission) {
+    case 'users:read':
+    case 'users:create':
+    case 'users:update':
+    case 'users:delete':
+    case 'roles:read':
+    case 'roles:create':
+    case 'roles:update':
+    case 'roles:delete':
+      // User/role management is admin-only since it's handled by Keycloak
+      return isAdmin(user);
+      
+    case 'jobs:read':
+      return canViewSystem(user);
+    case 'jobs:create':
+    case 'jobs:update':
+    case 'jobs:delete':
+    case 'jobs:execute':
+      return canExecuteJobs(user);
+      
+    case 'targets:read':
+    case 'assets:read':
+      return canViewSystem(user);
+    case 'targets:create':
+    case 'targets:update':
+    case 'targets:delete':
+    case 'assets:create':
+    case 'assets:update':
+    case 'assets:delete':
+      return canManageAssets(user);
+      
+    case 'settings:read':
+    case 'settings:update':
+    case 'smtp:config':
+      return canManageSettings(user);
+      
+    case 'network:analysis:read':
+    case 'network:analysis:write':
+    case 'network:capture:start':
+    case 'network:capture:stop':
+    case 'network:monitoring:read':
+    case 'network:monitoring:write':
+      return hasAnyRole(user, [KEYCLOAK_ROLES.ADMIN, KEYCLOAK_ROLES.MANAGER, KEYCLOAK_ROLES.OPERATOR]);
+      
+    case 'system:admin':
+      return isAdmin(user);
+      
+    default:
+      // Default to viewer access for unknown permissions
+      return canViewSystem(user);
+  }
+};
+
+// Export legacy PERMISSIONS for backward compatibility
+export { PERMISSIONS };

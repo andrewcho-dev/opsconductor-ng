@@ -1,9 +1,8 @@
--- OpsConductor - Complete Database Schema
+-- OpsConductor - Complete Database Schema (Keycloak Only)
 -- This file contains ALL tables, indexes, functions, and initial data
--- Required for a fresh installation to work completely
+-- Identity management is handled ENTIRELY by Keycloak
 
--- Create schemas for each service
-CREATE SCHEMA IF NOT EXISTS identity;
+-- Create schemas for each service (NO identity schema needed)
 CREATE SCHEMA IF NOT EXISTS assets;
 CREATE SCHEMA IF NOT EXISTS automation;
 CREATE SCHEMA IF NOT EXISTS communication;
@@ -11,64 +10,10 @@ CREATE SCHEMA IF NOT EXISTS network_analysis;
 CREATE SCHEMA IF NOT EXISTS keycloak;
 
 -- ============================================================================
--- IDENTITY SERVICE SCHEMA
+-- NO IDENTITY SERVICE SCHEMA - USE KEYCLOAK ONLY
 -- ============================================================================
-
--- Users table
-CREATE TABLE IF NOT EXISTS identity.users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
-    telephone VARCHAR(20),
-    title VARCHAR(100),
-    is_active BOOLEAN DEFAULT true,
-    is_admin BOOLEAN DEFAULT false,
-    last_login TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Roles table
-CREATE TABLE IF NOT EXISTS identity.roles (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,
-    description TEXT,
-    permissions JSONB DEFAULT '[]',
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- User roles mapping
-CREATE TABLE IF NOT EXISTS identity.user_roles (
-    user_id INTEGER REFERENCES identity.users(id) ON DELETE CASCADE,
-    role_id INTEGER REFERENCES identity.roles(id) ON DELETE CASCADE,
-    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    assigned_by INTEGER REFERENCES identity.users(id),
-    PRIMARY KEY (user_id, role_id)
-);
-
--- User sessions
-CREATE TABLE IF NOT EXISTS identity.user_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id INTEGER REFERENCES identity.users(id) ON DELETE CASCADE,
-    refresh_token_hash VARCHAR(255) NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_used_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    user_agent TEXT,
-    ip_address INET
-);
-
--- User preferences
-CREATE TABLE IF NOT EXISTS identity.user_preferences (
-    user_id INTEGER PRIMARY KEY REFERENCES identity.users(id) ON DELETE CASCADE,
-    preferences JSONB DEFAULT '{}',
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- All user management, roles, permissions handled by Keycloak
+-- No local user/role tables needed
 
 -- ============================================================================
 -- ASSETS SERVICE SCHEMA - CONSOLIDATED
@@ -98,401 +43,248 @@ CREATE TABLE IF NOT EXISTS assets.assets (
     -- Primary Service Credentials (ONE credential type per service)
     credential_type VARCHAR(50), -- 'username_password', 'ssh_key', 'api_key', 'bearer_token', 'certificate'
     username VARCHAR(255),
-    password_encrypted TEXT,
-    private_key_encrypted TEXT,
-    public_key TEXT,
-    api_key_encrypted TEXT,
-    bearer_token_encrypted TEXT,
-    certificate_encrypted TEXT,
-    passphrase_encrypted TEXT,
-    domain VARCHAR(255), -- For Windows domain authentication
+    password_encrypted TEXT, -- Encrypted password
+    ssh_private_key_encrypted TEXT, -- Encrypted SSH private key
+    ssh_passphrase_encrypted TEXT, -- Encrypted SSH key passphrase
+    api_key_encrypted TEXT, -- Encrypted API key
+    bearer_token_encrypted TEXT, -- Encrypted bearer token
+    certificate_encrypted TEXT, -- Encrypted certificate
+    certificate_key_encrypted TEXT, -- Encrypted certificate private key
     
-    -- Additional Services (each with their own single credential)
-    additional_services JSONB DEFAULT '[]', -- Array of service objects, each with ONE credential
-    
-    -- Status and Metadata
-    is_active BOOLEAN DEFAULT true,
-    connection_status VARCHAR(50), -- 'unknown', 'connected', 'failed', 'timeout'
-    last_tested_at TIMESTAMP WITH TIME ZONE,
+    -- Additional Metadata
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'inactive', 'maintenance'
+    last_tested TIMESTAMP WITH TIME ZONE,
+    test_result VARCHAR(20), -- 'success', 'failed', 'timeout', null
+    test_message TEXT,
     notes TEXT,
     
-    -- Audit Fields
-    created_by INTEGER, -- Reference to identity.users(id)
-    updated_by INTEGER, -- Reference to identity.users(id)
+    -- Discovery Information
+    discovered_by VARCHAR(100), -- 'manual', 'network_scan', 'import'
+    discovery_source VARCHAR(255), -- source system/scan that discovered this asset
+    
+    -- Asset Grouping and Environment
+    environment VARCHAR(50) DEFAULT 'production', -- 'production', 'staging', 'development', 'test'
+    criticality VARCHAR(20) DEFAULT 'medium', -- 'low', 'medium', 'high', 'critical'
+    asset_group VARCHAR(100), -- Logical grouping (e.g., 'web_servers', 'databases')
+    location VARCHAR(100), -- Physical/logical location
+    
+    -- Automation Integration
+    automation_enabled BOOLEAN DEFAULT true,
+    automation_tags JSONB DEFAULT '[]', -- Tags specifically for automation targeting
+    
+    -- Tracking
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(100), -- User who created this asset
+    updated_by VARCHAR(100)  -- User who last updated this asset
 );
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_assets_hostname ON assets.assets(hostname);
+CREATE INDEX IF NOT EXISTS idx_assets_ip_address ON assets.assets(ip_address);
+CREATE INDEX IF NOT EXISTS idx_assets_service_type ON assets.assets(service_type);
+CREATE INDEX IF NOT EXISTS idx_assets_status ON assets.assets(status);
+CREATE INDEX IF NOT EXISTS idx_assets_environment ON assets.assets(environment);
+CREATE INDEX IF NOT EXISTS idx_assets_asset_group ON assets.assets(asset_group);
+CREATE INDEX IF NOT EXISTS idx_assets_tags ON assets.assets USING GIN (tags);
+CREATE INDEX IF NOT EXISTS idx_assets_automation_tags ON assets.assets USING GIN (automation_tags);
+CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets.assets(created_at);
+CREATE INDEX IF NOT EXISTS idx_assets_last_tested ON assets.assets(last_tested);
 
 -- ============================================================================
 -- AUTOMATION SERVICE SCHEMA
 -- ============================================================================
 
--- Jobs/Workflows
+-- Jobs table
 CREATE TABLE IF NOT EXISTS automation.jobs (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    job_type VARCHAR(50) NOT NULL DEFAULT 'general',
-    workflow_definition JSONB NOT NULL,
-    schedule_expression VARCHAR(255), -- Cron expression
-    is_enabled BOOLEAN DEFAULT true,
+    steps JSONB NOT NULL DEFAULT '[]',
+    parameters JSONB DEFAULT '{}',
     tags JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    created_by INTEGER NOT NULL,
-    updated_by INTEGER NOT NULL,
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100)
 );
 
--- Job executions
-CREATE TABLE IF NOT EXISTS automation.job_executions (
+-- Job runs table
+CREATE TABLE IF NOT EXISTS automation.job_runs (
     id SERIAL PRIMARY KEY,
     job_id INTEGER REFERENCES automation.jobs(id) ON DELETE CASCADE,
-    execution_id UUID UNIQUE DEFAULT gen_random_uuid(),
-    status VARCHAR(50) DEFAULT 'queued', -- 'queued', 'running', 'completed', 'failed', 'cancelled'
-    trigger_type VARCHAR(50) NOT NULL, -- 'manual', 'scheduled', 'webhook', 'api'
-    input_data JSONB DEFAULT '{}',
-    output_data JSONB DEFAULT '{}',
-    error_message TEXT,
-    started_at TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'running', 'completed', 'failed', 'cancelled'
+    parameters JSONB DEFAULT '{}',
+    output JSONB DEFAULT '{}',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE,
-    started_by INTEGER,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_by VARCHAR(100),
+    execution_context JSONB DEFAULT '{}'
 );
 
--- Step executions (for detailed tracking)
-CREATE TABLE IF NOT EXISTS automation.step_executions (
+-- Job run steps
+CREATE TABLE IF NOT EXISTS automation.job_run_steps (
     id SERIAL PRIMARY KEY,
-    job_execution_id INTEGER REFERENCES automation.job_executions(id) ON DELETE CASCADE,
-    step_id VARCHAR(255) NOT NULL,
+    job_run_id INTEGER REFERENCES automation.job_runs(id) ON DELETE CASCADE,
     step_name VARCHAR(255) NOT NULL,
     step_type VARCHAR(100) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending',
+    status VARCHAR(20) DEFAULT 'pending',
     input_data JSONB DEFAULT '{}',
     output_data JSONB DEFAULT '{}',
     error_message TEXT,
-    started_at TIMESTAMP WITH TIME ZONE,
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE,
-    execution_order INTEGER NOT NULL
+    duration_seconds INTEGER
 );
 
--- Job schedules
-CREATE TABLE IF NOT EXISTS automation.job_schedules (
-    id SERIAL PRIMARY KEY,
-    job_id INTEGER REFERENCES automation.jobs(id) ON DELETE CASCADE,
-    schedule_expression VARCHAR(255) NOT NULL,
-    timezone VARCHAR(100) DEFAULT 'UTC',
-    is_active BOOLEAN DEFAULT true,
-    next_run_at TIMESTAMP WITH TIME ZONE,
-    last_run_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_jobs_name ON automation.jobs(name);
+CREATE INDEX IF NOT EXISTS idx_jobs_is_active ON automation.jobs(is_active);
+CREATE INDEX IF NOT EXISTS idx_jobs_tags ON automation.jobs USING GIN (tags);
+CREATE INDEX IF NOT EXISTS idx_job_runs_job_id ON automation.job_runs(job_id);
+CREATE INDEX IF NOT EXISTS idx_job_runs_status ON automation.job_runs(status);
+CREATE INDEX IF NOT EXISTS idx_job_runs_started_at ON automation.job_runs(started_at);
+CREATE INDEX IF NOT EXISTS idx_job_run_steps_job_run_id ON automation.job_run_steps(job_run_id);
+CREATE INDEX IF NOT EXISTS idx_job_run_steps_status ON automation.job_run_steps(status);
 
 -- ============================================================================
 -- COMMUNICATION SERVICE SCHEMA
 -- ============================================================================
 
--- Notification templates
-CREATE TABLE IF NOT EXISTS communication.notification_templates (
+-- Communication channels
+CREATE TABLE IF NOT EXISTS communication.channels (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,
-    template_type VARCHAR(50) NOT NULL, -- 'email', 'webhook', 'slack'
-    subject_template TEXT,
-    body_template TEXT NOT NULL,
-    metadata JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT true,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Notification channels
-CREATE TABLE IF NOT EXISTS communication.notification_channels (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    channel_type VARCHAR(50) NOT NULL, -- 'email', 'webhook', 'slack'
+    name VARCHAR(100) NOT NULL UNIQUE,
+    type VARCHAR(50) NOT NULL, -- 'email', 'slack', 'teams', 'discord', 'webhook'
     configuration JSONB NOT NULL,
     is_active BOOLEAN DEFAULT true,
-    created_by INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Notifications
+-- Message templates
+CREATE TABLE IF NOT EXISTS communication.templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    subject VARCHAR(255),
+    body TEXT NOT NULL,
+    template_type VARCHAR(50) NOT NULL, -- 'job_success', 'job_failure', 'system_alert', etc.
+    variables JSONB DEFAULT '[]', -- Array of variable names used in template
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Notifications/messages sent
 CREATE TABLE IF NOT EXISTS communication.notifications (
     id SERIAL PRIMARY KEY,
-    notification_id UUID UNIQUE DEFAULT gen_random_uuid(),
-    template_id INTEGER REFERENCES communication.notification_templates(id),
-    channel_id INTEGER REFERENCES communication.notification_channels(id),
+    channel_id INTEGER REFERENCES communication.channels(id),
+    template_id INTEGER REFERENCES communication.templates(id),
     recipient VARCHAR(255) NOT NULL,
-    subject VARCHAR(500),
+    subject VARCHAR(255),
     message TEXT NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'sent', 'failed', 'retrying'
-    attempts INTEGER DEFAULT 0,
-    max_attempts INTEGER DEFAULT 3,
-    error_message TEXT,
-    metadata JSONB DEFAULT '{}',
-    scheduled_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'sent', 'failed', 'retrying'
     sent_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
 );
 
 -- Audit logs
 CREATE TABLE IF NOT EXISTS communication.audit_logs (
     id SERIAL PRIMARY KEY,
-    event_type VARCHAR(100) NOT NULL,
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id VARCHAR(255) NOT NULL,
-    user_id INTEGER,
+    user_id VARCHAR(100) NOT NULL, -- From Keycloak
     action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(50),
+    resource_id VARCHAR(100),
     details JSONB DEFAULT '{}',
     ip_address INET,
     user_agent TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- ============================================================================
--- INDEXES FOR PERFORMANCE
--- ============================================================================
-
--- Identity service indexes
-CREATE INDEX IF NOT EXISTS idx_users_email ON identity.users(email);
-CREATE INDEX IF NOT EXISTS idx_users_username ON identity.users(username);
-CREATE INDEX IF NOT EXISTS idx_users_active ON identity.users(is_active);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON identity.user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON identity.user_sessions(expires_at);
-
--- Assets service indexes (consolidated)
-CREATE INDEX IF NOT EXISTS idx_assets_hostname ON assets.assets(hostname);
-CREATE INDEX IF NOT EXISTS idx_assets_ip_address ON assets.assets(ip_address);
-CREATE INDEX IF NOT EXISTS idx_assets_os_type ON assets.assets(os_type);
-CREATE INDEX IF NOT EXISTS idx_assets_service_type ON assets.assets(service_type);
-CREATE INDEX IF NOT EXISTS idx_assets_is_active ON assets.assets(is_active);
-CREATE INDEX IF NOT EXISTS idx_assets_created_at ON assets.assets(created_at);
-CREATE INDEX IF NOT EXISTS idx_assets_tags ON assets.assets USING GIN(tags);
-CREATE INDEX IF NOT EXISTS idx_assets_additional_services ON assets.assets USING GIN(additional_services);
-
--- Automation service indexes
-CREATE INDEX IF NOT EXISTS idx_jobs_enabled ON automation.jobs(is_enabled);
-CREATE INDEX IF NOT EXISTS idx_jobs_created_by ON automation.jobs(created_by);
-CREATE INDEX IF NOT EXISTS idx_jobs_job_type ON automation.jobs(job_type);
-CREATE INDEX IF NOT EXISTS idx_job_executions_job_id ON automation.job_executions(job_id);
-CREATE INDEX IF NOT EXISTS idx_job_executions_status ON automation.job_executions(status);
-CREATE INDEX IF NOT EXISTS idx_job_executions_created_at ON automation.job_executions(created_at);
-CREATE INDEX IF NOT EXISTS idx_step_executions_job_execution_id ON automation.step_executions(job_execution_id);
-
--- Communication service indexes
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_channels_name ON communication.channels(name);
+CREATE INDEX IF NOT EXISTS idx_channels_type ON communication.channels(type);
+CREATE INDEX IF NOT EXISTS idx_templates_name ON communication.templates(name);
+CREATE INDEX IF NOT EXISTS idx_templates_type ON communication.templates(template_type);
+CREATE INDEX IF NOT EXISTS idx_notifications_channel_id ON communication.notifications(channel_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_status ON communication.notifications(status);
-CREATE INDEX IF NOT EXISTS idx_notifications_scheduled_at ON communication.notifications(scheduled_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON communication.audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON communication.notifications(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON communication.audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON communication.audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON communication.audit_logs(created_at);
-
--- ============================================================================
--- FUNCTIONS AND TRIGGERS
--- ============================================================================
-
--- Function to automatically update updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to automatically update updated_at for assets
-DROP TRIGGER IF EXISTS trigger_assets_updated_at ON assets.assets;
-CREATE TRIGGER trigger_assets_updated_at
-    BEFORE UPDATE ON assets.assets
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
--- ============================================================================
--- INITIAL DATA
--- ============================================================================
-
--- Create default admin user (password: admin123)
-INSERT INTO identity.users (username, email, password_hash, first_name, last_name, is_admin) 
-VALUES ('admin', 'admin@opsconductor.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj/SJx/6tZrm', 'System', 'Administrator', true)
-ON CONFLICT (username) DO NOTHING;
-
--- Create default roles
-INSERT INTO identity.roles (name, description, permissions, is_active) VALUES 
-('admin', 'System Administrator', '["*"]', true),
-('manager', 'Team Manager', '[
-  "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
-  "targets:read", "targets:create", "targets:update",
-  "executions:read", "users:read",
-  "network:analysis:read", "network:monitoring:read"
-]', true),
-('operator', 'System Operator', '[
-  "jobs:read", "jobs:create", "jobs:update", "jobs:execute", "jobs:delete",
-  "targets:read", "targets:create", "targets:update", "targets:delete",
-  "executions:read",
-  "network:analysis:read", "network:analysis:write",
-  "network:monitoring:read", "network:monitoring:write",
-  "network:capture:start", "network:capture:stop"
-]', true),
-('developer', 'Developer', '[
-  "jobs:read", "jobs:create", "jobs:update", "jobs:execute",
-  "targets:read", "executions:read",
-  "network:analysis:read", "network:monitoring:read"
-]', true),
-('viewer', 'Read-only User', '[
-  "jobs:read", "targets:read", "executions:read"
-]', true)
-ON CONFLICT (name) DO UPDATE SET
-    description = EXCLUDED.description,
-    permissions = EXCLUDED.permissions,
-    is_active = EXCLUDED.is_active;
-
--- Assign admin role to admin user
-INSERT INTO identity.user_roles (user_id, role_id, assigned_by) 
-SELECT u.id, r.id, u.id
-FROM identity.users u, identity.roles r
-WHERE u.username = 'admin' AND r.name = 'admin'
-ON CONFLICT (user_id, role_id) DO NOTHING;
-
--- Create default notification templates
-INSERT INTO communication.notification_templates (name, template_type, subject_template, body_template, created_by) 
-SELECT 'job_success', 'email', 'Job Completed Successfully: {{job_name}}', 'Job "{{job_name}}" completed successfully at {{completed_at}}.', u.id
-FROM identity.users u WHERE u.username = 'admin'
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO communication.notification_templates (name, template_type, subject_template, body_template, created_by) 
-SELECT 'job_failure', 'email', 'Job Failed: {{job_name}}', 'Job "{{job_name}}" failed with error: {{error_message}}', u.id
-FROM identity.users u WHERE u.username = 'admin'
-ON CONFLICT (name) DO NOTHING;
-
-INSERT INTO communication.notification_templates (name, template_type, subject_template, body_template, created_by) 
-SELECT 'system_alert', 'email', 'System Alert: {{alert_type}}', 'System alert: {{message}}', u.id
-FROM identity.users u WHERE u.username = 'admin'
-ON CONFLICT (name) DO NOTHING;
-
--- No additional initial data needed for consolidated assets table
 
 -- ============================================================================
 -- NETWORK ANALYSIS SERVICE SCHEMA
 -- ============================================================================
 
--- Remote Probes Table
+-- Remote network analysis probes
 CREATE TABLE IF NOT EXISTS network_analysis.remote_probes (
     id SERIAL PRIMARY KEY,
-    probe_id VARCHAR(255) UNIQUE NOT NULL,
+    probe_id VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
     location VARCHAR(255),
-    ip_address VARCHAR(45),
-    hostname VARCHAR(255),
-    os_type VARCHAR(50),
-    version VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'inactive', -- 'active', 'inactive', 'error'
+    last_heartbeat TIMESTAMP WITH TIME ZONE,
+    configuration JSONB DEFAULT '{}',
     capabilities JSONB DEFAULT '[]',
-    interfaces JSONB DEFAULT '[]',
-    status VARCHAR(50) DEFAULT 'active',
-    registered_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_heartbeat TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Capture Sessions Table
+-- Network capture sessions
 CREATE TABLE IF NOT EXISTS network_analysis.capture_sessions (
     id SERIAL PRIMARY KEY,
-    session_id VARCHAR(255) UNIQUE NOT NULL,
-    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
-    user_id INTEGER,
-    interface_name VARCHAR(100),
-    filter_expression TEXT,
-    duration INTEGER,
-    packet_count INTEGER,
-    status VARCHAR(50) DEFAULT 'starting',
-    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    error_message TEXT,
-    configuration JSONB DEFAULT '{}',
-    results_summary JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Capture Results Table
-CREATE TABLE IF NOT EXISTS network_analysis.capture_results (
-    id SERIAL PRIMARY KEY,
-    session_id VARCHAR(255) REFERENCES network_analysis.capture_sessions(session_id),
-    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
-    packet_data JSONB,
-    statistics JSONB DEFAULT '{}',
-    ai_analysis JSONB DEFAULT '{}',
-    file_path TEXT,
-    file_size BIGINT,
-    packet_count INTEGER DEFAULT 0,
-    bytes_captured BIGINT DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Network Monitoring Data Table
-CREATE TABLE IF NOT EXISTS network_analysis.monitoring_data (
-    id SERIAL PRIMARY KEY,
-    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
-    interface_name VARCHAR(100),
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    rx_bytes BIGINT DEFAULT 0,
-    tx_bytes BIGINT DEFAULT 0,
-    rx_packets BIGINT DEFAULT 0,
-    tx_packets BIGINT DEFAULT 0,
-    rx_errors BIGINT DEFAULT 0,
-    tx_errors BIGINT DEFAULT 0,
-    bandwidth_utilization FLOAT,
-    latency_ms FLOAT,
-    packet_loss_rate FLOAT,
-    active_connections INTEGER,
-    metrics JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Network Alerts Table
-CREATE TABLE IF NOT EXISTS network_analysis.network_alerts (
-    id SERIAL PRIMARY KEY,
-    alert_id VARCHAR(255) UNIQUE NOT NULL,
-    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
-    alert_type VARCHAR(100) NOT NULL,
-    severity VARCHAR(50) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    message TEXT NOT NULL,
-    source VARCHAR(255),
-    interface_name VARCHAR(100),
-    threshold_value FLOAT,
-    current_value FLOAT,
-    status VARCHAR(50) DEFAULT 'active',
-    resolved BOOLEAN DEFAULT false,
-    resolved_at TIMESTAMP WITH TIME ZONE,
-    resolved_by INTEGER,
-    resolution_notes TEXT,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Analysis Jobs Table
-CREATE TABLE IF NOT EXISTS network_analysis.analysis_jobs (
-    id SERIAL PRIMARY KEY,
-    job_id VARCHAR(255) UNIQUE NOT NULL,
-    probe_id VARCHAR(255) REFERENCES network_analysis.remote_probes(probe_id),
-    user_id INTEGER,
-    job_type VARCHAR(100) NOT NULL,
-    parameters JSONB DEFAULT '{}',
-    status VARCHAR(50) DEFAULT 'pending',
-    priority INTEGER DEFAULT 5,
-    scheduled_at TIMESTAMP WITH TIME ZONE,
+    session_id VARCHAR(100) UNIQUE NOT NULL,
+    probe_id VARCHAR(100) REFERENCES network_analysis.remote_probes(probe_id),
+    target_network VARCHAR(100),
+    capture_filter VARCHAR(500),
+    status VARCHAR(20) DEFAULT 'scheduled', -- 'scheduled', 'active', 'completed', 'failed'
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
+    packets_captured INTEGER DEFAULT 0,
+    data_size_bytes BIGINT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Network monitoring data
+CREATE TABLE IF NOT EXISTS network_analysis.monitoring_data (
+    id SERIAL PRIMARY KEY,
+    probe_id VARCHAR(100) REFERENCES network_analysis.remote_probes(probe_id),
+    metric_name VARCHAR(100) NOT NULL,
+    metric_value JSONB NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    tags JSONB DEFAULT '{}'
+);
+
+-- Network alerts and anomalies
+CREATE TABLE IF NOT EXISTS network_analysis.network_alerts (
+    id SERIAL PRIMARY KEY,
+    probe_id VARCHAR(100) REFERENCES network_analysis.remote_probes(probe_id),
+    alert_type VARCHAR(100) NOT NULL,
+    severity VARCHAR(20) NOT NULL, -- 'low', 'medium', 'high', 'critical'
+    message TEXT NOT NULL,
+    details JSONB DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'open', -- 'open', 'acknowledged', 'resolved', 'false_positive'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    acknowledged_at TIMESTAMP WITH TIME ZONE,
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Network analysis jobs
+CREATE TABLE IF NOT EXISTS network_analysis.analysis_jobs (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    job_type VARCHAR(100) NOT NULL, -- 'port_scan', 'vulnerability_scan', 'traffic_analysis'
+    target VARCHAR(255) NOT NULL,
+    parameters JSONB DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'scheduled',
     results JSONB DEFAULT '{}',
-    error_message TEXT,
-    retry_count INTEGER DEFAULT 0,
-    max_retries INTEGER DEFAULT 3,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -512,7 +304,40 @@ CREATE INDEX IF NOT EXISTS idx_monitoring_data_timestamp ON network_analysis.mon
 CREATE INDEX IF NOT EXISTS idx_network_alerts_probe_id ON network_analysis.network_alerts(probe_id);
 CREATE INDEX IF NOT EXISTS idx_network_alerts_status ON network_analysis.network_alerts(status);
 
+-- ============================================================================
+-- HELPER FUNCTIONS
+-- ============================================================================
+
+-- Function to update updated_at column
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Triggers for updated_at columns
+CREATE TRIGGER trigger_assets_updated_at
+    BEFORE UPDATE ON assets.assets
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_jobs_updated_at
+    BEFORE UPDATE ON automation.jobs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_channels_updated_at
+    BEFORE UPDATE ON communication.channels
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trigger_templates_updated_at
+    BEFORE UPDATE ON communication.templates
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER trigger_remote_probes_updated_at
     BEFORE UPDATE ON network_analysis.remote_probes
     FOR EACH ROW
@@ -532,5 +357,22 @@ CREATE TRIGGER trigger_analysis_jobs_updated_at
     BEFORE UPDATE ON network_analysis.analysis_jobs
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- INITIAL DATA (Minimal - No Users/Roles)
+-- ============================================================================
+
+-- Insert default communication channels
+INSERT INTO communication.channels (name, type, configuration, is_active) VALUES 
+('default-email', 'email', '{"smtp_server": "localhost", "smtp_port": 587, "use_tls": true}', true),
+('system-webhook', 'webhook', '{"url": "http://localhost:8080/api/webhooks/system", "headers": {}}', false)
+ON CONFLICT (name) DO NOTHING;
+
+-- Insert default templates
+INSERT INTO communication.templates (name, subject, body, template_type, variables, is_active) VALUES 
+('job_success', 'Job Completed Successfully', 'Job {{job_name}} completed successfully at {{completion_time}}.', 'job_success', '["job_name", "completion_time"]', true),
+('job_failure', 'Job Failed', 'Job {{job_name}} failed with error: {{error_message}}', 'job_failure', '["job_name", "error_message"]', true),
+('system_alert', 'System Alert', 'System alert: {{alert_message}}', 'system_alert', '["alert_message"]', true)
+ON CONFLICT (name) DO NOTHING;
 
 COMMIT;

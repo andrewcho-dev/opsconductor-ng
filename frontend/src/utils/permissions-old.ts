@@ -1,0 +1,222 @@
+// Permission checking utilities for RBAC
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  permissions?: string[];
+  first_name?: string;
+  last_name?: string;
+}
+
+// Define all available permissions in the system
+export const PERMISSIONS = {
+  // User management
+  USERS_READ: 'users:read',
+  USERS_CREATE: 'users:create',
+  USERS_UPDATE: 'users:update',
+  USERS_DELETE: 'users:delete',
+  
+  // Role management
+  ROLES_READ: 'roles:read',
+  ROLES_CREATE: 'roles:create',
+  ROLES_UPDATE: 'roles:update',
+  ROLES_DELETE: 'roles:delete',
+  
+  // Job management
+  JOBS_READ: 'jobs:read',
+  JOBS_CREATE: 'jobs:create',
+  JOBS_UPDATE: 'jobs:update',
+  JOBS_DELETE: 'jobs:delete',
+  JOBS_EXECUTE: 'jobs:execute',
+  
+  // Target management
+  TARGETS_READ: 'targets:read',
+  TARGETS_CREATE: 'targets:create',
+  TARGETS_UPDATE: 'targets:update',
+  TARGETS_DELETE: 'targets:delete',
+  
+  // Execution monitoring
+  EXECUTIONS_READ: 'executions:read',
+  
+
+  
+  // Network analysis
+  NETWORK_ANALYSIS_READ: 'network:analysis:read',
+  NETWORK_ANALYSIS_WRITE: 'network:analysis:write',
+  NETWORK_CAPTURE_START: 'network:capture:start',
+  NETWORK_CAPTURE_STOP: 'network:capture:stop',
+  NETWORK_MONITORING_READ: 'network:monitoring:read',
+  NETWORK_MONITORING_WRITE: 'network:monitoring:write',
+  
+  // Settings
+  SETTINGS_READ: 'settings:read',
+  SETTINGS_UPDATE: 'settings:update',
+  SMTP_CONFIG: 'smtp:config',
+  
+
+  
+  // System administration
+  SYSTEM_ADMIN: 'system:admin',
+} as const;
+
+// Permission groups for easier role management
+export const PERMISSION_GROUPS = {
+  USER_MANAGEMENT: [
+    PERMISSIONS.USERS_READ,
+    PERMISSIONS.USERS_CREATE,
+    PERMISSIONS.USERS_UPDATE,
+    PERMISSIONS.USERS_DELETE,
+  ],
+  ROLE_MANAGEMENT: [
+    PERMISSIONS.ROLES_READ,
+    PERMISSIONS.ROLES_CREATE,
+    PERMISSIONS.ROLES_UPDATE,
+    PERMISSIONS.ROLES_DELETE,
+  ],
+  JOB_MANAGEMENT: [
+    PERMISSIONS.JOBS_READ,
+    PERMISSIONS.JOBS_CREATE,
+    PERMISSIONS.JOBS_UPDATE,
+    PERMISSIONS.JOBS_DELETE,
+    PERMISSIONS.JOBS_EXECUTE,
+  ],
+  TARGET_MANAGEMENT: [
+    PERMISSIONS.TARGETS_READ,
+    PERMISSIONS.TARGETS_CREATE,
+    PERMISSIONS.TARGETS_UPDATE,
+    PERMISSIONS.TARGETS_DELETE,
+  ],
+
+  NETWORK_ANALYSIS: [
+    PERMISSIONS.NETWORK_ANALYSIS_READ,
+    PERMISSIONS.NETWORK_ANALYSIS_WRITE,
+    PERMISSIONS.NETWORK_CAPTURE_START,
+    PERMISSIONS.NETWORK_CAPTURE_STOP,
+    PERMISSIONS.NETWORK_MONITORING_READ,
+    PERMISSIONS.NETWORK_MONITORING_WRITE,
+  ],
+
+  SETTINGS_MANAGEMENT: [
+    PERMISSIONS.SETTINGS_READ,
+    PERMISSIONS.SETTINGS_UPDATE,
+    PERMISSIONS.SMTP_CONFIG,
+  ],
+
+} as const;
+
+/**
+ * Check if user has a specific permission
+ */
+export const hasPermission = (user: User | null, permission: string): boolean => {
+  if (!user || !user.permissions) {
+    return false;
+  }
+  
+  // Admin wildcard permission grants everything
+  if (user.permissions.includes('*')) {
+    return true;
+  }
+  
+  return user.permissions.includes(permission);
+};
+
+/**
+ * Check if user has any of the specified permissions
+ */
+export const hasAnyPermission = (user: User | null, permissions: string[]): boolean => {
+  if (!user || !user.permissions) {
+    return false;
+  }
+  
+  // Admin wildcard permission grants everything
+  if (user.permissions.includes('*')) {
+    return true;
+  }
+  
+  return permissions.some(permission => user.permissions!.includes(permission));
+};
+
+/**
+ * Check if user has all of the specified permissions
+ */
+export const hasAllPermissions = (user: User | null, permissions: string[]): boolean => {
+  if (!user || !user.permissions) {
+    return false;
+  }
+  
+  // Admin wildcard permission grants everything
+  if (user.permissions.includes('*')) {
+    return true;
+  }
+  
+  return permissions.every(permission => user.permissions!.includes(permission));
+};
+
+/**
+ * Check if user has a specific role
+ */
+export const hasRole = (user: User | null, role: string): boolean => {
+  if (!user) {
+    return false;
+  }
+  
+  return user.role === role;
+};
+
+/**
+ * Check if user has any of the specified roles
+ */
+export const hasAnyRole = (user: User | null, roles: string[]): boolean => {
+  if (!user) {
+    return false;
+  }
+  
+  return roles.includes(user.role);
+};
+
+/**
+ * Check if user is admin (has admin role or wildcard permission)
+ */
+export const isAdmin = (user: User | null): boolean => {
+  if (!user) {
+    return false;
+  }
+  
+  return user.role === 'admin' || !!(user.permissions && user.permissions.includes('*'));
+};
+
+/**
+ * Get user's display name
+ */
+export const getUserDisplayName = (user: User | null): string => {
+  if (!user) {
+    return 'Unknown User';
+  }
+  
+  if (user.first_name && user.last_name) {
+    return `${user.first_name} ${user.last_name}`;
+  }
+  
+  if (user.first_name) {
+    return user.first_name;
+  }
+  
+  return user.username;
+};
+
+/**
+ * Get user's role display name
+ */
+export const getRoleDisplayName = (role: string): string => {
+  const roleNames: Record<string, string> = {
+    admin: 'Administrator',
+    manager: 'Manager',
+    operator: 'Operator',
+    developer: 'Developer',
+    viewer: 'Viewer',
+  };
+  
+  return roleNames[role] || role.charAt(0).toUpperCase() + role.slice(1);
+};

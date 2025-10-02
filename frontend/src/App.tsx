@@ -80,18 +80,7 @@ const App: React.FC = () => {
                     <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
                     <Route path="/history/job-runs" element={<JobRuns />} />
 
-                    {/* User & Role Management Routes */}
-                    <Route path="/users" element={<Users />} />
-                    <Route path="/users/:action" element={<Users />} />
-                    <Route path="/users/:action/:id" element={<Users />} />
-                    <Route path="/roles" element={<Roles />} />
-                    <Route path="/roles/:action" element={<Roles />} />
-                    <Route path="/roles/:action/:id" element={<Roles />} />
-
-
-
                     <Route path="/settings" element={<Navigate to="/settings/smtp" />} />
-                    <Route path="/settings/roles" element={<RoleManagement />} />
                     <Route path="/settings/:section" element={<SystemSettings />} />
                     <Route path="/legacy-settings" element={<LegacySettings />} />
                     <Route path="*" element={<Navigate to="/" />} />

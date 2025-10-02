@@ -267,37 +267,7 @@ const Navbar: React.FC = () => {
               
               {/* Identity & Access Section */}
               <div className="nav-section-header">Identity & Access</div>
-              
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><Users size={16} /></span>
-                  Users & Roles
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/users" 
-                    className={`nav-submenu-item ${location.pathname === '/users' || location.pathname.startsWith('/users/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Users size={14} /></span>
-                    User Management
-                  </Link>
-                  {hasPermission(user, PERMISSIONS.ROLES_READ) && (
-                    <Link 
-                      to="/roles" 
-                      className={`nav-submenu-item ${location.pathname === '/roles' || location.pathname.startsWith('/roles/') ? 'active' : ''}`} 
-                      onClick={closeMenu}
-                    >
-                      <span className="nav-icon"><Shield size={14} /></span>
-                      Role Management
-                    </Link>
-                  )}
-                </div>
-              </div>
-              <div className="nav-divider"></div>
+
               
               {/* Settings Section */}
               <div className="nav-section-header">Settings</div>
