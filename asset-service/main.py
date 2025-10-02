@@ -489,7 +489,7 @@ class ConsolidatedAssetService(BaseService):
         # ASSET ENDPOINTS
         # ============================================================================
         
-        @self.app.get("/assets")
+        @self.app.get("/")
         async def list_assets(
             skip: int = Query(0, ge=0),
             limit: int = Query(100, ge=1, le=1000),
@@ -671,7 +671,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to list assets"
                 )
 
-        @self.app.post("/assets")
+        @self.app.post("/")
         async def create_asset(asset_data: AssetCreate):
             """Create a new asset"""
             try:
@@ -770,7 +770,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to create asset"
                 )
 
-        @self.app.get("/assets/{asset_id}")
+        @self.app.get("/{asset_id}")
         async def get_asset(asset_id: int):
             """Get asset by ID with decrypted credentials for display"""
             try:
@@ -870,7 +870,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to get asset"
                 )
 
-        @self.app.put("/assets/{asset_id}")
+        @self.app.put("/{asset_id}")
         async def update_asset(asset_id: int, asset_data: AssetUpdate):
             """Update an asset"""
             try:
@@ -984,7 +984,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to update asset"
                 )
 
-        @self.app.delete("/assets/{asset_id}")
+        @self.app.delete("/{asset_id}")
         async def delete_asset(asset_id: int):
             """Delete an asset"""
             try:
@@ -1004,7 +1004,7 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to delete asset"
                 )
         
-        @self.app.post("/assets/{asset_id}/test")
+        @self.app.post("/{asset_id}/test")
         async def test_asset_connection(asset_id: int):
             """
             Test connection to an asset

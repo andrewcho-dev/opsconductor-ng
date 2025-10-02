@@ -84,6 +84,21 @@ services:
           max_age: 3600
 
 routes:
+  # Asset Service Routes (must come before identity to match more specific path first)
+  - name: asset-routes
+    service: asset-service
+    paths:
+      - /api/v1/assets
+    strip_path: true
+    preserve_host: false
+    regex_priority: 200
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+
   # Identity Service Routes
   - name: identity-auth
     service: identity-service
@@ -98,41 +113,6 @@ routes:
       - PUT
       - DELETE
       - OPTIONS
-
-  # Asset Service Routes  
-  - name: asset-routes
-    service: asset-service
-    paths:
-      - ~/api/v1/assets(.*)$
-    strip_path: false
-    preserve_host: false
-    regex_priority: 200
-    methods:
-      - GET
-      - POST
-      - PUT
-      - DELETE
-      - OPTIONS
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: /assets$(uri_captures[1])
-  
-  - name: asset-metadata-route
-    service: asset-service
-    paths:
-      - /api/v1/metadata
-    strip_path: false
-    preserve_host: false
-    regex_priority: 201
-    methods:
-      - GET
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: /metadata
 
   # Automation Service Routes
   - name: automation-routes
