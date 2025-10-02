@@ -134,24 +134,24 @@ class RemoteAnalysisAgent:
             raise
     
     async def _get_target_info(self, target_id: int) -> Optional[Dict[str, Any]]:
-        """Get target information from asset service"""
+        """Get asset information from asset service"""
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"{self.asset_service_url}/api/v1/targets/{target_id}",
+                    f"{self.asset_service_url}/api/v1/assets/{target_id}",
                     timeout=10.0
                 )
                 
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    logger.warning("Failed to get target info", 
+                    logger.warning("Failed to get asset info", 
                                  target_id=target_id, 
                                  status_code=response.status_code)
                     return None
         
         except Exception as e:
-            logger.error("Error getting target info", 
+            logger.error("Error getting asset info", 
                         target_id=target_id, error=str(e))
             return None
     

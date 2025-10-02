@@ -103,15 +103,36 @@ routes:
   - name: asset-routes
     service: asset-service
     paths:
-      - /api/assets
-    strip_path: true
+      - ~/api/v1/assets(.*)$
+    strip_path: false
     preserve_host: false
+    regex_priority: 200
     methods:
       - GET
       - POST
       - PUT
       - DELETE
       - OPTIONS
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /assets$(uri_captures[1])
+  
+  - name: asset-metadata-route
+    service: asset-service
+    paths:
+      - /api/v1/metadata
+    strip_path: false
+    preserve_host: false
+    regex_priority: 201
+    methods:
+      - GET
+    plugins:
+      - name: request-transformer
+        config:
+          replace:
+            uri: /metadata
 
   # Automation Service Routes
   - name: automation-routes

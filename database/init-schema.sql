@@ -70,61 +70,52 @@ CREATE TABLE identity.user_preferences (
 -- ASSETS SERVICE SCHEMA
 -- ============================================================================
 
--- Target systems
-CREATE TABLE assets.targets (
+-- Consolidated Assets Table
+-- Replaces: targets, enhanced_targets, target_services
+CREATE TABLE assets.assets (
+    -- Primary Key
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    host VARCHAR(255) NOT NULL,
-    port INTEGER,
-    target_type VARCHAR(50) NOT NULL, -- 'windows', 'linux', 'network', 'cloud'
-    connection_type VARCHAR(50) NOT NULL, -- 'ssh', 'winrm', 'http', 'snmp'
-    tags JSONB DEFAULT '[]',
-    metadata JSONB DEFAULT '{}',
-    is_active BOOLEAN DEFAULT true,
-    created_by INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
--- Enhanced targets (for new UI)
-CREATE TABLE assets.enhanced_targets (
-    id SERIAL PRIMARY KEY,
+    
+    -- Basic Asset Information
     name VARCHAR(255) NOT NULL,
     hostname VARCHAR(255) NOT NULL,
     ip_address VARCHAR(45), -- IPv4 or IPv6
-    os_type VARCHAR(50) DEFAULT 'other', -- 'windows', 'linux', 'unix', 'macos', 'other'
-    os_version VARCHAR(100),
     description TEXT,
     tags JSONB DEFAULT '[]',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Target services (for enhanced targets)
--- 
--- Service Type to Credential Type Mapping:
--- ssh, sftp: 'ssh_key', 'username_password'
--- rdp, winrm, winrm_https, wmi, smb: 'username_password'
--- http, https, http_alt, https_alt: 'api_key', 'username_password', 'bearer_token'
--- mysql, postgresql, sql_server, oracle, mongodb, redis: 'username_password'
--- smtp, smtps, smtp_submission, imap, imaps, pop3, pop3s: 'username_password'
--- ftp, ftps: 'username_password'
--- dns, snmp, ntp, telnet, vnc: 'username_password' (optional)
---
-CREATE TABLE assets.target_services (
-    id SERIAL PRIMARY KEY,
-    target_id INTEGER REFERENCES assets.enhanced_targets(id) ON DELETE CASCADE,
+    
+    -- Device/Hardware Information
+    device_type VARCHAR(50) DEFAULT 'other', -- 'server', 'workstation', 'network_device', 'storage', 'other'
+    hardware_make VARCHAR(100),
+    hardware_model VARCHAR(100),
+    serial_number VARCHAR(100),
+    
+    -- Operating System Information
+    os_type VARCHAR(50) DEFAULT 'other', -- 'windows', 'linux', 'unix', 'macos', 'other'
+    os_version VARCHAR(100),
+    
+    -- Location Information
+    physical_address TEXT,
+    data_center VARCHAR(100),
+    building VARCHAR(100),
+    room VARCHAR(100),
+    rack_position VARCHAR(50),
+    rack_location VARCHAR(100),
+    gps_coordinates VARCHAR(100),
+    
+    -- Status and Management
+    status VARCHAR(50) DEFAULT 'active', -- 'active', 'inactive', 'maintenance', 'decommissioned'
+    environment VARCHAR(50) DEFAULT 'production', -- 'production', 'staging', 'development', 'test'
+    criticality VARCHAR(50) DEFAULT 'medium', -- 'critical', 'high', 'medium', 'low'
+    owner VARCHAR(255),
+    support_contact VARCHAR(255),
+    contract_number VARCHAR(100),
+    
+    -- Primary Connection Service
     service_type VARCHAR(100) NOT NULL, -- 'ssh', 'rdp', 'winrm', 'http', 'https', etc.
     port INTEGER NOT NULL,
-    is_default BOOLEAN DEFAULT false,
     is_secure BOOLEAN DEFAULT false,
-    is_enabled BOOLEAN DEFAULT true,
-    notes TEXT,
     
-    -- Embedded credential fields
+    -- Primary Service Credentials (ONE credential type per service)
     credential_type VARCHAR(50), -- 'username_password', 'ssh_key', 'api_key', 'bearer_token', 'certificate'
     username VARCHAR(255),
     password_encrypted TEXT,
@@ -136,13 +127,50 @@ CREATE TABLE assets.target_services (
     passphrase_encrypted TEXT,
     domain VARCHAR(255), -- For Windows domain authentication
     
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    -- Database-specific fields (for database assets)
+    database_type VARCHAR(50), -- 'mysql', 'postgresql', 'sql_server', 'oracle', 'mongodb', etc.
+    database_name VARCHAR(255),
+    
+    -- Secondary Service (legacy support)
+    secondary_service_type VARCHAR(100) DEFAULT 'none',
+    secondary_port INTEGER,
+    ftp_type VARCHAR(50), -- 'ftp', 'ftps', 'sftp'
+    secondary_username VARCHAR(255),
+    secondary_password_encrypted TEXT,
+    
+    -- Additional Services (each with their own single credential)
+    additional_services JSONB DEFAULT '[]', -- Array of service objects, each with ONE credential
+    
+    -- Connection Status
+    is_active BOOLEAN DEFAULT true,
+    connection_status VARCHAR(50), -- 'unknown', 'connected', 'failed', 'timeout'
+    last_tested_at TIMESTAMP WITH TIME ZONE,
+    notes TEXT,
+    
+    -- Audit Fields
+    created_by INTEGER, -- Reference to identity.users(id)
+    updated_by INTEGER, -- Reference to identity.users(id)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Constraint: Exactly one default service per target
-CREATE UNIQUE INDEX idx_target_services_one_default 
-ON assets.target_services (target_id) 
-WHERE is_default = true;
+-- Create indexes for performance
+CREATE INDEX idx_assets_hostname ON assets.assets(hostname);
+CREATE INDEX idx_assets_ip_address ON assets.assets(ip_address);
+CREATE INDEX idx_assets_os_type ON assets.assets(os_type);
+CREATE INDEX idx_assets_device_type ON assets.assets(device_type);
+CREATE INDEX idx_assets_service_type ON assets.assets(service_type);
+CREATE INDEX idx_assets_status ON assets.assets(status);
+CREATE INDEX idx_assets_environment ON assets.assets(environment);
+CREATE INDEX idx_assets_is_active ON assets.assets(is_active);
+CREATE INDEX idx_assets_created_at ON assets.assets(created_at);
+CREATE INDEX idx_assets_tags ON assets.assets USING GIN(tags);
+CREATE INDEX idx_assets_additional_services ON assets.assets USING GIN(additional_services);
+
+-- Add comments for documentation
+COMMENT ON TABLE assets.assets IS 'Consolidated assets table containing all target/asset information including services and credentials';
+COMMENT ON COLUMN assets.assets.additional_services IS 'JSON array of additional services, each with their own credentials';
+COMMENT ON COLUMN assets.assets.credential_type IS 'Type of credential for primary service: username_password, ssh_key, api_key, bearer_token, certificate';
 
 
 
@@ -287,10 +315,7 @@ CREATE INDEX idx_users_active ON identity.users(is_active);
 CREATE INDEX idx_user_sessions_user_id ON identity.user_sessions(user_id);
 CREATE INDEX idx_user_sessions_expires_at ON identity.user_sessions(expires_at);
 
--- Assets service indexes
-CREATE INDEX idx_targets_host ON assets.targets(host);
-CREATE INDEX idx_targets_type ON assets.targets(target_type);
-CREATE INDEX idx_targets_active ON assets.targets(is_active);
+-- Assets service indexes (already created in table definition above)
 
 
 
@@ -320,8 +345,8 @@ VALUES ('admin', 'admin@opsconductor.local', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6Tt
 -- Create default roles
 INSERT INTO identity.roles (name, description, permissions) VALUES 
 ('admin', 'System Administrator', '["*"]'),
-('operator', 'System Operator', '["jobs:read", "jobs:execute", "targets:read"]'),
-('viewer', 'Read-only User', '["jobs:read", "targets:read", "executions:read"]');
+('operator', 'System Operator', '["jobs:read", "jobs:execute", "assets:read"]'),
+('viewer', 'Read-only User', '["jobs:read", "assets:read", "executions:read"]');
 
 -- Assign admin role to admin user
 INSERT INTO identity.user_roles (user_id, role_id, assigned_by) 
