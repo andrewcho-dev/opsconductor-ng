@@ -39,7 +39,9 @@ class StepGenerator:
             "network_tools": self._generate_network_tools_step,
             "docker": self._generate_docker_step,
             "config_manager": self._generate_config_manager_step,
-            "info_display": self._generate_info_display_step
+            "info_display": self._generate_info_display_step,
+            "asset-service-query": self._generate_asset_query_step,
+            "asset-credentials-read": self._generate_asset_credentials_step
         }
         
         # Default execution time estimates (seconds)
@@ -51,7 +53,9 @@ class StepGenerator:
             "network_tools": 10,
             "docker": 30,
             "config_manager": 25,
-            "info_display": 5
+            "info_display": 5,
+            "asset-service-query": 8,
+            "asset-credentials-read": 5
         }
     
     def generate_steps(
@@ -653,6 +657,205 @@ class StepGenerator:
             estimated_duration=30,  # conservative default
             depends_on=self._extract_dependencies(selected_tool)
         )
+    
+    def _generate_asset_query_step(
+        self,
+        selected_tool: SelectedTool,
+        decision: DecisionV1,
+        selection: SelectionV1
+    ) -> ExecutionStep:
+        """Generate step for asset-service-query tool"""
+        
+        # Extract query parameters from entities and request
+        query_params = self._extract_asset_query_params(decision, selected_tool)
+        
+        # Determine query type
+        query_type = query_params.get("query_type", "search")
+        
+        # Build inputs
+        inputs = {
+            "query_type": query_type,
+            "filters": query_params.get("filters", {}),
+            "fields": query_params.get("fields", []),
+            "limit": query_params.get("limit", 10)
+        }
+        
+        # Add specific parameters based on query type
+        if query_type == "get_by_id" and "asset_id" in query_params:
+            inputs["asset_id"] = query_params["asset_id"]
+        elif query_type == "get_by_hostname" and "hostname" in query_params:
+            inputs["hostname"] = query_params["hostname"]
+        elif query_type == "search" and "search_term" in query_params:
+            inputs["search_term"] = query_params["search_term"]
+        
+        preconditions = [
+            "asset_service_available",
+            "network_connectivity",
+            "valid_query_parameters"
+        ]
+        
+        success_criteria = [
+            "asset_data_retrieved",
+            "no_api_errors",
+            "results_contain_expected_fields"
+        ]
+        
+        failure_handling = "Log error, check asset-service availability, and report to user"
+        
+        # Build description
+        description = "Query asset-service for infrastructure metadata"
+        if query_type == "get_by_id":
+            description = f"Get asset by ID: {inputs.get('asset_id', 'unknown')}"
+        elif query_type == "get_by_hostname":
+            description = f"Get asset by hostname: {inputs.get('hostname', 'unknown')}"
+        elif query_type == "search":
+            description = f"Search assets: {inputs.get('search_term', 'all')}"
+        
+        return ExecutionStep(
+            id=self._generate_step_id("asset_query", query_type),
+            description=description,
+            tool="asset-service-query",
+            inputs=inputs,
+            preconditions=preconditions,
+            success_criteria=success_criteria,
+            failure_handling=failure_handling,
+            estimated_duration=self.default_durations["asset-service-query"],
+            depends_on=self._extract_dependencies(selected_tool)
+        )
+    
+    def _generate_asset_credentials_step(
+        self,
+        selected_tool: SelectedTool,
+        decision: DecisionV1,
+        selection: SelectionV1
+    ) -> ExecutionStep:
+        """Generate step for asset-credentials-read tool (GATED ACCESS)"""
+        
+        # Extract asset ID and justification
+        asset_id = None
+        justification = "User requested credential access"
+        credential_type = "ssh_key"  # default
+        
+        # Extract from entities
+        for entity in decision.entities:
+            if entity.type == "asset_id":
+                asset_id = entity.value
+            elif entity.type == "hostname":
+                # Will need to resolve hostname to asset_id first
+                asset_id = f"<resolve_hostname:{entity.value}>"
+        
+        # Extract from inputs_needed
+        for input_name in selected_tool.inputs_needed:
+            if "justification" in input_name.lower():
+                justification = decision.original_request
+            elif "credential_type" in input_name.lower():
+                credential_type = "ssh_key"  # default, could be extracted from request
+        
+        inputs = {
+            "asset_id": asset_id or "<asset_id_required>",
+            "credential_type": credential_type,
+            "justification": justification,
+            "requires_approval": True,
+            "approval_timeout": 300  # 5 minutes
+        }
+        
+        preconditions = [
+            "asset_service_available",
+            "user_has_credential_read_permission",
+            "valid_justification_provided",
+            "asset_id_exists",
+            "approval_granted"
+        ]
+        
+        success_criteria = [
+            "credential_handle_retrieved",
+            "no_permission_errors",
+            "audit_log_created"
+        ]
+        
+        failure_handling = "Log access attempt, notify security team if unauthorized, report to user"
+        
+        description = f"Request credentials for asset {asset_id} (REQUIRES APPROVAL)"
+        
+        return ExecutionStep(
+            id=self._generate_step_id("asset_credentials", "read"),
+            description=description,
+            tool="asset-credentials-read",
+            inputs=inputs,
+            preconditions=preconditions,
+            success_criteria=success_criteria,
+            failure_handling=failure_handling,
+            estimated_duration=self.default_durations["asset-credentials-read"],
+            depends_on=self._extract_dependencies(selected_tool)
+        )
+    
+    def _extract_asset_query_params(
+        self,
+        decision: DecisionV1,
+        selected_tool: SelectedTool
+    ) -> Dict[str, Any]:
+        """
+        Extract asset query parameters from decision entities and request.
+        
+        Returns a dictionary with query parameters:
+        - query_type: "get_by_id", "get_by_hostname", "search", "list_all", "filter"
+        - filters: dict of filter criteria
+        - fields: list of fields to return
+        - limit: max results
+        - asset_id: specific asset ID (if applicable)
+        - hostname: specific hostname (if applicable)
+        - search_term: search query (if applicable)
+        """
+        params = {
+            "query_type": "search",  # default
+            "filters": {},
+            "fields": [],
+            "limit": 10
+        }
+        
+        # Extract from entities
+        for entity in decision.entities:
+            if entity.type == "asset_id":
+                params["query_type"] = "get_by_id"
+                params["asset_id"] = entity.value
+            elif entity.type == "hostname":
+                params["query_type"] = "get_by_hostname"
+                params["hostname"] = entity.value
+            elif entity.type == "ip_address":
+                params["query_type"] = "search"
+                params["search_term"] = entity.value
+            elif entity.type == "environment":
+                params["filters"]["environment"] = entity.value
+            elif entity.type == "service_name":
+                params["filters"]["service_type"] = entity.value
+        
+        # If no specific query type determined, use search with original request
+        if params["query_type"] == "search" and "search_term" not in params:
+            # Extract key terms from request
+            request_lower = decision.original_request.lower()
+            
+            # Look for specific patterns
+            if "ip" in request_lower or "address" in request_lower:
+                params["fields"].append("ip_address")
+            if "hostname" in request_lower or "server" in request_lower:
+                params["fields"].append("hostname")
+            if "service" in request_lower:
+                params["fields"].append("services")
+            if "location" in request_lower:
+                params["fields"].append("location")
+            
+            # Use first hostname/service entity as search term
+            for entity in decision.entities:
+                if entity.type in ["hostname", "service_name", "application"]:
+                    params["search_term"] = entity.value
+                    break
+            
+            # If still no search term, use a generic search
+            if "search_term" not in params:
+                params["query_type"] = "list_all"
+                params["limit"] = 20
+        
+        return params
     
     def _extract_dependencies(self, selected_tool: SelectedTool) -> List[str]:
         """Extract step dependencies from selected tool"""

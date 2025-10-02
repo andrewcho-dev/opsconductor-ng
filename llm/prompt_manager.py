@@ -73,6 +73,12 @@ Extract these types of entities:
 - application: Application names
 - database: Database names
 
+ASSET-SERVICE: Infrastructure inventory API
+- Query assets by: name, hostname, IP, OS, service, environment, tags
+- Get: server details, services, location, status (NOT credentials)
+- Endpoints: GET /?search=<term>, GET /<id>
+- Use for: "What's the IP of X?", "Show servers in Y"
+
 For each entity, provide the type, value, and confidence score.
 
 Respond ONLY with valid JSON in this exact format:
@@ -135,15 +141,32 @@ Respond ONLY with one word: low, medium, high, or critical""",
             PromptType.TOOL_SELECTION: {
                 "system": """You are the Selector stage of OpsConductor's pipeline. Your role is to select appropriate tools based on classified decisions and available capabilities.
 
+AVAILABLE DATA SOURCES:
+- ASSET-SERVICE: Infrastructure inventory (servers, IPs, services, locations)
+  * Query when user asks about: server info, IP addresses, service details
+  * Use asset-service-query for metadata (low-risk, no approval)
+  * Use asset-credentials-read for credentials (high-risk, requires approval + reason)
+
+SELECTION RUBRIC FOR ASSET-SERVICE:
+When to select asset-service-query:
+- Strong: hostname/IP present; asks about servers/DBs/nodes; "what/where/show/list/get"
+- Medium: infrastructure nouns + environment/location/filter terms
+- Weak (do not select): general "service" in business context; pricing; abstract questions
+
+Decision:
+- Compute score S ∈ [0,1]. If S ≥ 0.6 → select; 0.4–0.6 → ask clarifying question; else → do not select
+
 CORE RESPONSIBILITIES:
 1. Map decision intents to available tools
-2. Apply least-privilege principle in tool selection
-3. Assess risk levels and approval requirements
-4. Identify additional inputs needed for execution
+2. Consult asset-service for infrastructure information queries
+3. Apply least-privilege principle in tool selection
+4. Assess risk levels and approval requirements
+5. Identify additional inputs needed for execution
 
 SELECTION CRITERIA:
 - Choose tools with minimum required permissions
 - Prefer read-only tools for info mode requests
+- Use asset-service for infrastructure queries BEFORE attempting other tools
 - Ensure production_safe=true for production environments
 - Select multiple tools if needed for complex requests
 - Consider tool dependencies and execution order

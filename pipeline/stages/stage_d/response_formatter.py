@@ -350,3 +350,311 @@ Keep the message encouraging and clear (2-3 sentences)."""
         
         return (f"I need some additional information to help you effectively. "
                 f"Please provide answers to {len(clarifications)} questions so I can create the best plan for your request.")
+    
+    # ========================================
+    # Asset-Service Specific Formatting
+    # ========================================
+    
+    def format_asset_results(
+        self,
+        assets: List[Dict[str, Any]],
+        query_context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Format asset-service query results with disambiguation logic.
+        
+        Handles different result scenarios:
+        - 0 results: "No assets found" message
+        - 1 result: Direct answer with asset details
+        - 2-5 results: Table of candidates for disambiguation
+        - 6-50 results: Grouped summary by environment
+        - 50+ results: Pagination guidance
+        
+        Args:
+            assets: List of asset dictionaries from asset-service
+            query_context: Optional context about the query (search term, filters, etc.)
+            
+        Returns:
+            Formatted string for LLM consumption
+        """
+        result_count = len(assets)
+        
+        # Case 1: No results
+        if result_count == 0:
+            return self._format_no_assets_found(query_context)
+        
+        # Case 2: Single result - direct answer
+        elif result_count == 1:
+            return self._format_single_asset(assets[0])
+        
+        # Case 3: Few results (2-5) - show table for disambiguation
+        elif result_count <= 5:
+            return self._format_few_assets(assets, query_context)
+        
+        # Case 4: Many results (6-50) - group by environment
+        elif result_count <= 50:
+            return self._format_many_assets(assets, query_context)
+        
+        # Case 5: Too many results (50+) - pagination guidance
+        else:
+            return self._format_too_many_assets(result_count, assets[:10], query_context)
+    
+    def _format_no_assets_found(self, query_context: Optional[Dict[str, Any]]) -> str:
+        """Format message when no assets are found."""
+        base_message = "No assets found"
+        
+        if query_context:
+            filters = []
+            if "hostname" in query_context:
+                filters.append(f"hostname '{query_context['hostname']}'")
+            if "ip_address" in query_context:
+                filters.append(f"IP address '{query_context['ip_address']}'")
+            if "environment" in query_context:
+                filters.append(f"environment '{query_context['environment']}'")
+            if "service" in query_context:
+                filters.append(f"service '{query_context['service']}'")
+            
+            if filters:
+                base_message += f" matching {' and '.join(filters)}"
+        
+        base_message += ".\n\nSuggestions:\n"
+        base_message += "- Check for typos in the hostname or filters\n"
+        base_message += "- Try a broader search (e.g., partial hostname)\n"
+        base_message += "- Verify the asset exists in the asset-service inventory"
+        
+        return base_message
+    
+    def _format_single_asset(self, asset: Dict[str, Any]) -> str:
+        """Format a single asset result."""
+        lines = ["Asset found:\n"]
+        
+        # Rank fields by importance for display
+        important_fields = ["hostname", "ip_address", "environment", "status", "os_type", "service_type"]
+        other_fields = [k for k in asset.keys() if k not in important_fields and not k.startswith("_")]
+        
+        # Display important fields first
+        for field in important_fields:
+            if field in asset and asset[field]:
+                lines.append(f"  {field}: {asset[field]}")
+        
+        # Display other fields
+        for field in sorted(other_fields):
+            if asset[field]:
+                lines.append(f"  {field}: {asset[field]}")
+        
+        return "\n".join(lines)
+    
+    def _format_few_assets(self, assets: List[Dict[str, Any]], query_context: Optional[Dict[str, Any]]) -> str:
+        """Format 2-5 assets as a table for disambiguation."""
+        lines = [f"Found {len(assets)} matching assets:\n"]
+        
+        # Determine which fields to display (common fields across all assets)
+        display_fields = ["hostname", "ip_address", "environment", "status"]
+        
+        # Create table header
+        header = " | ".join(f"{field:20}" for field in display_fields)
+        lines.append(header)
+        lines.append("-" * len(header))
+        
+        # Create table rows
+        for asset in assets:
+            row = " | ".join(f"{str(asset.get(field, 'N/A')):20}" for field in display_fields)
+            lines.append(row)
+        
+        lines.append("\nPlease specify which asset you're interested in by providing more details (e.g., environment, IP address).")
+        
+        return "\n".join(lines)
+    
+    def _format_many_assets(self, assets: List[Dict[str, Any]], query_context: Optional[Dict[str, Any]]) -> str:
+        """Format 6-50 assets grouped by environment."""
+        lines = [f"Found {len(assets)} matching assets.\n"]
+        
+        # Group by environment
+        by_environment = {}
+        for asset in assets:
+            env = asset.get("environment", "unknown")
+            if env not in by_environment:
+                by_environment[env] = []
+            by_environment[env].append(asset)
+        
+        lines.append("Summary by environment:")
+        for env in sorted(by_environment.keys()):
+            count = len(by_environment[env])
+            lines.append(f"  {env}: {count} assets")
+        
+        lines.append("\nShowing first 10 assets:")
+        for i, asset in enumerate(assets[:10], 1):
+            hostname = asset.get("hostname", "N/A")
+            ip = asset.get("ip_address", "N/A")
+            env = asset.get("environment", "N/A")
+            lines.append(f"  {i}. {hostname} ({ip}) - {env}")
+        
+        if len(assets) > 10:
+            lines.append(f"\n... and {len(assets) - 10} more assets.")
+        
+        lines.append("\nTo narrow results, add filters like environment, service type, or OS type.")
+        
+        return "\n".join(lines)
+    
+    def _format_too_many_assets(
+        self,
+        total_count: int,
+        sample_assets: List[Dict[str, Any]],
+        query_context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Format message when there are too many results (50+)."""
+        lines = [f"Found {total_count} matching assets (showing first 10):\n"]
+        
+        for i, asset in enumerate(sample_assets, 1):
+            hostname = asset.get("hostname", "N/A")
+            env = asset.get("environment", "N/A")
+            lines.append(f"  {i}. {hostname} - {env}")
+        
+        lines.append(f"\n... and {total_count - 10} more assets.")
+        lines.append("\n⚠️  Too many results to display effectively.")
+        lines.append("\nPlease narrow your search by adding filters:")
+        lines.append("  - Specify an environment (e.g., 'production', 'staging')")
+        lines.append("  - Add a service type (e.g., 'web', 'database')")
+        lines.append("  - Use a more specific hostname pattern")
+        lines.append("  - Filter by OS type or status")
+        
+        return "\n".join(lines)
+    
+    def rank_assets(self, assets: List[Dict[str, Any]], query_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """
+        Rank assets deterministically for consistent ordering.
+        
+        Ranking criteria (in order of priority):
+        1. Exact hostname match (if query_context has hostname)
+        2. Environment priority: production > staging > development > other
+        3. Status: active > inactive > unknown
+        4. Alphabetical by hostname
+        
+        Args:
+            assets: List of asset dictionaries
+            query_context: Optional context with query information
+            
+        Returns:
+            Sorted list of assets
+        """
+        def rank_key(asset: Dict[str, Any]) -> tuple:
+            # Priority 1: Exact hostname match
+            exact_match = 0
+            if query_context and "hostname" in query_context:
+                if asset.get("hostname") == query_context["hostname"]:
+                    exact_match = 1
+            
+            # Priority 2: Environment ranking
+            env_priority = {
+                "production": 4,
+                "prod": 4,
+                "staging": 3,
+                "stage": 3,
+                "development": 2,
+                "dev": 2,
+                "test": 1
+            }
+            env = asset.get("environment", "").lower()
+            env_rank = env_priority.get(env, 0)
+            
+            # Priority 3: Status ranking
+            status_priority = {
+                "active": 3,
+                "running": 3,
+                "inactive": 2,
+                "stopped": 1,
+                "unknown": 0
+            }
+            status = asset.get("status", "").lower()
+            status_rank = status_priority.get(status, 0)
+            
+            # Priority 4: Alphabetical by hostname
+            hostname = asset.get("hostname", "zzz")  # Put assets without hostname last
+            
+            # Return tuple for sorting (higher values first, except hostname which is alphabetical)
+            return (-exact_match, -env_rank, -status_rank, hostname)
+        
+        return sorted(assets, key=rank_key)
+    
+    def format_asset_error(self, error_type: str, error_details: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Format standardized error messages for asset-service failures.
+        
+        Args:
+            error_type: Type of error (timeout, circuit_breaker, schema_error, api_error, etc.)
+            error_details: Optional details about the error
+            
+        Returns:
+            User-friendly error message
+        """
+        error_messages = {
+            "timeout": (
+                "⚠️  Asset-service request timed out.\n"
+                "The asset-service is taking longer than expected to respond.\n"
+                "Please try again in a moment."
+            ),
+            "circuit_breaker": (
+                "⚠️  Asset-service is temporarily unavailable.\n"
+                "The service has experienced multiple failures and is in recovery mode.\n"
+                "Please try again in a few minutes."
+            ),
+            "schema_error": (
+                "⚠️  Asset-service returned unexpected data format.\n"
+                "The response from asset-service doesn't match the expected schema.\n"
+                "This may indicate a version mismatch or API change."
+            ),
+            "api_error": (
+                "⚠️  Asset-service API error.\n"
+                "The asset-service encountered an error processing your request."
+            ),
+            "network_error": (
+                "⚠️  Network error connecting to asset-service.\n"
+                "Unable to reach the asset-service endpoint.\n"
+                "Please check network connectivity."
+            ),
+            "permission_denied": (
+                "⚠️  Permission denied.\n"
+                "You don't have permission to access this asset information.\n"
+                "Please contact your administrator if you need access."
+            ),
+            "not_found": (
+                "⚠️  Asset not found.\n"
+                "The requested asset does not exist in the inventory."
+            )
+        }
+        
+        base_message = error_messages.get(error_type, f"⚠️  An error occurred: {error_type}")
+        
+        # Add error details if provided
+        if error_details:
+            if "message" in error_details:
+                base_message += f"\n\nDetails: {error_details['message']}"
+            if "status_code" in error_details:
+                base_message += f"\nStatus code: {error_details['status_code']}"
+        
+        return base_message
+    
+    def redact_credential_handle(self, credential_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Redact sensitive credential information, returning only safe handles.
+        
+        Args:
+            credential_data: Raw credential data from asset-service
+            
+        Returns:
+            Redacted credential data with only safe handles
+        """
+        redacted = {}
+        
+        # Safe fields to include
+        safe_fields = ["credential_id", "credential_type", "asset_id", "created_at", "expires_at", "status"]
+        
+        for field in safe_fields:
+            if field in credential_data:
+                redacted[field] = credential_data[field]
+        
+        # Add redaction notice
+        redacted["_redacted"] = True
+        redacted["_note"] = "Sensitive credential data has been redacted. Use credential_id to access."
+        
+        return redacted

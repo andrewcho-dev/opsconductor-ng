@@ -75,9 +75,11 @@ class ToolRegistry:
             "information": {
                 "get_help": ["documentation", "help_system"],
                 "show_status": ["status_display", "information"],
-                "list_resources": ["resource_listing", "information"],
+                "list_resources": ["resource_listing", "information", "asset_query", "infrastructure_info"],
                 "explain_process": ["documentation", "help_system"],
-                "show_configuration": ["configuration_display", "information"]
+                "show_configuration": ["configuration_display", "information"],
+                "query_infrastructure": ["asset_query", "infrastructure_info"],
+                "get_asset_info": ["asset_query", "infrastructure_info"]
             }
         }
         
@@ -374,6 +376,64 @@ class ToolRegistry:
             dependencies=[]
         )
         self.register_tool(info_tool)
+        
+        # Asset Service Tools (Infrastructure Metadata)
+        asset_query_tool = Tool(
+            name="asset-service-query",
+            description="Query infrastructure asset metadata (servers, IPs, tags, environments)",
+            capabilities=[
+                ToolCapability(
+                    name="asset_query",
+                    description="Search and retrieve infrastructure asset information",
+                    required_inputs=["query_type"],
+                    optional_inputs=["filters", "fields", "limit"]
+                ),
+                ToolCapability(
+                    name="infrastructure_info",
+                    description="Get infrastructure metadata and asset details",
+                    required_inputs=[],
+                    optional_inputs=["asset_id", "hostname", "environment"]
+                ),
+                ToolCapability(
+                    name="resource_listing",
+                    description="List infrastructure resources with filtering",
+                    required_inputs=[],
+                    optional_inputs=["type", "environment", "tags"]
+                )
+            ],
+            required_inputs=["query_type"],
+            permissions=PermissionLevel.READ,
+            production_safe=True,
+            max_execution_time=10,
+            dependencies=["asset_service_api"]
+        )
+        self.register_tool(asset_query_tool)
+        
+        # Asset Credentials Tool (Gated Access)
+        asset_credentials_tool = Tool(
+            name="asset-credentials-read",
+            description="Retrieve asset credentials (SSH keys, passwords, API tokens) - GATED ACCESS",
+            capabilities=[
+                ToolCapability(
+                    name="credential_access",
+                    description="Retrieve credentials for infrastructure assets",
+                    required_inputs=["asset_id", "credential_type", "justification"],
+                    optional_inputs=["ttl"]
+                ),
+                ToolCapability(
+                    name="secret_retrieval",
+                    description="Access secrets and sensitive configuration",
+                    required_inputs=["asset_id", "justification"],
+                    optional_inputs=["credential_type"]
+                )
+            ],
+            required_inputs=["asset_id", "justification"],
+            permissions=PermissionLevel.ADMIN,
+            production_safe=True,  # Safe with proper RBAC enforcement
+            max_execution_time=5,
+            dependencies=["asset_service_api", "rbac_enforcement"]
+        )
+        self.register_tool(asset_credentials_tool)
     
     def export_config(self, output_path: str) -> None:
         """Export current tool registry to a configuration file"""
