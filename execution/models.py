@@ -449,7 +449,11 @@ def calculate_idempotency_key(
     
     # Ensure deterministic target ordering
     if "targets" in plan:
-        plan["targets"] = sorted(plan["targets"], key=lambda t: t.get("id", 0))
+        # Handle both string targets and dict targets
+        if plan["targets"] and isinstance(plan["targets"][0], str):
+            plan["targets"] = sorted(plan["targets"])
+        else:
+            plan["targets"] = sorted(plan["targets"], key=lambda t: t.get("id", 0))
     
     # Create canonical JSON
     canonical_json = json.dumps(plan, sort_keys=True, separators=(',', ':'))
