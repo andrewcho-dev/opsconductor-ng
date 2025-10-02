@@ -214,6 +214,3 @@ export const hasPermission = (user: KeycloakUser | null, permission: string): bo
       return canViewSystem(user);
   }
 };
-
-// Export legacy PERMISSIONS for backward compatibility
-export { PERMISSIONS };

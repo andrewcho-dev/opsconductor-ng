@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Target, Settings, Play } from 'lucide-react';
+import { Target, Settings, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { userApi, assetApi, jobApi, jobRunApi } from '../services/api';
+import { assetApi, jobApi, jobRunApi } from '../services/api';
 
 interface SystemStats {
-  users: number;
   assets: number;
   jobs: number;
   recentRuns: number;
@@ -13,7 +12,6 @@ interface SystemStats {
 const SystemBadges: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats>({
-    users: 0,
     assets: 0,
     jobs: 0,
     recentRuns: 0,
@@ -23,8 +21,7 @@ const SystemBadges: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [usersResponse, assetsResponse, jobsResponse, runsResponse] = await Promise.all([
-          userApi.list(),
+        const [assetsResponse, jobsResponse, runsResponse] = await Promise.all([
           assetApi.list(),
           jobApi.list(),
           jobRunApi.list(0, 10) // Get recent 10 runs
@@ -38,7 +35,6 @@ const SystemBadges: React.FC = () => {
         };
 
         setStats({
-          users: getTotal(usersResponse),
           assets: getTotal(assetsResponse),
           jobs: getTotal(jobsResponse),
           recentRuns: getTotal(runsResponse),
@@ -46,7 +42,6 @@ const SystemBadges: React.FC = () => {
       } catch (error) {
         console.error('Failed to fetch system badges stats:', error);
         setStats({
-          users: 0,
           assets: 0,
           jobs: 0,
           recentRuns: 0,
@@ -86,7 +81,7 @@ const SystemBadges: React.FC = () => {
   if (loading) {
     return (
       <div className="system-badges">
-        {[1, 2, 3, 4].map((i) => (
+        {[1, 2, 3].map((i) => (
           <div key={i} className="system-badge badge-loading"></div>
         ))}
       </div>

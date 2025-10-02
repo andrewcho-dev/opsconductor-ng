@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
+import { Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
-import { userApi, assetApi, jobApi } from '../services/api';
+import { assetApi, jobApi } from '../services/api';
 
 interface ChatSession {
   id: string;
@@ -14,7 +14,6 @@ interface ChatSession {
 
 const AIChatPage: React.FC = () => {
   const [stats, setStats] = useState({
-    users: 0,
     assets: 0,
     jobs: 0
   });
@@ -136,8 +135,7 @@ const AIChatPage: React.FC = () => {
     const fetchStats = async () => {
       try {
         // Get basic stats from individual APIs
-        const [usersRes, assetsRes, jobsRes] = await Promise.allSettled([
-          userApi.list(0, 1),
+        const [assetsRes, jobsRes] = await Promise.allSettled([
           assetApi.list(0, 1),
           jobApi.list(0, 1)
         ]);
@@ -150,7 +148,6 @@ const AIChatPage: React.FC = () => {
         };
         
         const response = {
-          users: getTotal(usersRes),
           assets: getTotal(assetsRes),
           jobs: getTotal(jobsRes)
         };
@@ -641,10 +638,6 @@ const AIChatPage: React.FC = () => {
           >
             <Trash2 size={18} />
           </button>
-          <Link to="/users" className="stat-pill">
-            <Users size={14} />
-            <span>{stats.users} Users</span>
-          </Link>
           <Link to="/assets" className="stat-pill">
             <Target size={14} />
             <span>{stats.assets} Assets</span>

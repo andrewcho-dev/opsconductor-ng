@@ -1408,10 +1408,6 @@ const Assets: React.FC = () => {
               {importStatus}
             </div>
           )}
-          <Link to="/users" className="stat-pill">
-            <Users size={14} />
-            <span>Users</span>
-          </Link>
           <Link to="/assets" className="stat-pill">
             <Target size={14} />
             <span>{assets.length} Assets</span>
