@@ -83,6 +83,31 @@ services:
           credentials: true
           max_age: 3600
 
+  # AI Pipeline Service
+  - name: ai-pipeline-service
+    url: http://opsconductor-ai-pipeline-dev:8000
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+          exposed_headers:
+            - Authorization
+          credentials: true
+          max_age: 3600
+
 routes:
   # Asset Service Routes (must come before identity to match more specific path first)
   - name: asset-routes
@@ -126,4 +151,16 @@ routes:
       - POST
       - PUT
       - DELETE
+      - OPTIONS
+
+  # AI Pipeline Routes
+  - name: ai-pipeline-routes
+    service: ai-pipeline-service
+    paths:
+      - /api/ai
+    strip_path: true
+    preserve_host: false
+    methods:
+      - GET
+      - POST
       - OPTIONS

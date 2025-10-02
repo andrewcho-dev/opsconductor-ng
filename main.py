@@ -103,7 +103,7 @@ async def lifespan(app: FastAPI):
         ollama_config = {
             "base_url": os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
             "default_model": os.getenv("OLLAMA_MODEL", "llama2"),
-            "timeout": 30
+            "timeout": 120  # Increased timeout for LLM generation (first load can be slow)
         }
         llm_client = OllamaClient(ollama_config)
         await llm_client.connect()
