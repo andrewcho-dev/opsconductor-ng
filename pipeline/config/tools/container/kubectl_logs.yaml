@@ -1,0 +1,50 @@
+# kubectl-logs - Print container logs
+tool_name: kubectl-logs
+version: '1.0'
+description: Print container logs
+platform: kubernetes
+category: container
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: kubectl-logs primary capability
+    patterns:
+      execute:
+        description: Execute kubectl-logs command
+        typical_use_cases:
+        - use kubectl-logs
+        - kubectl-logs command
+        - print container logs
+        time_estimate_ms: '1000'
+        cost_estimate: '2'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - kubernetes
+  - container
+  - kubectl-logs
+  documentation_url: https://docs.opsconductor.io/tools/kubectl-logs

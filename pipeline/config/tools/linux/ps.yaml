@@ -1,0 +1,159 @@
+# ps - Process status utility
+tool_name: "ps"
+version: "1.0"
+description: "Report process status and information"
+platform: "linux"
+category: "system"
+
+defaults:
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "direct"
+
+capabilities:
+  process_monitoring:
+    description: "Monitor and list system processes"
+    
+    patterns:
+      list_processes:
+        description: "List all running processes"
+        
+        typical_use_cases:
+          - "list processes"
+          - "show running processes"
+          - "ps aux"
+          - "process list"
+        
+        time_estimate_ms: "300"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "format"
+            type: "string"
+            description: "Output format (aux, -ef, etc.)"
+            default: "aux"
+      
+      find_process:
+        description: "Find specific process by name or PID"
+        
+        typical_use_cases:
+          - "find process"
+          - "search process"
+          - "process by name"
+        
+        time_estimate_ms: "200"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "process_name"
+            type: "string"
+            description: "Process name to search"
+            default: ""
+          - name: "pid"
+            type: "integer"
+            description: "Process ID to search"
+            default: 0
+      
+      process_tree:
+        description: "Show process hierarchy tree"
+        
+        typical_use_cases:
+          - "process tree"
+          - "parent child processes"
+          - "process hierarchy"
+        
+        time_estimate_ms: "400"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+
+dependencies:
+  - name: "procfs"
+    type: "filesystem"
+    required: true
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "process"
+    - "monitoring"
+  documentation_url: "https://man7.org/linux/man-pages/man1/ps.1.html"
+
+examples:
+  - name: "List all processes"
+    description: "Show all running processes with details"
+    inputs:
+      host: "app-server-01"
+      format: "aux"
+    expected_time_ms: 300
+    expected_cost: 1

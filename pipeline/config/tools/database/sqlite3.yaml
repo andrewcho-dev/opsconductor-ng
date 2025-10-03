@@ -1,0 +1,50 @@
+# sqlite3 - SQLite command-line interface
+tool_name: sqlite3
+version: '1.0'
+description: SQLite command-line interface
+platform: database
+category: database
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: sqlite3 primary capability
+    patterns:
+      execute:
+        description: Execute sqlite3 command
+        typical_use_cases:
+        - use sqlite3
+        - sqlite3 command
+        - sqlite command-line interface
+        time_estimate_ms: '1500'
+        cost_estimate: '2'
+        complexity_score: 0.4
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - database
+  - database
+  - sqlite3
+  documentation_url: https://docs.opsconductor.io/tools/sqlite3

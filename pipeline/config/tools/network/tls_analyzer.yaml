@@ -1,0 +1,50 @@
+# tls-analyzer - Analyze TLS/SSL protocol traffic
+tool_name: tls-analyzer
+version: '1.0'
+description: Analyze TLS/SSL protocol traffic
+platform: network
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  protocol_analysis:
+    description: protocol_analysis capability
+    patterns:
+      analyze_tls:
+        description: analyze_tls pattern
+        typical_use_cases:
+        - analyze tls
+        - ssl traffic
+        - encrypted traffic
+        time_estimate_ms: 1200 + 0.6 * packet_count
+        cost_estimate: ceil(packet_count / 1000)
+        complexity_score: 0.5
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - network
+  - network
+  - tls-analyzer
+  documentation_url: https://docs.opsconductor.io/tools/tls-analyzer

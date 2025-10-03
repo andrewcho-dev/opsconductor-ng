@@ -1,0 +1,50 @@
+# Get-Counter - Query Windows performance counters
+tool_name: Get-Counter
+version: '1.0'
+description: Query Windows performance counters
+platform: windows
+category: monitoring
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: Get-Counter primary capability
+    patterns:
+      execute:
+        description: Execute Get-Counter command
+        typical_use_cases:
+        - use get-counter
+        - get-counter command
+        - query windows performance counters
+        time_estimate_ms: 1000 + 5 * N
+        cost_estimate: ceil(N / 100)
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - windows
+  - monitoring
+  - get-counter
+  documentation_url: https://docs.opsconductor.io/tools/get-counter

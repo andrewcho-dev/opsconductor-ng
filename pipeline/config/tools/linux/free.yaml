@@ -1,0 +1,50 @@
+# free - Display memory usage
+tool_name: free
+version: '1.0'
+description: Display memory usage
+platform: linux
+category: system
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  memory_monitoring:
+    description: memory_monitoring capability
+    patterns:
+      check_memory:
+        description: check_memory pattern
+        typical_use_cases:
+        - check memory
+        - memory usage
+        - ram usage
+        time_estimate_ms: '100'
+        cost_estimate: '1'
+        complexity_score: 0.1
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - linux
+  - system
+  - free
+  documentation_url: https://docs.opsconductor.io/tools/free

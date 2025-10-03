@@ -1,0 +1,50 @@
+# Get-FileHash - Calculate file hashes (MD5, SHA256)
+tool_name: Get-FileHash
+version: '1.0'
+description: Calculate file hashes (MD5, SHA256)
+platform: windows
+category: security
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: Get-FileHash primary capability
+    patterns:
+      execute:
+        description: Execute Get-FileHash command
+        typical_use_cases:
+        - use get-filehash
+        - get-filehash command
+        - calculate file hashes (md5, sha256)
+        time_estimate_ms: '2000'
+        cost_estimate: '3'
+        complexity_score: 0.4
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: true
+          production_safe: false
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - windows
+  - security
+  - get-filehash
+  documentation_url: https://docs.opsconductor.io/tools/get-filehash

@@ -1,0 +1,50 @@
+# pg_isready - Check PostgreSQL connection status
+tool_name: pg_isready
+version: '1.0'
+description: Check PostgreSQL connection status
+platform: database
+category: database
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: pg_isready primary capability
+    patterns:
+      execute:
+        description: Execute pg_isready command
+        typical_use_cases:
+        - use pg_isready
+        - pg_isready command
+        - check postgresql connection status
+        time_estimate_ms: '1500'
+        cost_estimate: '2'
+        complexity_score: 0.4
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - database
+  - database
+  - pg_isready
+  documentation_url: https://docs.opsconductor.io/tools/pg_isready

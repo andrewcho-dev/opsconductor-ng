@@ -1,548 +1,142 @@
-# Tool Catalog System - Quick Reference Guide
+# Tool Catalog Quick Reference Card
 
-**Version**: 1.0  
-**Last Updated**: October 3, 2025
+## 📊 Current Status
+- **Tools Loaded**: 5 (powershell, grep, htop, prometheus, github_api)
+- **Target**: 150+ tools
+- **Progress**: 3.3%
 
----
+## 🎯 Top 5 Tools to Add First (Quick Win)
 
-## 🚀 Quick Start
+| # | Tool | Platform | Why Critical |
+|---|------|----------|--------------|
+| 1 | **systemctl** | Linux | Most requested Linux service management |
+| 2 | **Get-Service** | Windows | Most requested Windows service management |
+| 3 | **ps** | Linux | Most requested process listing |
+| 4 | **curl** | Multi-platform | Most requested HTTP client |
+| 5 | **tcpdump** | Network | Most requested packet capture |
 
-### Create a Tool (Template-Based - Fastest)
+**Time to implement**: ~1 hour  
+**Impact**: Immediate improvement in Stage B tool selection
 
+## 🚀 Quick Commands
+
+### Check Current Status
 ```bash
-# Inside container
-docker exec opsconductor-ai-pipeline python3 /app/scripts/tool_from_template.py \
-  simple_command my_tool --author "Your Name"
-
-# Available templates: simple_command, api_tool, database_tool, monitoring_tool, automation_tool
-```
-
-### Create a Tool (Interactive)
-
-```bash
-docker exec -it opsconductor-ai-pipeline python3 /app/scripts/tool_generator.py
-# Follow the wizard prompts
-```
-
-### Create a Tool (API)
-
-```bash
-curl -X POST http://localhost:3005/api/v1/tools \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tool_name": "my_tool",
-    "version": "1.0",
-    "description": "My custom tool",
-    "platform": "linux",
-    "category": "system",
-    "defaults": {
-      "accuracy_level": "high",
-      "freshness": "cached",
-      "data_source": "direct"
-    }
-  }'
-```
-
----
-
-## 📚 API Reference
-
-### Base URL
-- **External**: `http://localhost:3005/api/v1/tools`
-- **Internal (container)**: `http://localhost:8000/api/v1/tools`
-
-### Tool Operations
-
-#### List All Tools
-```bash
-GET /api/v1/tools
-GET /api/v1/tools?platform=linux
-GET /api/v1/tools?category=system
-GET /api/v1/tools?enabled=true
-```
-
-#### Get Tool Details
-```bash
-GET /api/v1/tools/{tool_name}
-GET /api/v1/tools/{tool_name}?version=1.0
-```
-
-#### Create Tool
-```bash
-POST /api/v1/tools
-Content-Type: application/json
-
-{
-  "tool_name": "string",
-  "version": "string",
-  "description": "string",
-  "platform": "linux|windows|network|scheduler|custom",
-  "category": "system|network|automation|monitoring|security|database|cloud",
-  "defaults": {
-    "accuracy_level": "real-time|high|medium|low",
-    "freshness": "live|cached|historical",
-    "data_source": "direct|api|database|cache"
-  },
-  "dependencies": [...],
-  "metadata": {...}
-}
-```
-
-#### Update Tool
-```bash
-PUT /api/v1/tools/{tool_name}
-Content-Type: application/json
-
-{
-  "description": "Updated description",
-  "defaults": {...},
-  ...
-}
-```
-
-#### Delete Tool
-```bash
-DELETE /api/v1/tools/{tool_name}
-DELETE /api/v1/tools/{tool_name}?version=1.0
-```
-
-#### Enable/Disable Tool
-```bash
-PATCH /api/v1/tools/{tool_name}/enable
-Content-Type: application/json
-
-{
-  "enabled": true
-}
-```
-
-### Capability Operations
-
-#### Add Capability
-```bash
-POST /api/v1/tools/{tool_name}/capabilities
-Content-Type: application/json
-
-{
-  "capability_name": "string",
-  "description": "string"
-}
-```
-
-#### List Capabilities
-```bash
-GET /api/v1/tools/{tool_name}/capabilities
-```
-
-#### Delete Capability
-```bash
-DELETE /api/v1/tools/{tool_name}/capabilities/{capability_id}
-```
-
-### Pattern Operations
-
-#### Add Pattern
-```bash
-POST /api/v1/tools/{tool_name}/capabilities/{capability_id}/patterns
-Content-Type: application/json
-
-{
-  "pattern_name": "string",
-  "description": "string",
-  "typical_use_cases": ["string"],
-  "time_estimate_ms": "1000",
-  "cost_estimate": "5",
-  "complexity_score": 0.5,
-  "scope": "single|multiple|aggregate",
-  "completeness": "full|partial|summary",
-  "limitations": ["string"],
-  "policy": {
-    "max_cost": 10,
-    "requires_approval": false,
-    "production_safe": true
-  },
-  "preference_match": {
-    "speed": 0.8,
-    "accuracy": 0.9,
-    "cost": 0.7,
-    "complexity": 0.6,
-    "completeness": 0.9
-  },
-  "required_inputs": [...],
-  "expected_outputs": [...]
-}
-```
-
-#### List Patterns
-```bash
-GET /api/v1/tools/{tool_name}/capabilities/{capability_id}/patterns
-```
-
-#### Delete Pattern
-```bash
-DELETE /api/v1/tools/{tool_name}/capabilities/{capability_id}/patterns/{pattern_id}
-```
-
-### Bulk Operations
-
-#### Bulk Import
-```bash
-POST /api/v1/tools/bulk-import
-Content-Type: application/json
-
-{
-  "tools": [
-    {
-      "tool_name": "tool1",
-      "version": "1.0",
-      ...
-    },
-    {
-      "tool_name": "tool2",
-      "version": "1.0",
-      ...
-    }
-  ]
-}
-```
-
-#### Export All Tools
-```bash
-GET /api/v1/tools/export
-```
-
-### Hot Reload Operations
-
-#### Manual Reload
-```bash
-POST /api/v1/tools/reload
-Content-Type: application/json
-
-{
-  "tool_name": "grep",  # Optional: null for all tools
-  "triggered_by": "admin"  # Optional
-}
-```
-
-#### Reload History
-```bash
-GET /api/v1/tools/reload/history
-GET /api/v1/tools/reload/history?limit=10
-GET /api/v1/tools/reload/history?trigger_type=api_update
-```
-
-#### Reload Statistics
-```bash
-GET /api/v1/tools/reload/statistics
-```
-
----
-
-## 🛠️ CLI Tools
-
-### Template-Based Generator
-
-```bash
-python tool_from_template.py <template> <tool_name> [options]
-
-Templates:
-  simple_command   - Simple command-line tool
-  api_tool         - REST API integration tool
-  database_tool    - Database query tool
-  monitoring_tool  - System monitoring tool
-  automation_tool  - Automation/orchestration tool
-
-Options:
-  --version VERSION    Tool version (default: 1.0)
-  --author AUTHOR      Tool author
-  --no-db              Do not save to database
-  --yaml               Also save to YAML file
-
-Examples:
-  # Create simple command tool
-  python tool_from_template.py simple_command ls --author "John Doe"
-  
-  # Create API tool and save to YAML
-  python tool_from_template.py api_tool github_api --yaml
-  
-  # Create database tool with custom version
-  python tool_from_template.py database_tool mysql_query --version 2.0
-```
-
-### Interactive Generator
-
-```bash
-python tool_generator.py
-
-# Follow the 7-step wizard:
-# 1. Basic Information
-# 2. Defaults
-# 3. Dependencies
-# 4. Capabilities & Patterns
-# 5. Metadata
-# 6. Review
-# 7. Save
-```
-
----
-
-## 🔍 Common Tasks
-
-### Check if Tool Exists
-```bash
-curl -s http://localhost:3005/api/v1/tools/grep | jq '.tool_name'
-```
-
-### List All Linux Tools
-```bash
-curl -s http://localhost:3005/api/v1/tools?platform=linux | jq '.[].tool_name'
-```
-
-### Get Tool with All Capabilities
-```bash
-curl -s http://localhost:3005/api/v1/tools/grep | jq '.'
-```
-
-### Update Tool Description
-```bash
-curl -X PUT http://localhost:3005/api/v1/tools/grep \
-  -H "Content-Type: application/json" \
-  -d '{"description":"Updated description"}'
-```
-
-### Disable Tool
-```bash
-curl -X PATCH http://localhost:3005/api/v1/tools/grep/enable \
-  -H "Content-Type: application/json" \
-  -d '{"enabled":false}'
-```
-
-### Trigger Manual Reload
-```bash
-curl -X POST http://localhost:3005/api/v1/tools/reload \
-  -H "Content-Type: application/json" \
-  -d '{"triggered_by":"admin"}'
-```
-
-### Check Reload Statistics
-```bash
-curl -s http://localhost:3005/api/v1/tools/reload/statistics | jq '.'
-```
-
-### Export All Tools to File
-```bash
-curl -s http://localhost:3005/api/v1/tools/export > tools_backup.json
-```
-
-### Import Tools from File
-```bash
-curl -X POST http://localhost:3005/api/v1/tools/bulk-import \
-  -H "Content-Type: application/json" \
-  -d @tools_backup.json
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Tool Not Found After Creation
-```bash
-# Check if tool exists
-curl -s http://localhost:3005/api/v1/tools/my_tool
-
-# Trigger manual reload
-curl -X POST http://localhost:3005/api/v1/tools/reload
-
-# Check reload history
-curl -s http://localhost:3005/api/v1/tools/reload/history | jq '.'
-```
-
-### Cache Issues
-```bash
-# Invalidate cache by triggering reload
-curl -X POST http://localhost:3005/api/v1/tools/reload \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name":"my_tool"}'
-```
-
-### Database Connection Issues
-```bash
-# Check if database is accessible
-docker exec opsconductor-ai-pipeline psql -h postgres -U opsconductor -d opsconductor -c "SELECT COUNT(*) FROM tools;"
-```
-
-### API Not Responding
-```bash
-# Check container status
-docker ps | grep opsconductor-ai-pipeline
-
-# Check container logs
-docker logs opsconductor-ai-pipeline --tail 50
-
-# Restart container
-docker restart opsconductor-ai-pipeline
-```
-
----
-
-## 📊 Performance Tips
-
-### 1. Use Caching
-- Tools are cached for 5 minutes by default
-- Cache is automatically invalidated on updates
-- Manual reload available if needed
-
-### 2. Batch Operations
-- Use bulk import for multiple tools
-- Export/import for backups and migrations
-
-### 3. Filter Queries
-- Use query parameters to filter results
-- Reduces response size and improves performance
-
-### 4. Monitor Reload Statistics
-- Check success rate regularly
-- Monitor average reload duration
-- Review failed reloads in history
-
----
-
-## 🔐 Security Notes
-
-### Authentication
-- Currently no authentication required (development mode)
-- Production deployment should add authentication
-- Consider API keys or OAuth2
-
-### Authorization
-- All endpoints are currently public
-- Add role-based access control for production
-- Restrict admin endpoints (reload, bulk operations)
-
-### Input Validation
-- All inputs are validated
-- SQL injection protection via parameterized queries
-- JSON schema validation on API requests
-
----
-
-## 📈 Monitoring
-
-### Key Metrics to Track
-
-1. **Tool Usage**
-   - Most frequently used tools
-   - Tool load times
-   - Cache hit/miss ratio
-
-2. **Reload Performance**
-   - Reload frequency
-   - Reload duration
-   - Success/failure rate
-
-3. **API Performance**
-   - Request latency
-   - Throughput (requests/second)
-   - Error rate
-
-4. **Database Performance**
-   - Query execution time
-   - Connection pool usage
-   - Cache effectiveness
-
-### Monitoring Endpoints
-
-```bash
-# Reload statistics
-curl http://localhost:3005/api/v1/tools/reload/statistics
-
-# Reload history
-curl http://localhost:3005/api/v1/tools/reload/history?limit=100
-
-# Tool count
-curl -s http://localhost:3005/api/v1/tools | jq 'length'
-```
-
----
-
-## 🔗 Related Documentation
-
-- **Phase 1 Complete**: `/TOOL_CATALOG_PHASE1_COMPLETE.md`
-- **Phase 2 Complete**: `/TOOL_CATALOG_PHASE2_COMPLETE.md`
-- **Hot Reload Details**: `/TOOL_CATALOG_PHASE2_TASK3_COMPLETE.md`
-- **Database Schema**: `/database/init-schema.sql`
-- **API Implementation**: `/api/tool_catalog_api.py`
-- **ProfileLoader**: `/pipeline/stages/stage_b/profile_loader.py`
-
----
-
-## 💡 Tips & Best Practices
-
-### Tool Naming
-- Use lowercase with underscores: `my_tool`
-- Be descriptive but concise
-- Avoid special characters
-
-### Versioning
-- Use semantic versioning: `1.0`, `1.1`, `2.0`
-- Increment version on breaking changes
-- Keep old versions for compatibility
-
-### Descriptions
-- Be clear and concise
-- Include key features
-- Mention limitations
-
-### Dependencies
-- List all required dependencies
-- Mark critical dependencies as required
-- Include version constraints if needed
-
-### Patterns
-- Create patterns for common use cases
-- Provide realistic time/cost estimates
-- Set appropriate complexity scores
-- Define clear input/output schemas
-
-### Metadata
-- Add tags for searchability
-- Include author information
-- Link to documentation
-- Note any special requirements
-
----
-
-## 🎯 Quick Command Reference
-
-```bash
-# Create tool from template
-docker exec opsconductor-ai-pipeline python3 /app/scripts/tool_from_template.py simple_command my_tool
+# Check tool count
+curl http://localhost:3005/api/v1/tools/health
 
 # List all tools
-curl http://localhost:3005/api/v1/tools
+curl http://localhost:3005/api/v1/tools | jq
 
-# Get tool details
-curl http://localhost:3005/api/v1/tools/my_tool
-
-# Update tool
-curl -X PUT http://localhost:3005/api/v1/tools/my_tool -H "Content-Type: application/json" -d '{"description":"Updated"}'
-
-# Delete tool
-curl -X DELETE http://localhost:3005/api/v1/tools/my_tool
-
-# Reload cache
-curl -X POST http://localhost:3005/api/v1/tools/reload
-
-# Check statistics
-curl http://localhost:3005/api/v1/tools/reload/statistics
-
-# Export all tools
-curl http://localhost:3005/api/v1/tools/export > backup.json
-
-# Import tools
-curl -X POST http://localhost:3005/api/v1/tools/bulk-import -H "Content-Type: application/json" -d @backup.json
+# Check database
+docker exec opsconductor-postgres psql -U opsconductor -d opsconductor \
+  -c "SELECT tool_name, platform, category FROM tool_catalog.tools;"
 ```
+
+### Generate New Tool
+```bash
+# From template
+python scripts/tool_from_template.py \
+  --name "systemctl" \
+  --platform linux \
+  --category automation \
+  --description "Manage systemd services"
+```
+
+### Migrate Tool to Database
+```bash
+# Single tool
+python scripts/migrate_tools_to_db.py \
+  --tool pipeline/config/tools/linux/systemctl.yaml
+
+# All tools in directory
+python scripts/migrate_tools_to_db.py \
+  --directory pipeline/config/tools/linux/
+```
+
+### Verify Integration
+```bash
+# Test ProfileLoader
+docker exec opsconductor-ai-pipeline python -c "
+from pipeline.stages.stage_b.profile_loader import ProfileLoader
+loader = ProfileLoader(use_database=True)
+profiles = loader.load()
+print(f'Loaded {len(profiles.tools)} tools')
+for tool_name in list(profiles.tools.keys())[:10]:
+    print(f'  - {tool_name}')
+"
+```
+
+## 📋 Phase 1 Breakdown (30 Tools)
+
+### Windows (10 tools)
+- Get-Service, Get-Process, Get-EventLog
+- Get-ComputerInfo, Get-NetAdapter, Get-NetIPAddress
+- Test-NetConnection, Get-Counter, Get-HotFix
+- Invoke-Command
+
+### Linux (10 tools)
+- ps, df, free, systemctl, journalctl
+- curl, ping, netstat, ss, dig
+
+### Network (10 tools)
+- tcpdump, tshark, http-analyzer, dns-analyzer
+- tcp-analyzer, udp-analyzer, tls-analyzer
+- nmap, ssh-analyzer, scapy
+
+## 🔧 Service Integration
+
+| Service | Port | Current | Planned | Gap |
+|---------|------|---------|---------|-----|
+| automation-service | 8010 | 1 | 40 | 39 |
+| network-analyzer-service | 8006 | 1 | 25 | 24 |
+| asset-service | 8002 | 0 | 15 | 15 |
+| communication-service | 8004 | 0 | 10 | 10 |
+
+## 📚 Documentation
+
+- **TOOL_CATALOG_EXPANSION_PLAN.md** - Full 214-tool plan
+- **TOOL_CATALOG_QUICK_RECOMMENDATIONS.md** - Phase 1 details
+- **TOOL_CATALOG_INTEGRATION_STATUS.md** - Integration verification
+- **TOOL_CATALOG_OPERATIONS_RUNBOOK.md** - Operations guide
+- **TOOL_CATALOG_DEPLOYMENT_GUIDE.md** - Deployment guide
+
+## 🎯 Success Metrics
+
+### Coverage
+- Platform: Windows ✅ Linux ✅ Network ✅ Multi-platform ✅
+- Category: System, Network, Automation, Monitoring, Security, Database, Cloud, Container
+- Services: 4 services integrated
+
+### Performance
+- Tool Loading: < 500ms
+- Tool Selection: < 100ms
+- Cache Hit Rate: > 95%
+- DB Query Time: < 5ms (P95)
+
+## 📅 Timeline
+
+| Phase | Duration | Tools | Focus |
+|-------|----------|-------|-------|
+| Phase 1 | Week 1-2 | 30 | Critical Foundation |
+| Phase 2 | Week 3-4 | 25 | Service Integration |
+| Phase 3 | Week 5-6 | 20 | Security & Compliance |
+| Phase 4 | Week 7-8 | 35 | Database & Cloud |
+| Phase 5 | Week 9-10 | 30 | Containers & Monitoring |
+
+**Total**: 10 weeks, 140 tools
+
+## ✅ Next Steps
+
+1. Review expansion plan documents
+2. Decide which 5-10 tools to add first
+3. Generate tool definitions with `tool_from_template.py`
+4. Customize YAML files
+5. Migrate to database with `migrate_tools_to_db.py`
+6. Verify with ProfileLoader
+7. Test Stage B tool selection
+8. Iterate!
 
 ---
 
-**Need Help?** Check the full documentation in `/TOOL_CATALOG_PHASE2_COMPLETE.md`
+**Quick Start**: Add the top 5 tools in the next hour for immediate impact! 🚀

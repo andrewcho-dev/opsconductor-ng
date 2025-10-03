@@ -1,0 +1,50 @@
+# sendmail - Send email messages
+tool_name: sendmail
+version: '1.0'
+description: Send email messages
+platform: custom
+category: communication
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: sendmail primary capability
+    patterns:
+      execute:
+        description: Execute sendmail command
+        typical_use_cases:
+        - use sendmail
+        - sendmail command
+        - send email messages
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - custom
+  - communication
+  - sendmail
+  documentation_url: https://docs.opsconductor.io/tools/sendmail

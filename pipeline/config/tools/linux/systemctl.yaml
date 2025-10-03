@@ -1,0 +1,262 @@
+# systemctl - System and service manager for Linux
+tool_name: "systemctl"
+version: "1.0"
+description: "Control systemd system and service manager"
+platform: "linux"
+category: "system"
+
+defaults:
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "direct"
+
+capabilities:
+  service_management:
+    description: "Manage system services"
+    
+    patterns:
+      start_service:
+        description: "Start a system service"
+        
+        typical_use_cases:
+          - "start service"
+          - "enable service"
+          - "activate service"
+        
+        time_estimate_ms: "2000"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires root/sudo permissions"
+          - "Service must exist"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.8
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "service_name"
+            type: "string"
+            description: "Name of the service to start"
+            validation: "^[a-zA-Z0-9_-]+(\\.service)?$"
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "enable"
+            type: "boolean"
+            description: "Enable service to start on boot"
+            default: "false"
+      
+      stop_service:
+        description: "Stop a system service"
+        
+        typical_use_cases:
+          - "stop service"
+          - "disable service"
+          - "deactivate service"
+        
+        time_estimate_ms: "2000"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires root/sudo permissions"
+          - "May affect dependent services"
+        
+        policy:
+          max_cost: 5
+          requires_approval: true
+          production_safe: false
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.8
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "service_name"
+            type: "string"
+            description: "Name of the service to stop"
+            validation: "^[a-zA-Z0-9_-]+(\\.service)?$"
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+      
+      restart_service:
+        description: "Restart a system service"
+        
+        typical_use_cases:
+          - "restart service"
+          - "reload service"
+          - "refresh service"
+        
+        time_estimate_ms: "3000"
+        cost_estimate: "3"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires root/sudo permissions"
+          - "Causes brief service downtime"
+        
+        policy:
+          max_cost: 5
+          requires_approval: true
+          production_safe: false
+          max_execution_time: 60
+        
+        preference_match:
+          speed: 0.7
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "service_name"
+            type: "string"
+            description: "Name of the service to restart"
+            validation: "^[a-zA-Z0-9_-]+(\\.service)?$"
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+      
+      status_service:
+        description: "Check service status"
+        
+        typical_use_cases:
+          - "check service status"
+          - "is service running"
+          - "service health"
+        
+        time_estimate_ms: "500"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "service_name"
+            type: "string"
+            description: "Name of the service to check"
+            validation: "^[a-zA-Z0-9_-]+(\\.service)?$"
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+      
+      list_services:
+        description: "List all services"
+        
+        typical_use_cases:
+          - "list all services"
+          - "show services"
+          - "enumerate services"
+        
+        time_estimate_ms: "1000"
+        cost_estimate: "2"
+        complexity_score: 0.2
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 15
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.9
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "state"
+            type: "string"
+            description: "Filter by state (running, failed, etc.)"
+            default: "all"
+
+dependencies:
+  - name: "systemd"
+    type: "service"
+    required: true
+  - name: "sudo_access"
+    type: "permission"
+    required: true
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "service"
+    - "systemd"
+    - "management"
+  documentation_url: "https://man7.org/linux/man-pages/man1/systemctl.1.html"
+
+examples:
+  - name: "Start nginx service"
+    description: "Start the nginx web server"
+    inputs:
+      service_name: "nginx"
+      host: "web-server-01"
+    expected_time_ms: 2000
+    expected_cost: 2
+  
+  - name: "Check service status"
+    description: "Check if postgresql is running"
+    inputs:
+      service_name: "postgresql"
+      host: "db-server-01"
+    expected_time_ms: 500
+    expected_cost: 1

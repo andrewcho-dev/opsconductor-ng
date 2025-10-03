@@ -1,0 +1,50 @@
+# Get-NetRoute - Query routing table
+tool_name: Get-NetRoute
+version: '1.0'
+description: Query routing table
+platform: windows
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: Get-NetRoute primary capability
+    patterns:
+      execute:
+        description: Execute Get-NetRoute command
+        typical_use_cases:
+        - use get-netroute
+        - get-netroute command
+        - query routing table
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - windows
+  - network
+  - get-netroute
+  documentation_url: https://docs.opsconductor.io/tools/get-netroute

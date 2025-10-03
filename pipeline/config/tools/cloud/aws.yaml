@@ -1,0 +1,50 @@
+# aws - AWS Command Line Interface
+tool_name: aws
+version: '1.0'
+description: AWS Command Line Interface
+platform: cloud
+category: cloud
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: aws primary capability
+    patterns:
+      execute:
+        description: Execute aws command
+        typical_use_cases:
+        - use aws
+        - aws command
+        - aws command line interface
+        time_estimate_ms: '2000'
+        cost_estimate: '5'
+        complexity_score: 0.5
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - cloud
+  - cloud
+  - aws
+  documentation_url: https://docs.opsconductor.io/tools/aws

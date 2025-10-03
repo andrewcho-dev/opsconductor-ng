@@ -72,13 +72,13 @@ class ToolMigrator:
                 return False
         
         # Validate platform
-        valid_platforms = ['linux', 'windows', 'network', 'scheduler', 'custom', 'multi-platform']
+        valid_platforms = ['linux', 'windows', 'network', 'scheduler', 'custom', 'multi-platform', 'database', 'cloud', 'container', 'kubernetes', 'monitoring']
         if data['platform'] not in valid_platforms:
             logger.error(f"{file_path}: Invalid platform '{data['platform']}'. Must be one of: {valid_platforms}")
             return False
         
         # Validate category
-        valid_categories = ['system', 'network', 'automation', 'monitoring', 'security', 'database', 'cloud', 'container']
+        valid_categories = ['system', 'network', 'automation', 'monitoring', 'security', 'database', 'cloud', 'container', 'asset', 'communication']
         if data['category'] not in valid_categories:
             logger.error(f"{file_path}: Invalid category '{data['category']}'. Must be one of: {valid_categories}")
             return False

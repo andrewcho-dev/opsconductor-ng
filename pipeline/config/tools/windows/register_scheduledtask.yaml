@@ -1,0 +1,50 @@
+# Register-ScheduledTask - Create Windows scheduled tasks
+tool_name: Register-ScheduledTask
+version: '1.0'
+description: Create Windows scheduled tasks
+platform: windows
+category: automation
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+capabilities:
+  primary_capability:
+    description: Register-ScheduledTask primary capability
+    patterns:
+      execute:
+        description: Execute Register-ScheduledTask command
+        typical_use_cases:
+        - use register-scheduledtask
+        - register-scheduledtask command
+        - create windows scheduled tasks
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 10
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        preference_match:
+          speed: 0.8
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.9
+        required_inputs:
+        - name: host
+          type: string
+          description: Target host
+          validation: .*
+metadata:
+  author: OpsConductor Team
+  created: '2025-10-03'
+  updated: '2025-10-03'
+  tags:
+  - windows
+  - automation
+  - register-scheduledtask
+  documentation_url: https://docs.opsconductor.io/tools/register-scheduledtask

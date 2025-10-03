@@ -1,0 +1,86 @@
+# df - Disk free space utility
+tool_name: "df"
+version: "1.0"
+description: "Report file system disk space usage"
+platform: "linux"
+category: "system"
+
+defaults:
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "filesystem"
+
+capabilities:
+  disk_monitoring:
+    description: "Monitor disk space usage"
+    
+    patterns:
+      check_disk_space:
+        description: "Check disk space usage for all filesystems"
+        
+        typical_use_cases:
+          - "check disk space"
+          - "disk usage"
+          - "free space"
+          - "filesystem usage"
+        
+        time_estimate_ms: "200"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "human_readable"
+            type: "boolean"
+            description: "Show sizes in human readable format"
+            default: "true"
+          - name: "filesystem"
+            type: "string"
+            description: "Specific filesystem to check"
+            default: ""
+
+dependencies:
+  - name: "filesystem_access"
+    type: "permission"
+    required: true
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "disk"
+    - "filesystem"
+    - "monitoring"
+  documentation_url: "https://man7.org/linux/man-pages/man1/df.1.html"
+
+examples:
+  - name: "Check all disk space"
+    description: "Show disk usage for all mounted filesystems"
+    inputs:
+      host: "app-server-01"
+      human_readable: true
+    expected_time_ms: 200
+    expected_cost: 1
