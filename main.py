@@ -650,6 +650,52 @@ async def get_architecture_info():
         "next_milestone": "Phase 5 - Integration & Testing"
     }
 
+@app.get("/execution/{execution_id}/status")
+async def get_execution_status(execution_id: str):
+    """Get execution status for polling"""
+    try:
+        # Import the repository to query execution status
+        from pipeline.services.tool_catalog_service import ToolCatalogService
+        
+        # Get database connection
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=int(os.getenv('POSTGRES_PORT', '5432')),
+            database=os.getenv('POSTGRES_DB', 'opsconductor'),
+            user=os.getenv('POSTGRES_USER', 'opsconductor'),
+            password=os.getenv('POSTGRES_PASSWORD', 'opsconductor_secure_2024')
+        )
+        
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT status, started_at, completed_at, error_message
+            FROM execution.executions
+            WHERE execution_id = %s
+        """, (execution_id,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Execution not found")
+        
+        status, started_at, completed_at, error_message = result
+        
+        return {
+            "execution_id": execution_id,
+            "status": status,
+            "started_at": started_at.isoformat() if started_at else None,
+            "completed_at": completed_at.isoformat() if completed_at else None,
+            "error_message": error_message
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get execution status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/pipeline/status")
 async def get_pipeline_status():
     """Get detailed pipeline implementation status"""

@@ -152,6 +152,7 @@ services:
       - ./execution:/app/execution
       - ./api:/app/api
       - ./shared:/app/shared
+      - ./tests:/app/tests
     networks:
       - opsconductor
     depends_on:

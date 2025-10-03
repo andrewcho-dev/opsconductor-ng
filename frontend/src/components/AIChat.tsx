@@ -19,6 +19,9 @@ interface Message {
   responseType?: string;
   executionId?: string;
   approvalData?: any;
+  isLoading?: boolean;
+  loadingStatus?: string;
+  executionStatus?: string;
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
@@ -92,9 +95,32 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       props.onFirstMessage(userMessage.content.substring(0, 50) + (userMessage.content.length > 50 ? '...' : ''));
     }
 
-    // Call the real AI Pipeline API
+    // Add loading message
+    const loadingMessageId = (Date.now() + 1).toString();
+    const loadingMessage: Message = {
+      id: loadingMessageId,
+      content: 'AI is thinking...',
+      sender: 'ai',
+      timestamp: new Date(),
+      isLoading: true,
+      loadingStatus: 'Processing your request...'
+    };
+    setMessages(prev => [...prev, loadingMessage]);
+
+    // Call the real AI Pipeline API with progress callback
     try {
-      const response = await aiApi.process(userMessage.content);
+      const response = await aiApi.process(
+        userMessage.content,
+        {},
+        (status: string) => {
+          // Update loading message with progress
+          setMessages(prev => prev.map(msg => 
+            msg.id === loadingMessageId 
+              ? { ...msg, loadingStatus: status }
+              : msg
+          ));
+        }
+      );
       
       let aiContent = '';
       let responseType = 'information';
@@ -104,7 +130,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       if (response.success && response.result) {
         const result = response.result;
         responseType = result.response?.response_type || 'information';
-        executionId = result.response?.execution_id || null;
+        executionId = result.execution_id || result.response?.execution_id || null;
         
         // Handle approval requests specially
         if (responseType === 'approval_request') {
@@ -143,28 +169,72 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
         aiContent = response.error || 'Sorry, I encountered an error processing your request.';
       }
 
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: aiContent,
-        sender: 'ai',
-        timestamp: new Date(),
-        responseType,
-        executionId,
-        approvalData
-      };
-      setMessages(prev => [...prev, aiMessage]);
+      // Replace loading message with actual response
+      setMessages(prev => prev.map(msg => 
+        msg.id === loadingMessageId
+          ? {
+              ...msg,
+              content: aiContent,
+              isLoading: false,
+              loadingStatus: undefined,
+              responseType,
+              executionId,
+              approvalData
+            }
+          : msg
+      ));
+
+      // Start polling for execution status if we have an execution ID
+      if (executionId) {
+        pollExecutionStatus(loadingMessageId, executionId);
+      }
     } catch (error) {
       console.error('AI API Error:', error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Sorry, I'm having trouble connecting to the AI system. Please check that the backend is running.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        sender: 'ai',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      // Replace loading message with error
+      setMessages(prev => prev.map(msg => 
+        msg.id === loadingMessageId
+          ? {
+              ...msg,
+              content: `Sorry, I'm having trouble connecting to the AI system. Please check that the backend is running.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isLoading: false,
+              loadingStatus: undefined
+            }
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Poll execution status
+  const pollExecutionStatus = async (messageId: string, executionId: string) => {
+    const maxPolls = 60; // Poll for up to 5 minutes (60 * 5 seconds)
+    let pollCount = 0;
+
+    const poll = async () => {
+      if (pollCount >= maxPolls) {
+        console.log('Stopped polling execution status (max polls reached)');
+        return;
+      }
+
+      const status = await aiApi.getExecutionStatus(executionId);
+      if (status) {
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId
+            ? { ...msg, executionStatus: status.status }
+            : msg
+        ));
+
+        // Continue polling if execution is still running
+        if (status.status === 'running' || status.status === 'pending') {
+          pollCount++;
+          setTimeout(poll, 5000); // Poll every 5 seconds
+        }
+      }
+    };
+
+    // Start polling after 2 seconds
+    setTimeout(poll, 2000);
   };
 
   const handleApproval = async (messageId: string, approved: boolean) => {
@@ -236,16 +306,46 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
   }, [inputValue]);
 
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      backgroundColor: '#ffffff',
-      border: '1px solid #e5e7eb',
-      borderRadius: '8px',
-      overflow: 'hidden'
-    }}>
-      {/* Header */}
+    <>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        
+        @keyframes loadingDots {
+          0%, 20% { opacity: 0.3; }
+          50% { opacity: 1; }
+          100% { opacity: 0.3; }
+        }
+        
+        .loading-dots span {
+          animation: loadingDots 1.4s infinite;
+        }
+        
+        .loading-dots span:nth-child(1) {
+          animation-delay: 0s;
+        }
+        
+        .loading-dots span:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+        
+        .loading-dots span:nth-child(3) {
+          animation-delay: 0.4s;
+        }
+      `}</style>
+      
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        backgroundColor: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: '8px',
+        overflow: 'hidden'
+      }}>
+        {/* Header */}
       <div style={{
         padding: '16px 20px',
         borderBottom: '1px solid #e5e7eb',
@@ -333,7 +433,59 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                   whiteSpace: 'pre-wrap'
                 }}>
                   {message.content}
+                  
+                  {/* Loading indicator */}
+                  {message.isLoading && (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      gap: '8px',
+                      fontSize: '12px',
+                      color: '#6b7280'
+                    }}>
+                      <div className="loading-dots">
+                        <span>.</span><span>.</span><span>.</span>
+                      </div>
+                      <span>{message.loadingStatus}</span>
+                    </div>
+                  )}
                 </div>
+                
+                {/* Execution Status Badge */}
+                {message.executionStatus && (
+                  <div style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    backgroundColor: 
+                      message.executionStatus === 'completed' ? '#d1fae5' :
+                      message.executionStatus === 'running' ? '#dbeafe' :
+                      message.executionStatus === 'failed' ? '#fee2e2' :
+                      '#f3f4f6',
+                    color:
+                      message.executionStatus === 'completed' ? '#065f46' :
+                      message.executionStatus === 'running' ? '#1e40af' :
+                      message.executionStatus === 'failed' ? '#991b1b' :
+                      '#374151',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    {message.executionStatus === 'running' && (
+                      <div className="spinner" style={{
+                        width: '12px',
+                        height: '12px',
+                        border: '2px solid currentColor',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                    )}
+                    Execution: {message.executionStatus}
+                  </div>
+                )}
                 
                 {/* Approval UI */}
                 {message.approvalData && (
@@ -547,7 +699,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
           }
         }
       `}</style>
-    </div>
+    </>
   );
 });
 

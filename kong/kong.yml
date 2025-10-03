@@ -85,7 +85,7 @@ services:
 
   # AI Pipeline Service
   - name: ai-pipeline-service
-    url: http://opsconductor-ai-pipeline-dev:8000
+    url: http://ai-pipeline:8000
     plugins:
       - name: cors
         config:

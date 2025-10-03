@@ -695,46 +695,92 @@ export const communicationApi = {
 
 // AI Pipeline API - 4-Stage Pipeline Integration
 export const aiApi = {
-  process: async (request: string, context?: any): Promise<any> => {
+  process: async (
+    request: string, 
+    context?: any,
+    onProgress?: (status: string) => void
+  ): Promise<any> => {
     console.log('🚀 Sending AI pipeline request:', request);
-    // Connect directly to AI pipeline on port 3005 (Docker mapped port)
-    const aiPipelineUrl = `http://${window.location.hostname}:3005`;
-    const response = await axios.post(`${aiPipelineUrl}/pipeline`, {
-      request: request,
-      context: context || {},
-      user_id: `user_${Date.now()}`,
-      session_id: `session_${Date.now()}`
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      timeout: 120000
-    });
-    console.log('✅ AI pipeline response received:', response.data);
     
-    // Transform response to match expected format
-    if (response.data.success) {
-      return {
-        success: true,
-        result: {
-          message: response.data.result.message
+    // Retry configuration
+    const maxRetries = 2;
+    const retryDelay = 1000; // Start with 1 second
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          onProgress?.(`Retrying... (attempt ${attempt + 1}/${maxRetries + 1})`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, attempt - 1)));
         }
-      };
-    } else {
-      return {
-        success: false,
-        error: response.data.error
-      };
+        
+        // Use Kong API gateway for AI pipeline
+        const response = await api.post('/api/ai/pipeline', {
+          request: request,
+          context: context || {},
+          user_id: `user_${Date.now()}`,
+          session_id: `session_${Date.now()}`
+        }, {
+          timeout: 120000
+        });
+        console.log('✅ AI pipeline response received:', response.data);
+        
+        // Transform response to match expected format
+        if (response.data.success) {
+          return {
+            success: true,
+            result: {
+              message: response.data.result.message,
+              response: response.data.result.response,
+              execution_id: response.data.result.response?.execution_id
+            }
+          };
+        } else {
+          return {
+            success: false,
+            error: response.data.error
+          };
+        }
+      } catch (error: any) {
+        console.error(`AI API Error (attempt ${attempt + 1}):`, error);
+        
+        // Don't retry on client errors (4xx)
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          throw error;
+        }
+        
+        // If this was the last attempt, throw the error
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Otherwise, continue to next retry
+        console.log(`Retrying in ${retryDelay * Math.pow(2, attempt)}ms...`);
+      }
     }
+    
+    // This should never be reached, but TypeScript needs it
+    throw new Error('Max retries exceeded');
   },
 
   health: async (): Promise<any> => {
-    // Connect directly to AI pipeline on port 3005 (Docker mapped port)
-    const aiPipelineUrl = `http://${window.location.hostname}:3005`;
-    const response = await axios.get(`${aiPipelineUrl}/health`, {
+    // Use Kong API gateway for AI pipeline health check
+    const response = await api.get('/api/ai/health', {
       timeout: 10000
     });
     return response.data;
+  },
+
+  // Poll execution status
+  getExecutionStatus: async (executionId: string): Promise<any> => {
+    try {
+      const response = await api.get(`/api/ai/execution/${executionId}/status`, {
+        timeout: 10000
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get execution status:', error);
+      return null;
+    }
   },
 
   // Legacy compatibility stubs (deprecated - these will be removed)
