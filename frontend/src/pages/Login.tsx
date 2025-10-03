@@ -56,12 +56,17 @@ const Login: React.FC = () => {
       const response = await authApi.login({ username, password });
       setSessionToken(response.access_token);
       
+      // Store refresh token for logout
+      if (response.refresh_token) {
+        localStorage.setItem('refresh_token', response.refresh_token);
+      }
+      
       // Update the AuthContext with session token
       login(response.access_token, response.user);
       
       navigate('/');
     } catch (error: any) {
-      setError(error.response?.data?.detail || 'Login failed');
+      setError(error.response?.data?.detail || error.response?.data?.error_description || 'Login failed');
     } finally {
       setLoading(false);
     }

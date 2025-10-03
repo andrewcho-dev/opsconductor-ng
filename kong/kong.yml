@@ -2,9 +2,9 @@ _format_version: "3.0"
 _transform: true
 
 services:
-  # Identity Service
-  - name: identity-service
-    url: http://identity-service:3001
+  # Keycloak Authentication Service
+  - name: keycloak-auth
+    url: http://keycloak:8080
     plugins:
       - name: cors
         config:
@@ -109,7 +109,20 @@ services:
           max_age: 3600
 
 routes:
-  # Asset Service Routes (must come before identity to match more specific path first)
+  # Keycloak Auth Routes (highest priority)
+  - name: keycloak-auth-routes
+    service: keycloak-auth
+    paths:
+      - /api/v1/auth
+    strip_path: true
+    preserve_host: false
+    regex_priority: 300
+    methods:
+      - GET
+      - POST
+      - OPTIONS
+
+  # Asset Service Routes
   - name: asset-routes
     service: asset-service
     paths:
@@ -124,14 +137,16 @@ routes:
       - DELETE
       - OPTIONS
 
-  # Identity Service Routes
-  - name: identity-auth
-    service: identity-service
+  # Automation Service Routes (jobs, runs, credentials, etc.)
+  - name: automation-jobs-routes
+    service: automation-service
     paths:
-      - /api/v1
+      - /api/v1/jobs
+      - /api/v1/runs
+      - /api/v1/credentials
     strip_path: true
-    regex_priority: 100
     preserve_host: false
+    regex_priority: 200
     methods:
       - GET
       - POST

@@ -6,55 +6,57 @@ alwaysApply: true
 # Repository Information Overview
 
 ## Repository Summary
-OpsConductor NG is a production-ready IT operations automation platform with advanced AI capabilities. The architecture uses Kong API Gateway, Keycloak for identity management, and a pure LLM-driven AI brain that eliminates hardcoded logic in favor of intelligent service orchestration.
+OpsConductor NG is an IT operations automation platform with a clean architecture approach. The system uses a 4-stage AI pipeline powered by Ollama LLM for decision making, with specialized microservices for execution. The architecture follows a clear separation of concerns with the AI Brain making decisions, while specialized services handle execution.
 
 ## Repository Structure
-The repository follows a microservices architecture with enhanced AI capabilities:
-- **Backend Services**: Python FastAPI microservices with shared base classes
-- **Frontend**: React TypeScript application with Bootstrap components
-- **Infrastructure**: Docker Compose orchestration with GPU support
-- **AI System**: Pure LLM-powered brain with Ollama integration
-- **Identity**: Keycloak-based enterprise identity management
-- **API Gateway**: Kong for centralized routing and authentication
+- **ai-pipeline**: Core AI decision-making system with 4-stage pipeline
+- **automation-service**: Command execution service with clean architecture
+- **asset-service**: Infrastructure asset management
+- **network-analyzer-service**: Network monitoring and analysis
+- **communication-service**: Notifications and alerts
+- **identity-service**: User management with Keycloak integration
+- **frontend**: React TypeScript web interface
+- **shared**: Common utilities and base classes for services
+- **kong**: API Gateway configuration
+- **keycloak**: Identity provider configuration
 
 ### Main Repository Components
+- **AI Pipeline** (Port 3005): 4-stage LLM-driven decision engine
 - **Kong API Gateway** (Port 3000): Centralized routing and authentication
-- **Keycloak** (Port 8090): Enterprise identity and access management
-- **Identity Service** (Port 3001): User management with Keycloak integration
-- **Asset Service** (Port 3002): Infrastructure asset management with encryption
-- **Automation Service** (Port 3003): Job execution and workflow management
-- **Communication Service** (Port 3004): Notifications and audit logging
-- **AI Brain** (Port 3005): Pure LLM-driven intelligence with Ollama integration
-- **Network Analyzer** (Port 3006): Network monitoring and analysis
-- **Frontend** (Port 3100): Modern web interface
+- **Keycloak** (Port 8090): Identity and access management
+- **Automation Service** (Port 3003): Command execution
+- **Asset Service** (Port 3002): Infrastructure management
+- **Network Service** (Port 3006): Network analysis
+- **Communication Service** (Port 3004): Notifications
+- **Frontend** (Port 3100): Web interface
 
 ## Projects
 
-### AI Brain (Pure LLM Architecture)
-**Configuration Files**: `ai-brain/main.py`, `ai-brain/requirements.txt`
+### AI Pipeline (4-Stage Architecture)
+**Configuration Files**: `main.py`, `requirements.txt`, `Dockerfile`
 
 #### Language & Runtime
 **Language**: Python 3.12+
-**Framework**: FastAPI 0.117.1
-**LLM Integration**: Ollama 0.4.7 with CodeLLama 7B model
-**Vector Database**: ChromaDB 0.6.1 for knowledge storage
+**Framework**: FastAPI 0.104.1
+**LLM Integration**: Ollama 0.11.11 with Qwen2.5 model
+**Database**: PostgreSQL 17
 
 #### Architecture
 **Key Components**:
-- **Intent Brain**: Pure LLM-based intent understanding
-- **Fulfillment Engine**: Direct execution of user requests
-- **Direct Executor**: Ollama-driven service orchestration
-- **Service Catalog**: Dynamic service discovery
-- **No Hardcoded Logic**: All decisions made by LLM
+- **Stage A (Classifier)**: Intent classification
+- **Stage B (Selector)**: Tool selection
+- **Stage C (Planner)**: Execution planning
+- **Stage D (Answerer)**: Response formatting
+- **Stage E (Executor)**: Integrated execution
 
 #### Dependencies
-- fastapi==0.117.1
-- uvicorn==0.24.0
-- pydantic>=2.8.0
-- chromadb==0.6.1
-- ollama==0.4.7
-- prefect>=3.0.0
-- sentence-transformers>=3.3.1
+- fastapi==0.104.1
+- uvicorn[standard]==0.24.0
+- pydantic==2.5.0
+- httpx==0.25.2
+- asyncpg==0.29.0
+- sqlalchemy[asyncio]==2.0.23
+- redis[hiredis]==5.0.1
 
 ### Backend Services (Python FastAPI)
 **Configuration Files**: `requirements.txt`, `Dockerfile` in each service directory
@@ -62,33 +64,24 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 #### Language & Runtime
 **Language**: Python 3.12+
 **Framework**: FastAPI
-**Database**: PostgreSQL 17 with 5 schemas
+**Database**: PostgreSQL 17
 **Cache/Queue**: Redis 7.4
-**Authentication**: Keycloak integration with OAuth2
 
 #### Key Services
-- **Asset Service**: Asset management with embedded credentials
-- **Automation Service**: Job execution with WebSocket updates
-- **Network Analyzer**: Network monitoring with remote probes
-- **Communication Service**: Notifications and audit logging
+- **Automation Service**: Clean architecture execution service
+- **Asset Service**: Infrastructure asset management
+- **Network Analyzer**: Network monitoring and analysis
+- **Communication Service**: Notifications and alerts
 
-### Identity Management (Keycloak)
-**Configuration Files**: `keycloak/Dockerfile`, `keycloak/opsconductor-realm.json`
-
-#### Features
-**Authentication**: OAuth2/OpenID Connect
-**User Management**: Complete user lifecycle
-**Role-Based Access**: Fine-grained permissions
-**Integration**: Native integration with Kong API Gateway
-
-### API Gateway (Kong)
-**Configuration Files**: `kong/Dockerfile`, `kong/kong.yml`
-
-#### Features
-**Routing**: Centralized API routing
-**Authentication**: OAuth2 with Keycloak
-**Rate Limiting**: Request throttling
-**Configuration**: Declarative YAML configuration
+#### Dependencies
+- fastapi==0.104.1
+- uvicorn[standard]==0.24.0
+- pydantic[email]==2.5.0
+- asyncpg==0.29.0
+- redis==5.0.1
+- httpx==0.25.2
+- paramiko==3.4.0 (SSH connections)
+- pywinrm==0.4.3 (Windows PowerShell)
 
 ### Frontend (React TypeScript)
 **Configuration File**: `frontend/package.json`
@@ -97,78 +90,50 @@ The repository follows a microservices architecture with enhanced AI capabilitie
 **Language**: TypeScript 4.9.5
 **Framework**: React 18.2.0
 **UI Components**: Bootstrap 5.3.8, Lucide React 0.542.0
-**Data Grid**: AG Grid 32.3.9 for advanced data display
+**Data Grid**: AG Grid 32.3.9
 
-#### Key Pages
-- **AIChat**: Natural language interface
-- **Assets**: Infrastructure management
-- **Jobs**: Automation workflow management
-- **Dashboard**: System overview and metrics
+#### Dependencies
+- react==18.2.0
+- typescript==4.9.5
+- bootstrap==5.3.8
+- ag-grid-react==32.3.9
+- lucide-react==0.542.0
+- axios==1.6.2
 
-### Infrastructure & Database
-**Configuration Files**: `docker-compose.yml`, `database/complete-schema.sql`
-
-#### Components
-**Database**: PostgreSQL 17 with 5 schemas
-**Message Queue**: Redis 7.4 for service communication
-**LLM Server**: Ollama 0.11.11 for local model serving
-**Vector Database**: ChromaDB 0.6.1 for AI knowledge storage
-**Reverse Proxy**: Traefik for SSL termination and routing
-
-#### Database Schema
-**5 Schemas**:
-- **identity**: User management (integrated with Keycloak)
-- **assets**: Consolidated asset management
-- **automation**: Job execution and scheduling
-- **communication**: Notifications and audit logs
-- **network_analysis**: Network monitoring and diagnostics
-
-### Network Analysis System
-**Configuration Files**: `network-analyzer-service/main.py`, `network-analytics-probe/main.py`
-
-#### Features
-**Remote Probes**: Distributed network monitoring
-**Packet Analysis**: Deep packet inspection
-**Protocol Analysis**: Application-layer visibility
-**AI Analysis**: Intelligent anomaly detection
-
-## Deployment & Operations
-
-### Deployment Options
+#### Build & Installation
 ```bash
-# Standard deployment
-./deploy.sh
-
-# With GPU acceleration for AI
-docker-compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-
-# With monitoring stack
-./start-monitoring.sh
+cd frontend
+npm install
+npm start
 ```
 
-### Advanced Features
-- **GPU Acceleration**: NVIDIA GPU support for LLM performance
-- **Traefik Integration**: Primary reverse proxy solution (deploy-traefik.sh)
-- **ELK Stack**: Optional logging infrastructure (deploy-elk.sh)
-- **Redis Streams**: Advanced message processing (deploy-redis-streams.sh)
-- **Remote Probes**: Distributed network monitoring agents
+### Infrastructure
+**Configuration Files**: `docker-compose.yml`
 
-### Security Features
-- **Keycloak Authentication**: Enterprise-grade identity
-- **Credential Encryption**: Fernet encryption for sensitive data
-- **RBAC**: Role-based access with fine-grained permissions
-- **Audit Logging**: Comprehensive activity tracking
-- **TLS/SSL**: Secure communication with certificate management
+#### Components
+**Database**: PostgreSQL 17
+**Message Queue**: Redis 7.4
+**LLM Server**: Ollama 0.11.11
+**API Gateway**: Kong 3.4
+**Identity Provider**: Keycloak 22.0.1
+
+#### Deployment
+```bash
+# Standard deployment
+docker-compose up -d
+
+# Development with live reload
+./scripts/dev-mode.sh
+```
 
 ## Testing Framework
+**Framework**: pytest 7.4.3 with pytest-asyncio
+**Test Location**: `tests/`
+**Key Test Files**:
+- `tests/test_phase_*`: Pipeline stage tests
+- `tests/test_ai_functional_performance.py`: Performance tests
 
-### E2E Testing (Python-based)
-**Framework**: Python asyncio with httpx for HTTP testing
-**Test Location**: `tests/e2e/`
-**Target Framework**: Python-based integration tests for microservices
-**Key Features**:
-- Comprehensive AI Brain → Prefect → Automation Engine integration testing
-- Incremental difficulty scaling (1-10 difficulty levels)
-- Real-time monitoring of service interactions
-- Detailed logging and reporting
-- JSON-based test result storage
+**Run Command**:
+```bash
+pytest tests/
+```

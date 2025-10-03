@@ -101,6 +101,7 @@ export const setSessionToken = (token: string) => {
 
 export const clearTokens = () => {
   localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
 };
 
@@ -108,104 +109,112 @@ export const isAuthenticated = (): boolean => {
   return !!localStorage.getItem('access_token');
 };
 
-// Auth API
+// Auth API - Direct Keycloak Integration
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await axios.post(`${getApiBaseUrl()}/api/v1/auth/login`, credentials);
-    return response.data;
+    // Call Keycloak token endpoint directly through Kong proxy
+    const keycloakRealm = 'opsconductor';
+    const keycloakClientId = 'opsconductor-frontend';
+    
+    const response = await axios.post(
+      `${getApiBaseUrl()}/api/v1/auth/realms/${keycloakRealm}/protocol/openid-connect/token`,
+      new URLSearchParams({
+        client_id: keycloakClientId,
+        username: credentials.username,
+        password: credentials.password,
+        grant_type: 'password'
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+    
+    // Transform Keycloak response to match our AuthResponse format
+    const tokenData = response.data;
+    
+    // Decode JWT to get user info (simple base64 decode of payload)
+    const payload = JSON.parse(atob(tokenData.access_token.split('.')[1]));
+    
+    return {
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token,
+      token_type: 'bearer',
+      expires_in: tokenData.expires_in,
+      user: {
+        id: payload.sub,
+        username: payload.preferred_username,
+        email: payload.email || '',
+        first_name: payload.given_name || '',
+        last_name: payload.family_name || '',
+        roles: payload.realm_access?.roles || [],
+        is_admin: payload.realm_access?.roles?.includes('admin') || false
+      }
+    };
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/api/v1/auth/logout');
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      const keycloakRealm = 'opsconductor';
+      const keycloakClientId = 'opsconductor-frontend';
+      
+      try {
+        await axios.post(
+          `${getApiBaseUrl()}/api/v1/auth/realms/${keycloakRealm}/protocol/openid-connect/logout`,
+          new URLSearchParams({
+            client_id: keycloakClientId,
+            refresh_token: refreshToken
+          }),
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Keycloak logout failed:', error);
+      }
+    }
     clearTokens();
   },
 
   verify: async (): Promise<{ valid: boolean; user: User }> => {
-    const response = await api.get('/api/v1/auth/verify');
-    return response.data;
+    // Verify by decoding the JWT token (client-side validation)
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      throw new Error('No token found');
+    }
+    
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      
+      // Check if token is expired
+      if (payload.exp * 1000 < Date.now()) {
+        throw new Error('Token expired');
+      }
+      
+      return {
+        valid: true,
+        user: {
+          id: payload.sub,
+          username: payload.preferred_username,
+          email: payload.email || '',
+          first_name: payload.given_name || '',
+          last_name: payload.family_name || '',
+          roles: payload.realm_access?.roles || [],
+          is_admin: payload.realm_access?.roles?.includes('admin') || false
+        }
+      };
+    } catch (error) {
+      throw new Error('Invalid token');
+    }
   }
 };
 
-// User API
-export const userApi = {
-  list: async (skip = 0, limit = 100): Promise<UserListResponse> => {
-    const response: AxiosResponse<UserListResponse> = await api.get('/api/v1/users', {
-      params: { skip, limit }
-    });
-    return response.data;
-  },
-
-  get: async (id: number): Promise<User> => {
-    const response: AxiosResponse<User> = await api.get(`/api/v1/users/${id}`);
-    return response.data;
-  },
-
-  create: async (userData: UserCreate): Promise<User> => {
-    const response: AxiosResponse<User> = await api.post('/api/v1/users', userData);
-    return response.data;
-  },
-
-  update: async (id: number, userData: UserUpdate): Promise<User> => {
-    const response: AxiosResponse<User> = await api.put(`/api/v1/users/${id}`, userData);
-    return response.data;
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/users/${id}`);
-  },
-
-  assignRole: async (id: number, role: string): Promise<void> => {
-    await api.post(`/api/v1/users/${id}/roles`, { role });
-  }
-};
-
-// Roles API
-export const rolesApi = {
-  list: async (skip = 0, limit = 100): Promise<RoleListResponse> => {
-    const response: AxiosResponse<{success: boolean, data: Role[]}> = await api.get('/api/v1/roles', {
-      params: { skip, limit }
-    });
-    // Transform the backend response to match the expected RoleListResponse format
-    return {
-      data: response.data.data,
-      meta: {
-        total_items: response.data.data.length,
-        skip: skip,
-        limit: limit,
-        has_more: false
-      },
-      total: response.data.data.length
-    };
-  },
-
-  get: async (id: number): Promise<Role> => {
-    const response: AxiosResponse<{success: boolean, data: Role}> = await api.get(`/api/v1/roles/${id}`);
-    return response.data.data; // Extract the actual role data from the wrapped response
-  },
-
-  create: async (roleData: RoleCreate): Promise<Role> => {
-    const response: AxiosResponse<{success: boolean, data: Role}> = await api.post('/api/v1/roles', roleData);
-    return response.data.data; // Extract the actual role data from the wrapped response
-  },
-
-  update: async (id: number, roleData: RoleUpdate): Promise<Role> => {
-    const response: AxiosResponse<{success: boolean, data: Role}> = await api.put(`/api/v1/roles/${id}`, roleData);
-    return response.data.data; // Extract the actual role data from the wrapped response
-  },
-
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/api/v1/roles/${id}`);
-  },
-
-  // Legacy methods for backward compatibility
-  listSimple: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string}>}>> => {
-    return api.get('/api/v1/available-roles');
-  },
-
-  listFull: async (): Promise<AxiosResponse<{success: boolean, data: Array<{id: number, name: string, description: string, permissions: string[], is_active: boolean, created_at: string, updated_at: string}>}>> => {
-    return api.get('/api/v1/roles');
-  }
-};
+// User and Roles management is now handled directly in Keycloak
+// No user/roles API needed in the application
 
 // Asset API (replaces Target API)
 export const assetApi = {
@@ -317,7 +326,6 @@ export const healthApi = {
   checkAllServices: async (): Promise<Record<string, any>> => {
     // Define services with their Kong health endpoints
     const services = [
-      { name: 'identity-service', path: '/api/health/identity-service' },
       { name: 'asset-service', path: '/api/health/asset-service' },
       { name: 'automation-service', path: '/api/health/automation-service' },
       { name: 'communication-service', path: '/api/health/communication-service' },

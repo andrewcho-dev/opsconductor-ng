@@ -1,135 +1,163 @@
-# OpsConductor AI Brain - Clean Architecture
+# OpsConductor NG - IT Operations Automation Platform
 
-## 🧹 **CLEAN ARCHITECTURE IMPLEMENTATION**
+## 🏗️ Architecture Overview
 
-This is the **completely refactored OpsConductor AI Brain** with clean architecture principles, eliminating all redundancy and confusion from the previous implementation.
+OpsConductor NG is a modern IT operations automation platform built with a clean architecture approach. The system uses a 4-stage AI pipeline powered by Ollama LLM for decision making, with specialized microservices for execution.
 
-## 🏗️ **ARCHITECTURE OVERVIEW**
+### Core Components
 
-### **Clean Component Responsibilities:**
+- **🧠 AI Pipeline**: 4-stage LLM-driven decision engine
+- **🔧 Specialized Services**: Dedicated microservices for specific operations
+- **🔐 Identity Management**: Keycloak-based authentication and authorization
+- **🌐 API Gateway**: Kong for centralized routing and security
+- **🖥️ Frontend**: React TypeScript web interface
 
-- **🧠 AI Brain**: Decision making + orchestration coordination ONLY
-- **⚡ Prefect**: Single orchestration engine for ALL workflows  
-- **🔧 Services**: Specialized execution units with direct APIs
-- **🧠 Ollama**: Sole AI decision maker (no fallback logic)
+### Execution Flow
 
-### **Clean Execution Flow:**
 ```
-User Request → AI Brain (Decision + Plan) → Prefect (Orchestration) → Services (Execution)
+User Request → AI Pipeline (4-Stage Processing) → Specialized Services → Response
 ```
 
-## 🚀 **QUICK START**
+## 🚀 Quick Start
 
-### **Deploy Clean System:**
+### Deploy the System
+
 ```bash
-# Start clean architecture
-docker-compose -f docker-compose.clean.yml up -d
+# Standard deployment with development volume mounts
+docker compose up -d
 
-# Check health
-curl http://localhost:3005/health
-curl http://localhost:3005/architecture
+# Check system status
+./scripts/status.sh
 ```
 
-### **Test Clean Flow:**
+### Access Services
+
+- **Frontend**: http://localhost:3100
+- **AI Pipeline API**: http://localhost:3005
+- **Kong API Gateway**: http://localhost:3000
+- **Keycloak Admin**: http://localhost:8090
+
+### Test the System
+
 ```bash
-# Submit intent to AI Brain
-curl -X POST http://localhost:3005/process \
+# Submit a request to the AI Pipeline
+curl -X POST http://localhost:3005/pipeline \
   -H "Content-Type: application/json" \
   -d '{
-    "intent": "Check disk space on production servers",
-    "context": {"environment": "production"}
+    "request": "Check system status",
+    "context": {}
   }'
 ```
 
-## 📁 **CLEAN FILES STRUCTURE**
+## 📋 System Architecture
+
+### AI Pipeline (4-Stage Architecture)
+
+The AI Pipeline processes user requests through four specialized stages:
+
+1. **Stage A (Classifier)**: Analyzes and classifies user intent
+2. **Stage B (Selector)**: Selects appropriate tools and services
+3. **Stage C (Planner)**: Creates execution plan with detailed steps
+4. **Stage D (Answerer)**: Formats final response to the user
+5. **Stage E (Executor)**: Integrated execution (Phase 7)
+
+### Specialized Services
+
+- **Automation Service**: Command execution and workflow management
+- **Asset Service**: Infrastructure asset management
+- **Network Analyzer**: Network monitoring and analysis
+- **Communication Service**: Notifications and alerts
+
+### Infrastructure Components
+
+- **PostgreSQL 17**: Primary database with multiple schemas
+- **Redis 7**: Message queue and caching
+- **Ollama 0.11**: Local LLM server with GPU acceleration
+- **Kong 3.4**: API Gateway for routing and authentication
+- **Keycloak 22**: Identity and access management
+
+## 💻 Development
+
+### Development Mode
+
+For active development with live code reloading:
+
+```bash
+# Start in development mode with volume mounts
+./scripts/dev-mode.sh
+
+# View logs
+./scripts/logs.sh
+
+# Stop development environment
+./scripts/stop-dev.sh
+```
+
+### Production Mode
+
+For testing in a production-like environment:
+
+```bash
+# Start in production mode (no volume mounts)
+./scripts/prod-mode.sh
+
+# Stop production environment
+./scripts/stop-prod.sh
+```
+
+## 🧪 Testing
+
+The system includes comprehensive test suites:
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run specific test phase
+pytest tests/test_phase_1_stage_a.py
+```
+
+## 📁 Repository Structure
 
 ```
 opsconductor-ng/
-├── docker-compose.clean.yml          # Clean architecture deployment
-├── ai-brain/
-│   ├── Dockerfile.clean              # Clean AI Brain container
-│   ├── main_clean.py                 # Clean AI Brain entry point
-│   └── orchestration/
-│       ├── ai_brain_service_clean.py # Simplified AI Brain
-│       └── clean_prefect_flows.py    # Clean Prefect workflows
-├── automation-service/
-│   ├── Dockerfile.clean              # Clean automation container
-│   ├── main_clean.py                 # Simple execution API (no Celery)
-│   └── requirements.clean.txt        # Dependencies without Celery
-└── [other services remain unchanged]
+├── pipeline/                # 4-stage AI pipeline components
+│   ├── stages/              # Individual pipeline stages
+│   │   ├── stage_a/         # Intent classification
+│   │   ├── stage_b/         # Tool selection
+│   │   ├── stage_c/         # Execution planning
+│   │   ├── stage_d/         # Response formatting
+│   │   └── stage_e/         # Execution integration
+│   ├── schemas/             # Data models for pipeline stages
+│   └── orchestrator.py      # Main pipeline controller
+├── automation-service/      # Command execution service
+├── asset-service/           # Infrastructure management
+├── network-analyzer-service/# Network monitoring and analysis
+├── communication-service/   # Notifications and alerts
+├── frontend/                # React TypeScript web interface
+├── shared/                  # Common utilities and base classes
+├── kong/                    # API Gateway configuration
+├── keycloak/                # Identity provider configuration
+├── scripts/                 # Utility scripts for operations
+└── tests/                   # Comprehensive test suites
 ```
 
-## ✅ **WHAT WAS ELIMINATED**
+## 🔧 Technologies
 
-### **❌ REMOVED REDUNDANCY:**
-- Celery workers from automation service
-- Direct AI Brain → Service connections  
-- Background processing duplication
-- Multiple job queues and orchestration systems
-- Complex routing and fallback logic
+- **Backend**: Python 3.12+, FastAPI, PostgreSQL, Redis
+- **AI**: Ollama 0.11 with Qwen2.5 model, GPU acceleration
+- **Frontend**: TypeScript 4.9, React 18.2, Bootstrap 5.3
+- **Infrastructure**: Docker, Kong, Keycloak
+- **Testing**: pytest, pytest-asyncio
 
-### **❌ REMOVED OLD FILES:**
-- All old docker-compose files
-- Old AI Brain implementations (main.py, main_modern.py, etc.)
-- Old Dockerfiles and requirements
-- Celery monitoring and worker files
-- Complex orchestration components
-- Redundant test files and documentation
+## 📚 Documentation
 
-## 🎯 **CLEAN ARCHITECTURE BENEFITS**
+For more detailed information, refer to the following documents:
 
-- **Clear purpose** for each component
-- **No overlapping responsibilities** 
-- **Single orchestration path** (Prefect only)
-- **Obvious service boundaries**
-- **Simpler debugging** (clear failure points)
-- **Better performance** (no Celery overhead)
-- **Easier maintenance** (single responsibility)
-- **Predictable behavior** (clear flow)
-
-## 🔍 **ARCHITECTURE VERIFICATION**
-
-The clean architecture now has:
-
-1. **🧠 AI Brain** - Makes decisions, generates plans, coordinates with Prefect
-2. **⚡ Prefect** - Single orchestration engine, manages all workflows
-3. **🔧 Automation Service** - Direct command execution (no background processing)
-4. **📦 Asset Service** - Asset management operations
-5. **🌐 Network Service** - Network analysis operations  
-6. **📢 Communication Service** - Notifications and alerts
-
-**NO MORE:**
-- ❌ Celery workers in automation service
-- ❌ Direct AI Brain → Service connections
-- ❌ Multiple orchestration systems
-- ❌ Background processing redundancy
-- ❌ Confusing component overlap
-
-## 📚 **DOCUMENTATION**
-
-### **Implementation Status**
-- ✅ **Phase 0**: Foundation (Complete)
-- ✅ **Phase 1**: Stage A Analyzer (Complete)  
-- ✅ **Phase 2**: Stage B Selector (Complete)
-- ✅ **Phase 3**: Stage C Planner (Complete - Rollback Removed)
-- ✅ **Phase 4**: Stage D Answerer (Complete)
-- 🚀 **Confidence-Driven Clarification System**: **FULLY OPERATIONAL**
-
-### **Recent Critical Updates**
-- **🚀 PERFORMANCE BREAKTHROUGH**: GPU acceleration restored (80s → 23s inference)
-- **🧠 CLARIFICATION SYSTEM**: Confidence-driven clarification fully operational
-- **🏗️ ARCHITECTURE**: Fixed routing conflicts and edge case handling
-- **🔧 INFRASTRUCTURE**: Docker GPU support resolved (9GB VRAM active)
-- **✅ TESTING**: All confidence levels validated and working
-
-### **Key Documents**
-- `CONFIDENCE_CLARIFICATION_SYSTEM_STATUS.md` - **🚀 LATEST: Complete system status report**
-- `CLEAN_ARCHITECTURE.md` - Complete implementation details
-- `PHASE_4_COMPLETION_REPORT.md` - Stage D implementation report
-- `PHASE_3_COMPLETION_REPORT.md` - Stage C implementation report
-- `ROLLBACK_REMOVAL_SUMMARY.md` - Rollback removal details
-- `STAGE_C_TESTING_COMPLETION_REPORT.md` - Comprehensive testing report
+- `CLEAN_ARCHITECTURE.md` - Detailed architecture overview
+- `PHASE_*_COMPLETION_REPORT.md` - Implementation phase reports
+- `DOCKER_COMPOSE_CLEANUP.md` - Infrastructure standardization
 
 ---
 
-**The clean architecture has crystal clear separation of concerns and single responsibility per component.**
+**OpsConductor NG: Clean architecture with clear separation of concerns and single responsibility per component.**
