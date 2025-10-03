@@ -151,6 +151,15 @@ class AutomationServiceClient:
         Raises:
             httpx.HTTPError: On connection or HTTP errors
         """
+        # For Phase 7: Execute locally if connection_type is "local"
+        if connection_type == "local" and not target_host:
+            return await self._execute_local_command(
+                command=command,
+                timeout=timeout,
+                working_directory=working_directory,
+                environment_vars=environment_vars
+            )
+        
         try:
             logger.info(
                 f"Executing command: {command[:50]}... "
@@ -196,6 +205,100 @@ class AutomationServiceClient:
                 exc_info=True
             )
             raise
+    
+    async def _execute_local_command(
+        self,
+        command: str,
+        timeout: int = 300,
+        working_directory: Optional[str] = None,
+        environment_vars: Optional[Dict[str, str]] = None
+    ) -> ExecutionResult:
+        """
+        Execute a command locally using subprocess
+        
+        Args:
+            command: Command to execute
+            timeout: Command timeout in seconds
+            working_directory: Working directory for command
+            environment_vars: Environment variables
+        
+        Returns:
+            ExecutionResult
+        """
+        import asyncio
+        import uuid
+        
+        execution_id = str(uuid.uuid4())
+        started_at = datetime.utcnow()
+        
+        try:
+            logger.info(f"Executing local command: {command[:100]}...")
+            
+            # Prepare environment
+            env = os.environ.copy()
+            if environment_vars:
+                env.update(environment_vars)
+            
+            # Execute command
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=working_directory,
+                env=env
+            )
+            
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise TimeoutError(f"Command timed out after {timeout} seconds")
+            
+            completed_at = datetime.utcnow()
+            duration_seconds = (completed_at - started_at).total_seconds()
+            
+            result = ExecutionResult(
+                execution_id=execution_id,
+                status="completed" if process.returncode == 0 else "failed",
+                command=command,
+                exit_code=process.returncode,
+                stdout=stdout.decode('utf-8', errors='replace') if stdout else "",
+                stderr=stderr.decode('utf-8', errors='replace') if stderr else "",
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_seconds=duration_seconds,
+                error_message=None if process.returncode == 0 else f"Command failed with exit code {process.returncode}"
+            )
+            
+            logger.info(
+                f"Local command completed: exit_code={process.returncode}, "
+                f"duration={duration_seconds:.2f}s"
+            )
+            
+            return result
+        
+        except Exception as e:
+            completed_at = datetime.utcnow()
+            duration_seconds = (completed_at - started_at).total_seconds()
+            
+            logger.error(f"Error executing local command: {e}")
+            
+            return ExecutionResult(
+                execution_id=execution_id,
+                status="failed",
+                command=command,
+                exit_code=-1,
+                stdout="",
+                stderr=str(e),
+                started_at=started_at,
+                completed_at=completed_at,
+                duration_seconds=duration_seconds,
+                error_message=str(e)
+            )
     
     async def execute_workflow(
         self,

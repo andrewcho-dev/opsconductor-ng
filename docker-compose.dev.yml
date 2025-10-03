@@ -165,8 +165,8 @@ services:
       PREFECT_API_URL: http://prefect-server:4200/api
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
-      AUTOMATION_SERVICE_URL: http://automation-service:8010
-      ASSET_SERVICE_URL: http://asset-service:8002
+      AUTOMATION_SERVICE_URL: http://automation-service:3003
+      ASSET_SERVICE_URL: http://asset-service:3002
       NETWORK_SERVICE_URL: http://network-service:8003
       COMMUNICATION_SERVICE_URL: http://communication-service:8004
     ports:

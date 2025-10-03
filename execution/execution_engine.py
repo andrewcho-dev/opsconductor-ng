@@ -185,11 +185,11 @@ class ExecutionEngine:
             step = ExecutionStepModel(
                 execution_id=execution.execution_id,
                 step_index=index,
-                step_name=plan_step.get("name", f"Step {index + 1}"),
-                step_type=plan_step.get("type", "unknown"),
+                step_name=plan_step.get("description", plan_step.get("name", f"Step {index + 1}")),
+                step_type=plan_step.get("tool", plan_step.get("type", "unknown")),
                 target_asset_id=plan_step.get("target_asset_id"),
                 target_hostname=plan_step.get("target_hostname"),
-                input_data=plan_step.get("input_data", {}),
+                input_data=plan_step.get("inputs", plan_step.get("input_data", {})),
                 trace_id=execution.trace_id,
             )
             
@@ -282,6 +282,77 @@ class ExecutionEngine:
                 duration_ms=duration_ms,
             )
     
+    def _convert_tool_to_command(
+        self,
+        tool_name: str,
+        inputs: Dict[str, Any]
+    ) -> str:
+        """
+        Convert tool name and inputs to executable command
+        
+        Args:
+            tool_name: Name of the tool (e.g., 'ps', 'journalctl')
+            inputs: Tool inputs
+        
+        Returns:
+            Executable command string
+        """
+        tool_name = tool_name.lower()
+        
+        # PS command
+        if tool_name == "ps":
+            cmd = "ps"
+            if inputs.get("format") == "detailed":
+                cmd += " aux"
+            if inputs.get("sort_by") == "cpu_usage":
+                cmd += " --sort=-%cpu"
+            return cmd
+        
+        # Journalctl command
+        elif tool_name == "journalctl":
+            cmd = "journalctl"
+            if inputs.get("lines"):
+                cmd += f" -n {inputs['lines']}"
+            if inputs.get("priority"):
+                cmd += f" -p {inputs['priority']}"
+            if not inputs.get("follow", False):
+                cmd += " --no-pager"
+            return cmd
+        
+        # Network tools (ping, traceroute, etc.)
+        elif tool_name == "network_tools":
+            subtool = inputs.get("tool", "ping")
+            if subtool == "ping":
+                target = inputs.get("target", "localhost")
+                count = inputs.get("count", 4)
+                return f"ping -c {count} {target}"
+            elif subtool == "traceroute":
+                target = inputs.get("target", "localhost")
+                return f"traceroute {target}"
+            elif subtool == "netstat":
+                return "netstat -tuln"
+            return "ping -c 4 localhost"
+        
+        # Systemctl command
+        elif tool_name == "systemctl":
+            action = inputs.get("action", "status")
+            service = inputs.get("service", "")
+            return f"systemctl {action} {service}".strip()
+        
+        # Df (disk free) command
+        elif tool_name == "df":
+            cmd = "df"
+            if inputs.get("human_readable", True):
+                cmd += " -h"
+            if inputs.get("filesystem_type"):
+                cmd += f" -t {inputs['filesystem_type']}"
+            return cmd
+        
+        # Default: return the tool name as command
+        else:
+            logger.warning(f"Unknown tool: {tool_name}, using as-is")
+            return tool_name
+    
     async def _execute_step_by_type(
         self,
         step: ExecutionStepModel,
@@ -330,6 +401,10 @@ class ExecutionEngine:
         elif step_type in ["api", "http", "rest"]:
             return await self._execute_api_step(step, asset)
         
+        elif step_type in ["asset-service-query", "asset-query", "asset-service"]:
+            # Handle asset service queries
+            return await self._execute_asset_service_query(step)
+        
         elif step_type in ["database", "sql", "query"]:
             return await self._execute_database_step(step, asset)
         
@@ -363,7 +438,10 @@ class ExecutionEngine:
             # Extract command from input_data
             command = step.input_data.get("command")
             if not command:
-                raise ValueError("No command specified in input_data")
+                # Try to convert tool name + inputs to command
+                command = self._convert_tool_to_command(step.step_type, step.input_data)
+                if not command or command == step.step_type:
+                    raise ValueError(f"No command specified and unable to convert tool '{step.step_type}' to command")
             
             # Determine connection type
             connection_type = "local"
@@ -461,6 +539,93 @@ class ExecutionEngine:
             "error": result.stderr,
             "timestamp": datetime.utcnow().isoformat(),
         }
+    
+    async def _execute_asset_service_query(
+        self,
+        step: ExecutionStepModel
+    ) -> Dict[str, Any]:
+        """
+        Execute an asset service query
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            Output data with asset query results
+        """
+        try:
+            logger.info(f"Executing asset service query: {step.step_name}")
+            
+            # Extract query parameters from input_data
+            query_type = step.input_data.get("query_type", "list_all")
+            filters = step.input_data.get("filters", {})
+            fields = step.input_data.get("fields", [])
+            limit = step.input_data.get("limit", 100)
+            
+            logger.info(f"Query params: type={query_type}, filters={filters}, limit={limit}")
+            
+            # Execute the query based on type
+            if query_type == "list_all":
+                # Fetch all assets
+                assets = await self.asset_client.get_all_assets(limit=limit)
+                
+                return {
+                    "status": "success",
+                    "count": len(assets),
+                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "query_type": query_type,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            
+            elif query_type == "count":
+                # Just count assets
+                assets = await self.asset_client.get_all_assets(limit=10000)
+                
+                return {
+                    "status": "success",
+                    "count": len(assets),
+                    "query_type": query_type,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            
+            elif query_type == "by_type":
+                # Filter by asset type
+                asset_type = filters.get("type")
+                if not asset_type:
+                    raise ValueError("Asset type filter required for 'by_type' query")
+                
+                assets = await self.asset_client.get_assets_by_type(asset_type, limit=limit)
+                
+                return {
+                    "status": "success",
+                    "count": len(assets),
+                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "query_type": query_type,
+                    "filter": {"type": asset_type},
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            
+            else:
+                # Default: list all
+                logger.warning(f"Unknown query_type: {query_type}, defaulting to list_all")
+                assets = await self.asset_client.get_all_assets(limit=limit)
+                
+                return {
+                    "status": "success",
+                    "count": len(assets),
+                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "query_type": "list_all",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+        
+        except Exception as e:
+            logger.error(f"Asset service query failed: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "error": str(e),
+                "query_type": step.input_data.get("query_type", "unknown"),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
     
     async def _execute_database_step(
         self,

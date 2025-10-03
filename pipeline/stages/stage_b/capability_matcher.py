@@ -42,6 +42,9 @@ class CapabilityMatcher:
         """
         Find tools that match the decision requirements
         
+        This method provides ALL available tools to the LLM for intelligent selection.
+        We do NOT pre-filter based on hardcoded intent mappings - the LLM makes the decision.
+        
         Args:
             decision: Decision from Stage A
             max_tools: Maximum number of tools to return
@@ -51,15 +54,9 @@ class CapabilityMatcher:
         """
         matches = []
         
-        # Get candidate tools based on intent
-        candidate_tools = self.tool_registry.get_tools_by_intent(
-            decision.intent.category, 
-            decision.intent.action
-        )
-        
-        # If no intent-based matches, get all tools for broader search
-        if not candidate_tools:
-            candidate_tools = self.tool_registry.get_all_tools()
+        # Get ALL tools - let the LLM decide which ones are appropriate
+        # This is the correct LLM-first approach per the system charter
+        candidate_tools = self.tool_registry.get_all_tools()
         
         # Evaluate each candidate tool
         for tool in candidate_tools:
@@ -174,7 +171,8 @@ class CapabilityMatcher:
             "information_show_status": ["status_display", "information", "service_status"],
             "information_list_resources": ["resource_listing", "information"],
             "information_explain_process": ["documentation", "help_system"],
-            "information_show_configuration": ["configuration_display", "information"]
+            "information_show_configuration": ["configuration_display", "information"],
+            "information_asset_inventory": ["asset_query", "infrastructure_info", "resource_listing"]
         }
         
         expected_capabilities = intent_capability_map.get(intent_key, [])

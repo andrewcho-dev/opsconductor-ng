@@ -92,8 +92,8 @@ async def lifespan(app: FastAPI):
     global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer, tool_registry, llm_client
     
     logger.info("🚀 Starting NEWIDEA.MD Pipeline")
-    logger.info("📋 Architecture: 4-Stage AI Pipeline")
-    logger.info("🔗 Flow: User → Stage A → Stage B → Stage C → [Stage D] → Execution")
+    logger.info("📋 Architecture: 5-Stage AI Pipeline (Phase 7 Integrated)")
+    logger.info("🔗 Flow: User → Stage A → Stage B → Stage C → Stage D → [Stage E] → Execution")
     
     try:
         # Check Ollama availability - CRITICAL
@@ -131,6 +131,7 @@ async def lifespan(app: FastAPI):
         logger.info("🏗️  Phase 2: Stage B Selector - READY")
         logger.info("🏗️  Phase 3: Stage C Planner - READY")
         logger.info("🏗️  Phase 4: Stage D Answerer - READY")
+        logger.info("🚀 Phase 7: Stage E Executor - READY (integrated)")
         
         yield
         
@@ -224,15 +225,16 @@ async def health_check():
     return {
         "status": "healthy" if all_stages_healthy else "degraded",
         "architecture": "newidea-pipeline",
-        "version": "1.0.0",
-        "phase": "Phase 4 - Stage D Answerer",
-        "next_phase": "Phase 5 - Integration & Testing",
+        "version": "1.0.0-phase7",
+        "phase": "Phase 7 - Stage E Executor (Integrated)",
+        "next_phase": "Phase 8 - REST API Layer",
         "ollama_available": ollama_available,
         "pipeline_stages": {
             "stage_a_classifier": "✅ Implemented" if stage_a_healthy else "⚠️ Degraded",
             "stage_b_selector": "✅ Implemented" if stage_b_healthy else "⚠️ Degraded", 
             "stage_c_planner": "✅ Implemented" if stage_c_healthy else "⚠️ Degraded",
-            "stage_d_answerer": "✅ Implemented" if stage_d_healthy else "⚠️ Degraded"
+            "stage_d_answerer": "✅ Implemented" if stage_d_healthy else "⚠️ Degraded",
+            "stage_e_executor": "✅ Integrated (Phase 7)"
         },
         "critical_dependencies": {
             "ollama_llm": ollama_available,

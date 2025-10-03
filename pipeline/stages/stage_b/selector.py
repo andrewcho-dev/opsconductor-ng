@@ -39,9 +39,7 @@ class StageBSelector:
         # Configuration
         self.config = {
             "max_tools_per_selection": 5,
-            "min_selection_confidence": 0.3,
-            "enable_llm_validation": True,
-            "fallback_to_rule_based": True
+            "min_selection_confidence": 0.3
         }
     
     async def select_tools(self, decision: DecisionV1, 
@@ -59,15 +57,17 @@ class StageBSelector:
         start_time = time.time()
         
         try:
-            # Step 1: Find matching tools using capability matcher
-            capability_matches = await self._find_capability_matches(decision)
+            # Step 1: 100% LLM-based tool selection - NO FALLBACKS
+            # If LLM is not available, we FAIL - we don't hide problems
+            if not await self._is_llm_available():
+                raise RuntimeError("LLM is not available - cannot perform tool selection")
             
-            # Step 2: Use LLM for intelligent selection (if available)
-            if self.config["enable_llm_validation"] and await self._is_llm_available():
-                selected_tools = await self._llm_tool_selection(decision, capability_matches)
-            else:
-                # Fallback to rule-based selection
-                selected_tools = self._rule_based_tool_selection(capability_matches, decision)
+            # Get ALL tools and let LLM decide - no pre-filtering, no scoring
+            all_tools = self.tool_registry.get_all_tools()
+            selected_tools = await self._llm_tool_selection_direct(decision, all_tools)
+            
+            if not selected_tools:
+                raise RuntimeError("LLM failed to select any tools")
             
             # Step 3: Determine execution policy
             execution_policy = self.policy_engine.determine_execution_policy(decision, selected_tools)
@@ -78,10 +78,8 @@ class StageBSelector:
             # Step 5: Determine environment requirements
             env_requirements = self._determine_environment_requirements(selected_tools)
             
-            # Step 6: Calculate selection confidence
-            selection_confidence = self._calculate_selection_confidence(
-                capability_matches, selected_tools, decision
-            )
+            # Step 6: Calculate selection confidence (LLM-based, high confidence)
+            selection_confidence = 0.9  # High confidence for LLM selection
             
             # Step 7: Determine next stage
             next_stage = self._determine_next_stage(decision, selected_tools, execution_policy)
@@ -180,6 +178,62 @@ class StageBSelector:
         except Exception as e:
             # Fall back to rule-based selection on LLM error
             return self._rule_based_tool_selection(matches, decision)
+    
+    async def _llm_tool_selection_direct(self, decision: DecisionV1, 
+                                        tools: List) -> List[SelectedTool]:
+        """
+        Pure LLM-based tool selection - no pre-filtering or scoring
+        This is the ONLY selection method per the system charter
+        NO FALLBACKS - if this fails, we fail
+        """
+        
+        # Prepare tool information for LLM - ALL tools with their full descriptions
+        tools_info = []
+        for tool in tools:
+            tool_info = {
+                "name": tool.name,
+                "description": tool.description,
+                "capabilities": [
+                    {
+                        "name": cap.name,
+                        "description": cap.description,
+                        "required_inputs": cap.required_inputs,
+                        "optional_inputs": cap.optional_inputs
+                    }
+                    for cap in tool.capabilities
+                ],
+                "permissions": tool.permissions.value,
+                "production_safe": tool.production_safe,
+                "required_inputs": tool.required_inputs,
+                "dependencies": tool.dependencies
+            }
+            tools_info.append(tool_info)
+        
+        # Create LLM prompt with comprehensive tool selection rubric
+        prompt = self.prompt_manager.get_tool_selection_prompt(
+            decision=decision.model_dump(),
+            available_tools=tools_info
+        )
+        
+        # Get LLM response - if this fails, let it fail
+        response = await self.llm_client.generate(prompt)
+        
+        # Parse LLM response - if this fails, let it fail
+        selection_data = self.response_parser.parse_tool_selection(response.content)
+        
+        # Convert to SelectedTool objects
+        selected_tools = []
+        for i, tool_data in enumerate(selection_data.get("selected_tools", [])):
+            selected_tool = SelectedTool(
+                tool_name=tool_data.get("tool_name", ""),
+                justification=tool_data.get("justification", "LLM selection"),
+                inputs_needed=tool_data.get("inputs_needed", []),
+                execution_order=tool_data.get("execution_order", i + 1),
+                depends_on=tool_data.get("depends_on", [])
+            )
+            selected_tools.append(selected_tool)
+        
+        return selected_tools
     
     def _rule_based_tool_selection(self, matches: List[CapabilityMatch], 
                                  decision: DecisionV1) -> List[SelectedTool]:

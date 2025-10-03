@@ -50,6 +50,15 @@ export interface UserUpdate {
 }
 
 // Auth Types
+export interface KeycloakUser {
+  id: string;
+  username: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  roles?: string[];
+}
+
 export interface LoginRequest {
   username: string;
   password: string;

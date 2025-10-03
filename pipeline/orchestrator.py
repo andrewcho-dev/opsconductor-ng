@@ -9,6 +9,7 @@ across all pipeline stages.
 """
 
 import asyncio
+import logging
 import time
 import os
 from typing import Dict, Any, Optional, List
@@ -19,8 +20,12 @@ from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
 from pipeline.stages.stage_c.planner import StageCPlanner
 from pipeline.stages.stage_d.answerer import StageDAnswerer
+from pipeline.stages.stage_e.executor import StageEExecutor
 from pipeline.schemas.decision_v1 import DecisionV1, ConfidenceLevel
 from pipeline.schemas.response_v1 import ResponseV1, ResponseType, ClarificationResponse, ClarificationRequest
+from execution.dtos import ExecutionRequest
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineStage(Enum):
@@ -29,6 +34,7 @@ class PipelineStage(Enum):
     STAGE_B = "stage_b"
     STAGE_C = "stage_c"
     STAGE_D = "stage_d"
+    STAGE_E = "stage_e"
 
 
 class PipelineStatus(Enum):
@@ -99,6 +105,7 @@ class PipelineOrchestrator:
         self.stage_b = StageBSelector(llm_client, self.tool_registry)
         self.stage_c = StageCPlanner(llm_client)
         self.stage_d = StageDAnswerer(llm_client)
+        self.stage_e = StageEExecutor()
         
         # Performance tracking
         self._active_requests: Dict[str, float] = {}
@@ -239,6 +246,137 @@ class PipelineOrchestrator:
             stage_durations["stage_d"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_d"] = response_result
             
+            # 🚀 PHASE 7: Stage E - Execution (if plan exists and should be executed)
+            should_execute = False
+            
+            # Check if we have a plan with steps
+            if planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
+                plan_steps = planning_result.plan.get('steps', []) if isinstance(planning_result.plan, dict) else getattr(planning_result.plan, 'steps', [])
+                if plan_steps and len(plan_steps) > 0:
+                    # Execute if: EXECUTION_READY, or if approval_required is False
+                    if response_result.response_type == ResponseType.EXECUTION_READY:
+                        should_execute = True
+                        logger.info("🚀 PHASE 7: Executing plan (EXECUTION_READY)")
+                    elif not response_result.approval_required:
+                        should_execute = True
+                        logger.info("🚀 PHASE 7: Auto-executing plan (no approval required)")
+            
+            if should_execute:
+                stage_start = time.time()
+                
+                try:
+                    execution_result = await self._execute_stage_e(
+                        planning_result, 
+                        context,
+                        request_id
+                    )
+                    stage_durations["stage_e"] = (time.time() - stage_start) * 1000
+                    intermediate_results["stage_e"] = execution_result
+                    
+                    # For IMMEDIATE executions, fetch and display the actual results
+                    if execution_result.execution_mode == "immediate":
+                        logger.info(f"🔍 ORCHESTRATOR: Execution mode is IMMEDIATE, fetching results for {execution_result.execution_id}")
+                        # Wait a moment for execution to complete
+                        await asyncio.sleep(2.0)
+                        
+                        # Fetch the execution and step results from database
+                        from execution.repository import ExecutionRepository
+                        repo = ExecutionRepository(self.stage_e.db_connection_string)
+                        completed_execution = repo.get_execution_by_id(execution_result.execution_id)
+                        
+                        logger.info(f"🔍 ORCHESTRATOR: Fetched execution: {completed_execution is not None}, Status: {completed_execution.status.value if completed_execution else 'N/A'}")
+                        
+                        if completed_execution and completed_execution.status.value == "completed":
+                            # Fetch step results to get actual data
+                            steps = repo.get_execution_steps(execution_result.execution_id)
+                            logger.info(f"🔍 ORCHESTRATOR: Fetched {len(steps)} steps")
+                            
+                            # Check if any steps failed
+                            has_errors = False
+                            for step in steps:
+                                if step.output_data and isinstance(step.output_data, dict):
+                                    logger.info(f"🔍 ORCHESTRATOR: Step output_data status: {step.output_data.get('status')}")
+                                    if step.output_data.get("status") == "failed":
+                                        has_errors = True
+                                        break
+                            
+                            logger.info(f"🔍 ORCHESTRATOR: has_errors = {has_errors}")
+                            
+                            # Display the appropriate header
+                            if has_errors:
+                                logger.info("🔍 ORCHESTRATOR: Adding 'Execution Completed with Errors' message")
+                                response_result.message += f"\n\n⚠️ **Execution Completed with Errors**\n"
+                                
+                                # Extract error messages from failed steps
+                                for step in steps:
+                                    if step.output_data and isinstance(step.output_data, dict):
+                                        if step.output_data.get("status") == "failed":
+                                            logger.info(f"🔍 ORCHESTRATOR: Processing failed step, output_data keys: {step.output_data.keys()}")
+                                            error_msg = None
+                                            # Try different error field names
+                                            if "error" in step.output_data:
+                                                error_msg = step.output_data["error"]
+                                                logger.info(f"🔍 ORCHESTRATOR: Found 'error' field: {error_msg}")
+                                            elif "stderr" in step.output_data and step.output_data["stderr"]:
+                                                error_msg = step.output_data["stderr"].strip()
+                                                logger.info(f"🔍 ORCHESTRATOR: Found 'stderr' field: {error_msg}")
+                                            elif "error_message" in step.output_data:
+                                                error_msg = step.output_data["error_message"]
+                                                logger.info(f"🔍 ORCHESTRATOR: Found 'error_message' field: {error_msg}")
+                                            
+                                            if error_msg:
+                                                # Include step name for context
+                                                step_name = step.step_name if hasattr(step, 'step_name') else "Unknown step"
+                                                logger.info(f"🔍 ORCHESTRATOR: Adding error message for step '{step_name}'")
+                                                response_result.message += f"\n⚠️ **Error in '{step_name}':** {error_msg}\n"
+                                            else:
+                                                logger.info(f"🔍 ORCHESTRATOR: No error message found in output_data")
+                            else:
+                                logger.info("🔍 ORCHESTRATOR: Adding 'Execution Completed Successfully' message")
+                                response_result.message += f"\n\n✅ **Execution Completed Successfully**\n\n"
+                                
+                                # Use LLM to analyze execution results and answer the user's question
+                                logger.info("🔍 ORCHESTRATOR: Analyzing execution results with LLM")
+                                analysis = await self._analyze_execution_results(
+                                    user_request=user_request,
+                                    execution_steps=steps,
+                                    decision=intermediate_results.get("stage_a")
+                                )
+                                response_result.message += f"{analysis}\n"
+                            
+                            response_result.message += f"\n---\n"
+                            response_result.message += f"- Execution ID: `{execution_result.execution_id}`\n"
+                            response_result.message += f"- Status: `{completed_execution.status.value}`\n"
+                            logger.info(f"🔍 ORCHESTRATOR: Final message length: {len(response_result.message)} chars")
+                            logger.info(f"🔍 ORCHESTRATOR: Message preview: {response_result.message[:500]}...")
+                        else:
+                            # Execution not yet complete or failed
+                            logger.info("🔍 ORCHESTRATOR: Execution not completed yet or failed")
+                            response_result.message += f"\n\n✅ **Execution Started**\n"
+                            response_result.message += f"- Execution ID: `{execution_result.execution_id}`\n"
+                            response_result.message += f"- Status: `{execution_result.status}`\n"
+                            response_result.message += f"- Mode: `{execution_result.execution_mode}`\n"
+                    else:
+                        # For QUEUED or PENDING_APPROVAL executions
+                        response_result.message += f"\n\n✅ **Execution Started**\n"
+                        response_result.message += f"- Execution ID: `{execution_result.execution_id}`\n"
+                        response_result.message += f"- Status: `{execution_result.status}`\n"
+                        response_result.message += f"- Mode: `{execution_result.execution_mode}`\n"
+                        
+                        if execution_result.status == "queued":
+                            response_result.message += f"\n📋 Your request has been queued for background execution. You can track progress using the execution ID."
+                        elif execution_result.status == "pending_approval":
+                            response_result.message += f"\n⏳ Your request requires approval before execution. An approval request has been created."
+                    
+                    logger.info(f"✅ Stage E execution completed: {execution_result.execution_id}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Stage E execution failed: {e}")
+                    # Don't fail the entire pipeline, just log the error
+                    response_result.message += f"\n\n⚠️ **Execution Failed**\n"
+                    response_result.message += f"Error: {str(e)}\n"
+                    response_result.message += f"The plan was created successfully, but execution could not be started."
+            
             # Calculate total metrics
             total_duration = (time.time() - start_time) * 1000
             
@@ -332,6 +470,33 @@ class PipelineOrchestrator:
             return result
         except Exception as e:
             raise Exception(f"Stage D failed: {str(e)}")
+    
+    async def _execute_stage_e(self, plan: Any, context: Optional[Dict[str, Any]] = None, request_id: Optional[str] = None) -> Any:
+        """Execute Stage E: Execution."""
+        try:
+            # Extract tenant_id and actor_id from context (with defaults for now)
+            tenant_id = context.get("tenant_id", "default") if context else "default"
+            actor_id = context.get("actor_id", 1) if context else 1
+            
+            # Extract plan dict
+            plan_dict = plan.model_dump() if hasattr(plan, 'model_dump') else plan
+            if isinstance(plan_dict, dict) and 'plan' in plan_dict:
+                plan_dict = plan_dict['plan']
+            
+            # Convert plan to execution request
+            execution_request = ExecutionRequest(
+                plan=plan_dict,
+                approval_level=plan_dict.get('execution_metadata', {}).get('approval_level', 0),
+                trace_id=request_id,
+                tags=["source:pipeline", f"request_id:{request_id}"],
+                metadata={"context": context} if context else {}
+            )
+            
+            # Execute the plan
+            result = await self.stage_e.execute(execution_request, tenant_id, actor_id)
+            return result
+        except Exception as e:
+            raise Exception(f"Stage E failed: {str(e)}")
     
     async def _generate_error_response(self, error_message: str) -> ResponseV1:
         """Generate an error response when pipeline fails."""
@@ -545,6 +710,80 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
             missing_info.append("more specific details about your request")
         
         return missing_info
+    
+    async def _analyze_execution_results(
+        self,
+        user_request: str,
+        execution_steps: List[Any],
+        decision: Optional[DecisionV1] = None
+    ) -> str:
+        """
+        Use LLM to analyze execution results and generate a natural language answer.
+        
+        Args:
+            user_request: The original user question
+            execution_steps: List of execution steps with output_data
+            decision: Optional Stage A decision for context
+            
+        Returns:
+            Natural language answer extracted from execution results
+        """
+        try:
+            # Extract relevant data from execution steps
+            execution_data = []
+            for step in execution_steps:
+                if step.output_data and isinstance(step.output_data, dict):
+                    if step.output_data.get("status") != "failed":
+                        execution_data.append({
+                            "step_name": step.step_name,
+                            "data": step.output_data.get("data"),
+                            "count": step.output_data.get("count"),
+                            "query_type": step.output_data.get("query_type")
+                        })
+            
+            if not execution_data:
+                return "No data was retrieved from the execution."
+            
+            # Build prompt for LLM to analyze results
+            prompt = f"""You are analyzing execution results to answer a user's question.
+
+**User's Question:** {user_request}
+
+**Execution Results:**
+{execution_data}
+
+**Your Task:**
+1. Extract the specific information the user asked for from the execution results
+2. Provide a clear, concise answer to their question
+3. If the data contains lists, summarize unique values
+4. Format the answer in a user-friendly way
+
+**Important:**
+- Focus ONLY on answering the user's specific question
+- Don't just say "6 assets retrieved" - extract what they actually asked for
+- If they asked for OS types, list the unique OS types found
+- If they asked for counts, provide the counts
+- Be specific and direct
+
+**Answer:**"""
+
+            # Call LLM to analyze results
+            from llm.client import LLMRequest
+            llm_request = LLMRequest(
+                prompt=prompt,
+                temperature=0.3,  # Low temperature for factual extraction
+                max_tokens=500
+            )
+            response = await self.llm_client.generate(llm_request)
+            
+            if response and response.content:
+                return response.content.strip()
+            else:
+                return "Unable to analyze execution results."
+                
+        except Exception as e:
+            logger.error(f"Failed to analyze execution results: {e}")
+            return f"Error analyzing results: {str(e)}"
     
     def get_health_status(self) -> Dict[str, Any]:
         """Get current pipeline health status."""

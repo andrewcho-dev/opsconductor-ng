@@ -34,6 +34,10 @@ class AssetCredentials(BaseModel):
 
 class AssetDetail(BaseModel):
     """Asset detail model (matching Asset Service response)"""
+    # Allow extra fields from API that we don't explicitly define
+    class Config:
+        extra = "allow"
+    
     id: int
     name: str
     hostname: str
@@ -307,7 +311,9 @@ class AssetServiceClient:
                 logger.warning("Asset query failed")
                 return []
             
-            assets_data = data.get("data", [])
+            # Extract assets from nested structure: data.data.assets
+            response_data = data.get("data", {})
+            assets_data = response_data.get("assets", [])
             assets = [AssetDetail(**asset_data) for asset_data in assets_data]
             
             logger.info(f"Assets fetched: {len(assets)} results")
@@ -324,6 +330,48 @@ class AssetServiceClient:
                 exc_info=True
             )
             raise
+    
+    async def get_all_assets(
+        self,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[AssetDetail]:
+        """
+        Get all assets (convenience method)
+        
+        Args:
+            limit: Maximum number of results
+            offset: Pagination offset
+        
+        Returns:
+            List of AssetDetail
+        
+        Raises:
+            httpx.HTTPError: On connection or HTTP errors
+        """
+        return await self.query_assets(filters={}, limit=limit, offset=offset)
+    
+    async def get_assets_by_type(
+        self,
+        asset_type: str,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[AssetDetail]:
+        """
+        Get assets by type (convenience method)
+        
+        Args:
+            asset_type: Asset type to filter by
+            limit: Maximum number of results
+            offset: Pagination offset
+        
+        Returns:
+            List of AssetDetail
+        
+        Raises:
+            httpx.HTTPError: On connection or HTTP errors
+        """
+        return await self.query_assets(filters={"device_type": asset_type}, limit=limit, offset=offset)
     
     async def get_asset_credentials(
         self,

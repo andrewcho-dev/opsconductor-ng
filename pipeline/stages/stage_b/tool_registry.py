@@ -81,9 +81,13 @@ class ToolRegistry:
                 "query_infrastructure": ["asset_query", "infrastructure_info"],
                 "get_asset_info": ["asset_query", "infrastructure_info"],
                 "asset_count": ["asset_query", "infrastructure_info", "resource_listing"],
+                "asset_inventory": ["asset_query", "infrastructure_info", "resource_listing"],
                 "list_assets": ["asset_query", "infrastructure_info", "resource_listing"],
                 "get_servers": ["asset_query", "infrastructure_info", "resource_listing"],
-                "query_assets": ["asset_query", "infrastructure_info"]
+                "query_assets": ["asset_query", "infrastructure_info"],
+                "list_os_types": ["asset_query", "infrastructure_info", "resource_listing"],
+                "get_os_types": ["asset_query", "infrastructure_info", "resource_listing"],
+                "query_os_types": ["asset_query", "infrastructure_info"]
             }
         }
         

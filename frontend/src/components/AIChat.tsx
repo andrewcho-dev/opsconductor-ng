@@ -16,6 +16,9 @@ interface Message {
   content: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  responseType?: string;
+  executionId?: string;
+  approvalData?: any;
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
@@ -94,28 +97,47 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       const response = await aiApi.process(userMessage.content);
       
       let aiContent = '';
+      let responseType = 'information';
+      let executionId = null;
+      let approvalData = null;
+      
       if (response.success && response.result) {
-        // Extract the AI response message
-        aiContent = response.result.message || response.result.response?.message || 'AI processing completed successfully.';
+        const result = response.result;
+        responseType = result.response?.response_type || 'information';
+        executionId = result.response?.execution_id || null;
         
-        // Add some context about what the AI determined
-        const decision = response.result.decision;
-        const selection = response.result.selection;
-        const plan = response.result.plan;
-        
-        if (decision) {
-          aiContent += `\n\n**Analysis:**\n`;
-          aiContent += `• Intent: ${decision.intent?.category}/${decision.intent?.action}\n`;
-          aiContent += `• Confidence: ${decision.confidence_level?.value} (${(decision.overall_confidence * 100).toFixed(1)}%)\n`;
-          aiContent += `• Risk Level: ${decision.risk_level?.value}\n`;
-        }
-        
-        if (selection && selection.selected_tools?.length > 0) {
-          aiContent += `\n**Tools Selected:** ${selection.selected_tools.map((t: any) => t.tool_name).join(', ')}\n`;
-        }
-        
-        if (plan && plan.plan?.steps?.length > 0) {
-          aiContent += `\n**Execution Plan:** ${plan.plan.steps.length} steps planned\n`;
+        // Handle approval requests specially
+        if (responseType === 'approval_request') {
+          approvalData = {
+            message: result.response?.message || '',
+            executionSummary: result.response?.execution_summary || {},
+            approvalPoints: result.response?.approval_points || [],
+            suggestedActions: result.response?.suggested_actions || []
+          };
+          aiContent = 'I need your approval to proceed with this action.';
+        } else {
+          // Extract the AI response message
+          aiContent = result.message || result.response?.message || 'AI processing completed successfully.';
+          
+          // Add some context about what the AI determined
+          const decision = result.decision;
+          const selection = result.selection;
+          const plan = result.plan;
+          
+          if (decision) {
+            aiContent += `\n\n**Analysis:**\n`;
+            aiContent += `• Intent: ${decision.intent?.category}/${decision.intent?.action}\n`;
+            aiContent += `• Confidence: ${decision.confidence_level?.value} (${(decision.overall_confidence * 100).toFixed(1)}%)\n`;
+            aiContent += `• Risk Level: ${decision.risk_level?.value}\n`;
+          }
+          
+          if (selection && selection.selected_tools?.length > 0) {
+            aiContent += `\n**Tools Selected:** ${selection.selected_tools.map((t: any) => t.tool_name).join(', ')}\n`;
+          }
+          
+          if (plan && plan.plan?.steps?.length > 0) {
+            aiContent += `\n**Execution Plan:** ${plan.plan.steps.length} steps planned\n`;
+          }
         }
       } else {
         aiContent = response.error || 'Sorry, I encountered an error processing your request.';
@@ -125,7 +147,10 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
         id: (Date.now() + 1).toString(),
         content: aiContent,
         sender: 'ai',
-        timestamp: new Date()
+        timestamp: new Date(),
+        responseType,
+        executionId,
+        approvalData
       };
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
@@ -139,6 +164,56 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleApproval = async (messageId: string, approved: boolean) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message || !message.executionId) return;
+
+    try {
+      // Call approval API
+      const response = await fetch(`http://localhost:3005/pipeline/approve/${message.executionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved })
+      });
+
+      const result = await response.json();
+      
+      // Update the message to show approval status
+      setMessages(prev => prev.map(m => {
+        if (m.id === messageId) {
+          return {
+            ...m,
+            content: approved 
+              ? `✅ Approved and executing...\n\n${m.content}` 
+              : `❌ Rejected\n\n${m.content}`,
+            approvalData: null // Remove approval UI
+          };
+        }
+        return m;
+      }));
+
+      // If approved, add execution result message
+      if (approved && result.success) {
+        const executionMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `Execution completed successfully!\n\nExecution ID: ${message.executionId}`,
+          sender: 'ai',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, executionMessage]);
+      }
+    } catch (error) {
+      console.error('Approval error:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Failed to process approval: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'ai',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -243,15 +318,87 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
               </div>
               <div style={{
                 maxWidth: '70%',
-                padding: '12px 16px',
-                borderRadius: '12px',
-                backgroundColor: message.sender === 'user' ? '#3b82f6' : '#f3f4f6',
-                color: message.sender === 'user' ? 'white' : '#1f2937',
-                fontSize: '14px',
-                lineHeight: '1.5',
-                wordWrap: 'break-word'
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
               }}>
-                {message.content}
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  backgroundColor: message.sender === 'user' ? '#3b82f6' : '#f3f4f6',
+                  color: message.sender === 'user' ? 'white' : '#1f2937',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  wordWrap: 'break-word',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {message.content}
+                </div>
+                
+                {/* Approval UI */}
+                {message.approvalData && (
+                  <div style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    backgroundColor: '#fef3c7',
+                    border: '1px solid #fbbf24',
+                    fontSize: '13px'
+                  }}>
+                    <div style={{ fontWeight: '600', marginBottom: '12px', color: '#92400e' }}>
+                      ⚠️ Approval Required
+                    </div>
+                    
+                    {message.approvalData.executionSummary && (
+                      <div style={{ marginBottom: '12px', color: '#78350f' }}>
+                        <div><strong>Steps:</strong> {message.approvalData.executionSummary.total_steps}</div>
+                        <div><strong>Duration:</strong> ~{message.approvalData.executionSummary.estimated_duration}s</div>
+                        <div><strong>Risk:</strong> {message.approvalData.executionSummary.risk_level}</div>
+                        <div><strong>Tools:</strong> {message.approvalData.executionSummary.tools_involved?.join(', ')}</div>
+                      </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                      <button
+                        onClick={() => handleApproval(message.id, true)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: '#10b981',
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                      >
+                        ✓ Approve
+                      </button>
+                      <button
+                        onClick={() => handleApproval(message.id, false)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          backgroundColor: '#ef4444',
+                          color: 'white',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ef4444'}
+                      >
+                        ✗ Reject
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))
