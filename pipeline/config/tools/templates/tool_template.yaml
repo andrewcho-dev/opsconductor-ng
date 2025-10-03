@@ -1,0 +1,122 @@
+# Tool Definition Template
+# Copy this file and fill in the details for your tool
+#
+# INSTRUCTIONS:
+# 1. Replace all <PLACEHOLDER> values with actual data
+# 2. Remove optional sections if not needed
+# 3. Validate using: python scripts/validate_tool.py <your_tool.yaml>
+# 4. Test using: python scripts/test_tool.py <your_tool.yaml>
+
+# === BASIC INFORMATION ===
+tool_name: "<TOOL_NAME>"  # e.g., "systemctl", "powershell", "network-analyzer"
+version: "1.0"
+description: "<BRIEF_DESCRIPTION>"  # One-line description
+platform: "<PLATFORM>"  # linux | windows | network | scheduler | custom
+category: "<CATEGORY>"  # system | network | automation | monitoring | security
+
+# === DEFAULTS ===
+defaults:
+  accuracy_level: "<ACCURACY>"  # real-time | cached | estimated
+  freshness: "<FRESHNESS>"  # live | recent | historical
+  data_source: "<SOURCE>"  # direct | database | api | filesystem
+
+# === CAPABILITIES ===
+# A tool can have multiple capabilities, each with multiple patterns
+capabilities:
+  <capability_name>:  # e.g., "service_control", "packet_capture"
+    description: "<CAPABILITY_DESCRIPTION>"
+    
+    patterns:
+      <pattern_name>:  # e.g., "restart_service", "live_capture"
+        description: "<PATTERN_DESCRIPTION>"
+        
+        # === USE CASES ===
+        typical_use_cases:
+          - "<USE_CASE_1>"  # e.g., "restart service"
+          - "<USE_CASE_2>"  # e.g., "reload configuration"
+        
+        # === PERFORMANCE METRICS ===
+        # Use expressions with variables: N, pages, duration_ms, packet_count, etc.
+        # Functions: log, log10, sqrt, min, max, abs, ceil, floor
+        time_estimate_ms: "<EXPRESSION>"  # e.g., "2000", "1000 + 0.5 * N"
+        cost_estimate: "<EXPRESSION>"  # e.g., "1", "ceil(N / 100)"
+        complexity_score: <0.0-1.0>  # 0.1 = simple, 0.5 = moderate, 0.9 = complex
+        
+        # === QUALITY METRICS ===
+        scope: "<SCOPE>"  # single_item | batch | exhaustive
+        completeness: "<COMPLETENESS>"  # complete | partial | summary
+        
+        # === LIMITATIONS (Optional) ===
+        limitations:
+          - "<LIMITATION_1>"  # e.g., "Requires admin permissions"
+          - "<LIMITATION_2>"  # e.g., "May cause service downtime"
+        
+        # === POLICY CONSTRAINTS ===
+        policy:
+          max_cost: <MAX_COST>  # Maximum cost allowed
+          requires_approval: <true|false>  # Requires human approval?
+          production_safe: <true|false>  # Safe for production?
+          max_execution_time: <SECONDS>  # Maximum execution time (optional)
+          
+          # Conditional policies (optional)
+          requires_background_if: "<CONDITION>"  # e.g., "N > 100"
+          max_N_immediate: <NUMBER>  # Max items for immediate execution
+        
+        # === PREFERENCE MATCHING ===
+        # Scores 0.0-1.0 indicating how well this pattern matches each preference
+        preference_match:
+          speed: <0.0-1.0>  # 1.0 = very fast, 0.0 = very slow
+          accuracy: <0.0-1.0>  # 1.0 = perfect accuracy, 0.0 = rough estimate
+          cost: <0.0-1.0>  # 1.0 = very cheap, 0.0 = very expensive
+          complexity: <0.0-1.0>  # 1.0 = very simple, 0.0 = very complex
+          completeness: <0.0-1.0>  # 1.0 = comprehensive, 0.0 = minimal
+        
+        # === REQUIRED INPUTS ===
+        required_inputs:
+          - name: "<INPUT_NAME>"
+            type: "<TYPE>"  # string | integer | boolean | array | object
+            description: "<DESCRIPTION>"
+            validation: "<VALIDATION_RULE>"  # Optional: regex or constraint
+        
+        # === OPTIONAL INPUTS ===
+        optional_inputs:
+          - name: "<INPUT_NAME>"
+            type: "<TYPE>"
+            description: "<DESCRIPTION>"
+            default: "<DEFAULT_VALUE>"
+        
+        # === OUTPUT SCHEMA (Optional) ===
+        output_schema:
+          type: "<TYPE>"  # object | array | string
+          properties:
+            <property_name>:
+              type: "<TYPE>"
+              description: "<DESCRIPTION>"
+
+# === DEPENDENCIES (Optional) ===
+dependencies:
+  - name: "<DEPENDENCY_NAME>"  # e.g., "docker_daemon", "network_access"
+    type: "<TYPE>"  # service | package | permission | network
+    required: <true|false>
+
+# === METADATA (Optional) ===
+metadata:
+  author: "<AUTHOR>"
+  created: "<DATE>"
+  updated: "<DATE>"
+  tags:
+    - "<TAG_1>"
+    - "<TAG_2>"
+  documentation_url: "<URL>"
+  source_code_url: "<URL>"
+
+# === EXAMPLES (Optional but recommended) ===
+examples:
+  - name: "<EXAMPLE_NAME>"
+    description: "<EXAMPLE_DESCRIPTION>"
+    inputs:
+      <input_name>: <value>
+    expected_output:
+      <output_field>: <value>
+    expected_time_ms: <TIME>
+    expected_cost: <COST>

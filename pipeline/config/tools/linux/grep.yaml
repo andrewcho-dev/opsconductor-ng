@@ -1,0 +1,105 @@
+# grep - Text search utility
+tool_name: "grep"
+version: "1.0"
+description: "Search text using patterns in files or streams"
+platform: "linux"
+category: "system"
+
+defaults:
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "filesystem"
+
+capabilities:
+  text_search:
+    description: "Search for patterns in text"
+    
+    patterns:
+      search_files:
+        description: "Search for pattern in files"
+        
+        typical_use_cases:
+          - "search for"
+          - "find text"
+          - "grep"
+          - "filter logs"
+        
+        time_estimate_ms: "500 + 0.1 * file_size_kb"
+        cost_estimate: 1
+        complexity_score: 0.2
+        
+        scope: "file_content"
+        completeness: "matching_lines"
+        
+        limitations:
+          - "Performance depends on file size"
+          - "May be slow for very large files"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 0.8
+        
+        required_inputs:
+          - name: "pattern"
+            type: "string"
+            description: "Search pattern (regex or literal)"
+            validation: ".*"
+          - name: "target"
+            type: "string"
+            description: "File or directory to search"
+            validation: ".*"
+        
+        optional_inputs:
+          - name: "recursive"
+            type: "boolean"
+            description: "Search recursively in directories"
+            default: "false"
+          - name: "case_insensitive"
+            type: "boolean"
+            description: "Ignore case"
+            default: "false"
+          - name: "line_numbers"
+            type: "boolean"
+            description: "Show line numbers"
+            default: "true"
+        
+        output_schema:
+          type: "array"
+          properties:
+            matches:
+              type: "array"
+              description: "List of matching lines"
+
+dependencies:
+  - name: "filesystem_access"
+    type: "permission"
+    required: true
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-01"
+  updated: "2025-01-01"
+  tags:
+    - "text"
+    - "search"
+    - "linux"
+  documentation_url: "https://man7.org/linux/man-pages/man1/grep.1.html"
+
+examples:
+  - name: "Search error logs"
+    description: "Find ERROR entries in application log"
+    inputs:
+      pattern: "ERROR"
+      target: "/var/log/app.log"
+      case_insensitive: false
+    expected_time_ms: 800
+    expected_cost: 1
