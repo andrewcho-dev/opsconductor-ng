@@ -1,0 +1,302 @@
+# Tool Optimization Profiles
+# Version: 1.0
+#
+# This file defines optimization profiles for tool selection.
+# Each tool can have multiple usage patterns with different performance characteristics.
+#
+# Expressions support:
+# - Variables: N (asset count), pages, p95_latency, cost, time_ms
+# - Functions: log, log10, sqrt, min, max, abs, ceil, floor
+# - Operators: +, -, *, /, //, %, **
+#
+# Scores (0.0-1.0):
+# - 1.0 = Excellent for this dimension
+# - 0.5 = Moderate
+# - 0.0 = Poor for this dimension
+
+version: "1.0"
+
+tools:
+  asset-service-query:
+    description: "Query infrastructure asset metadata from centralized database"
+    
+    defaults:
+      accuracy_level: "cached"
+      freshness: "recent (5-15 min stale)"
+      data_source: "database"
+    
+    capabilities:
+      asset_query:
+        patterns:
+          count_aggregate:
+            description: "Count assets matching criteria (fast aggregation)"
+            typical_use_cases:
+              - "how many"
+              - "count"
+              - "total"
+              - "number of"
+            
+            # Performance estimates
+            time_estimate_ms: "120 + 0.02 * N"  # ~120ms base + 0.02ms per asset
+            cost_estimate: 1  # Single API call
+            complexity_score: 0.1  # Very simple
+            
+            # Quality
+            scope: "aggregated_count"
+            completeness: "complete for cached data"
+            
+            # Limitations
+            limitations:
+              - "Data may be 5-15 minutes stale"
+              - "No real-time verification"
+            
+            # Policy
+            policy:
+              max_cost: 10
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching (0-1 scale)
+            preference_match:
+              speed: 0.95        # Excellent speed
+              accuracy: 0.6      # Moderate (cached data)
+              cost: 0.95         # Very low cost
+              complexity: 0.95   # Very simple
+              completeness: 0.7  # Good for counts
+          
+          list_summary:
+            description: "List assets with basic fields (paginated)"
+            typical_use_cases:
+              - "list"
+              - "show"
+              - "what are"
+              - "get all"
+            
+            # Performance scales with result size and pagination
+            time_estimate_ms: "200 + 2 * N + 500 * pages"
+            cost_estimate: "1 + pages"  # One call per page
+            complexity_score: 0.3
+            
+            # Quality
+            scope: "summary_list"
+            completeness: "basic fields only"
+            
+            # Limitations
+            limitations:
+              - "Limited fields returned"
+              - "May require pagination for large result sets"
+              - "Data may be stale"
+            
+            # Policy
+            policy:
+              max_N_immediate: 1000  # If N > 1000, suggest background
+              max_cost: 50
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.7
+              accuracy: 0.6
+              cost: 0.7
+              complexity: 0.8
+              completeness: 0.5  # Limited fields
+          
+          single_lookup:
+            description: "Fast lookup of single asset by ID/hostname"
+            typical_use_cases:
+              - "what is"
+              - "get"
+              - "find"
+              - "IP of"
+              - "hostname"
+            
+            # Very fast for single lookups (indexed)
+            time_estimate_ms: "80 + 0.01 * N"
+            cost_estimate: 1
+            complexity_score: 0.1
+            
+            # Quality
+            scope: "single_record"
+            completeness: "complete for single asset"
+            
+            # Policy
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.98        # Extremely fast
+              accuracy: 0.6      # Cached
+              cost: 0.98         # Very cheap
+              complexity: 0.98   # Very simple
+              completeness: 0.8  # Complete for one asset
+          
+          detailed_lookup:
+            description: "Detailed asset information with all fields"
+            typical_use_cases:
+              - "detailed"
+              - "full information"
+              - "everything about"
+              - "complete details"
+            
+            # Slower due to more data
+            time_estimate_ms: "300 + 5 * N"
+            cost_estimate: "1 + ceil(N / 100)"
+            complexity_score: 0.4
+            
+            # Quality
+            scope: "detailed_records"
+            completeness: "comprehensive (all fields)"
+            
+            # Limitations
+            limitations:
+              - "Slower due to large data transfer"
+              - "May be stale"
+            
+            # Policy
+            policy:
+              max_N_immediate: 500
+              max_cost: 30
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.5         # Moderate speed
+              accuracy: 0.6      # Cached
+              cost: 0.6          # Moderate cost
+              complexity: 0.6    # Moderate complexity
+              completeness: 0.95 # Very complete
+
+  asset-direct-poll:
+    description: "Poll assets directly via SSH/API for real-time information"
+    
+    defaults:
+      accuracy_level: "realtime"
+      freshness: "live (current state)"
+      data_source: "direct_asset_poll"
+    
+    capabilities:
+      live_asset_query:
+        patterns:
+          parallel_poll:
+            description: "Poll multiple assets in parallel for current state"
+            typical_use_cases:
+              - "accurate"
+              - "verify"
+              - "exact"
+              - "current"
+              - "real-time"
+            
+            # Slow but accurate - scales logarithmically with parallelization
+            time_estimate_ms: "3000 + 400 * log(max(N, 1)) + p95_latency * 1.2"
+            cost_estimate: "N"  # One SSH/API call per asset
+            complexity_score: 0.8  # Complex orchestration
+            
+            # Quality
+            scope: "exhaustive"
+            completeness: "comprehensive and current"
+            
+            # Limitations
+            limitations:
+              - "Slow for large asset counts"
+              - "Requires SSH/API access to all assets"
+              - "May fail on unreachable assets"
+              - "High resource usage"
+            
+            # Policy - MUST use background for large N
+            policy:
+              max_N_immediate: 50  # Hard limit for immediate execution
+              requires_approval: false
+              requires_background_if: "N > 50"
+              max_cost: 1000
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.2         # Very slow
+              accuracy: 1.0      # Perfect accuracy
+              cost: 0.1          # Very expensive
+              complexity: 0.3    # Complex
+              completeness: 1.0  # Fully complete
+          
+          single_asset_poll:
+            description: "Poll single asset for current state"
+            typical_use_cases:
+              - "verify"
+              - "check"
+              - "current state of"
+              - "is [asset] running"
+            
+            # Moderate speed for single asset
+            time_estimate_ms: "5000 + p95_latency"
+            cost_estimate: 1
+            complexity_score: 0.4
+            
+            # Quality
+            scope: "single_asset"
+            completeness: "complete and current"
+            
+            # Limitations
+            limitations:
+              - "Requires SSH/API access"
+              - "May fail if asset unreachable"
+            
+            # Policy
+            policy:
+              max_cost: 10
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.5         # Moderate
+              accuracy: 1.0      # Perfect
+              cost: 0.7          # Low cost (single call)
+              complexity: 0.6    # Moderate
+              completeness: 0.95 # Very complete
+
+  info_display:
+    description: "Information display and help system"
+    
+    defaults:
+      accuracy_level: "static"
+      freshness: "static documentation"
+      data_source: "documentation"
+    
+    capabilities:
+      information:
+        patterns:
+          general_info:
+            description: "Display general information and help"
+            typical_use_cases:
+              - "help"
+              - "what is"
+              - "explain"
+              - "how do I"
+            
+            # Very fast - no external calls
+            time_estimate_ms: 100
+            cost_estimate: 0
+            complexity_score: 0.1
+            
+            # Quality
+            scope: "documentation"
+            completeness: "informational only"
+            
+            # Policy
+            policy:
+              max_cost: 0
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 1.0         # Instant
+              accuracy: 0.5      # Static info
+              cost: 1.0          # Free
+              complexity: 1.0    # Very simple
+              completeness: 0.4  # Limited to docs
