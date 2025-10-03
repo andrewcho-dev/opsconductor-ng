@@ -1,0 +1,65 @@
+description: Monitor system using prometheus
+platform: linux
+category: monitoring
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+dependencies:
+- name: prometheus_agent
+  type: service
+  required: true
+capabilities:
+- capability_name: system_monitoring
+  description: Monitor system metrics with prometheus
+  patterns:
+  - pattern_name: get_metrics
+    description: Retrieve system metrics
+    typical_use_cases:
+    - Check system health
+    - Monitor resources
+    time_estimate_ms: '200'
+    cost_estimate: '1'
+    complexity_score: 0.3
+    scope: single
+    completeness: full
+    limitations:
+    - Requires agent running
+    policy:
+      max_cost: 5
+      requires_approval: false
+      production_safe: true
+    preference_match:
+      speed: 0.9
+      accuracy: 0.9
+      cost: 0.9
+      complexity: 0.7
+      completeness: 0.9
+    required_inputs:
+    - name: metric_type
+      type: string
+      required: true
+      description: Type of metric to retrieve
+    expected_outputs:
+    - name: metrics
+      type: object
+      required: true
+      description: Metric values
+    - name: timestamp
+      type: string
+      required: true
+      description: Collection time
+    examples:
+    - description: Get CPU metrics
+      input: '{{metric_type: "cpu"}}'
+      output: '{{metrics: {{usage: 45.2, cores: 8}}, timestamp: "2025-10-03T19:00:00Z"}}'
+tool_name: prometheus
+version: '1.0'
+status: active
+enabled: true
+metadata:
+  author: Tool Generator
+  template: monitoring_tool
+  tags:
+  - monitoring-tool
+created_by: Tool Generator

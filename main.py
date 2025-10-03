@@ -182,6 +182,18 @@ app.add_middleware(
 )
 
 # ============================================================================
+# INCLUDE API ROUTERS
+# ============================================================================
+
+# Import and include Tool Catalog API
+try:
+    from api.tool_catalog_api import router as tool_catalog_router
+    app.include_router(tool_catalog_router)
+    logger.info("✅ Tool Catalog API registered")
+except Exception as e:
+    logger.warning(f"⚠️ Tool Catalog API not available: {e}")
+
+# ============================================================================
 # API ENDPOINTS
 # ============================================================================
 

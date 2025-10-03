@@ -1,0 +1,234 @@
+groups:
+  - name: tool_catalog_alerts
+    interval: 30s
+    rules:
+      # Service Availability Alerts
+      - alert: ToolCatalogServiceDown
+        expr: up{job="tool-catalog"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog service is down"
+          description: "The Tool Catalog service has been down for more than 1 minute. Immediate action required."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-service-down"
+
+      # Performance Alerts
+      - alert: ToolCatalogHighResponseTime
+        expr: histogram_quantile(0.95, rate(tool_catalog_api_request_duration_seconds_bucket[5m])) > 0.050
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog P95 response time is high"
+          description: "P95 response time is {{ $value | humanizeDuration }} (threshold: 50ms). Current value exceeds SLA."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-high-response-time"
+
+      - alert: ToolCatalogVeryHighResponseTime
+        expr: histogram_quantile(0.95, rate(tool_catalog_api_request_duration_seconds_bucket[5m])) > 0.100
+        for: 2m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog P95 response time is critically high"
+          description: "P95 response time is {{ $value | humanizeDuration }} (threshold: 100ms). Severe performance degradation detected."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-high-response-time"
+
+      - alert: ToolCatalogSlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(tool_catalog_db_query_duration_seconds_bucket[5m])) > 0.050
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog database queries are slow"
+          description: "P95 database query time is {{ $value | humanizeDuration }} (threshold: 50ms). Database performance degradation detected."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-slow-queries"
+
+      # Error Rate Alerts
+      - alert: ToolCatalogHighErrorRate
+        expr: rate(tool_catalog_api_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog error rate is high"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1%). Investigate error logs immediately."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-high-error-rate"
+
+      - alert: ToolCatalogCriticalErrorRate
+        expr: rate(tool_catalog_api_errors_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog error rate is critically high"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%). Critical service degradation."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-high-error-rate"
+
+      # Cache Performance Alerts
+      - alert: ToolCatalogLowCacheHitRate
+        expr: (tool_catalog_cache_hits / (tool_catalog_cache_hits + tool_catalog_cache_misses)) < 0.80
+        for: 10m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 80%). Cache effectiveness degraded."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-low-cache-hit-rate"
+
+      - alert: ToolCatalogVeryLowCacheHitRate
+        expr: (tool_catalog_cache_hits / (tool_catalog_cache_hits + tool_catalog_cache_misses)) < 0.50
+        for: 5m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog cache hit rate is critically low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%). Cache may be misconfigured or thrashing."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-low-cache-hit-rate"
+
+      # Resource Utilization Alerts
+      - alert: ToolCatalogConnectionPoolExhausted
+        expr: tool_catalog_connection_pool_available == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog connection pool exhausted"
+          description: "No available database connections. Service may be unable to handle requests."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-connection-pool-exhausted"
+
+      - alert: ToolCatalogConnectionPoolLow
+        expr: (tool_catalog_connection_pool_available / tool_catalog_connection_pool_size) < 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog connection pool running low"
+          description: "Only {{ $value | humanizePercentage }} of connections available. Consider scaling connection pool."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-connection-pool-low"
+
+      - alert: ToolCatalogCacheMemoryHigh
+        expr: tool_catalog_cache_size > 900
+        for: 10m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog cache memory usage is high"
+          description: "Cache size is {{ $value }} items (max: 1000). Cache approaching capacity limit."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-cache-memory-high"
+
+      # Hot Reload Alerts
+      - alert: ToolCatalogFrequentHotReloads
+        expr: rate(tool_catalog_hot_reload_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog experiencing frequent hot reloads"
+          description: "Hot reload rate is {{ $value }} reloads/sec. Investigate if this is expected behavior."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-frequent-reloads"
+
+      - alert: ToolCatalogHotReloadFailures
+        expr: rate(tool_catalog_hot_reload_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog hot reload failures detected"
+          description: "Hot reload failure rate is {{ $value }} failures/sec. Tool updates may not be applied."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-reload-failures"
+
+      # Traffic Anomaly Alerts
+      - alert: ToolCatalogUnusualTrafficSpike
+        expr: rate(tool_catalog_api_requests_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog experiencing unusual traffic spike"
+          description: "Request rate is {{ $value }} req/sec (expected: <10 req/sec). Investigate traffic source."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-traffic-spike"
+
+      - alert: ToolCatalogNoTraffic
+        expr: rate(tool_catalog_api_requests_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog receiving no traffic"
+          description: "No API requests received in the last 10 minutes. Service may be unreachable or unused."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-no-traffic"
+
+      # Data Consistency Alerts
+      - alert: ToolCatalogNoToolsLoaded
+        expr: tool_catalog_tools_loaded_total == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog has no tools loaded"
+          description: "Zero tools are currently loaded. Database may be empty or service initialization failed."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-no-tools"
+
+      - alert: ToolCatalogToolCountDropped
+        expr: (tool_catalog_tools_loaded_total - tool_catalog_tools_loaded_total offset 1h) < -10
+        for: 5m
+        labels:
+          severity: warning
+          component: tool-catalog
+          team: platform
+        annotations:
+          summary: "Tool Catalog tool count has dropped significantly"
+          description: "Tool count decreased by {{ $value }} in the last hour. Investigate potential data loss."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-tool-count-dropped"
+
+      # SLA Compliance Alerts
+      - alert: ToolCatalogSLAViolation
+        expr: |
+          (
+            histogram_quantile(0.95, rate(tool_catalog_api_request_duration_seconds_bucket[5m])) > 0.050
+            or
+            rate(tool_catalog_api_errors_total[5m]) > 0.01
+          )
+        for: 15m
+        labels:
+          severity: critical
+          component: tool-catalog
+          team: platform
+          sla: violated
+        annotations:
+          summary: "Tool Catalog SLA violation detected"
+          description: "Service is violating SLA requirements (P95 < 50ms AND error rate < 1%) for 15+ minutes."
+          runbook_url: "https://docs.example.com/runbooks/tool-catalog-sla-violation"
