@@ -240,7 +240,6 @@ async def test_e2e_policy_violation_large_dataset(orchestrator):
     assert result.execution_mode_hint in ["immediate", "background", "approval_required"]
 
 
-@pytest.mark.skip(reason="Policy enforcement not yet implemented")
 @pytest.mark.asyncio
 async def test_e2e_policy_violation_all_candidates_blocked(orchestrator):
     """Test when all candidates violate policies"""

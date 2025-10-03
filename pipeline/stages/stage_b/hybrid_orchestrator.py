@@ -21,7 +21,7 @@ from .profile_loader import ProfileLoader
 from .preference_detector import PreferenceDetector
 from .candidate_enumerator import CandidateEnumerator, ToolCandidate
 from .feature_normalizer import FeatureNormalizer
-from .policy_enforcer import PolicyEnforcer
+from .policy_enforcer import PolicyEnforcer, PolicyConfig
 from .deterministic_scorer import DeterministicScorer, ScoredCandidate, PreferenceMode
 from .ambiguity_detector import AmbiguityDetector
 from .llm_tie_breaker import LLMTieBreaker
@@ -137,20 +137,55 @@ class HybridOrchestrator:
             )
         
         # Step 3: Enforce policies
-        # TODO: Implement policy enforcement for ToolCandidate objects
-        # For now, assume all candidates pass policy checks
-        # (Policy enforcement will be added in a future phase)
-        allowed_candidates = candidates
+        # Create policy config from context
+        policy_config = PolicyConfig(
+            max_cost=context.get('cost_limit'),  # None if not specified
+            environment=context.get('environment', 'production'),
+            require_production_safe=context.get('require_production_safe', True)
+        )
+        
+        # Create policy enforcer with context-specific config
+        policy_enforcer = PolicyEnforcer(policy_config)
+        
+        # Convert candidates to dict format for policy enforcement
+        candidate_dicts_for_policy = []
+        for candidate in candidates:
+            candidate_dict = {
+                'tool_name': candidate.tool_name,
+                'pattern': candidate.pattern_name,
+                'profile': {
+                    'cost': candidate.estimated_cost,
+                    'production_safe': True,  # Assume all tools are production safe
+                    'required_permissions': []  # No special permissions required
+                },
+                'context': context
+            }
+            candidate_dicts_for_policy.append((candidate, candidate_dict))
+        
+        # Filter candidates by policies
+        allowed_candidates = []
         violations = []
+        
+        for candidate, candidate_dict in candidate_dicts_for_policy:
+            result = policy_enforcer.enforce_policies(candidate_dict)
+            
+            if result.allowed:
+                allowed_candidates.append(candidate)
+            else:
+                violations.append({
+                    'candidate': candidate,
+                    'reason': result.filtered_reason
+                })
         
         logger.debug(
             f"Policy enforcement: {len(allowed_candidates)} allowed, "
-            f"{len(violations)} violations (policy enforcement TODO)"
+            f"{len(violations)} violations"
         )
         
         if not allowed_candidates:
             raise ValueError(
-                f"No candidates available after policy enforcement"
+                f"All candidates violate policies. "
+                f"Violations: {[v['reason'] for v in violations]}"
             )
         
         # Step 4: Score candidates (convert to dicts with normalized features)
