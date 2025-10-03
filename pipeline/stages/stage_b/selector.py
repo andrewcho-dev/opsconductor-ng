@@ -17,6 +17,8 @@ from llm.response_parser import ResponseParser
 from .tool_registry import ToolRegistry
 from .capability_matcher import CapabilityMatcher, CapabilityMatch
 from .policy_engine import PolicyEngine
+from .hybrid_orchestrator import HybridOrchestrator
+from .profile_loader import ProfileLoader
 
 class StageBSelector:
     """
@@ -28,13 +30,21 @@ class StageBSelector:
     - Additional input requirements
     """
     
-    def __init__(self, llm_client: LLMClient, tool_registry: Optional[ToolRegistry] = None):
+    def __init__(self, llm_client: LLMClient, tool_registry: Optional[ToolRegistry] = None,
+                 profile_loader: Optional[ProfileLoader] = None):
         self.llm_client = llm_client
         self.tool_registry = tool_registry or ToolRegistry()
         self.capability_matcher = CapabilityMatcher(self.tool_registry)
         self.policy_engine = PolicyEngine(self.tool_registry)
         self.prompt_manager = PromptManager()
         self.response_parser = ResponseParser()
+        
+        # Initialize Hybrid Orchestrator for optimized tool selection
+        self.hybrid_orchestrator = HybridOrchestrator(
+            profile_loader=profile_loader,
+            llm_client=llm_client,
+            telemetry_logger=None  # TODO: Add telemetry integration
+        )
         
         # Configuration
         self.config = {
@@ -45,7 +55,7 @@ class StageBSelector:
     async def select_tools(self, decision: DecisionV1, 
                           context: Optional[Dict[str, Any]] = None) -> SelectionV1:
         """
-        Main tool selection method
+        Main tool selection method using Hybrid Orchestrator
         
         Args:
             decision: Decision v1 from Stage A
@@ -57,34 +67,48 @@ class StageBSelector:
         start_time = time.time()
         
         try:
-            # Step 1: 100% LLM-based tool selection - NO FALLBACKS
-            # If LLM is not available, we FAIL - we don't hide problems
-            if not await self._is_llm_available():
-                raise RuntimeError("LLM is not available - cannot perform tool selection")
+            # Step 1: Extract required capabilities from decision
+            required_capabilities = self._extract_capabilities_from_decision(decision)
             
-            # Get ALL tools and let LLM decide - no pre-filtering, no scoring
-            all_tools = self.tool_registry.get_all_tools()
-            selected_tools = await self._llm_tool_selection_direct(decision, all_tools)
+            # Step 2: Build context for hybrid orchestrator
+            orchestrator_context = self._build_orchestrator_context(decision, context)
             
-            if not selected_tools:
-                raise RuntimeError("LLM failed to select any tools")
+            # Step 3: Use Hybrid Orchestrator for tool selection
+            # This uses deterministic scoring + LLM tie-breaking when ambiguous
+            tool_result = await self.hybrid_orchestrator.select_tool(
+                query=decision.original_request,
+                required_capabilities=required_capabilities,
+                context=orchestrator_context,
+                explicit_mode=context.get('preference_mode') if context else None
+            )
             
-            # Step 3: Determine execution policy
-            execution_policy = self.policy_engine.determine_execution_policy(decision, selected_tools)
+            # Step 4: Convert HybridOrchestrator result to SelectedTool format
+            selected_tools = [
+                SelectedTool(
+                    tool_name=tool_result.tool_name,
+                    justification=tool_result.justification,
+                    inputs_needed=self._extract_inputs_from_capability(tool_result.capability_name),
+                    execution_order=1,
+                    depends_on=[]
+                )
+            ]
             
-            # Step 4: Calculate additional inputs needed
+            # Step 5: Determine execution policy
+            execution_policy = self._build_execution_policy_from_result(tool_result, decision)
+            
+            # Step 6: Calculate additional inputs needed
             additional_inputs = self._calculate_additional_inputs(decision, selected_tools)
             
-            # Step 5: Determine environment requirements
+            # Step 7: Determine environment requirements
             env_requirements = self._determine_environment_requirements(selected_tools)
             
-            # Step 6: Calculate selection confidence (LLM-based, high confidence)
-            selection_confidence = 0.9  # High confidence for LLM selection
+            # Step 8: Calculate selection confidence
+            selection_confidence = self._calculate_confidence_from_result(tool_result)
             
-            # Step 7: Determine next stage
+            # Step 9: Determine next stage
             next_stage = self._determine_next_stage(decision, selected_tools, execution_policy)
             
-            # Step 8: Build Selection v1 response
+            # Step 10: Build Selection v1 response
             processing_time = int((time.time() - start_time) * 1000)
             
             selection = SelectionV1(
@@ -105,8 +129,8 @@ class StageBSelector:
             return selection
             
         except Exception as e:
-            # Fallback selection on error
-            return await self._create_fallback_selection(decision, str(e))
+            # Re-raise - NO FALLBACKS per system charter
+            raise RuntimeError(f"Tool selection failed: {str(e)}") from e
     
     async def _find_capability_matches(self, decision: DecisionV1) -> List[CapabilityMatch]:
         """Find tools that match the decision requirements"""
@@ -490,6 +514,104 @@ class StageBSelector:
             ready_for_execution=False
         )
     
+    def _extract_capabilities_from_decision(self, decision: DecisionV1) -> List[str]:
+        """
+        Extract required capabilities from DecisionV1
+        
+        Maps intent.action to capability names that tools can provide
+        """
+        # Map intent actions to capability names
+        capability_mapping = {
+            "restart_service": ["service_control"],
+            "check_status": ["service_status"],
+            "show_status": ["system_monitoring"],  # For information requests
+            "view_logs": ["log_access"],
+            "search_files": ["file_search"],
+            "read_file": ["file_read"],
+            "edit_file": ["file_edit"],
+            "list_directory": ["directory_list"],
+            "execute_command": ["shell_execution"],
+            "monitor_system": ["system_monitoring"],
+            "configure_service": ["configuration_management"]
+        }
+        
+        action = decision.intent.action
+        capabilities = capability_mapping.get(action, ["system_monitoring"])  # Default to monitoring for unknown actions
+        
+        return capabilities
+    
+    def _build_orchestrator_context(self, decision: DecisionV1, 
+                                   context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Build context dict for HybridOrchestrator from DecisionV1
+        
+        Includes runtime context like environment, cost limits, etc.
+        """
+        orchestrator_context = {
+            "environment": context.get("environment", "production") if context else "production",
+            "require_production_safe": decision.risk_level in ["high", "critical"],
+            "decision_confidence": decision.overall_confidence,
+            "risk_level": decision.risk_level.value,
+        }
+        
+        # Add cost limit if specified
+        if context and "cost_limit" in context:
+            orchestrator_context["cost_limit"] = context["cost_limit"]
+        
+        # Add any additional context from decision
+        if decision.context:
+            orchestrator_context.update(decision.context)
+        
+        return orchestrator_context
+    
+    def _extract_inputs_from_capability(self, capability_name: str) -> List[str]:
+        """
+        Extract required inputs for a capability
+        
+        This is a simple mapping - in production, this would come from
+        the tool registry or capability definitions
+        """
+        input_mapping = {
+            "service_control": ["service_name"],
+            "service_status": ["service_name"],
+            "log_access": ["log_file", "service_name"],
+            "file_search": ["search_pattern", "directory"],
+            "file_read": ["file_path"],
+            "file_edit": ["file_path", "edit_content"],
+            "directory_list": ["directory_path"],
+            "shell_execution": ["command"],
+            "system_monitoring": ["metric_type"],
+            "configuration_management": ["config_file", "config_values"]
+        }
+        
+        return input_mapping.get(capability_name, ["user_input"])
+    
+    def _build_execution_policy_from_result(self, tool_result, decision: DecisionV1) -> ExecutionPolicy:
+        """
+        Build ExecutionPolicy from HybridOrchestrator result
+        """
+        return ExecutionPolicy(
+            requires_approval=decision.requires_approval or decision.risk_level in ["high", "critical"],
+            production_environment=decision.context.get("environment") == "production" if decision.context else False,
+            risk_level=decision.risk_level,
+            max_execution_time=int(tool_result.estimated_time_ms / 1000),  # Convert ms to seconds
+            parallel_execution=False,  # Single tool for now
+            rollback_required=decision.risk_level in ["high", "critical"]
+        )
+    
+    def _calculate_confidence_from_result(self, tool_result) -> float:
+        """
+        Calculate selection confidence from HybridOrchestrator result
+        
+        Higher confidence for deterministic selection, slightly lower for LLM tie-breaking
+        """
+        if tool_result.selection_method == "deterministic":
+            return 0.95
+        elif tool_result.selection_method == "llm_tiebreaker":
+            return 0.85
+        else:
+            return 0.75
+
     async def health_check(self) -> Dict[str, Any]:
         """Health check for Stage B Selector"""
         
@@ -502,7 +624,8 @@ class StageBSelector:
             },
             "capability_matcher": "healthy",
             "policy_engine": "healthy",
-            "llm_client": "unknown"
+            "llm_client": "unknown",
+            "hybrid_orchestrator": "healthy"
         }
         
         # Check LLM client health

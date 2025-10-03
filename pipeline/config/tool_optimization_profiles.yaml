@@ -309,3 +309,187 @@ tools:
               cost: 1.0          # Free
               complexity: 1.0    # Very simple
               completeness: 0.4  # Limited to docs
+
+  systemctl:
+    description: "System service control and management"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "systemd"
+    
+    capabilities:
+      service_control:
+        patterns:
+          restart_service:
+            description: "Restart a system service"
+            typical_use_cases:
+              - "restart"
+              - "reload"
+              - "restart service"
+            
+            time_estimate_ms: 2000
+            cost_estimate: 1
+            complexity_score: 0.3
+            
+            scope: "single_service"
+            completeness: "complete"
+            
+            limitations:
+              - "Requires admin permissions"
+              - "May cause service downtime"
+            
+            policy:
+              max_cost: 5
+              requires_approval: true
+              production_safe: true
+            
+            preference_match:
+              speed: 0.8
+              accuracy: 1.0
+              cost: 0.9
+              complexity: 0.7
+              completeness: 1.0
+      
+      service_status:
+        patterns:
+          check_status:
+            description: "Check service status"
+            typical_use_cases:
+              - "status"
+              - "check"
+              - "is running"
+            
+            time_estimate_ms: 500
+            cost_estimate: 1
+            complexity_score: 0.1
+            
+            scope: "single_service"
+            completeness: "complete"
+            
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.95
+              accuracy: 1.0
+              cost: 0.95
+              complexity: 0.95
+              completeness: 1.0
+
+  ps:
+    description: "Process status and monitoring"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "proc_filesystem"
+    
+    capabilities:
+      system_monitoring:
+        patterns:
+          list_processes:
+            description: "List running processes"
+            typical_use_cases:
+              - "list processes"
+              - "show processes"
+              - "what's running"
+            
+            time_estimate_ms: 300
+            cost_estimate: 1
+            complexity_score: 0.1
+            
+            scope: "all_processes"
+            completeness: "complete"
+            
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.95
+              accuracy: 1.0
+              cost: 0.95
+              complexity: 0.95
+              completeness: 1.0
+
+  journalctl:
+    description: "System log access and analysis"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "systemd_journal"
+    
+    capabilities:
+      log_access:
+        patterns:
+          view_logs:
+            description: "View system or service logs"
+            typical_use_cases:
+              - "logs"
+              - "show logs"
+              - "view logs"
+            
+            time_estimate_ms: 1000
+            cost_estimate: 1
+            complexity_score: 0.2
+            
+            scope: "system_logs"
+            completeness: "complete"
+            
+            policy:
+              max_cost: 10
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.85
+              accuracy: 1.0
+              cost: 0.9
+              complexity: 0.85
+              completeness: 1.0
+
+  config_manager:
+    description: "Configuration file management"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "filesystem"
+    
+    capabilities:
+      configuration_management:
+        patterns:
+          edit_config:
+            description: "Edit configuration files"
+            typical_use_cases:
+              - "edit config"
+              - "update configuration"
+              - "change settings"
+            
+            time_estimate_ms: 1500
+            cost_estimate: 2
+            complexity_score: 0.4
+            
+            scope: "single_file"
+            completeness: "complete"
+            
+            limitations:
+              - "Requires file system access"
+              - "May require admin permissions"
+            
+            policy:
+              max_cost: 10
+              requires_approval: true
+              production_safe: true
+            
+            preference_match:
+              speed: 0.75
+              accuracy: 1.0
+              cost: 0.85
+              complexity: 0.7
+              completeness: 1.0
