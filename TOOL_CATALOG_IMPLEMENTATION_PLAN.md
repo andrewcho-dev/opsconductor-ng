@@ -176,8 +176,7 @@ CREATE TABLE tool_catalog.tool_patterns (
     
     -- Input/Output Schemas
     required_inputs JSONB DEFAULT '[]',
-    optional_inputs JSONB DEFAULT '[]',
-    output_schema JSONB DEFAULT '{}',
+    expected_outputs JSONB DEFAULT '[]',
     
     -- Examples
     examples JSONB DEFAULT '[]',
@@ -298,14 +297,23 @@ CREATE INDEX idx_audit_changed_by ON tool_catalog.tool_audit_log(changed_by);
 
 ## 🏗️ Implementation Phases
 
-### **Phase 1: Database Foundation (Week 1-2)**
+### **Phase 1: Database Foundation (Week 1-2)** ✅ **COMPLETE**
 
 #### **Deliverables**:
-1. ✅ Database schema creation
-2. ✅ Migration scripts
-3. ✅ YAML-to-Database import tool
-4. ✅ Basic CRUD operations
-5. ✅ Unit tests
+1. ✅ Database schema creation (`database/tool-catalog-schema.sql`)
+2. ✅ Migration scripts (`scripts/migrate_tools_to_db.py`)
+3. ✅ YAML-to-Database import tool (tested with grep.yaml, powershell.yaml)
+4. ✅ ToolCatalogService with CRUD operations (`pipeline/services/tool_catalog_service.py`)
+5. ✅ Integration tests (`scripts/test_tool_catalog_integration.py`)
+6. ✅ Validation script (`scripts/validate_tool.py`)
+7. ✅ Consistency audit and fixes (`CONSISTENCY_AUDIT.md`)
+
+#### **Status**: 
+- Schema applied and verified
+- 2 example tools imported successfully
+- All 8 integration tests passing
+- Performance metrics met (< 1ms tool lookup, < 5ms capability queries)
+- Documentation complete (`PHASE_1_FINAL_STATUS.md`)
 
 #### **Tasks**:
 
@@ -332,21 +340,22 @@ CREATE INDEX idx_audit_changed_by ON tool_catalog.tool_audit_log(changed_by);
 - Validation logic
 - Cache management
 
-**1.4 Update HybridOrchestrator**
-- Add database backend support
-- Maintain YAML fallback for testing
-- Add caching layer for performance
+**1.4 Consistency Audit & Fixes** ✅
+- Fixed schema inconsistency (output_schema → expected_outputs)
+- Removed unused optional_inputs column
+- Verified all components aligned (schema, service, YAML, validation)
+- Created comprehensive audit documentation
 
 ---
 
-### **Phase 2: API & Service Layer (Week 3-4)**
+### **Phase 2: API & Service Layer (Week 3-4)** 🚧 **IN PROGRESS**
 
 #### **Deliverables**:
-1. ✅ REST API for tool management
-2. ✅ Tool validation service
-3. ✅ Hot reload mechanism
-4. ✅ API documentation
-5. ✅ Integration tests
+1. ⏳ REST API for tool management (`api/tool_catalog_api.py`)
+2. ⏳ Update HybridOrchestrator to use ToolCatalogService (replace ProfileLoader)
+3. ⏳ Hot reload mechanism (cache invalidation on tool updates)
+4. ⏳ API documentation (OpenAPI/Swagger)
+5. ⏳ API integration tests
 
 #### **Tasks**:
 
@@ -378,15 +387,17 @@ GET    /api/v1/capabilities             # List all capabilities
 GET    /api/v1/capabilities/{name}/tools # Get tools by capability
 ```
 
-**2.2 Create Validation Service**
+**2.2 Update HybridOrchestrator Integration**
 ```bash
-/pipeline/services/tool_validator.py
+/pipeline/stages/stage_b/hybrid_orchestrator.py
+/pipeline/stages/stage_b/profile_loader.py
+/pipeline/stages/stage_b/candidate_enumerator.py
 ```
-- Schema validation
-- Expression validation (time_estimate_ms, cost_estimate)
-- Policy constraint validation
-- Dependency checking
-- Performance testing
+- Replace ProfileLoader YAML loading with ToolCatalogService queries
+- Maintain same interface for backward compatibility
+- Add database connection pooling
+- Implement caching layer for performance
+- Update CandidateEnumerator to use database-backed profiles
 
 **2.3 Implement Hot Reload**
 - Cache invalidation on tool updates
@@ -646,13 +657,125 @@ curl -X POST http://localhost:8080/api/v1/tools \
 
 ---
 
-## 🎯 Next Steps
+## 🎯 Phase 2 - Detailed Task Breakdown
 
-1. **Review and approve this plan**
-2. **Prioritize tool categories** (which 200+ tools to add first?)
-3. **Assign resources** (developers, DBAs, etc.)
-4. **Set up development environment**
-5. **Begin Phase 1 implementation**
+### **Current Status**: Phase 1 Complete ✅, Starting Phase 2 🚧
+
+### **Phase 2 Priority Order**:
+
+#### **Task 2.1: Update HybridOrchestrator Integration** (Priority: HIGH)
+**Goal**: Replace YAML-based ProfileLoader with database-backed ToolCatalogService
+
+**Files to Modify**:
+1. `/pipeline/stages/stage_b/profile_loader.py`
+   - Add `use_database` flag to constructor
+   - Add `ToolCatalogService` integration
+   - Keep YAML fallback for backward compatibility
+   - Implement caching layer
+
+2. `/pipeline/stages/stage_b/candidate_enumerator.py`
+   - Update to work with database-backed ProfileLoader
+   - No interface changes needed (transparent to caller)
+
+3. `/pipeline/stages/stage_b/hybrid_orchestrator.py`
+   - Update initialization to use database-backed ProfileLoader
+   - Add configuration option for database vs YAML mode
+
+**Acceptance Criteria**:
+- [ ] ProfileLoader can load from database
+- [ ] ProfileLoader maintains YAML fallback
+- [ ] CandidateEnumerator works with both modes
+- [ ] HybridOrchestrator selects tools from database
+- [ ] Performance: < 5ms for tool enumeration
+- [ ] All existing tests pass
+- [ ] New integration test for database mode
+
+**Estimated Time**: 4-6 hours
+
+---
+
+#### **Task 2.2: Create REST API** (Priority: MEDIUM)
+**Goal**: Build REST API for tool management
+
+**Files to Create**:
+1. `/api/tool_catalog_api.py` - Main API implementation
+2. `/api/schemas/tool_schemas.py` - Pydantic schemas for validation
+3. `/tests/test_tool_catalog_api.py` - API tests
+
+**Endpoints** (in priority order):
+1. `GET /api/v1/tools` - List all tools
+2. `GET /api/v1/tools/{name}` - Get tool by name
+3. `POST /api/v1/tools` - Create new tool
+4. `PUT /api/v1/tools/{name}` - Update tool
+5. `DELETE /api/v1/tools/{name}` - Delete tool
+6. `GET /api/v1/capabilities` - List capabilities
+7. `GET /api/v1/capabilities/{name}/tools` - Get tools by capability
+
+**Acceptance Criteria**:
+- [ ] All endpoints implemented
+- [ ] OpenAPI/Swagger documentation
+- [ ] Request validation with Pydantic
+- [ ] Error handling and status codes
+- [ ] API tests with 90%+ coverage
+- [ ] Performance: < 100ms p95 response time
+
+**Estimated Time**: 6-8 hours
+
+---
+
+#### **Task 2.3: Implement Hot Reload** (Priority: LOW)
+**Goal**: Enable zero-downtime tool updates
+
+**Implementation**:
+1. Add cache invalidation to ToolCatalogService
+2. Add event notification on tool updates
+3. Update ProfileLoader to listen for cache invalidation events
+
+**Acceptance Criteria**:
+- [ ] Tool updates propagate within 1 second
+- [ ] No service restart required
+- [ ] Cache invalidation works correctly
+- [ ] Integration test for hot reload
+
+**Estimated Time**: 3-4 hours
+
+---
+
+#### **Task 2.4: Tool Generator CLI** (Priority: MEDIUM)
+**Goal**: Interactive CLI wizard for creating new tools
+
+**Files to Create**:
+1. `/scripts/generate_tool_definition.py` - Interactive wizard
+2. `/scripts/templates/tool_template.yaml` - Tool template
+
+**Features**:
+- Interactive prompts for all required fields
+- Template selection (Linux, Windows, Network, etc.)
+- Expression validation (time_estimate_ms, cost_estimate)
+- Direct database import option
+- YAML export option
+
+**Acceptance Criteria**:
+- [ ] Wizard guides user through tool creation
+- [ ] Validates all inputs
+- [ ] Generates valid tool definition
+- [ ] Can import directly to database
+- [ ] Can export to YAML file
+- [ ] User-friendly error messages
+
+**Estimated Time**: 4-5 hours
+
+---
+
+### **Phase 2 Total Estimated Time**: 17-23 hours (2-3 days)
+
+### **Phase 2 Success Criteria**:
+- ✅ HybridOrchestrator uses database for tool selection
+- ✅ REST API functional with all core endpoints
+- ✅ Tool updates propagate without restart
+- ✅ Tool generator CLI working
+- ✅ All tests passing
+- ✅ Documentation updated
 
 ---
 
