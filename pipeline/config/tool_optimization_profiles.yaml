@@ -1,8 +1,13 @@
 # Tool Optimization Profiles
-# Version: 1.0
+# Version: 1.1 (FIXED: Time/Cost/Complexity now reflect TOTAL end-to-end metrics)
 #
 # This file defines optimization profiles for tool selection.
 # Each tool can have multiple usage patterns with different performance characteristics.
+#
+# CRITICAL: All metrics represent TOTAL resources to deliver complete results:
+# - time_estimate_ms: Total wall-clock time from request to final result
+# - cost_estimate: Total API calls, SSH connections, or resource usage
+# - complexity_score: Total orchestration complexity for entire operation
 #
 # Expressions support:
 # - Variables: N (asset count), pages, p95_latency, cost, time_ms
@@ -14,7 +19,7 @@
 # - 0.5 = Moderate
 # - 0.0 = Poor for this dimension
 
-version: "1.0"
+version: "1.1"
 
 tools:
   asset-service-query:
@@ -103,7 +108,7 @@ tools:
               completeness: 0.5  # Limited fields
           
           single_lookup:
-            description: "Fast lookup of single asset by ID/hostname"
+            description: "Fast lookup of single asset by ID/hostname (N=1 only)"
             typical_use_cases:
               - "what is"
               - "get"
@@ -111,10 +116,12 @@ tools:
               - "IP of"
               - "hostname"
             
-            # Very fast for single lookups (indexed)
-            time_estimate_ms: "80 + 0.01 * N"
-            cost_estimate: 1
-            complexity_score: 0.1
+            # FIXED: Single API call only (get_asset_by_id or get_asset_by_hostname)
+            # This pattern is ONLY suitable for N=1 queries
+            # For N>1, use list_summary or detailed_lookup instead
+            time_estimate_ms: 80  # Constant - single indexed lookup
+            cost_estimate: 1      # Single API call
+            complexity_score: 0.1 # Very simple - no iteration
             
             # Quality
             scope: "single_record"
@@ -135,17 +142,18 @@ tools:
               completeness: 0.8  # Complete for one asset
           
           detailed_lookup:
-            description: "Detailed asset information with all fields"
+            description: "Detailed asset information with all fields (batched query)"
             typical_use_cases:
               - "detailed"
               - "full information"
               - "everything about"
               - "complete details"
             
-            # Slower due to more data
-            time_estimate_ms: "300 + 5 * N"
-            cost_estimate: "1 + ceil(N / 100)"
-            complexity_score: 0.4
+            # FIXED: Uses query_assets() with batching (100 assets per API call)
+            # Total time = (API calls × base latency) + (per-record processing)
+            time_estimate_ms: "300 * ceil(N / 100) + 5 * N"
+            cost_estimate: "ceil(N / 100)"  # One API call per 100 assets
+            complexity_score: 0.4  # Moderate - batching logic
             
             # Quality
             scope: "detailed_records"
@@ -155,6 +163,7 @@ tools:
             limitations:
               - "Slower due to large data transfer"
               - "May be stale"
+              - "Batched in groups of 100"
             
             # Policy
             policy:
