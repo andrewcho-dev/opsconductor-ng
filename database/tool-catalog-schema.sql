@@ -137,8 +137,7 @@ CREATE TABLE IF NOT EXISTS tool_catalog.tool_patterns (
     
     -- Input/Output Schemas
     required_inputs JSONB DEFAULT '[]',
-    optional_inputs JSONB DEFAULT '[]',
-    output_schema JSONB DEFAULT '{}',
+    expected_outputs JSONB DEFAULT '[]',
     
     -- Examples
     examples JSONB DEFAULT '[]',
