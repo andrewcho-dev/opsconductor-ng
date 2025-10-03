@@ -25,11 +25,11 @@ capabilities:
           - "filter logs"
         
         time_estimate_ms: "500 + 0.1 * file_size_kb"
-        cost_estimate: 1
+        cost_estimate: "1"
         complexity_score: 0.2
         
-        scope: "file_content"
-        completeness: "matching_lines"
+        scope: "batch"
+        completeness: "partial"
         
         limitations:
           - "Performance depends on file size"
@@ -58,26 +58,13 @@ capabilities:
             description: "File or directory to search"
             validation: ".*"
         
-        optional_inputs:
-          - name: "recursive"
-            type: "boolean"
-            description: "Search recursively in directories"
-            default: "false"
-          - name: "case_insensitive"
-            type: "boolean"
-            description: "Ignore case"
-            default: "false"
-          - name: "line_numbers"
-            type: "boolean"
-            description: "Show line numbers"
-            default: "true"
-        
-        output_schema:
-          type: "array"
-          properties:
-            matches:
-              type: "array"
-              description: "List of matching lines"
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of matching lines with file paths and line numbers"
+          - name: "match_count"
+            type: "integer"
+            description: "Total number of matches found"
 
 dependencies:
   - name: "filesystem_access"

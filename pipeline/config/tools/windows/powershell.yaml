@@ -24,10 +24,10 @@ capabilities:
           - "windows command"
         
         time_estimate_ms: "1000 + command_complexity * 500"
-        cost_estimate: 1
+        cost_estimate: "1"
         complexity_score: 0.3
         
-        scope: "single_command"
+        scope: "single_item"
         completeness: "complete"
         
         limitations:
@@ -54,28 +54,16 @@ capabilities:
             description: "PowerShell command to execute"
             validation: ".*"
         
-        optional_inputs:
-          - name: "timeout"
+        expected_outputs:
+          - name: "stdout"
+            type: "string"
+            description: "Command standard output"
+          - name: "stderr"
+            type: "string"
+            description: "Command error output"
+          - name: "exit_code"
             type: "integer"
-            description: "Command timeout in seconds"
-            default: "30"
-          - name: "elevated"
-            type: "boolean"
-            description: "Run with elevated privileges"
-            default: "false"
-        
-        output_schema:
-          type: "object"
-          properties:
-            stdout:
-              type: "string"
-              description: "Command output"
-            stderr:
-              type: "string"
-              description: "Error output"
-            exit_code:
-              type: "integer"
-              description: "Exit code"
+            description: "Command exit code"
   
   windows_service_management:
     description: "Manage Windows services"
@@ -89,11 +77,11 @@ capabilities:
           - "service status"
           - "is service running"
         
-        time_estimate_ms: 800
-        cost_estimate: 1
+        time_estimate_ms: "800"
+        cost_estimate: "1"
         complexity_score: 0.2
         
-        scope: "single_service"
+        scope: "single_item"
         completeness: "complete"
         
         policy:
@@ -115,18 +103,16 @@ capabilities:
             description: "Name of the Windows service"
             validation: "^[a-zA-Z0-9_-]+$"
         
-        output_schema:
-          type: "object"
-          properties:
-            name:
-              type: "string"
-              description: "Service name"
-            status:
-              type: "string"
-              description: "Service status"
-            start_type:
-              type: "string"
-              description: "Service start type"
+        expected_outputs:
+          - name: "name"
+            type: "string"
+            description: "Service name"
+          - name: "status"
+            type: "string"
+            description: "Service status (Running, Stopped, etc.)"
+          - name: "start_type"
+            type: "string"
+            description: "Service start type (Automatic, Manual, Disabled)"
 
 dependencies:
   - name: "powershell"
