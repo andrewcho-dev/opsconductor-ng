@@ -52,7 +52,7 @@ export const hasAnyRole = (user: KeycloakUser | null, roles: string[]): boolean 
   if (!user?.realm_access?.roles) {
     return false;
   }
-  return roles.some(role => user.realm_access.roles.includes(role));
+  return roles.some(role => user.realm_access!.roles.includes(role));
 };
 
 /**
@@ -96,7 +96,7 @@ export const canManageAssets = (user: KeycloakUser | null): boolean => {
  */
 export const canViewSystem = (user: KeycloakUser | null): boolean => {
   // All authenticated users with any role can view
-  return user?.realm_access?.roles?.length > 0;
+  return (user?.realm_access?.roles?.length ?? 0) > 0;
 };
 
 /**

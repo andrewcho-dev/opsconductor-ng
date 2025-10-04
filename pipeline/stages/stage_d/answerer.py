@@ -646,7 +646,104 @@ class StageDAnswerer:
             Direct answer string
         """
         try:
-            # Create a simple, direct prompt for information requests
+            # Check if this is an asset query that needs real data
+            import re
+            import httpx
+            import os
+            
+            asset_keywords = r'\b(asset|server|host|machine|node|linux|windows|database|vm|container)\b'
+            query_keywords = r'\b(how many|count|list|show|get|find|search)\b'
+            
+            is_asset_query = (
+                re.search(asset_keywords, user_request.lower()) and 
+                re.search(query_keywords, user_request.lower())
+            )
+            
+            if is_asset_query:
+                logger.info(f"🚀 FAST PATH: Detected asset query, calling asset service directly")
+                
+                try:
+                    # Call asset service API directly
+                    asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://assets:8001")
+                    
+                    # Extract filters from the query using LLM
+                    filter_prompt = f"""Extract asset filters from this query. Return ONLY a JSON object with these optional fields:
+- os_type: operating system (e.g., "linux", "windows")
+- environment: environment name (e.g., "production", "staging")
+- status: asset status (e.g., "active", "inactive")
+
+Query: {user_request}
+
+Return ONLY the JSON object, no explanation:"""
+                    
+                    from llm.client import LLMRequest
+                    llm_request = LLMRequest(
+                        prompt=filter_prompt,
+                        system_prompt="You extract structured data from queries. Return only valid JSON.",
+                        temperature=0.1,
+                        max_tokens=100
+                    )
+                    
+                    filter_response = await self.llm_client.generate(llm_request)
+                    filter_text = filter_response.content.strip() if hasattr(filter_response, 'content') else str(filter_response)
+                    
+                    # Parse filters
+                    import json
+                    try:
+                        # Extract JSON from response (handle markdown code blocks)
+                        if '```json' in filter_text:
+                            filter_text = filter_text.split('```json')[1].split('```')[0].strip()
+                        elif '```' in filter_text:
+                            filter_text = filter_text.split('```')[1].split('```')[0].strip()
+                        
+                        filters = json.loads(filter_text)
+                    except:
+                        filters = {}
+                    
+                    # Build query parameters
+                    params = {}
+                    if filters.get('os_type'):
+                        params['os_type'] = filters['os_type']
+                    if filters.get('environment'):
+                        params['environment'] = filters['environment']
+                    if filters.get('status'):
+                        params['status'] = filters['status']
+                    
+                    # Call asset service
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.get(f"{asset_service_url}/api/v1/assets", params=params)
+                        
+                        if response.status_code == 200:
+                            data = response.json()
+                            assets = data.get('assets', [])
+                            total_count = len(assets)
+                            
+                            # Format response based on query
+                            if 'how many' in user_request.lower() or 'count' in user_request.lower():
+                                filter_desc = ""
+                                if params:
+                                    filter_parts = [f"{k.replace('_', ' ')}: {v}" for k, v in params.items()]
+                                    filter_desc = f" ({', '.join(filter_parts)})"
+                                
+                                return f"We have **{total_count}** assets{filter_desc}."
+                            else:
+                                # List format
+                                if total_count == 0:
+                                    return "No assets found matching your criteria."
+                                elif total_count <= 10:
+                                    asset_list = "\n".join([f"- {a.get('hostname', 'Unknown')} ({a.get('os_type', 'Unknown')})" for a in assets[:10]])
+                                    return f"Found {total_count} assets:\n{asset_list}"
+                                else:
+                                    asset_list = "\n".join([f"- {a.get('hostname', 'Unknown')} ({a.get('os_type', 'Unknown')})" for a in assets[:10]])
+                                    return f"Found {total_count} assets (showing first 10):\n{asset_list}"
+                        else:
+                            logger.warning(f"Asset service returned {response.status_code}")
+                            
+                except Exception as e:
+                    logger.error(f"Failed to query asset service: {e}")
+                    # Fall through to LLM-based response
+            
+            # Default: Use LLM to generate direct response
             prompt = f"""You are a helpful assistant. Answer this question directly and concisely:
 
 Question: {user_request}

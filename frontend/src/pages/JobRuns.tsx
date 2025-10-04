@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { jobRunApi, jobApi, userApi, assetApi } from '../services/api';
+import { jobRunApi, jobApi, assetApi } from '../services/api';
 import { JobRun, JobRunStep, Job, User } from '../types';
 import { Play, CheckCircle, XCircle, Clock, AlertCircle, Pause, Filter, X, Minus, Maximize2, Upload } from 'lucide-react';
 
@@ -71,8 +71,10 @@ const JobRuns: React.FC = () => {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await userApi.list(0, 100); // Get all users
-      setUsers(response.data || []);
+      // TODO: Implement userApi when backend endpoint is available
+      // const response = await userApi.list(0, 100); // Get all users
+      // setUsers(response.data || []);
+      setUsers([]); // Temporary: empty array until userApi is implemented
     } catch (error: any) {
       console.error('Failed to fetch users:', error);
     }

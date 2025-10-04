@@ -115,7 +115,15 @@ class StageAClassifier:
     
     def _determine_next_stage(self, intent, confidence_data, risk_data) -> str:
         """Determine the next pipeline stage"""
-        # ALL requests go to Stage B (Selector) - full pipeline processing
+        # FAST PATH: Simple information queries that don't require tool execution
+        # can skip directly to Stage D for immediate response
+        if intent.category == "information" and intent.action in ["query", "list", "count", "show", "get"]:
+            # Check if this is a simple query that can be answered directly
+            # without needing to execute tools or create plans
+            if confidence_data["overall_confidence"] >= 0.7:
+                return "stage_d"
+        
+        # DEFAULT PATH: All other requests go to Stage B (Selector) for full pipeline processing
         return "stage_b"
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED

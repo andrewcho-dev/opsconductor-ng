@@ -6,6 +6,7 @@ import SlackSettings from '../components/SlackSettings';
 import TeamsSettings from '../components/TeamsSettings';
 import DiscordSettings from '../components/DiscordSettings';
 import WebhookSettings from '../components/WebhookSettings';
+import { isAdmin } from '../utils/permissions';
 
 import { 
   Settings, 
@@ -70,7 +71,7 @@ const SystemSettings: React.FC = () => {
     }
   ];
 
-  const visibleSections = sections.filter(section => !section.adminOnly || user?.role === 'admin');
+  const visibleSections = sections.filter(section => !section.adminOnly || isAdmin(user));
 
   const handleSectionChange = (sectionId: string) => {
     navigate(`/settings/${sectionId}`);
@@ -431,10 +432,10 @@ const SystemSettings: React.FC = () => {
                 <div
                   key={section.id}
                   className={`nav-item ${currentSection === section.id ? 'active' : ''} ${
-                    section.adminOnly && user?.role !== 'admin' ? 'disabled' : ''
+                    section.adminOnly && !isAdmin(user) ? 'disabled' : ''
                   }`}
                   onClick={() => {
-                    if (!section.adminOnly || user?.role === 'admin') {
+                    if (!section.adminOnly || isAdmin(user)) {
                       handleSectionChange(section.id);
                     }
                   }}
@@ -464,7 +465,7 @@ const SystemSettings: React.FC = () => {
           <div className="compact-content">
             <div className="settings-content">
               {/* Check admin access for admin-only sections */}
-              {currentSectionData.adminOnly && user?.role !== 'admin' ? (
+              {currentSectionData.adminOnly && !isAdmin(user) ? (
                 <div className="access-denied">
                   <AlertCircle size={16} />
                   <div>

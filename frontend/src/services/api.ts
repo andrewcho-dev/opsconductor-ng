@@ -4,7 +4,7 @@ import {
   Job, JobCreate, JobListResponse,
   JobRun, JobRunListResponse, JobRunStep,
 
-  LoginRequest, AuthResponse,
+  LoginRequest, AuthResponse, KeycloakUser,
 
   SMTPSettings, SMTPSettingsResponse, SMTPTestRequest, SMTPTestResponse,
   CommunicationChannel, CommunicationChannelCreate, CommunicationChannelUpdate,
@@ -149,7 +149,11 @@ export const authApi = {
         first_name: payload.given_name || '',
         last_name: payload.family_name || '',
         roles: payload.realm_access?.roles || [],
-        is_admin: payload.realm_access?.roles?.includes('admin') || false
+        name: payload.name,
+        given_name: payload.given_name,
+        family_name: payload.family_name,
+        preferred_username: payload.preferred_username,
+        realm_access: payload.realm_access
       }
     };
   },
@@ -180,7 +184,7 @@ export const authApi = {
     clearTokens();
   },
 
-  verify: async (): Promise<{ valid: boolean; user: User }> => {
+  verify: async (): Promise<{ valid: boolean; user: KeycloakUser }> => {
     // Verify by decoding the JWT token (client-side validation)
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -204,7 +208,11 @@ export const authApi = {
           first_name: payload.given_name || '',
           last_name: payload.family_name || '',
           roles: payload.realm_access?.roles || [],
-          is_admin: payload.realm_access?.roles?.includes('admin') || false
+          name: payload.name,
+          given_name: payload.given_name,
+          family_name: payload.family_name,
+          preferred_username: payload.preferred_username,
+          realm_access: payload.realm_access
         }
       };
     } catch (error) {

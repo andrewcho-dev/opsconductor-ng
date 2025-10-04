@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SMTPSettingsComponent from '../components/SMTPSettings';
-
+import { isAdmin } from '../utils/permissions';
 import { Lightbulb } from 'lucide-react';
 
 const LegacySettings: React.FC = () => {
@@ -20,7 +20,7 @@ const LegacySettings: React.FC = () => {
 
         {/* Content */}
         <div className="space-y-6">
-          {user?.role === 'admin' ? (
+          {isAdmin(user) ? (
             <>
 
               
@@ -36,7 +36,7 @@ const LegacySettings: React.FC = () => {
         </div>
 
         {/* Help Section */}
-        {user?.role === 'admin' && (
+        {isAdmin(user) && (
           <div className="mt-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
             <h3 className="text-lg font-medium text-blue-900 mb-4">
               <Lightbulb size={20} className="inline mr-2" />Administrator Help

@@ -124,8 +124,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       
       let aiContent = '';
       let responseType = 'information';
-      let executionId = null;
-      let approvalData = null;
+      let executionId: string | null = null;
+      let approvalData: any = null;
       
       if (response.success && response.result) {
         const result = response.result;
@@ -180,7 +180,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
               responseType,
               executionId,
               approvalData
-            }
+            } as Message
           : msg
       ));
 
@@ -687,6 +687,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
             <Send size={18} />
           </button>
         </div>
+      </div>
       </div>
 
       <style>{`

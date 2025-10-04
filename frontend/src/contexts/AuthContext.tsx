@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '../utils/permissions';
+import { KeycloakUser } from '../types';
 
 interface AuthContextType {
   token: string | null;
-  user: User | null;
-  login: (token: string, user: User) => void;
+  user: KeycloakUser | null;
+  login: (token: string, user: KeycloakUser) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -26,7 +26,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<KeycloakUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

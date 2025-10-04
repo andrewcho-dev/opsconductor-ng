@@ -3,6 +3,7 @@ import { smtpApi } from '../services/api';
 import { SMTPSettings, SMTPSettingsResponse, SMTPTestRequest } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { CheckCircle, XCircle } from 'lucide-react';
+import { isAdmin } from '../utils/permissions';
 
 const SMTPSettingsComponent: React.FC = () => {
   const { user } = useAuth();
@@ -27,13 +28,13 @@ const SMTPSettingsComponent: React.FC = () => {
   const [testSuccess, setTestSuccess] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (user?.role === 'admin') {
+    if (isAdmin(user)) {
       loadSettings();
     }
-  }, [user?.role]);
+  }, [user]);
 
   // Only allow admin users
-  if (user?.role !== 'admin') {
+  if (!isAdmin(user)) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
         Access denied. Only administrators can configure SMTP settings.

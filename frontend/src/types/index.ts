@@ -57,6 +57,14 @@ export interface KeycloakUser {
   first_name?: string;
   last_name?: string;
   roles?: string[];
+  // Additional Keycloak standard claims
+  name?: string;
+  given_name?: string;
+  family_name?: string;
+  preferred_username?: string;
+  realm_access?: {
+    roles: string[];
+  };
 }
 
 export interface LoginRequest {

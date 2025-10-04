@@ -11,7 +11,6 @@ interface SystemStats {
 
 const SystemStats: React.FC = () => {
   const [stats, setStats] = useState<SystemStats>({
-    users: 0,
     assets: 0,
     jobs: 0,
     recentRuns: 0,
@@ -21,8 +20,7 @@ const SystemStats: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [usersResponse, assetsResponse, jobsResponse, runsResponse] = await Promise.all([
-          userApi.list(),
+        const [assetsResponse, jobsResponse, runsResponse] = await Promise.all([
           assetApi.list(),
           jobApi.list(),
           jobRunApi.list(0, 10) // Get recent 10 runs
@@ -36,7 +34,6 @@ const SystemStats: React.FC = () => {
         };
 
         setStats({
-          users: getTotal(usersResponse),
           assets: getTotal(assetsResponse),
           jobs: getTotal(jobsResponse),
           recentRuns: getTotal(runsResponse),
@@ -45,7 +42,6 @@ const SystemStats: React.FC = () => {
         console.error('Failed to fetch dashboard stats:', error);
         // Set fallback stats so the dashboard still shows something
         setStats({
-          users: 0,
           assets: 0,
           jobs: 0,
           recentRuns: 0,
@@ -59,13 +55,6 @@ const SystemStats: React.FC = () => {
   }, []);
 
   const statCards = [
-    {
-      title: 'Users',
-      value: stats.users,
-      icon: Users,
-      link: '/user-management',
-      color: 'var(--primary-blue)'
-    },
     {
       title: 'Assets',
       value: stats.assets,
