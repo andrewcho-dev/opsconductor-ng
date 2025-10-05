@@ -6,15 +6,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AIChatPage from './pages/AIChat';
 import Assets from './pages/Assets';
-import SystemSettings from './pages/SystemSettings';
 import LegacySettings from './pages/LegacySettings';
-import InfrastructureMonitoring from './pages/InfrastructureMonitoring';
-import NotificationsPage from './pages/NotificationsPage';
-import TemplatesPage from './pages/TemplatesPage';
-import AuditLogsPage from './pages/AuditLogsPage';
-import NetworkAnalysisPage from './pages/NetworkAnalysisPage';
 import SchedulesPage from './pages/SchedulesPage';
-import AIMonitoringPage from './pages/AIMonitoringPage';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -55,18 +48,7 @@ const App: React.FC = () => {
                     <Route path="/assets/:action" element={<Assets />} />
                     <Route path="/assets/:action/:id" element={<Assets />} />
 
-                    {/* Infrastructure Routes */}
-                    <Route path="/infrastructure" element={<InfrastructureMonitoring />} />
-                    <Route path="/network-analysis" element={<NetworkAnalysisPage />} />
-                    <Route path="/ai-monitoring" element={<AIMonitoringPage />} />
-
-                    {/* Communication Routes */}
-                    <Route path="/notifications" element={<NotificationsPage />} />
-                    <Route path="/templates" element={<TemplatesPage />} />
-                    <Route path="/audit-logs" element={<AuditLogsPage />} />
-
-                    <Route path="/settings" element={<Navigate to="/settings/smtp" />} />
-                    <Route path="/settings/:section" element={<SystemSettings />} />
+                    {/* Legacy Settings */}
                     <Route path="/legacy-settings" element={<LegacySettings />} />
                     <Route path="*" element={<Navigate to="/" />} />
                   </Routes>

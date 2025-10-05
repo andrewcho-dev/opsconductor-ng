@@ -4,23 +4,12 @@ import { authApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, PERMISSIONS } from '../utils/permissions';
 import { 
-  Users, 
   Target, 
-  Settings, 
-  Play, 
   MessageSquare,
   LogOut,
   Menu,
   ChevronRight,
-  Mail,
-  GitBranch,
-  Server,
-  Shield,
-  Bell,
-  FileText,
-  Network,
-  Calendar,
-  Brain
+  Calendar
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -132,118 +121,6 @@ const Navbar: React.FC = () => {
               </div>
 
               <div className="nav-divider"></div>
-              
-              {/* Infrastructure Section */}
-              <div className="nav-section-header">Infrastructure</div>
-              
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><Server size={16} /></span>
-                  Infrastructure
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/infrastructure" 
-                    className={`nav-submenu-item ${isActive('/infrastructure') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Server size={14} /></span>
-                    System Monitoring
-                  </Link>
-                  <Link 
-                    to="/network-analysis" 
-                    className={`nav-submenu-item ${isActive('/network-analysis') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Network size={14} /></span>
-                    Network Analysis
-                  </Link>
-                  <Link 
-                    to="/ai-monitoring" 
-                    className={`nav-submenu-item ${isActive('/ai-monitoring') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Brain size={14} /></span>
-                    AI Monitoring
-                  </Link>
-                </div>
-              </div>
-
-
-
-              <div className="nav-divider"></div>
-              
-              {/* Communication Section */}
-              <div className="nav-section-header">Communication</div>
-              
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><MessageSquare size={16} /></span>
-                  Notifications
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/notifications" 
-                    className={`nav-submenu-item ${isActive('/notifications') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Bell size={14} /></span>
-                    Notifications
-                  </Link>
-                  <Link 
-                    to="/templates" 
-                    className={`nav-submenu-item ${isActive('/templates') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><FileText size={14} /></span>
-                    Templates
-                  </Link>
-                  <Link 
-                    to="/audit-logs" 
-                    className={`nav-submenu-item ${isActive('/audit-logs') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Shield size={14} /></span>
-                    Audit Logs
-                  </Link>
-                </div>
-              </div>
-
-              <div className="nav-divider"></div>
-              
-              {/* Identity & Access Section */}
-              <div className="nav-section-header">Identity & Access</div>
-
-              
-              {/* Settings Section */}
-              <div className="nav-section-header">Settings</div>
-              
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><Settings size={16} /></span>
-                  System
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/settings/smtp" 
-                    className={`nav-submenu-item ${location.pathname === '/settings/smtp' ? 'active' : ''} ${!hasPermission(user, PERMISSIONS.SMTP_CONFIG) ? 'disabled' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Mail size={14} /></span>
-                    System Settings
-                    {!hasPermission(user, PERMISSIONS.SMTP_CONFIG) && <span className="admin-badge">Admin</span>}
-                  </Link>
-                </div>
-              </div>
               <button onClick={handleLogout} className="nav-menu-item logout">
                 <span className="nav-icon"><LogOut size={16} /></span>
                 Logout
