@@ -555,13 +555,6 @@ const AIChatPage: React.FC = () => {
           .new-chat-button:hover {
             background: var(--primary-blue-dark);
           }
-          .compact-content {
-            padding: 0;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: auto;
-          }
         `}
       </style>
       
@@ -650,13 +643,11 @@ const AIChatPage: React.FC = () => {
 
         {/* Main Chat Area */}
         <div className="chat-main">
-          <div className="compact-content" style={{ padding: '8px' }}>
-            <AIChat 
-              ref={aiChatRef} 
-              onFirstMessage={handleFirstMessage}
-              activeChatId={activeChatId}
-            />
-          </div>
+          <AIChat 
+            ref={aiChatRef} 
+            onFirstMessage={handleFirstMessage}
+            activeChatId={activeChatId}
+          />
         </div>
       </div>
     </PageContainer>

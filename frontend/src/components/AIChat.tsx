@@ -340,31 +340,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        backgroundColor: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: '8px',
         overflow: 'hidden'
       }}>
-        {/* Header */}
-      <div style={{
-        padding: '16px 20px',
-        borderBottom: '1px solid #e5e7eb',
-        backgroundColor: '#f8f9fa',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }}>
-        <Bot size={20} style={{ color: '#6366f1' }} />
-        <h3 style={{ 
-          margin: 0, 
-          fontSize: '16px', 
-          fontWeight: '600',
-          color: '#1f2937'
-        }}>
-          AI Assistant
-        </h3>
-      </div>
-
       {/* Messages Area */}
       <div style={{
         flex: 1,
