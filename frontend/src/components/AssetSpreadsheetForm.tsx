@@ -1052,6 +1052,7 @@ const formStyles = `
     transition: all 0.1s ease;
     line-height: 1.4;
     color: #24292f;
+    box-sizing: border-box;
   }
 
   /* Specific styling for select elements to remove browser defaults */
@@ -1136,16 +1137,18 @@ const formStyles = `
   .field-textarea:not([readonly]),
   .field-select:not([disabled]) {
     background-color: #fffbeb;
-    border: 1px solid #fbbf24;
+    outline: 1px solid #fbbf24;
+    outline-offset: -1px;
     border-radius: 3px;
     padding: 2px 4px;
+    margin: -2px -4px;
   }
   
   .field-input:not([readonly]):focus,
   .field-textarea:not([readonly]):focus,
   .field-select:not([disabled]):focus {
     background-color: #fef3c7;
-    border-color: #f59e0b;
+    outline-color: #f59e0b;
   }
   
   .field-input.error,
