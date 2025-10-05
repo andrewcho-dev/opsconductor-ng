@@ -711,9 +711,6 @@ const AIChatPage: React.FC = () => {
 
         {/* Main Chat Area */}
         <div className="chat-main">
-          <div className="section-header">
-            <span>AI Assistant</span>
-          </div>
           <div className="compact-content" style={{ padding: '8px' }}>
             <AIChat 
               ref={aiChatRef} 
