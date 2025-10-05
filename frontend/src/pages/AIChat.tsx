@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { Target, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
+import { Target, Trash2, Plus, Edit2, Check, X } from 'lucide-react';
+import PageContainer from '../components/PageContainer';
+import PageHeader from '../components/PageHeader';
+import StatPill from '../components/StatPill';
 import AIChat, { AIChatRef } from '../components/AIChat';
 import { assetApi } from '../services/api';
 
@@ -356,63 +358,9 @@ const AIChatPage: React.FC = () => {
   };
 
   return (
-    <div className="dense-dashboard">
+    <PageContainer>
       <style>
         {`
-          /* Dashboard-style layout - EXACT MATCH to Users page */
-          .dense-dashboard {
-            padding: 8px 12px;
-            max-width: 100%;
-            font-size: 13px;
-          }
-          .dashboard-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid var(--neutral-200);
-          }
-          .header-left {
-            display: flex;
-            align-items: center;
-          }
-          .header-left h1 {
-            font-size: 18px;
-            font-weight: 600;
-            margin: 0;
-            color: var(--neutral-800);
-          }
-          .delete-conversation-btn {
-            color: var(--danger-red) !important;
-          }
-          .delete-conversation-btn:hover {
-            background: var(--danger-red-light) !important;
-            color: var(--danger-red) !important;
-          }
-          .header-stats {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-          }
-          .stat-pill {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: var(--neutral-100);
-            color: var(--neutral-700);
-            padding: 4px 8px;
-            border-radius: 12px;
-            text-decoration: none;
-            font-size: 12px;
-            font-weight: 500;
-            transition: all 0.15s ease;
-            white-space: nowrap;
-          }
-          .stat-pill:hover {
-            background: var(--primary-blue-light);
-            color: var(--primary-blue);
-          }
           .chat-layout {
             display: flex;
             gap: 12px;
@@ -617,26 +565,17 @@ const AIChatPage: React.FC = () => {
         `}
       </style>
       
-      {/* Dashboard-style header */}
-      <div className="dashboard-header">
-        <div className="header-left">
-          <h1>AI Assistant</h1>
-        </div>
-        <div className="header-stats">
-          <button
-            onClick={deleteActiveConversation}
-            className="btn-icon btn-danger"
-            title="Delete current conversation"
-            disabled={!activeChatId || chatSessions.length <= 1}
-          >
-            <Trash2 size={18} />
-          </button>
-          <Link to="/assets" className="stat-pill">
-            <Target size={14} />
-            <span>{stats.assets} Assets</span>
-          </Link>
-        </div>
-      </div>
+      <PageHeader title="AI Assistant">
+        <button
+          onClick={deleteActiveConversation}
+          className="btn-icon btn-danger"
+          title="Delete current conversation"
+          disabled={!activeChatId || chatSessions.length <= 1}
+        >
+          <Trash2 size={18} />
+        </button>
+        <StatPill icon={Target} label="Assets" count={stats.assets} to="/assets" />
+      </PageHeader>
 
       {/* Chat Layout with Sidebar */}
       <div className="chat-layout">
@@ -720,7 +659,7 @@ const AIChatPage: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 };
 
