@@ -907,6 +907,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
 
 const formStyles = `
   .asset-spreadsheet-form {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -921,7 +922,11 @@ const formStyles = `
   
   .asset-spreadsheet-form.editing-mode::before {
     content: '✏️ EDITING MODE';
-    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
     padding: 4px 8px;
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
     border-bottom: 1px solid #fbbf24;
@@ -930,6 +935,7 @@ const formStyles = `
     color: #92400e;
     letter-spacing: 0.5px;
     text-align: center;
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);
   }
   
   .form-container {
