@@ -365,7 +365,7 @@ const AIChatPage: React.FC = () => {
             height: calc(100vh - 110px);
           }
           .chat-sidebar {
-            width: 12.5%;
+            width: 20%;
             background: white;
             border: 1px solid var(--neutral-200);
             border-radius: 6px;

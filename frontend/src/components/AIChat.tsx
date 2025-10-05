@@ -346,7 +346,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '20px',
+        padding: '20px 250px',
         display: 'flex',
         flexDirection: 'column',
         gap: '16px'
@@ -394,7 +394,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                 )}
               </div>
               <div style={{
-                maxWidth: '70%',
+                maxWidth: '85%',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px'
@@ -404,8 +404,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                   borderRadius: '12px',
                   backgroundColor: message.sender === 'user' ? '#3b82f6' : '#f3f4f6',
                   color: message.sender === 'user' ? 'white' : '#1f2937',
-                  fontSize: '14px',
-                  lineHeight: '1.5',
+                  fontSize: '16px',
+                  lineHeight: '1.8',
                   wordWrap: 'break-word',
                   whiteSpace: 'pre-wrap'
                 }}>
@@ -592,14 +592,14 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
 
       {/* Input Area */}
       <div style={{
-        padding: '16px 20px',
+        padding: '16px 250px',
         borderTop: '1px solid #e5e7eb',
         backgroundColor: '#ffffff'
       }}>
         <div style={{
           display: 'flex',
           gap: '12px',
-          alignItems: 'flex-end'
+          alignItems: 'flex-start'
         }}>
           <div style={{ flex: 1, position: 'relative' }}>
             <textarea
@@ -616,7 +616,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                 padding: '12px 16px',
                 border: '1px solid #d1d5db',
                 borderRadius: '8px',
-                fontSize: '14px',
+                fontSize: '16px',
                 fontFamily: 'inherit',
                 resize: 'none',
                 outline: 'none',
