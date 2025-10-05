@@ -1,3 +1,10 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+    "zencoder.mcpServers": {
+        "browser": {
+            "command": "/home/opsconductor/.nvm/versions/node/v20.19.5/bin/node",
+            "args": ["/home/opsconductor/opsconductor-ng/mcp-browser-server/dist/index.js"],
+            "env": {}
+        }
+    }
 }
