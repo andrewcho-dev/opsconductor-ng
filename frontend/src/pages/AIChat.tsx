@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Target, Trash2, Plus, Edit2, Check, X } from 'lucide-react';
-import PageContainer from '../components/PageContainer';
-import PageHeader from '../components/PageHeader';
-import StatPill from '../components/StatPill';
+import { Target, Trash2, Plus, Edit2, Check, X, MessageSquare } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import AIChat, { AIChatRef } from '../components/AIChat';
 import { assetApi } from '../services/api';
 
@@ -358,7 +356,7 @@ const AIChatPage: React.FC = () => {
   };
 
   return (
-    <PageContainer>
+    <div className="dense-dashboard">
       <style>
         {`
           .chat-layout {
@@ -424,6 +422,10 @@ const AIChatPage: React.FC = () => {
           .btn-icon:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+          }
+          .btn-icon.btn-danger:not(:disabled):hover {
+            background: var(--danger-red-light);
+            color: var(--danger-red);
           }
           .debug-toggle-icon {
             display: flex;
@@ -558,17 +560,26 @@ const AIChatPage: React.FC = () => {
         `}
       </style>
       
-      <PageHeader title="AI Assistant">
-        <button
-          onClick={deleteActiveConversation}
-          className="btn-icon btn-danger"
-          title="Delete current conversation"
-          disabled={!activeChatId || chatSessions.length <= 1}
-        >
-          <Trash2 size={18} />
-        </button>
-        <StatPill icon={Target} label="Assets" count={stats.assets} to="/assets" />
-      </PageHeader>
+      {/* Dashboard Header - matching Assets page template */}
+      <div className="dashboard-header">
+        <div className="header-left">
+          <h1>AI Assistant</h1>
+        </div>
+        <div className="header-right">
+          <button
+            onClick={deleteActiveConversation}
+            className="btn-icon btn-danger"
+            title="Delete current conversation"
+            disabled={!activeChatId || chatSessions.length <= 1}
+          >
+            <Trash2 size={18} />
+          </button>
+          <Link to="/assets" className="stat-pill">
+            <Target size={14} />
+            <span>{stats.assets} Assets</span>
+          </Link>
+        </div>
+      </div>
 
       {/* Chat Layout with Sidebar */}
       <div className="chat-layout">
@@ -650,7 +661,7 @@ const AIChatPage: React.FC = () => {
           />
         </div>
       </div>
-    </PageContainer>
+    </div>
   );
 };
 
