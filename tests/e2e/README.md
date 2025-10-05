@@ -101,8 +101,11 @@ Then use an MCP client to send tool requests.
 ## Test Data
 
 ### Test Credentials
-- Username: `admin` (or your test user)
-- Password: Set in your environment
+⚠️ **IMPORTANT**: Always use these exact credentials for E2E tests:
+- Username: `admin`
+- Password: `admin123`
+
+See `/tests/e2e/TEST_CREDENTIALS.md` for the official credentials reference.
 
 ### Test Assets
 Ensure at least one asset exists in the database for asset tests.

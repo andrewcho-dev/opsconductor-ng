@@ -38,7 +38,7 @@ Expected: Username field contains "admin"
 Tool: browser_fill
 Args: { 
   "selector": "input[name='password']", 
-  "text": "your_password_here" 
+  "text": "admin123" 
 }
 Expected: Password field is filled
 ```
