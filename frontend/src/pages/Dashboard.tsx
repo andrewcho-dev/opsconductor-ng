@@ -4,7 +4,7 @@ import { assetApi, scheduleApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import AIMonitor from '../components/AIMonitor';
-import { Target, Calendar, Play, RefreshCw, MessageSquare } from 'lucide-react';
+import { Target, Calendar, RefreshCw, MessageSquare } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
@@ -222,11 +222,7 @@ const Dashboard: React.FC = () => {
             <Calendar size={14} />
             <span>{stats.schedules} Schedules</span>
           </Link>
-          <Link to="/history/job-runs" className="stat-pill">
-            <Play size={14} />
-            <span>{stats.recentRuns} Runs</span>
-          </Link>
-          <Link to="/" className="stat-pill">
+          <Link to="/ai-chat" className="stat-pill">
             <MessageSquare size={14} />
             <span>AI Assistant</span>
           </Link>

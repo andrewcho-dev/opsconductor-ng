@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
+import { Target, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
 import { assetApi } from '../services/api';
 
@@ -634,10 +634,6 @@ const AIChatPage: React.FC = () => {
           <Link to="/assets" className="stat-pill">
             <Target size={14} />
             <span>{stats.assets} Assets</span>
-          </Link>
-          <Link to="/schedules" className="stat-pill">
-            <Settings size={14} />
-            <span>Schedules</span>
           </Link>
         </div>
       </div>

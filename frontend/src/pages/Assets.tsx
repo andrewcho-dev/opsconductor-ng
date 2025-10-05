@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Plus, X, Upload, Download, Users, Target, Settings, Play, MessageSquare, Edit3, Trash2 } from 'lucide-react';
+import { Plus, X, Upload, Download, Target, MessageSquare, Edit3, Trash2 } from 'lucide-react';
 import { assetApi } from '../services/api';
 import AssetDataGrid, { AssetDataGridRef } from '../components/AssetDataGrid';
 import AssetSpreadsheetForm from '../components/AssetSpreadsheetForm';
@@ -1411,14 +1411,6 @@ const Assets: React.FC = () => {
           <Link to="/assets" className="stat-pill">
             <Target size={14} />
             <span>{assets.length} Assets</span>
-          </Link>
-          <Link to="/jobs" className="stat-pill">
-            <Settings size={14} />
-            <span>Jobs</span>
-          </Link>
-          <Link to="/monitoring" className="stat-pill">
-            <Play size={14} />
-            <span>Runs</span>
           </Link>
           <Link to="/ai-chat" className="stat-pill">
             <MessageSquare size={14} />

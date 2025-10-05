@@ -1,4 +1,7 @@
-/* Import standardized design system */
+/* Import global design system - Single source of truth */
+@import './styles/global.css';
+
+/* Import legacy standardized styles for backward compatibility */
 @import './styles/standardized.css';
 
 /* Legacy styles for backward compatibility - will be removed gradually */
