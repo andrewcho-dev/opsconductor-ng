@@ -928,14 +928,14 @@ const formStyles = `
     right: 0;
     z-index: 1000;
     padding: 4px 8px;
-    background: linear-gradient(135deg, rgba(254, 243, 199, 0.5) 0%, rgba(253, 230, 138, 0.5) 100%);
-    border-bottom: 1px solid rgba(251, 191, 36, 0.6);
+    background: linear-gradient(135deg, rgba(254, 243, 199, 0.7) 0%, rgba(253, 230, 138, 0.7) 100%);
+    border-bottom: 1px solid rgba(251, 191, 36, 0.8);
     font-size: 10px;
     font-weight: 700;
     color: #92400e;
     letter-spacing: 0.5px;
     text-align: center;
-    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.3);
     backdrop-filter: blur(1px);
   }
   
