@@ -33,6 +33,7 @@ You must classify requests into these categories:
 - troubleshooting: Requests to diagnose issues, fix problems
 - configuration: Requests to change settings, update configs
 - information: Requests for documentation, help, explanations
+- asset_management: Requests to query, list, search, count, or retrieve information about infrastructure assets (servers, hosts, VMs, containers, network devices)
 
 CRITICAL: Emergency and urgent requests should ALWAYS be classified as "automation" category, not "information".
 
@@ -40,6 +41,13 @@ Emergency indicators include:
 - Words like "URGENT", "EMERGENCY", "CRITICAL", "DOWN", "OUTAGE", "FAILURE", "CRASHED"
 - Service outage descriptions ("database is down", "users cannot access")
 - Production issues requiring immediate action
+
+ASSET MANAGEMENT: Use this category for infrastructure inventory queries:
+- "show me all assets", "list servers", "find hosts", "what servers do we have"
+- "show Linux servers", "find Windows machines", "list database servers"
+- "how many assets", "count servers", "total hosts"
+- "get asset info for X", "what's the IP of server Y", "find asset by hostname"
+- These should be "asset_management" category, NOT "information" or "monitoring"
 
 For each category, identify the specific action being requested.
 
@@ -55,7 +63,11 @@ Examples:
 - "check server status" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90}}
 - "why is the site slow" -> {{"category": "troubleshooting", "action": "diagnose_performance", "confidence": 0.85}}
 - "URGENT: database is down" -> {{"category": "automation", "action": "emergency_response", "confidence": 0.95}}
-- "deploy new version" -> {{"category": "automation", "action": "deploy_application", "confidence": 0.90}}""",
+- "deploy new version" -> {{"category": "automation", "action": "deploy_application", "confidence": 0.90}}
+- "show me all assets" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.95}}
+- "find Linux servers" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.92}}
+- "how many servers" -> {{"category": "asset_management", "action": "count_assets", "confidence": 0.90}}
+- "get asset info for web-01" -> {{"category": "asset_management", "action": "get_asset", "confidence": 0.93}}""",
                 
                 "user": "Classify this request: {user_request}"
             },

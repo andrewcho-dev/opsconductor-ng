@@ -122,6 +122,21 @@ class IntentClassifier:
                 "math",
                 "answer_question",
                 "provide_information"
+            ],
+            "asset_management": [
+                "list_assets",
+                "get_asset",
+                "search_assets",
+                "count_assets",
+                "get_credentials",
+                "list_credentials",
+                "find_asset",
+                "query_assets",
+                "list_servers",
+                "list_hosts",
+                "get_asset_info",
+                "asset_count",
+                "asset_discovery"
             ]
         }
     
