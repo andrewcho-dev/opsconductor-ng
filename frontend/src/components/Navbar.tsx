@@ -13,7 +13,6 @@ import {
   Menu,
   ChevronRight,
   Mail,
-  History,
   GitBranch,
   Server,
   Shield,
@@ -103,41 +102,14 @@ const Navbar: React.FC = () => {
               {/* Operations Section */}
               <div className="nav-section-header">Operations</div>
               
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><GitBranch size={16} /></span>
-                  Workflows
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/workflows" 
-                    className={`nav-submenu-item ${location.pathname === '/workflows' || location.pathname.startsWith('/workflows/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><GitBranch size={14} /></span>
-                    Flow Management
-                  </Link>
-                  <Link 
-                    to="/workflows/runs" 
-                    className={`nav-submenu-item ${location.pathname === '/workflows/runs' || location.pathname.startsWith('/workflows/runs/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Play size={14} /></span>
-                    Flow Runs
-                  </Link>
-                  <Link 
-                    to="/schedules" 
-                    className={`nav-submenu-item ${location.pathname === '/schedules' || location.pathname.startsWith('/schedules/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Calendar size={14} /></span>
-                    Schedules
-                  </Link>
-                </div>
-              </div>
+              <Link 
+                to="/schedules" 
+                className={`nav-menu-item ${location.pathname === '/schedules' || location.pathname.startsWith('/schedules/') ? 'active' : ''}`} 
+                onClick={closeMenu}
+              >
+                <span className="nav-icon"><Calendar size={16} /></span>
+                Schedules
+              </Link>
 
               <div className="nav-menu-item-group">
                 <div className="nav-menu-item">
@@ -155,26 +127,6 @@ const Navbar: React.FC = () => {
                   >
                     <span className="nav-icon"><Target size={14} /></span>
                     Asset Management
-                  </Link>
-                </div>
-              </div>
-
-              <div className="nav-menu-item-group">
-                <div className="nav-menu-item">
-                  <span className="nav-icon"><History size={16} /></span>
-                  History
-                  <span className="nav-chevron">
-                    <ChevronRight size={14} />
-                  </span>
-                </div>
-                <div className="nav-submenu">
-                  <Link 
-                    to="/history/job-runs" 
-                    className={`nav-submenu-item ${location.pathname === '/history/job-runs' || location.pathname.startsWith('/history/job-runs/') ? 'active' : ''}`} 
-                    onClick={closeMenu}
-                  >
-                    <span className="nav-icon"><Play size={14} /></span>
-                    Legacy Job Runs
                   </Link>
                 </div>
               </div>

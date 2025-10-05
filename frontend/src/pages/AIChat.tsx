@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Target, Settings, Play, MessageSquare, Trash2, Plus, Edit2, Check, X, Eye } from 'lucide-react';
 import AIChat, { AIChatRef } from '../components/AIChat';
-import { assetApi, jobApi } from '../services/api';
+import { assetApi } from '../services/api';
 
 interface ChatSession {
   id: string;
@@ -14,8 +14,7 @@ interface ChatSession {
 
 const AIChatPage: React.FC = () => {
   const [stats, setStats] = useState({
-    assets: 0,
-    jobs: 0
+    assets: 0
   });
   const aiChatRef = useRef<AIChatRef>(null);
   
@@ -135,23 +134,17 @@ const AIChatPage: React.FC = () => {
     const fetchStats = async () => {
       try {
         // Get basic stats from individual APIs
-        const [assetsRes, jobsRes] = await Promise.allSettled([
-          assetApi.list(0, 1),
-          jobApi.list(0, 1)
-        ]);
+        const assetsRes = await assetApi.list(0, 1);
         
         const getTotal = (res: any) => {
-          if (res.status !== 'fulfilled') return 0;
-          if (res.value?.meta?.total_items !== undefined) return res.value.meta.total_items;
-          if (res.value?.data?.total !== undefined) return res.value.data.total;
-          return res.value?.total ?? 0;
+          if (res?.meta?.total_items !== undefined) return res.meta.total_items;
+          if (res?.data?.total !== undefined) return res.data.total;
+          return res?.total ?? 0;
         };
         
-        const response = {
-          assets: getTotal(assetsRes),
-          jobs: getTotal(jobsRes)
-        };
-        setStats(response);
+        setStats({
+          assets: getTotal(assetsRes)
+        });
       } catch (error) {
         console.error('Failed to fetch dashboard stats:', error);
       }
@@ -642,13 +635,9 @@ const AIChatPage: React.FC = () => {
             <Target size={14} />
             <span>{stats.assets} Assets</span>
           </Link>
-          <Link to="/jobs" className="stat-pill">
+          <Link to="/schedules" className="stat-pill">
             <Settings size={14} />
-            <span>{stats.jobs} Jobs</span>
-          </Link>
-          <Link to="/monitoring" className="stat-pill">
-            <Play size={14} />
-            <span>0 Runs</span>
+            <span>Schedules</span>
           </Link>
         </div>
       </div>

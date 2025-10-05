@@ -6,11 +6,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AIChatPage from './pages/AIChat';
 import Assets from './pages/Assets';
-import JobRuns from './pages/JobRuns';
 import SystemSettings from './pages/SystemSettings';
 import LegacySettings from './pages/LegacySettings';
-import Workflows from './pages/Workflows';
-import FlowRuns from './pages/FlowRuns';
 import InfrastructureMonitoring from './pages/InfrastructureMonitoring';
 import NotificationsPage from './pages/NotificationsPage';
 import TemplatesPage from './pages/TemplatesPage';
@@ -50,12 +47,7 @@ const App: React.FC = () => {
                     <Route path="/" element={<AIChatPage />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     
-                    {/* Workflows Routes */}
-                    <Route path="/workflows" element={<Workflows />} />
-                    <Route path="/workflows/:action" element={<Workflows />} />
-                    <Route path="/workflows/:action/:id" element={<Workflows />} />
-                    <Route path="/workflows/runs" element={<FlowRuns />} />
-                    <Route path="/workflows/runs/:id" element={<FlowRuns />} />
+                    {/* Schedules Route */}
                     <Route path="/schedules" element={<SchedulesPage />} />
 
                     {/* Assets Routes */}
@@ -72,10 +64,6 @@ const App: React.FC = () => {
                     <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="/templates" element={<TemplatesPage />} />
                     <Route path="/audit-logs" element={<AuditLogsPage />} />
-
-                    {/* History Routes - Legacy Job Runs Only */}
-                    <Route path="/job-runs" element={<Navigate to="/history/job-runs" />} />
-                    <Route path="/history/job-runs" element={<JobRuns />} />
 
                     <Route path="/settings" element={<Navigate to="/settings/smtp" />} />
                     <Route path="/settings/:section" element={<SystemSettings />} />

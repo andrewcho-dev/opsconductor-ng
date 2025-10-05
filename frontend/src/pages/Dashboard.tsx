@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { assetApi, jobApi, jobRunApi } from '../services/api';
+import { assetApi, scheduleApi } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ServiceHealthMonitor from '../components/ServiceHealthMonitor';
 import AIMonitor from '../components/AIMonitor';
-import { Target, Settings, Play, RefreshCw, MessageSquare } from 'lucide-react';
+import { Target, Calendar, Play, RefreshCw, MessageSquare } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
   const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [stats, setStats] = useState({
     assets: 0,
-    jobs: 0,
+    schedules: 0,
     recentRuns: 0,
   });
   const [loading, setLoading] = useState(true);
@@ -25,14 +25,12 @@ const Dashboard: React.FC = () => {
     try {
       const requests = [
         assetApi.list(0, 1),
-        jobApi.list(0, 1),
-        jobRunApi.list(0, 1)
+        scheduleApi.list(0, 1000)
       ];
 
       const [
         assetsRes,
-        jobsRes,
-        runsRes
+        schedulesRes
       ] = await Promise.allSettled(requests);
 
       const getTotal = (res: any) => {
@@ -45,18 +43,24 @@ const Dashboard: React.FC = () => {
         if (res.value?.data?.total !== undefined) {
           return res.value.data.total;
         }
+        // Handle array responses
+        if (Array.isArray(res.value?.data)) {
+          return res.value.data.length;
+        }
+        if (Array.isArray(res.value)) {
+          return res.value.length;
+        }
         // Handle old API response format with total
         return res.value?.total ?? 0;
       };
       // Log failures for debugging but keep dashboard rendering
       if (assetsRes.status === 'rejected') console.warn('Assets stats failed:', assetsRes.reason);
-      if (jobsRes.status === 'rejected') console.warn('Jobs stats failed:', jobsRes.reason);
-      if (runsRes.status === 'rejected') console.warn('Runs stats failed:', runsRes.reason);
+      if (schedulesRes.status === 'rejected') console.warn('Schedules stats failed:', schedulesRes.reason);
 
       setStats({
         assets: getTotal(assetsRes),
-        jobs: getTotal(jobsRes),
-        recentRuns: getTotal(runsRes)
+        schedules: getTotal(schedulesRes),
+        recentRuns: 0 // No runs data available
       });
     } catch (error) {
       console.error('Failed to load dashboard stats:', error);
@@ -214,9 +218,9 @@ const Dashboard: React.FC = () => {
             <Target size={14} />
             <span>{stats.assets} Assets</span>
           </Link>
-          <Link to="/workflows" className="stat-pill">
-            <Settings size={14} />
-            <span>{stats.jobs} Jobs</span>
+          <Link to="/schedules" className="stat-pill">
+            <Calendar size={14} />
+            <span>{stats.schedules} Schedules</span>
           </Link>
           <Link to="/history/job-runs" className="stat-pill">
             <Play size={14} />

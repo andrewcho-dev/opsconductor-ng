@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Target, Settings, Play } from 'lucide-react';
+import { Target, Calendar, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { assetApi, jobApi, jobRunApi } from '../services/api';
+import { assetApi, scheduleApi } from '../services/api';
 
 interface SystemStats {
   assets: number;
-  jobs: number;
+  schedules: number;
   recentRuns: number;
 }
 
@@ -13,7 +13,7 @@ const SystemBadges: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats>({
     assets: 0,
-    jobs: 0,
+    schedules: 0,
     recentRuns: 0,
   });
   const [loading, setLoading] = useState(true);
@@ -21,29 +21,30 @@ const SystemBadges: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [assetsResponse, jobsResponse, runsResponse] = await Promise.all([
+        const [assetsResponse, schedulesResponse] = await Promise.all([
           assetApi.list(),
-          jobApi.list(),
-          jobRunApi.list(0, 10) // Get recent 10 runs
+          scheduleApi.list(0, 1000) // Get all schedules
         ]);
 
         const getTotal = (response: any) => {
           if (response?.meta?.total_items !== undefined) return response.meta.total_items;
           if (response?.data?.total !== undefined) return response.data.total;
           if (response?.total !== undefined) return response.total;
+          if (Array.isArray(response?.data)) return response.data.length;
+          if (Array.isArray(response)) return response.length;
           return 0;
         };
 
         setStats({
           assets: getTotal(assetsResponse),
-          jobs: getTotal(jobsResponse),
-          recentRuns: getTotal(runsResponse),
+          schedules: getTotal(schedulesResponse),
+          recentRuns: 0, // No runs data available
         });
       } catch (error) {
         console.error('Failed to fetch system badges stats:', error);
         setStats({
           assets: 0,
-          jobs: 0,
+          schedules: 0,
           recentRuns: 0,
         });
       } finally {
@@ -63,11 +64,11 @@ const SystemBadges: React.FC = () => {
       onClick: () => navigate('/assets')
     },
     {
-      title: 'Jobs',
-      value: stats.jobs,
-      icon: Settings,
+      title: 'Schedules',
+      value: stats.schedules,
+      icon: Calendar,
       color: 'var(--warning-orange)',
-      onClick: () => navigate('/workflows')
+      onClick: () => navigate('/schedules')
     },
     {
       title: 'Runs',
