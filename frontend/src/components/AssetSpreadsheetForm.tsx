@@ -883,7 +883,7 @@ const AssetSpreadsheetForm: React.FC<AssetSpreadsheetFormProps> = ({ asset, onSa
 
 
   return (
-    <div className="asset-spreadsheet-form">
+    <div className={`asset-spreadsheet-form ${mode === 'edit' || mode === 'create' ? 'editing-mode' : 'view-mode'}`}>
       <div className="form-container">
         {renderColumn(leftColumnSections)}
         {renderColumn(rightColumnSections)}
@@ -911,6 +911,25 @@ const formStyles = `
     flex-direction: column;
     height: 100%;
     background: white;
+  }
+  
+  /* Edit mode indicator - subtle yellow tint */
+  .asset-spreadsheet-form.editing-mode {
+    background: linear-gradient(to bottom, #fffbeb 0%, white 40px);
+    border-left: 3px solid #fbbf24;
+  }
+  
+  .asset-spreadsheet-form.editing-mode::before {
+    content: '✏️ EDITING MODE';
+    display: block;
+    padding: 4px 8px;
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-bottom: 1px solid #fbbf24;
+    font-size: 10px;
+    font-weight: 700;
+    color: #92400e;
+    letter-spacing: 0.5px;
+    text-align: center;
   }
   
   .form-container {
@@ -1099,9 +1118,28 @@ const formStyles = `
   }
   
   .field-input[readonly],
-  .field-textarea[readonly] {
+  .field-textarea[readonly],
+  .field-select[disabled] {
     background-color: transparent;
     color: #24292f;
+    cursor: default;
+  }
+  
+  /* Editable fields - subtle background to indicate edit mode */
+  .field-input:not([readonly]),
+  .field-textarea:not([readonly]),
+  .field-select:not([disabled]) {
+    background-color: #fffbeb;
+    border: 1px solid #fbbf24;
+    border-radius: 3px;
+    padding: 2px 4px;
+  }
+  
+  .field-input:not([readonly]):focus,
+  .field-textarea:not([readonly]):focus,
+  .field-select:not([disabled]):focus {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
   }
   
   .field-input.error,
