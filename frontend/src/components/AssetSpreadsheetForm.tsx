@@ -928,15 +928,15 @@ const formStyles = `
     right: 0;
     z-index: 1000;
     padding: 4px 8px;
-    background: linear-gradient(135deg, rgba(254, 243, 199, 0.85) 0%, rgba(253, 230, 138, 0.85) 100%);
-    border-bottom: 1px solid rgba(251, 191, 36, 0.8);
+    background: linear-gradient(135deg, rgba(254, 243, 199, 0.3) 0%, rgba(253, 230, 138, 0.3) 100%);
+    border-bottom: 1px solid rgba(251, 191, 36, 0.4);
     font-size: 10px;
     font-weight: 700;
     color: #92400e;
     letter-spacing: 0.5px;
     text-align: center;
-    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);
-    backdrop-filter: blur(2px);
+    box-shadow: 0 2px 4px rgba(251, 191, 36, 0.15);
+    backdrop-filter: blur(1px);
   }
   
   .form-container {
