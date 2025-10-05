@@ -565,7 +565,7 @@ const AIChatPage: React.FC = () => {
         <div className="header-left">
           <h1>AI Assistant</h1>
         </div>
-        <div className="header-right">
+        <div className="header-stats">
           <button
             onClick={deleteActiveConversation}
             className="btn-icon btn-danger"
