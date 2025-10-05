@@ -236,6 +236,19 @@ class StageDAnswerer:
                 processing_time_ms=processing_time_ms
             )
     
+    async def generate_error_response(self, error_message: str) -> ResponseV1:
+        """
+        Public method to generate error response (called by orchestrator)
+        
+        Args:
+            error_message: Error message to include in response
+            
+        Returns:
+            ResponseV1: Error response
+        """
+        response_id = f"error_{uuid.uuid4().hex[:8]}_{int(time.time())}"
+        return await self._generate_error_response(error_message, response_id, 0)
+    
     async def _determine_response_type(
         self,
         decision: DecisionV1,

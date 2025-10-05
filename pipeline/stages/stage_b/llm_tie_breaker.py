@@ -185,10 +185,12 @@ Respond in JSON format:
             )
             return response.get('content', '')
         
-        # Fallback: try synchronous call
+        # Fallback: try generate method
         elif hasattr(self.llm_client, 'generate'):
-            response = self.llm_client.generate(prompt)
-            return response
+            from llm.client import LLMRequest
+            llm_request = LLMRequest(prompt=prompt, max_tokens=500)
+            llm_response = await self.llm_client.generate(llm_request)
+            return llm_response.content
         
         else:
             raise ValueError("LLM client does not have chat() or generate() method")

@@ -15,7 +15,7 @@ This is the main entry point for the hybrid optimization system.
 
 import logging
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 from .profile_loader import ProfileLoader
 from .preference_detector import PreferenceDetector
@@ -226,10 +226,13 @@ class HybridOrchestrator:
         # Step 6: Break tie if ambiguous
         if is_ambiguous and self.llm_tie_breaker:
             logger.info("Ambiguous case detected, using LLM tie-breaker")
+            # Convert ScoredCandidate objects to dicts for LLM tie-breaker
             tie_result = await self.llm_tie_breaker.break_tie(
-                query, scored_candidates[0], scored_candidates[1]
+                query, asdict(scored_candidates[0]), asdict(scored_candidates[1])
             )
-            winner = tie_result.chosen_candidate
+            # tie_result.chosen_candidate is a dict, need to find matching ScoredCandidate
+            winner_tool_name = tie_result.chosen_candidate['tool_name']
+            winner = next(c for c in scored_candidates if c.tool_name == winner_tool_name)
             justification = tie_result.justification
             selection_method = "llm_tiebreaker"
         else:

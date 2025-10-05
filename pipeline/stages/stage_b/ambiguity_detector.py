@@ -148,8 +148,14 @@ class AmbiguityDetector:
             Clarifying question string
         """
         # Extract raw features
-        raw1 = self._get_field(candidate1, 'raw_features') or {}
-        raw2 = self._get_field(candidate2, 'raw_features') or {}
+        raw1 = self._get_field(candidate1, 'raw_features')
+        raw2 = self._get_field(candidate2, 'raw_features')
+        
+        # Ensure raw features are dicts
+        if not isinstance(raw1, dict):
+            raw1 = {}
+        if not isinstance(raw2, dict):
+            raw2 = {}
         
         # Calculate normalized differences for each dimension
         diffs = {}
