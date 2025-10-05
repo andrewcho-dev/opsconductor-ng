@@ -172,7 +172,15 @@ class CapabilityMatcher:
             "information_list_resources": ["resource_listing", "information"],
             "information_explain_process": ["documentation", "help_system"],
             "information_show_configuration": ["configuration_display", "information"],
-            "information_asset_inventory": ["asset_query", "infrastructure_info", "resource_listing"]
+            "information_asset_inventory": ["asset_query", "infrastructure_info", "resource_listing"],
+            
+            # Asset management category - CRITICAL for asset queries
+            "asset_management_list_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+            "asset_management_get_asset": ["asset_query", "infrastructure_info"],
+            "asset_management_search_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+            "asset_management_count_assets": ["asset_query", "infrastructure_info"],
+            "asset_management_get_credentials": ["credential_access", "secret_retrieval"],
+            "asset_management_list_credentials": ["credential_access", "secret_retrieval"]
         }
         
         expected_capabilities = intent_capability_map.get(intent_key, [])

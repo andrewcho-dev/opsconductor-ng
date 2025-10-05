@@ -532,7 +532,15 @@ class StageBSelector:
             "list_directory": ["directory_list"],
             "execute_command": ["shell_execution"],
             "monitor_system": ["system_monitoring"],
-            "configure_service": ["configuration_management"]
+            "configure_service": ["configuration_management"],
+            
+            # Asset management actions - CRITICAL for asset queries
+            "list_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+            "get_asset": ["asset_query", "infrastructure_info"],
+            "search_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+            "count_assets": ["asset_query", "infrastructure_info"],
+            "get_credentials": ["credential_access", "secret_retrieval"],
+            "list_credentials": ["credential_access", "secret_retrieval"]
         }
         
         action = decision.intent.action
@@ -581,7 +589,14 @@ class StageBSelector:
             "directory_list": ["directory_path"],
             "shell_execution": ["command"],
             "system_monitoring": ["metric_type"],
-            "configuration_management": ["config_file", "config_values"]
+            "configuration_management": ["config_file", "config_values"],
+            
+            # Asset management capabilities
+            "asset_query": ["query_type"],
+            "infrastructure_info": ["info_type"],
+            "resource_listing": ["resource_type"],
+            "credential_access": ["credential_id"],
+            "secret_retrieval": ["secret_name"]
         }
         
         return input_mapping.get(capability_name, ["user_input"])

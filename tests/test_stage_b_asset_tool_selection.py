@@ -26,6 +26,7 @@ async def create_real_stage_b():
     llm_client = OllamaClient(llm_config)
     await llm_client.connect()
     
+    # Use default ProfileLoader (loads from database)
     stage_b = StageBSelector(llm_client=llm_client)
     return stage_b
 
