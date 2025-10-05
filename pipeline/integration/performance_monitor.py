@@ -98,28 +98,19 @@ class PerformanceMonitor:
         }
     
     def _take_resource_snapshot(self) -> ResourceSnapshot:
-        """Take a snapshot of current system resources."""
-        try:
-            process = psutil.Process()
-            cpu_percent = process.cpu_percent()
-            memory_info = process.memory_info()
-            memory_mb = memory_info.rss / 1024 / 1024
-            memory_percent = process.memory_percent()
-            
-            return ResourceSnapshot(
-                timestamp=time.time(),
-                cpu_percent=cpu_percent,
-                memory_mb=memory_mb,
-                memory_percent=memory_percent
-            )
-        except Exception:
-            # Fallback if psutil fails
-            return ResourceSnapshot(
-                timestamp=time.time(),
-                cpu_percent=0.0,
-                memory_mb=0.0,
-                memory_percent=0.0
-            )
+        """Take a snapshot of current system resources - FAIL HARD if psutil fails."""
+        process = psutil.Process()
+        cpu_percent = process.cpu_percent()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        memory_percent = process.memory_percent()
+        
+        return ResourceSnapshot(
+            timestamp=time.time(),
+            cpu_percent=cpu_percent,
+            memory_mb=memory_mb,
+            memory_percent=memory_percent
+        )
     
     def _calculate_percentile(self, data: List[float], percentile: float) -> float:
         """Calculate percentile from a list of values."""

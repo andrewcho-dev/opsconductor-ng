@@ -23,7 +23,7 @@ class RealWorldTester:
         # Create real LLM client for authentic AI testing
         self.llm_client = OllamaClient({
             "base_url": "http://localhost:11434",
-            "default_model": "qwen2.5:14b-instruct-q4_k_m",
+            "default_model": "qwen2.5:7b-instruct-q4_k_m",
             "timeout": 120
         })
         self.stage_a = StageAClassifier(self.llm_client)

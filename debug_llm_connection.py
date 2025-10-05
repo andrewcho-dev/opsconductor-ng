@@ -24,7 +24,7 @@ async def test_llm_connection():
     print("\n1️⃣ Testing Direct Ollama Client:")
     config = {
         "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-        "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:14b-instruct-q4_k_m"),
+        "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
         "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
     }
     print(f"   Config: {config}")

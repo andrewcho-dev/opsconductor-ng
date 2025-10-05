@@ -27,7 +27,7 @@ class TestPhase6LiveIntegration:
         """Create orchestrator with real LLM client"""
         config = {
             "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-            "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:14b-instruct-q4_k_m"),
+            "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
             "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
         }
         llm_client = OllamaClient(config)

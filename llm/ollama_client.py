@@ -23,9 +23,12 @@ class OllamaClient(LLMClient):
     async def connect(self) -> bool:
         """Connect to Ollama instance"""
         try:
+            # Create client with increased connection limits for parallel LLM calls
+            limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
             self.client = httpx.AsyncClient(
                 base_url=self.base_url,
-                timeout=self.timeout
+                timeout=self.timeout,
+                limits=limits
             )
             
             # Test connection with health check

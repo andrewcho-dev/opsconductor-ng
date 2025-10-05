@@ -52,19 +52,23 @@ class StageAClassifier:
             # Generate unique decision ID
             decision_id = self._generate_decision_id()
             
-            # Step 1: Classify intent
-            intent = await self.intent_classifier.classify_with_fallback(user_request)
-            
-            # Step 2: Extract entities
-            entities = await self.entity_extractor.extract_entities(user_request)
-            
-            # Step 3: Calculate confidence
-            confidence_data = await self.confidence_scorer.calculate_overall_confidence(
-                user_request, intent, entities
+            # Step 1 & 2: Classify intent and extract entities IN PARALLEL (independent operations)
+            t1 = time.time()
+            intent, entities = await asyncio.gather(
+                self.intent_classifier.classify_with_fallback(user_request),
+                self.entity_extractor.extract_entities(user_request)
             )
+            t2 = time.time()
+            print(f"⏱️  Stage A: Intent + Entities (parallel) took {(t2-t1):.1f}s")
             
-            # Step 4: Assess risk
-            risk_data = await self.risk_assessor.assess_risk(user_request, intent, entities)
+            # Step 3 & 4: Calculate confidence and assess risk IN PARALLEL (both depend on intent + entities)
+            t3 = time.time()
+            confidence_data, risk_data = await asyncio.gather(
+                self.confidence_scorer.calculate_overall_confidence(user_request, intent, entities),
+                self.risk_assessor.assess_risk(user_request, intent, entities)
+            )
+            t4 = time.time()
+            print(f"⏱️  Stage A: Confidence + Risk (parallel) took {(t4-t3):.1f}s")
             
             # Step 5: Determine decision type and next stage
             decision_type = self._determine_decision_type(intent, confidence_data)

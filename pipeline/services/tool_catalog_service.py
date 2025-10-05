@@ -55,23 +55,13 @@ class ToolCatalogService:
         # - max_size=1000: Limit memory usage
         # - default_ttl=300: 5-minute cache lifetime
         # - Automatic LRU eviction prevents unbounded growth
-        try:
-            from pipeline.services.lru_cache import get_tool_cache
-            self._cache = get_tool_cache(max_size=1000, default_ttl=300)
-        except Exception as e:
-            logger.warning(f"Failed to initialize LRU cache, using simple dict: {e}")
-            # Fallback to simple cache
-            self._cache: Dict[str, Any] = {}
-            self._cache_ttl = 300
-            self._cache_timestamps: Dict[str, datetime] = {}
+        # NO FALLBACKS - if cache initialization fails, we fail
+        from pipeline.services.lru_cache import get_tool_cache
+        self._cache = get_tool_cache(max_size=1000, default_ttl=300)
         
-        # Initialize metrics collector
-        try:
-            from pipeline.services.metrics_collector import get_metrics_collector
-            self.metrics = get_metrics_collector()
-        except Exception as e:
-            logger.warning(f"Failed to initialize metrics collector: {e}")
-            self.metrics = None
+        # Initialize metrics collector - NO FALLBACKS
+        from pipeline.services.metrics_collector import get_metrics_collector
+        self.metrics = get_metrics_collector()
         
         logger.info("ToolCatalogService initialized with optimized connection pool and LRU cache")
     

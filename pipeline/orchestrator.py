@@ -89,7 +89,7 @@ class PipelineOrchestrator:
             from llm.ollama_client import OllamaClient
             default_config = {
                 "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-                "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:14b-instruct-q4_k_m"),
+                "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
                 "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
             }
             llm_client = OllamaClient(default_config)
@@ -499,31 +499,15 @@ class PipelineOrchestrator:
             raise Exception(f"Stage E failed: {str(e)}")
     
     async def _generate_error_response(self, error_message: str) -> ResponseV1:
-        """Generate an error response when pipeline fails."""
-        try:
-            # Try to use Stage D to generate a proper error response
-            return await self.stage_d.generate_error_response(error_message)
-        except Exception:
-            # Fallback to basic error response if Stage D fails
-            from pipeline.schemas.response_v1 import ResponseType, ConfidenceLevel
-            from datetime import datetime
-            return ResponseV1(
-                response_type=ResponseType.ERROR,
-                message=f"Pipeline error: {error_message}",
-                confidence=ConfidenceLevel.LOW,
-                response_id="error",
-                processing_time_ms=1
-            )
+        """Generate an error response when pipeline fails - FAIL HARD if Stage D fails."""
+        # NO FALLBACKS - if Stage D fails, we fail
+        return await self.stage_d.generate_error_response(error_message)
     
     def _get_memory_usage(self) -> float:
-        """Get current memory usage in MB."""
-        try:
-            import psutil
-            process = psutil.Process()
-            return process.memory_info().rss / 1024 / 1024
-        except ImportError:
-            # Fallback if psutil not available
-            return 0.0
+        """Get current memory usage in MB - FAIL HARD if psutil not available."""
+        import psutil
+        process = psutil.Process()
+        return process.memory_info().rss / 1024 / 1024
     
     def _update_metrics_history(self, metrics: PipelineMetrics):
         """Update metrics history with size limit."""

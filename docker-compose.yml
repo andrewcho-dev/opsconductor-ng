@@ -53,6 +53,8 @@ services:
       - opsconductor
     environment:
       - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=12
+      - OLLAMA_MAX_LOADED_MODELS=1
     deploy:
       resources:
         reservations:
@@ -134,7 +136,7 @@ services:
     container_name: opsconductor-ai-pipeline
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: qwen2.5:14b-instruct-q4_k_m
+      OLLAMA_MODEL: qwen2.5:7b-instruct-q4_k_m
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       AUTOMATION_SERVICE_URL: http://automation-service:3003

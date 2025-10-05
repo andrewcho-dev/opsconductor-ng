@@ -12,7 +12,7 @@ When to Use:
 Design Principles:
 1. Compact prompt (minimize tokens)
 2. Structured JSON response for parsing
-3. Fallback to deterministic winner if LLM fails
+3. FAIL HARD if LLM is unavailable or fails - NO FALLBACKS
 4. Log all LLM decisions for telemetry
 5. Include justification for explainability
 """
@@ -31,7 +31,6 @@ class TieBreakerResult:
     chosen_candidate: Dict  # The winning candidate
     justification: str
     llm_choice: str  # "A" or "B"
-    fallback_used: bool = False  # True if LLM failed and we used fallback
     llm_response_raw: Optional[str] = None  # Raw LLM response for debugging
 
 
@@ -72,7 +71,7 @@ Respond in JSON format:
         Initialize LLM tie-breaker.
         
         Args:
-            llm_client: Optional LLM client. If None, will always use fallback.
+            llm_client: LLM client for tie-breaking. If None, break_tie() will raise RuntimeError.
         """
         self.llm_client = llm_client
     
@@ -94,41 +93,37 @@ Respond in JSON format:
         
         Returns:
             TieBreakerResult with chosen candidate and justification
+        
+        Raises:
+            RuntimeError: If LLM client is not available or LLM call fails
         """
-        # If no LLM client, use fallback immediately
+        # FAIL HARD if no LLM client
         if self.llm_client is None:
-            logger.warning("No LLM client available, using fallback (candidate 1)")
-            return self._fallback_to_deterministic(candidate1, candidate2)
+            raise RuntimeError("LLM client is required for tie-breaking but was not provided")
         
-        try:
-            # Build prompt
-            prompt = self._build_prompt(query, candidate1, candidate2)
-            
-            # Call LLM with timeout
-            response = await self._call_llm(prompt, timeout_ms)
-            
-            # Parse response
-            choice, justification = self._parse_response(response)
-            
-            # Select winner
-            chosen = candidate1 if choice == "A" else candidate2
-            
-            logger.info(
-                f"LLM tie-breaker chose {choice}: {chosen['tool_name']}.{chosen['pattern_name']} "
-                f"- {justification}"
-            )
-            
-            return TieBreakerResult(
-                chosen_candidate=chosen,
-                justification=justification,
-                llm_choice=choice,
-                fallback_used=False,
-                llm_response_raw=response
-            )
+        # Build prompt
+        prompt = self._build_prompt(query, candidate1, candidate2)
         
-        except Exception as e:
-            logger.error(f"LLM tie-breaker failed: {e}, using fallback")
-            return self._fallback_to_deterministic(candidate1, candidate2)
+        # Call LLM with timeout
+        response = await self._call_llm(prompt, timeout_ms)
+        
+        # Parse response
+        choice, justification = self._parse_response(response)
+        
+        # Select winner
+        chosen = candidate1 if choice == "A" else candidate2
+        
+        logger.info(
+            f"LLM tie-breaker chose {choice}: {chosen['tool_name']}.{chosen['pattern_name']} "
+            f"- {justification}"
+        )
+        
+        return TieBreakerResult(
+            chosen_candidate=chosen,
+            justification=justification,
+            llm_choice=choice,
+            llm_response_raw=response
+        )
     
     def _build_prompt(
         self,
@@ -242,26 +237,3 @@ Respond in JSON format:
         except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"Failed to parse LLM response: {e}\nResponse: {response}")
             raise ValueError(f"Invalid LLM response format: {e}")
-    
-    def _fallback_to_deterministic(
-        self,
-        candidate1: Dict,
-        candidate2: Dict
-    ) -> TieBreakerResult:
-        """
-        Fallback to deterministic winner (candidate 1) if LLM fails.
-        
-        Args:
-            candidate1: First candidate (will be chosen)
-            candidate2: Second candidate
-        
-        Returns:
-            TieBreakerResult with fallback flag set
-        """
-        return TieBreakerResult(
-            chosen_candidate=candidate1,
-            justification="LLM unavailable, selected top-ranked candidate by deterministic score",
-            llm_choice="A",
-            fallback_used=True,
-            llm_response_raw=None
-        )

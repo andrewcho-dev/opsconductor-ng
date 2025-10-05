@@ -33,7 +33,7 @@ async def create_full_pipeline():
     """Create the full pipeline with real components"""
     llm_config = {
         "base_url": os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
-        "default_model": os.getenv("OLLAMA_MODEL", "qwen2.5:14b-instruct-q4_k_m"),
+        "default_model": os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
         "timeout": 120
     }
     llm_client = OllamaClient(llm_config)

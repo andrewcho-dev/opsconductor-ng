@@ -150,58 +150,52 @@ class StageBSelector:
     
     async def _llm_tool_selection(self, decision: DecisionV1, 
                                 matches: List[CapabilityMatch]) -> List[SelectedTool]:
-        """Use LLM to make intelligent tool selection"""
+        """Use LLM to make intelligent tool selection - NO FALLBACKS"""
         
-        try:
-            # Prepare tool information for LLM
-            tools_info = []
-            for match in matches:
-                tool_info = {
-                    "name": match.tool.name,
-                    "description": match.tool.description,
-                    "capabilities": [cap.name for cap in match.tool.capabilities],
-                    "confidence": match.confidence,
-                    "justification": match.justification,
-                    "missing_inputs": match.missing_inputs,
-                    "permissions": match.tool.permissions.value,
-                    "production_safe": match.tool.production_safe
-                }
-                tools_info.append(tool_info)
-            
-            # Create LLM prompt
-            prompt = self.prompt_manager.get_tool_selection_prompt(
-                decision=decision.model_dump(),
-                available_tools=tools_info
+        # Prepare tool information for LLM
+        tools_info = []
+        for match in matches:
+            tool_info = {
+                "name": match.tool.name,
+                "description": match.tool.description,
+                "capabilities": [cap.name for cap in match.tool.capabilities],
+                "confidence": match.confidence,
+                "justification": match.justification,
+                "missing_inputs": match.missing_inputs,
+                "permissions": match.tool.permissions.value,
+                "production_safe": match.tool.production_safe
+            }
+            tools_info.append(tool_info)
+        
+        # Create LLM prompt
+        prompt = self.prompt_manager.get_tool_selection_prompt(
+            decision=decision.model_dump(),
+            available_tools=tools_info
+        )
+        
+        # Get LLM response
+        response = await self.llm_client.generate(prompt)
+        
+        # Parse LLM response
+        selection_data = self.response_parser.parse_tool_selection(response.content)
+        
+        # Convert to SelectedTool objects
+        selected_tools = []
+        for i, tool_data in enumerate(selection_data.get("selected_tools", [])):
+            selected_tool = SelectedTool(
+                tool_name=tool_data.get("tool_name", ""),
+                justification=tool_data.get("justification", "LLM selection"),
+                inputs_needed=tool_data.get("inputs_needed", []),
+                execution_order=tool_data.get("execution_order", i + 1),
+                depends_on=tool_data.get("depends_on", [])
             )
-            
-            # Get LLM response
-            response = await self.llm_client.generate(prompt)
-            
-            # Parse LLM response
-            selection_data = self.response_parser.parse_tool_selection(response.content)
-            
-            # Convert to SelectedTool objects
-            selected_tools = []
-            for i, tool_data in enumerate(selection_data.get("selected_tools", [])):
-                selected_tool = SelectedTool(
-                    tool_name=tool_data.get("tool_name", ""),
-                    justification=tool_data.get("justification", "LLM selection"),
-                    inputs_needed=tool_data.get("inputs_needed", []),
-                    execution_order=tool_data.get("execution_order", i + 1),
-                    depends_on=tool_data.get("depends_on", [])
-                )
-                selected_tools.append(selected_tool)
-            
-            # Validate LLM selection
-            if self._validate_llm_selection(selected_tools, matches):
-                return selected_tools
-            else:
-                # Fall back to rule-based selection
-                return self._rule_based_tool_selection(matches, decision)
-                
-        except Exception as e:
-            # Fall back to rule-based selection on LLM error
-            return self._rule_based_tool_selection(matches, decision)
+            selected_tools.append(selected_tool)
+        
+        # Validate LLM selection - FAIL HARD if invalid
+        if not self._validate_llm_selection(selected_tools, matches):
+            raise RuntimeError("LLM tool selection validation failed - NO FALLBACKS")
+        
+        return selected_tools
     
     async def _llm_tool_selection_direct(self, decision: DecisionV1, 
                                         tools: List) -> List[SelectedTool]:
