@@ -1,6 +1,7 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react';
 import { Send, User, Bot } from 'lucide-react';
 import { aiApi } from '../services/api';
+import MessageContent from './MessageContent';
 
 export interface AIChatRef {
   clearChat: () => void;
@@ -452,10 +453,12 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                   color: message.sender === 'user' ? 'white' : '#1f2937',
                   fontSize: '16px',
                   lineHeight: '1.8',
-                  wordWrap: 'break-word',
-                  whiteSpace: 'pre-wrap'
+                  wordWrap: 'break-word'
                 }}>
-                  {message.content}
+                  <MessageContent 
+                    content={message.content} 
+                    isUser={message.sender === 'user'} 
+                  />
                   
                   {/* Loading indicator */}
                   {message.isLoading && (
