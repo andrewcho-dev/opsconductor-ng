@@ -25,49 +25,72 @@ class PromptManager:
         """Load default prompts for all stages"""
         return {
             PromptType.INTENT_CLASSIFICATION: {
-                "system": """You are an expert system administrator and DevOps engineer. Your task is to classify user requests into specific intent categories and actions.
+                "system": """You are an expert system administrator and DevOps engineer. Your task is to classify user requests and identify the CAPABILITIES needed to fulfill them.
 
-You must classify requests into these categories:
-- automation: Requests to automate tasks, run scripts, deploy services, restart services, fix issues, handle emergencies
-- monitoring: Requests to check status, view logs, get metrics
-- troubleshooting: Requests to diagnose issues, fix problems
-- configuration: Requests to change settings, update configs
-- information: Requests for documentation, help, explanations
-- asset_management: Requests to query, list, search, count, or retrieve information about infrastructure assets (servers, hosts, VMs, containers, network devices)
+AVAILABLE CAPABILITIES (you can ONLY use these - from database tool catalog):
+- api_query: Query APIs (e.g., GitHub API)
+- asset_management: Create, update, delete assets in asset management system
+- asset_query: Query and search infrastructure asset inventory
+- credential_access: Retrieve credentials for infrastructure assets (GATED - requires justification)
+- disk_management: Manage disk operations
+- disk_monitoring: Monitor disk space usage
+- dns_query: Perform DNS queries and lookups
+- http_client: Make HTTP requests
+- infrastructure_info: Get infrastructure metadata and details
+- log_analysis: Analyze log patterns and errors
+- memory_monitoring: Monitor memory usage
+- network_info: Get network information
+- network_monitoring: Monitor network status
+- network_testing: Test network connectivity (ping, traceroute, etc.)
+- packet_capture: Capture and analyze network packets
+- process_management: Manage system processes
+- process_monitoring: Monitor running processes
+- protocol_analysis: Analyze network protocols
+- resource_listing: List infrastructure resources with filtering
+- secret_retrieval: Access secrets and sensitive configuration (GATED)
+- service_management: Start, stop, restart, check system services
+- system_info: Get system information (OS, hardware, processes)
+- system_monitoring: Monitor system metrics with Prometheus
+- text_search: Search for patterns in text files
+- windows_automation: Execute PowerShell commands
+- windows_service_management: Manage Windows services
 
-CRITICAL: Emergency and urgent requests should ALWAYS be classified as "automation" category, not "information".
+CLASSIFICATION RULES:
+1. Identify the user's intent category:
+   - automation: Execute actions, run commands, manage services
+   - monitoring: Check status, view metrics, observe systems
+   - troubleshooting: Diagnose issues, analyze problems
+   - configuration: Change settings, update configs
+   - information: Answer questions, explain concepts, retrieve data
+   - asset_management: Query infrastructure inventory
 
-Emergency indicators include:
-- Words like "URGENT", "EMERGENCY", "CRITICAL", "DOWN", "OUTAGE", "FAILURE", "CRASHED"
-- Service outage descriptions ("database is down", "users cannot access")
-- Production issues requiring immediate action
+2. Determine a descriptive action name (can be creative, but descriptive)
 
-ASSET MANAGEMENT: Use this category for infrastructure inventory queries:
-- "show me all assets", "list servers", "find hosts", "what servers do we have"
-- "show Linux servers", "find Windows machines", "list database servers"
-- "how many assets", "count servers", "total hosts"
-- "get asset info for X", "what's the IP of server Y", "find asset by hostname"
-- These should be "asset_management" category, NOT "information" or "monitoring"
+3. **CRITICAL**: Select 1-3 capabilities from the AVAILABLE CAPABILITIES list above that are needed to fulfill the request
+   - If the request cannot be fulfilled with available capabilities, return empty capabilities array []
+   - Be honest: if we don't have the capability, say so
 
-For each category, identify the specific action being requested.
+4. GATED CAPABILITIES (credential_access, secret_retrieval):
+   - Only use for explicit credential/secret requests
+   - User must provide justification
+   - Questions ABOUT credentials (not requesting them) should use information category with empty capabilities
 
 Respond ONLY with valid JSON in this exact format:
 {{
     "category": "category_name",
-    "action": "specific_action",
-    "confidence": 0.95
+    "action": "descriptive_action_name",
+    "confidence": 0.95,
+    "capabilities": ["capability1", "capability2"]
 }}
 
 Examples:
-- "restart nginx" -> {{"category": "automation", "action": "restart_service", "confidence": 0.95}}
-- "check server status" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90}}
-- "why is the site slow" -> {{"category": "troubleshooting", "action": "diagnose_performance", "confidence": 0.85}}
-- "URGENT: database is down" -> {{"category": "automation", "action": "emergency_response", "confidence": 0.95}}
-- "deploy new version" -> {{"category": "automation", "action": "deploy_application", "confidence": 0.90}}
-- "show me all assets" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.95}}
-- "find Linux servers" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.92}}
-- "how many servers" -> {{"category": "asset_management", "action": "count_assets", "confidence": 0.90}}
-- "get asset info for web-01" -> {{"category": "asset_management", "action": "get_asset", "confidence": 0.93}}""",
+- "restart nginx" -> {{"category": "automation", "action": "restart_service", "confidence": 0.95, "capabilities": ["service_management"]}}
+- "check server status" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90, "capabilities": ["system_info"]}}
+- "show me all assets" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.95, "capabilities": ["asset_query", "infrastructure_info", "resource_listing"]}}
+- "what kind of credentials do we use?" -> {{"category": "information", "action": "explain_credential_types", "confidence": 0.85, "capabilities": []}}
+- "get credentials for server-01" -> {{"category": "asset_management", "action": "retrieve_credentials", "confidence": 0.90, "capabilities": ["credential_access", "secret_retrieval"]}}
+- "show running processes" -> {{"category": "monitoring", "action": "list_processes", "confidence": 0.92, "capabilities": ["process_monitoring"]}}
+- "test connectivity to 10.0.0.1" -> {{"category": "troubleshooting", "action": "test_network_connectivity", "confidence": 0.93, "capabilities": ["network_testing"]}}""",
                 
                 "user": "Classify this request: {user_request}"
             },

@@ -493,3 +493,81 @@ tools:
               cost: 0.85
               complexity: 0.7
               completeness: 1.0
+
+  asset-credentials-read:
+    description: "Retrieve asset credentials (SSH keys, passwords, API tokens) - GATED ACCESS"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "credential_vault"
+    
+    capabilities:
+      credential_access:
+        patterns:
+          retrieve_credentials:
+            description: "Retrieve credentials for infrastructure assets"
+            typical_use_cases:
+              - "get credentials"
+              - "what credentials"
+              - "show password"
+              - "SSH key"
+              - "API token"
+            
+            time_estimate_ms: 500
+            cost_estimate: 1
+            complexity_score: 0.2
+            
+            scope: "single_asset_credentials"
+            completeness: "complete"
+            
+            limitations:
+              - "Requires ADMIN permissions"
+              - "Requires justification"
+              - "Audit logged"
+            
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.85
+              accuracy: 1.0
+              cost: 0.9
+              complexity: 0.8
+              completeness: 1.0
+      
+      secret_retrieval:
+        patterns:
+          retrieve_secrets:
+            description: "Access secrets and sensitive configuration"
+            typical_use_cases:
+              - "get secret"
+              - "retrieve token"
+              - "access credentials"
+              - "communication credentials"
+            
+            time_estimate_ms: 500
+            cost_estimate: 1
+            complexity_score: 0.2
+            
+            scope: "asset_secrets"
+            completeness: "complete"
+            
+            limitations:
+              - "Requires ADMIN permissions"
+              - "Requires justification"
+              - "Audit logged"
+            
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.85
+              accuracy: 1.0
+              cost: 0.9
+              complexity: 0.8
+              completeness: 1.0

@@ -14,9 +14,6 @@ from llm.client import LLMClient
 from llm.prompt_manager import PromptManager
 from llm.response_parser import ResponseParser
 
-from .tool_registry import ToolRegistry
-from .capability_matcher import CapabilityMatcher, CapabilityMatch
-from .policy_engine import PolicyEngine
 from .hybrid_orchestrator import HybridOrchestrator
 from .profile_loader import ProfileLoader
 
@@ -28,18 +25,19 @@ class StageBSelector:
     - Selected tools with justification
     - Execution policy and constraints
     - Additional input requirements
+    
+    NOTE: This class uses the database-backed HybridOrchestrator for tool selection.
+    The old tool_registry, capability_matcher, and policy_engine have been removed
+    in favor of the database as the single source of truth.
     """
     
-    def __init__(self, llm_client: LLMClient, tool_registry: Optional[ToolRegistry] = None,
-                 profile_loader: Optional[ProfileLoader] = None):
+    def __init__(self, llm_client: LLMClient, profile_loader: Optional[ProfileLoader] = None):
         self.llm_client = llm_client
-        self.tool_registry = tool_registry or ToolRegistry()
-        self.capability_matcher = CapabilityMatcher(self.tool_registry)
-        self.policy_engine = PolicyEngine(self.tool_registry)
         self.prompt_manager = PromptManager()
         self.response_parser = ResponseParser()
         
         # Initialize Hybrid Orchestrator for optimized tool selection
+        # This uses the database tool catalog as the single source of truth
         self.hybrid_orchestrator = HybridOrchestrator(
             profile_loader=profile_loader,
             llm_client=llm_client,
@@ -69,6 +67,12 @@ class StageBSelector:
         try:
             # Step 1: Extract required capabilities from decision
             required_capabilities = self._extract_capabilities_from_decision(decision)
+            
+            # CAPABILITY-FIRST ARCHITECTURE: Handle information-only requests
+            # If Stage A determined no capabilities are needed, this is a pure information request
+            # that should be answered by the LLM without tool execution
+            if not required_capabilities:
+                return self._create_information_only_selection(decision, start_time)
             
             # Step 2: Build context for hybrid orchestrator
             orchestrator_context = self._build_orchestrator_context(decision, context)
@@ -132,151 +136,6 @@ class StageBSelector:
             # Re-raise - NO FALLBACKS per system charter
             raise RuntimeError(f"Tool selection failed: {str(e)}") from e
     
-    async def _find_capability_matches(self, decision: DecisionV1) -> List[CapabilityMatch]:
-        """Find tools that match the decision requirements"""
-        
-        matches = self.capability_matcher.find_matching_tools(
-            decision, 
-            max_tools=self.config["max_tools_per_selection"]
-        )
-        
-        # Filter by minimum confidence
-        filtered_matches = [
-            match for match in matches 
-            if match.confidence >= self.config["min_selection_confidence"]
-        ]
-        
-        return filtered_matches
-    
-    async def _llm_tool_selection(self, decision: DecisionV1, 
-                                matches: List[CapabilityMatch]) -> List[SelectedTool]:
-        """Use LLM to make intelligent tool selection - NO FALLBACKS"""
-        
-        # Prepare tool information for LLM
-        tools_info = []
-        for match in matches:
-            tool_info = {
-                "name": match.tool.name,
-                "description": match.tool.description,
-                "capabilities": [cap.name for cap in match.tool.capabilities],
-                "confidence": match.confidence,
-                "justification": match.justification,
-                "missing_inputs": match.missing_inputs,
-                "permissions": match.tool.permissions.value,
-                "production_safe": match.tool.production_safe
-            }
-            tools_info.append(tool_info)
-        
-        # Create LLM prompt
-        prompt = self.prompt_manager.get_tool_selection_prompt(
-            decision=decision.model_dump(),
-            available_tools=tools_info
-        )
-        
-        # Get LLM response
-        response = await self.llm_client.generate(prompt)
-        
-        # Parse LLM response
-        selection_data = self.response_parser.parse_tool_selection(response.content)
-        
-        # Convert to SelectedTool objects
-        selected_tools = []
-        for i, tool_data in enumerate(selection_data.get("selected_tools", [])):
-            selected_tool = SelectedTool(
-                tool_name=tool_data.get("tool_name", ""),
-                justification=tool_data.get("justification", "LLM selection"),
-                inputs_needed=tool_data.get("inputs_needed", []),
-                execution_order=tool_data.get("execution_order", i + 1),
-                depends_on=tool_data.get("depends_on", [])
-            )
-            selected_tools.append(selected_tool)
-        
-        # Validate LLM selection - FAIL HARD if invalid
-        if not self._validate_llm_selection(selected_tools, matches):
-            raise RuntimeError("LLM tool selection validation failed - NO FALLBACKS")
-        
-        return selected_tools
-    
-    async def _llm_tool_selection_direct(self, decision: DecisionV1, 
-                                        tools: List) -> List[SelectedTool]:
-        """
-        Pure LLM-based tool selection - no pre-filtering or scoring
-        This is the ONLY selection method per the system charter
-        NO FALLBACKS - if this fails, we fail
-        """
-        
-        # Prepare tool information for LLM - ALL tools with their full descriptions
-        tools_info = []
-        for tool in tools:
-            tool_info = {
-                "name": tool.name,
-                "description": tool.description,
-                "capabilities": [
-                    {
-                        "name": cap.name,
-                        "description": cap.description,
-                        "required_inputs": cap.required_inputs,
-                        "optional_inputs": cap.optional_inputs
-                    }
-                    for cap in tool.capabilities
-                ],
-                "permissions": tool.permissions.value,
-                "production_safe": tool.production_safe,
-                "required_inputs": tool.required_inputs,
-                "dependencies": tool.dependencies
-            }
-            tools_info.append(tool_info)
-        
-        # Create LLM prompt with comprehensive tool selection rubric
-        prompt = self.prompt_manager.get_tool_selection_prompt(
-            decision=decision.model_dump(),
-            available_tools=tools_info
-        )
-        
-        # Get LLM response - if this fails, let it fail
-        response = await self.llm_client.generate(prompt)
-        
-        # Parse LLM response - if this fails, let it fail
-        selection_data = self.response_parser.parse_tool_selection(response.content)
-        
-        # Convert to SelectedTool objects
-        selected_tools = []
-        for i, tool_data in enumerate(selection_data.get("selected_tools", [])):
-            selected_tool = SelectedTool(
-                tool_name=tool_data.get("tool_name", ""),
-                justification=tool_data.get("justification", "LLM selection"),
-                inputs_needed=tool_data.get("inputs_needed", []),
-                execution_order=tool_data.get("execution_order", i + 1),
-                depends_on=tool_data.get("depends_on", [])
-            )
-            selected_tools.append(selected_tool)
-        
-        return selected_tools
-    
-    def _rule_based_tool_selection(self, matches: List[CapabilityMatch], 
-                                 decision: DecisionV1) -> List[SelectedTool]:
-        """Rule-based tool selection - NO FALLBACKS!"""
-        
-        if not matches:
-            raise ValueError(
-                f"No capability matches found for action '{decision.intent.action}'. "
-                f"This indicates a problem with capability mapping or tool registration. "
-                f"Decision: {decision.intent.category}/{decision.intent.action}"
-            )
-        
-        # Use capability matcher's selection logic
-        selected_tools = self.capability_matcher.select_optimal_tools(matches, decision)
-        
-        # NO FALLBACKS! If no tools selected, raise an error
-        if not selected_tools:
-            raise ValueError(
-                f"Capability matcher failed to select tools from {len(matches)} matches. "
-                f"Matches: {[m.tool.name for m in matches]}. "
-                f"This indicates a problem with the selection logic."
-            )
-        
-        return selected_tools
-    
     def _calculate_additional_inputs(self, decision: DecisionV1, 
                                    selected_tools: List[SelectedTool]) -> List[str]:
         """Calculate additional inputs needed beyond decision data"""
@@ -318,63 +177,32 @@ class StageBSelector:
         return missing_inputs
     
     def _determine_environment_requirements(self, selected_tools: List[SelectedTool]) -> Dict[str, Any]:
-        """Determine environment requirements for selected tools"""
+        """Determine environment requirements for selected tools
+        
+        Note: This method now uses tool metadata from the database via HybridOrchestrator.
+        The tool_registry has been removed - database is the single source of truth.
+        """
         
         requirements = {}
         
-        # Check tool requirements
+        # Check tool requirements based on tool names
+        # This is a simplified version - full requirements should come from database
         for selected_tool in selected_tools:
-            tool = self.tool_registry.get_tool(selected_tool.tool_name)
-            if not tool:
-                continue
+            tool_name = selected_tool.tool_name
             
-            # OS requirements
-            if tool.name in ["systemctl", "journalctl", "ps"]:
+            # OS requirements (based on common tool patterns)
+            if tool_name in ["systemctl", "journalctl", "ps", "top", "htop"]:
                 requirements["os"] = "linux"
             
-            # Permission requirements
-            if tool.permissions.value == "admin":
+            # Permission requirements (based on common patterns)
+            if tool_name in ["systemctl", "iptables", "useradd", "usermod"]:
                 requirements["sudo_required"] = True
             
-            # Service dependencies
-            if tool.dependencies:
-                if "dependencies" not in requirements:
-                    requirements["dependencies"] = []
-                requirements["dependencies"].extend(tool.dependencies)
-            
             # Docker requirements
-            if tool.name == "docker":
+            if tool_name == "docker":
                 requirements["docker_available"] = True
         
         return requirements
-    
-    def _calculate_selection_confidence(self, matches: List[CapabilityMatch], 
-                                      selected_tools: List[SelectedTool], 
-                                      decision: DecisionV1) -> float:
-        """Calculate overall confidence in the tool selection"""
-        
-        if not selected_tools:
-            return 0.1
-        
-        # Base confidence from capability matches
-        if matches:
-            match_confidences = [match.confidence for match in matches[:len(selected_tools)]]
-            base_confidence = sum(match_confidences) / len(match_confidences)
-        else:
-            base_confidence = 0.3  # Default selection confidence
-        
-        # Adjust based on decision confidence
-        decision_factor = decision.overall_confidence * 0.3
-        
-        # Adjust based on missing inputs
-        missing_inputs_penalty = 0
-        for selected_tool in selected_tools:
-            missing_inputs_penalty += len(selected_tool.inputs_needed) * 0.05
-        
-        # Calculate final confidence
-        final_confidence = base_confidence + decision_factor - missing_inputs_penalty
-        
-        return max(min(final_confidence, 1.0), 0.1)
     
     def _determine_next_stage(self, decision: DecisionV1, selected_tools: List[SelectedTool], 
                             policy: ExecutionPolicy) -> str:
@@ -418,26 +246,6 @@ class StageBSelector:
         
         return True
     
-    def _validate_llm_selection(self, selected_tools: List[SelectedTool], 
-                              matches: List[CapabilityMatch]) -> bool:
-        """Validate LLM tool selection against available matches"""
-        
-        if not selected_tools:
-            return False
-        
-        # Check that selected tools exist in matches
-        available_tool_names = {match.tool.name for match in matches}
-        for selected_tool in selected_tools:
-            if selected_tool.tool_name not in available_tool_names:
-                return False
-        
-        # Check for reasonable justifications
-        for selected_tool in selected_tools:
-            if not selected_tool.justification or len(selected_tool.justification) < 10:
-                return False
-        
-        return True
-    
     async def _is_llm_available(self) -> bool:
         """Check if LLM is available for selection"""
         try:
@@ -455,52 +263,58 @@ class StageBSelector:
         """
         Extract required capabilities from DecisionV1
         
-        Maps intent.action to capability names that tools can provide
+        Stage A now directly provides capabilities, so we just extract them.
+        No more hardcoded action-to-capability mapping!
         """
-        # Map intent actions to capability names
-        capability_mapping = {
-            "restart_service": ["service_control"],
-            "check_status": ["service_status"],
-            "show_status": ["system_monitoring"],  # For information requests
-            "view_logs": ["log_access"],
-            "search_files": ["file_search"],
-            "read_file": ["file_read"],
-            "edit_file": ["file_edit"],
-            "list_directory": ["directory_list"],
-            "execute_command": ["shell_execution"],
-            "monitor_system": ["system_monitoring"],
-            "configure_service": ["configuration_management"],
-            
-            # Asset management actions - CRITICAL for asset queries
-            "list_assets": ["asset_query", "infrastructure_info", "resource_listing"],
-            "get_asset": ["asset_query", "infrastructure_info"],
-            "search_assets": ["asset_query", "infrastructure_info", "resource_listing"],
-            "count_assets": ["asset_query", "infrastructure_info"],
-            "find_asset": ["asset_query", "infrastructure_info"],
-            "find_asset_by_ip": ["asset_query", "infrastructure_info"],
-            "query_assets": ["asset_query", "infrastructure_info", "resource_listing"],
-            "list_servers": ["asset_query", "infrastructure_info", "resource_listing"],
-            "list_hosts": ["asset_query", "infrastructure_info", "resource_listing"],
-            "get_asset_info": ["asset_query", "infrastructure_info"],
-            "asset_count": ["asset_query", "infrastructure_info"],
-            "asset_discovery": ["asset_query", "infrastructure_info", "resource_listing"],
-            "get_credentials": ["credential_access", "secret_retrieval"],
-            "list_credentials": ["credential_access", "secret_retrieval"]
-        }
+        # Get capabilities directly from Stage A's intent classification
+        capabilities = decision.intent.capabilities
         
-        action = decision.intent.action
-        
-        # NO FALLBACKS! If action is not mapped, raise an error
-        if action not in capability_mapping:
-            raise ValueError(
-                f"Unknown action '{action}' from Stage A. "
-                f"This action must be added to capability_mapping in selector.py. "
-                f"Available actions: {sorted(capability_mapping.keys())}"
+        # If Stage A didn't provide capabilities, this is an information request
+        # that doesn't require tool execution
+        if not capabilities:
+            # Log for visibility
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(
+                f"No capabilities provided by Stage A for action '{decision.intent.action}'. "
+                f"This is likely an information/explanation request that doesn't require tools."
             )
         
-        capabilities = capability_mapping[action]
-        
         return capabilities
+    
+    def _create_information_only_selection(self, decision: DecisionV1, start_time: float) -> SelectionV1:
+        """
+        Create a SelectionV1 for information-only requests that don't require tools.
+        
+        This handles cases where Stage A determined the request can be answered
+        without executing any tools (e.g., "what kind of credentials do we use?")
+        """
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        return SelectionV1(
+            selection_id=self._generate_selection_id(),
+            decision_id=decision.decision_id,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            selected_tools=[],  # No tools needed
+            total_tools=0,
+            policy=ExecutionPolicy(
+                requires_approval=False,
+                production_environment=False,
+                risk_level=decision.risk_level,
+                max_execution_time=0,
+                parallel_execution=False,
+                rollback_required=False
+            ),
+            additional_inputs_needed=[],
+            environment_requirements={
+                "sudo_required": False,
+                "dependencies": []
+            },
+            processing_time_ms=processing_time,
+            selection_confidence=decision.overall_confidence,
+            next_stage="stage_d",  # Skip Stage C (planning) and go directly to Stage D (response)
+            ready_for_execution=True  # Ready to generate response
+        )
     
     def _build_orchestrator_context(self, decision: DecisionV1, 
                                    context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -530,27 +344,61 @@ class StageBSelector:
         """
         Extract required inputs for a capability
         
-        This is a simple mapping - in production, this would come from
-        the tool registry or capability definitions
+        This mapping is derived from the database tool catalog.
+        Each capability maps to the required inputs needed by tools that provide it.
+        
+        NOTE: Most capabilities require 'host' parameter, but we extract the most
+        specific required inputs. The 'host' parameter is typically added by the
+        execution layer based on asset context.
         """
         input_mapping = {
-            "service_control": ["service_name"],
-            "service_status": ["service_name"],
-            "log_access": ["log_file", "service_name"],
-            "file_search": ["search_pattern", "directory"],
-            "file_read": ["file_path"],
-            "file_edit": ["file_path", "edit_content"],
-            "directory_list": ["directory_path"],
-            "shell_execution": ["command"],
-            "system_monitoring": ["metric_type"],
-            "configuration_management": ["config_file", "config_values"],
+            # API and HTTP
+            "api_query": ["endpoint"],
+            "http_client": ["host"],
             
-            # Asset management capabilities
-            "asset_query": ["query_type"],
-            "infrastructure_info": ["info_type"],
-            "resource_listing": ["resource_type"],
-            "credential_access": ["credential_id"],
-            "secret_retrieval": ["secret_name"]
+            # Asset management
+            "asset_management": ["host"],
+            "asset_query": ["host"],
+            "credential_access": ["asset_id", "justification"],
+            "infrastructure_info": [],
+            "resource_listing": [],
+            "secret_retrieval": ["asset_id", "justification"],
+            
+            # Disk operations
+            "disk_management": ["host"],
+            "disk_monitoring": ["host"],
+            
+            # DNS and network
+            "dns_query": ["host"],
+            "network_info": ["host"],
+            "network_monitoring": ["host"],
+            "network_testing": ["host"],
+            "packet_capture": ["host"],
+            "protocol_analysis": ["host"],
+            
+            # Logs
+            "log_analysis": ["host"],
+            
+            # Memory
+            "memory_monitoring": ["host"],
+            
+            # Processes
+            "process_management": ["host"],
+            "process_monitoring": ["host"],
+            
+            # Services
+            "service_management": ["service_name", "host"],
+            
+            # System
+            "system_info": ["host"],
+            "system_monitoring": ["metric_type"],
+            
+            # Text operations
+            "text_search": ["pattern", "target"],
+            
+            # Windows
+            "windows_automation": ["command"],
+            "windows_service_management": ["service_name"]
         }
         
         # NO FALLBACKS! If capability is not mapped, raise an error
@@ -590,17 +438,14 @@ class StageBSelector:
             return 0.75
 
     async def health_check(self) -> Dict[str, Any]:
-        """Health check for Stage B Selector"""
+        """Health check for Stage B Selector
+        
+        Note: tool_registry has been removed - database is the single source of truth.
+        """
         
         health_status = {
             "stage_b_selector": "healthy",
-            "tool_registry": {
-                "status": "healthy",
-                "total_tools": self.tool_registry.get_tool_count(),
-                "stats": self.tool_registry.get_registry_stats()
-            },
-            "capability_matcher": "healthy",
-            "policy_engine": "healthy",
+            "database": "healthy",  # Database is now the source of truth
             "llm_client": "unknown",
             "hybrid_orchestrator": "healthy"
         }
@@ -615,7 +460,11 @@ class StageBSelector:
         return health_status
     
     def get_capabilities(self) -> Dict[str, Any]:
-        """Get Stage B capabilities and configuration"""
+        """Get Stage B capabilities and configuration
+        
+        Note: tool_registry has been removed - database is the single source of truth.
+        Tool information is now queried from the database via HybridOrchestrator.
+        """
         
         return {
             "stage": "stage_b_selector",
@@ -634,9 +483,6 @@ class StageBSelector:
                 "configuration",
                 "information"
             ],
-            "tool_registry": {
-                "total_tools": self.tool_registry.get_tool_count(),
-                "available_tools": [tool.name for tool in self.tool_registry.get_all_tools()]
-            },
+            "tool_source": "database",  # Database is the single source of truth
             "configuration": self.config
         }

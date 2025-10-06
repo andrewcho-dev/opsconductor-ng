@@ -456,6 +456,10 @@ class ToolRegistry:
         with open(output_path, 'w') as f:
             json.dump(config, f, indent=2)
     
+    def get_all_capabilities(self) -> List[str]:
+        """Get list of all unique capability names in the registry"""
+        return sorted(list(self.capabilities_index.keys()))
+    
     def get_registry_stats(self) -> Dict[str, any]:
         """Get statistics about the tool registry"""
         permission_counts = {}

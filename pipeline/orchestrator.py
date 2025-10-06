@@ -97,13 +97,10 @@ class PipelineOrchestrator:
         
         self.llm_client = llm_client
         
-        # Initialize tool registry
-        from pipeline.stages.stage_b.tool_registry import ToolRegistry
-        self.tool_registry = ToolRegistry()
-        
         # Initialize stages with required parameters
+        # NOTE: tool_registry has been removed - database is the single source of truth
         self.stage_a = StageAClassifier(llm_client)
-        self.stage_b = StageBSelector(llm_client, self.tool_registry)
+        self.stage_b = StageBSelector(llm_client)
         self.stage_c = StageCPlanner(llm_client)
         self.stage_d = StageDAnswerer(llm_client)
         self.stage_e = StageEExecutor()

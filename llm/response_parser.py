@@ -61,7 +61,7 @@ class ResponseParser:
             response: Raw LLM response
             
         Returns:
-            Dictionary with category, action, and confidence
+            Dictionary with category, action, confidence, and capabilities
             
         Raises:
             ValueError: If response format is invalid
@@ -80,10 +80,16 @@ class ResponseParser:
             if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
                 raise ValueError(f"Invalid confidence value: {confidence}")
             
+            # Capabilities is optional but should be a list if present
+            capabilities = data.get("capabilities", [])
+            if not isinstance(capabilities, list):
+                raise ValueError(f"capabilities must be a list, got: {type(capabilities)}")
+            
             return {
                 "category": str(data["category"]).lower(),
                 "action": str(data["action"]).lower(),
-                "confidence": float(confidence)
+                "confidence": float(confidence),
+                "capabilities": [str(cap).lower() for cap in capabilities]
             }
             
         except Exception as e:

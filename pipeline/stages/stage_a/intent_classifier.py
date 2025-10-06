@@ -56,7 +56,8 @@ class IntentClassifier:
             return IntentV1(
                 category=intent_data["category"],
                 action=intent_data["action"],
-                confidence=intent_data["confidence"]
+                confidence=intent_data["confidence"],
+                capabilities=intent_data.get("capabilities", [])
             )
             
         except Exception as e:

@@ -35,7 +35,6 @@ from pipeline.orchestrator import (
 )
 from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
-from pipeline.stages.stage_b.tool_registry import ToolRegistry
 from pipeline.stages.stage_c.planner import StageCPlanner
 from pipeline.stages.stage_d.answerer import StageDAnswerer
 from llm.ollama_client import OllamaClient
@@ -79,7 +78,6 @@ stage_a_classifier: Optional[StageAClassifier] = None
 stage_b_selector: Optional[StageBSelector] = None
 stage_c_planner: Optional[StageCPlanner] = None
 stage_d_answerer: Optional[StageDAnswerer] = None
-tool_registry: Optional[ToolRegistry] = None
 llm_client: Optional[OllamaClient] = None
 
 # ============================================================================
@@ -89,7 +87,7 @@ llm_client: Optional[OllamaClient] = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management"""
-    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer, tool_registry, llm_client
+    global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer, llm_client
     
     logger.info("🚀 Starting NEWIDEA.MD Pipeline")
     logger.info("📋 Architecture: 5-Stage AI Pipeline (Phase 7 Integrated)")
@@ -108,17 +106,14 @@ async def lifespan(app: FastAPI):
         llm_client = OllamaClient(ollama_config)
         await llm_client.connect()
         
-        # Initialize Tool Registry
-        tool_registry = ToolRegistry()
-        
         # Declare global variables
         global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer
         
         # Initialize Stage A Classifier
         stage_a_classifier = StageAClassifier(llm_client)
         
-        # Initialize Stage B Selector
-        stage_b_selector = StageBSelector(llm_client, tool_registry)
+        # Initialize Stage B Selector (database is the single source of truth)
+        stage_b_selector = StageBSelector(llm_client)
         
         # Initialize Stage C Planner
         stage_c_planner = StageCPlanner(llm_client)

@@ -39,6 +39,7 @@ class IntentV1(BaseModel):
     category: str = Field(..., description="Intent category (automation, monitoring, etc.)")
     action: str = Field(..., description="Specific action within category")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Classification confidence")
+    capabilities: List[str] = Field(default=[], description="Required capabilities to fulfill this intent")
 
 class DecisionV1(BaseModel):
     """
