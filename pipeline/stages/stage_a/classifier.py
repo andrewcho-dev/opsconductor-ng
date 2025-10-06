@@ -6,6 +6,7 @@ Coordinates intent classification, entity extraction, confidence scoring, and ri
 import asyncio
 import uuid
 import time
+import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from ...schemas.decision_v1 import DecisionV1, DecisionType
@@ -14,6 +15,8 @@ from .intent_classifier import IntentClassifier
 from .entity_extractor import EntityExtractor
 from .confidence_scorer import ConfidenceScorer
 from .risk_assessor import RiskAssessor
+
+logger = logging.getLogger(__name__)
 
 class StageAClassifier:
     """
@@ -69,6 +72,7 @@ class StageAClassifier:
             )
             t4 = time.time()
             print(f"⏱️  Stage A: Confidence + Risk (parallel) took {(t4-t3):.1f}s")
+            logger.info(f"🔍 DEBUG: Intent category={intent.category}, action={intent.action}, confidence={confidence_data['overall_confidence']:.2f}")
             
             # Step 5: Determine decision type and next stage
             decision_type = self._determine_decision_type(intent, confidence_data)
@@ -119,13 +123,29 @@ class StageAClassifier:
     
     def _determine_next_stage(self, intent, confidence_data, risk_data) -> str:
         """Determine the next pipeline stage"""
-        # FAST PATH: Simple information queries that don't require tool execution
+        # FAST PATH: Simple information/asset_management queries that don't require tool execution
         # can skip directly to Stage D for immediate response
-        if intent.category == "information" and intent.action in ["query", "list", "count", "show", "get"]:
-            # Check if this is a simple query that can be answered directly
-            # without needing to execute tools or create plans
-            if confidence_data["overall_confidence"] >= 0.7:
-                return "stage_d"
+        #
+        # This includes:
+        # - Information requests (help, explanations, calculations)
+        # - Asset management queries that can be answered from asset database context
+        #
+        # Keywords that indicate FAST PATH eligibility:
+        fast_path_keywords = ["query", "list", "count", "show", "get", "check", "view", "status", "metrics", "health", "ips", "assets", "servers", "hosts"]
+        
+        # Check if this is an information or asset_management request
+        if intent.category in ["information", "asset_management"]:
+            # Check if the action contains any fast-path keywords
+            action_lower = intent.action.lower()
+            is_fast_path_action = any(keyword in action_lower for keyword in fast_path_keywords)
+            
+            if is_fast_path_action:
+                logger.info(f"🔍 FAST PATH CHECK: category={intent.category}, action={intent.action}, confidence={confidence_data['overall_confidence']:.2f}")
+                if confidence_data["overall_confidence"] >= 0.7:
+                    logger.info(f"✅ FAST PATH ACTIVATED: Routing to Stage D")
+                    return "stage_d"
+                else:
+                    logger.info(f"❌ FAST PATH SKIPPED: Confidence {confidence_data['overall_confidence']:.2f} < 0.7, routing to Stage B")
         
         # DEFAULT PATH: All other requests go to Stage B (Selector) for full pipeline processing
         return "stage_b"

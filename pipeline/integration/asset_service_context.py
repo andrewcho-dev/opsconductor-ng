@@ -201,7 +201,14 @@ async def fetch_all_assets(
             response.raise_for_status()
             data = response.json()
             
-            assets = data.get("assets", [])
+            # Asset-service returns: {"success": true, "data": {"assets": [...], "total": 7}}
+            # Extract assets from nested structure
+            if "data" in data and "assets" in data["data"]:
+                assets = data["data"]["assets"]
+            else:
+                # Fallback for direct assets array (backwards compatibility)
+                assets = data.get("assets", [])
+            
             logger.info(f"Fetched {len(assets)} assets from asset-service")
             
             # Cache the results
@@ -252,7 +259,14 @@ async def fetch_asset_by_identifier(
             response.raise_for_status()
             data = response.json()
             
-            assets = data.get("assets", [])
+            # Asset-service returns: {"success": true, "data": {"assets": [...], "total": 7}}
+            # Extract assets from nested structure
+            if "data" in data and "assets" in data["data"]:
+                assets = data["data"]["assets"]
+            else:
+                # Fallback for direct assets array (backwards compatibility)
+                assets = data.get("assets", [])
+            
             if assets:
                 asset = assets[0]
                 logger.info(f"Found asset: {identifier} -> {asset['hostname']}")

@@ -91,13 +91,15 @@ class StageDAnswerer:
         try:
             logger.info(f"Generating response for {decision.intent.category}/{decision.intent.action}")
             
-            # 🚀 FAST PATH: Handle simple information requests without selection/plan
+            # 🚀 FAST PATH: Handle simple information/asset_management requests without selection/plan
             # Check if selection has no tools (information-only request)
             has_no_tools = (selection is None or 
                            (hasattr(selection, 'selected_tools') and len(selection.selected_tools) == 0))
             
-            if has_no_tools and plan is None and decision.intent.category == "information":
-                logger.info("🚀 FAST PATH: Generating direct information response")
+            logger.info(f"🔍 FAST PATH DEBUG: has_no_tools={has_no_tools}, plan={plan}, category={decision.intent.category}")
+            
+            if has_no_tools and plan is None and decision.intent.category in ["information", "asset_management"]:
+                logger.info(f"🚀 FAST PATH: Generating direct {decision.intent.category} response")
                 
                 # Generate direct answer using LLM for simple questions
                 direct_response = await self._generate_direct_information_response(

@@ -58,19 +58,23 @@ AVAILABLE CAPABILITIES (you can ONLY use these - from database tool catalog):
 CLASSIFICATION RULES:
 1. Identify the user's intent category:
    - automation: Execute actions, run commands, manage services
-   - monitoring: Check status, view metrics, observe systems
+   - monitoring: Check LIVE status, view REAL-TIME metrics, observe CURRENT system state
    - troubleshooting: Diagnose issues, analyze problems
    - configuration: Change settings, update configs
    - information: Answer questions, explain concepts, retrieve data
-   - asset_management: Query infrastructure inventory
+   - asset_management: Query infrastructure inventory (servers, IPs, assets, hosts, databases)
 
-2. Determine a descriptive action name (can be creative, but descriptive)
+2. **CRITICAL DISTINCTION - monitoring vs asset_management:**
+   - Use "monitoring" for LIVE/REAL-TIME checks: "is server X up?", "current CPU usage", "active processes"
+   - Use "asset_management" for INVENTORY queries: "list servers", "show IPs", "what assets do we have?", "find hosts"
 
-3. **CRITICAL**: Select 1-3 capabilities from the AVAILABLE CAPABILITIES list above that are needed to fulfill the request
+3. Determine a descriptive action name (can be creative, but descriptive)
+
+4. **CRITICAL**: Select 1-3 capabilities from the AVAILABLE CAPABILITIES list above that are needed to fulfill the request
    - If the request cannot be fulfilled with available capabilities, return empty capabilities array []
    - Be honest: if we don't have the capability, say so
 
-4. GATED CAPABILITIES (credential_access, secret_retrieval):
+5. GATED CAPABILITIES (credential_access, secret_retrieval):
    - Only use for explicit credential/secret requests
    - User must provide justification
    - Questions ABOUT credentials (not requesting them) should use information category with empty capabilities
@@ -85,11 +89,13 @@ Respond ONLY with valid JSON in this exact format:
 
 Examples:
 - "restart nginx" -> {{"category": "automation", "action": "restart_service", "confidence": 0.95, "capabilities": ["service_management"]}}
-- "check server status" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90, "capabilities": ["system_info"]}}
+- "is server X up right now?" -> {{"category": "monitoring", "action": "check_status", "confidence": 0.90, "capabilities": ["system_info"]}}
 - "show me all assets" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.95, "capabilities": ["asset_query", "infrastructure_info", "resource_listing"]}}
+- "what are the IPs of our linux servers?" -> {{"category": "asset_management", "action": "list_linux_asset_ips", "confidence": 0.95, "capabilities": ["asset_query"]}}
+- "list all windows hosts" -> {{"category": "asset_management", "action": "list_windows_hosts", "confidence": 0.95, "capabilities": ["asset_query", "resource_listing"]}}
 - "what kind of credentials do we use?" -> {{"category": "information", "action": "explain_credential_types", "confidence": 0.85, "capabilities": []}}
 - "get credentials for server-01" -> {{"category": "asset_management", "action": "retrieve_credentials", "confidence": 0.90, "capabilities": ["credential_access", "secret_retrieval"]}}
-- "show running processes" -> {{"category": "monitoring", "action": "list_processes", "confidence": 0.92, "capabilities": ["process_monitoring"]}}
+- "show running processes on server X" -> {{"category": "monitoring", "action": "list_processes", "confidence": 0.92, "capabilities": ["process_monitoring"]}}
 - "test connectivity to 10.0.0.1" -> {{"category": "troubleshooting", "action": "test_network_connectivity", "confidence": 0.93, "capabilities": ["network_testing"]}}""",
                 
                 "user": "Classify this request: {user_request}"
