@@ -232,11 +232,20 @@ class PipelineOrchestrator:
             stage_durations["stage_b"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_b"] = selection_result
             
-            # Stage C: Planning
-            stage_start = time.time()
-            planning_result = await self._execute_stage_c(classification_result, selection_result)
-            stage_durations["stage_c"] = (time.time() - stage_start) * 1000
-            intermediate_results["stage_c"] = planning_result
+            # Stage C: Planning (skip if no tool selection)
+            planning_result = None
+            has_tools = (selection_result is not None and 
+                        hasattr(selection_result, 'selected_tools') and 
+                        len(selection_result.selected_tools) > 0)
+            
+            if has_tools:
+                stage_start = time.time()
+                planning_result = await self._execute_stage_c(classification_result, selection_result)
+                stage_durations["stage_c"] = (time.time() - stage_start) * 1000
+                intermediate_results["stage_c"] = planning_result
+            else:
+                logger.info("⏭️  Skipping Stage C: No tool selection (information-only request)")
+                stage_durations["stage_c"] = 0
             
             # Stage D: Response Generation
             stage_start = time.time()
@@ -247,8 +256,11 @@ class PipelineOrchestrator:
             # 🚀 PHASE 7: Stage E - Execution (if plan exists and should be executed)
             should_execute = False
             
+            # Skip execution for information-only requests (no plan)
+            if planning_result is None:
+                logger.info("⏭️  Skipping Stage E: No execution plan (information-only request)")
             # Check if we have a plan with steps
-            if planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
+            elif planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
                 plan_steps = planning_result.plan.get('steps', []) if isinstance(planning_result.plan, dict) else getattr(planning_result.plan, 'steps', [])
                 if plan_steps and len(plan_steps) > 0:
                     # Execute if: EXECUTION_READY, or if approval_required is False
