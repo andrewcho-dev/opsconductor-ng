@@ -119,7 +119,18 @@ const AIChatPage: React.FC = () => {
         // Check if click is not on save/cancel buttons
         const target = event.target as Element;
         if (!target.closest('.chat-edit-buttons')) {
-          saveEditingChat();
+          // Save the edit directly here to avoid stale closure
+          if (editingChatId && editingTitle.trim()) {
+            const updatedSessions = chatSessions.map(session =>
+              session.id === editingChatId
+                ? { ...session, title: editingTitle.trim() }
+                : session
+            );
+            setChatSessions(updatedSessions);
+            saveChatSessions(updatedSessions);
+          }
+          setEditingChatId(null);
+          setEditingTitle('');
         }
       }
     };
@@ -128,7 +139,7 @@ const AIChatPage: React.FC = () => {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [editingChatId, editingTitle]);
+  }, [editingChatId, editingTitle, chatSessions]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -199,7 +210,6 @@ const AIChatPage: React.FC = () => {
       }
     }
     
-    setActiveChatId(chatId);
     // Load the specific chat history for this session
     const chatHistoryKey = `opsconductor_ai_chat_history_${chatId}`;
     const existingHistory = localStorage.getItem(chatHistoryKey);
@@ -212,10 +222,8 @@ const AIChatPage: React.FC = () => {
       localStorage.removeItem('opsconductor_ai_chat_history');
     }
     
-    // Refresh the AIChat component to load the new chat
-    if (aiChatRef.current) {
-      aiChatRef.current.clearChat();
-    }
+    // Switch to the new chat - the AIChat component will reload history via useEffect
+    setActiveChatId(chatId);
   };
 
   // Update chat session when messages change

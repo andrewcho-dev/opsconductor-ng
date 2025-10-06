@@ -57,7 +57,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
     scrollToBottom();
   }, [messages]);
 
-  // Load chat history on mount
+  // Load chat history when activeChatId changes
   useEffect(() => {
     const loadChatHistory = () => {
       try {
@@ -68,9 +68,13 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
             timestamp: new Date(msg.timestamp)
           }));
           setMessages(history);
+        } else {
+          // Clear messages if no history exists for this chat
+          setMessages([]);
         }
       } catch (error) {
         console.error('Failed to load chat history:', error);
+        setMessages([]);
       }
     };
     loadChatHistory();
