@@ -424,22 +424,66 @@ async def get_comprehensive_asset_context(
                 for status, count in sorted(status_counts.items(), key=lambda x: x[1], reverse=True):
                     context_parts.append(f"  • {status}: {count}")
                 
-                # Add sample assets (first 10)
+                # Add COMPLETE asset data with ALL fields
                 context_parts.extend([
                     "",
-                    f"Sample Assets (showing {min(10, total)} of {total}):",
+                    f"=== COMPLETE ASSET INVENTORY (ALL {total} ASSETS WITH FULL DETAILS) ===",
+                    ""
                 ])
-                for i, asset in enumerate(assets[:10], 1):
-                    hostname = asset.get("hostname", "N/A")
-                    ip = asset.get("ip_address", "N/A")
-                    os_type = asset.get("os_type", "N/A")
-                    env = asset.get("environment", "N/A")
-                    context_parts.append(f"  {i}. {hostname} ({ip}) - {os_type} [{env}]")
+                
+                # Include ALL assets with ALL fields (not just a sample!)
+                for i, asset in enumerate(assets, 1):
+                    context_parts.append(f"Asset #{i}:")
+                    context_parts.append(f"  ID: {asset.get('id', 'N/A')}")
+                    context_parts.append(f"  Name: {asset.get('name', 'N/A')}")
+                    context_parts.append(f"  Hostname: {asset.get('hostname', 'N/A')}")
+                    context_parts.append(f"  IP Address: {asset.get('ip_address', 'N/A')}")
+                    context_parts.append(f"  Description: {asset.get('description', 'N/A')}")
+                    context_parts.append(f"  Tags: {asset.get('tags', [])}")
+                    context_parts.append(f"  OS Type: {asset.get('os_type', 'N/A')}")
+                    context_parts.append(f"  OS Version: {asset.get('os_version', 'N/A')}")
+                    context_parts.append(f"  Device Type: {asset.get('device_type', 'N/A')}")
+                    context_parts.append(f"  Hardware Make: {asset.get('hardware_make', 'N/A')}")
+                    context_parts.append(f"  Hardware Model: {asset.get('hardware_model', 'N/A')}")
+                    context_parts.append(f"  Serial Number: {asset.get('serial_number', 'N/A')}")
+                    context_parts.append(f"  Service Type: {asset.get('service_type', 'N/A')}")
+                    context_parts.append(f"  Port: {asset.get('port', 'N/A')}")
+                    context_parts.append(f"  Is Secure: {asset.get('is_secure', 'N/A')}")
+                    context_parts.append(f"  Credential Type: {asset.get('credential_type', 'N/A')}")
+                    context_parts.append(f"  Username: {asset.get('username', 'N/A')}")
+                    context_parts.append(f"  Domain: {asset.get('domain', 'N/A')}")
+                    context_parts.append(f"  Has Credentials: {asset.get('has_credentials', 'N/A')}")
+                    context_parts.append(f"  Database Type: {asset.get('database_type', 'N/A')}")
+                    context_parts.append(f"  Database Name: {asset.get('database_name', 'N/A')}")
+                    context_parts.append(f"  Secondary Service Type: {asset.get('secondary_service_type', 'N/A')}")
+                    context_parts.append(f"  Secondary Port: {asset.get('secondary_port', 'N/A')}")
+                    context_parts.append(f"  FTP Type: {asset.get('ftp_type', 'N/A')}")
+                    context_parts.append(f"  Additional Services: {asset.get('additional_services', [])}")
+                    context_parts.append(f"  Physical Address: {asset.get('physical_address', 'N/A')}")
+                    context_parts.append(f"  Data Center: {asset.get('data_center', 'N/A')}")
+                    context_parts.append(f"  Building: {asset.get('building', 'N/A')}")
+                    context_parts.append(f"  Room: {asset.get('room', 'N/A')}")
+                    context_parts.append(f"  Rack Position: {asset.get('rack_position', 'N/A')}")
+                    context_parts.append(f"  Rack Location: {asset.get('rack_location', 'N/A')}")
+                    context_parts.append(f"  GPS Coordinates: {asset.get('gps_coordinates', 'N/A')}")
+                    context_parts.append(f"  Is Active: {asset.get('is_active', 'N/A')}")
+                    context_parts.append(f"  Connection Status: {asset.get('connection_status', 'N/A')}")
+                    context_parts.append(f"  Status: {asset.get('status', 'N/A')}")
+                    context_parts.append(f"  Environment: {asset.get('environment', 'N/A')}")
+                    context_parts.append(f"  Criticality: {asset.get('criticality', 'N/A')}")
+                    context_parts.append(f"  Owner: {asset.get('owner', 'N/A')}")
+                    context_parts.append(f"  Support Contact: {asset.get('support_contact', 'N/A')}")
+                    context_parts.append(f"  Contract Number: {asset.get('contract_number', 'N/A')}")
+                    context_parts.append(f"  Notes: {asset.get('notes', 'N/A')}")
+                    context_parts.append(f"  Created At: {asset.get('created_at', 'N/A')}")
+                    context_parts.append(f"  Updated At: {asset.get('updated_at', 'N/A')}")
+                    context_parts.append("")  # Blank line between assets
                 
                 context_parts.extend([
+                    "=== END OF ASSET INVENTORY ===",
                     "",
-                    "NOTE: You can query ANY asset by name, hostname, or IP address.",
-                    "NOTE: You can filter by os_type, environment, status, and other fields.",
+                    "IMPORTANT: Use the EXACT data above to answer questions.",
+                    "All asset fields are provided - use them to give accurate, detailed answers.",
                 ])
                 
         except Exception as e:
