@@ -100,6 +100,12 @@ class ConfidenceScorer:
         entities: List[EntityV1]
     ) -> float:
         """Calculate confidence using rule-based approach"""
+        
+        # SPECIAL CASE: Simple, self-contained questions should have HIGH confidence
+        # These are clear, unambiguous requests that don't need clarification
+        if self._is_simple_self_contained_question(user_request, intent):
+            return 0.95  # Very high confidence for simple questions
+        
         confidence_factors = []
         
         # Factor 1: Intent confidence
@@ -130,6 +136,65 @@ class ConfidenceScorer:
         overall_confidence = sum(f * w for f, w in zip(confidence_factors, weights))
         
         return min(1.0, max(0.0, overall_confidence))
+    
+    def _is_simple_self_contained_question(self, user_request: str, intent: IntentV1) -> bool:
+        """
+        Detect simple, self-contained questions that don't need clarification.
+        Examples: "what is 2+2", "what is kubernetes", "explain docker", "calculate 5*10"
+        """
+        request_lower = user_request.lower().strip()
+        
+        # Must be an information request
+        if intent.category != "information":
+            return False
+        
+        # Pattern 1: Simple math questions
+        # "what is 2+2", "calculate 5*10", "compute 100/5"
+        math_patterns = [
+            "what is",
+            "what's",
+            "calculate",
+            "compute",
+            "solve"
+        ]
+        has_math_pattern = any(pattern in request_lower for pattern in math_patterns)
+        has_numbers = any(char.isdigit() for char in user_request)
+        has_math_operators = any(op in user_request for op in ['+', '-', '*', '/', '='])
+        
+        if has_math_pattern and has_numbers and has_math_operators:
+            return True
+        
+        # Pattern 2: Simple definition/explanation questions
+        # "what is kubernetes", "explain docker", "define CI/CD"
+        definition_patterns = [
+            "what is",
+            "what's",
+            "what are",
+            "explain",
+            "define",
+            "describe"
+        ]
+        has_definition_pattern = any(pattern in request_lower for pattern in definition_patterns)
+        word_count = len(user_request.split())
+        
+        # Simple definition questions are typically 2-6 words
+        if has_definition_pattern and 2 <= word_count <= 6:
+            return True
+        
+        # Pattern 3: Direct information queries with clear intent
+        # "help", "status", "version", "list tools"
+        direct_queries = [
+            "help",
+            "status", 
+            "version",
+            "list tools",
+            "show tools",
+            "available tools"
+        ]
+        if any(query == request_lower or query in request_lower for query in direct_queries):
+            return True
+        
+        return False
     
     def _assess_request_clarity(self, user_request: str) -> float:
         """Assess clarity of the user request"""
