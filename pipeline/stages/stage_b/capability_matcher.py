@@ -3,10 +3,13 @@ Capability Matcher for Stage B Selector
 Matches decision requirements to available tool capabilities
 """
 
+import logging
 from typing import List, Dict, Set, Tuple, Optional
 from pipeline.schemas.decision_v1 import DecisionV1, EntityV1, IntentV1
 from pipeline.schemas.selection_v1 import Tool, SelectedTool, PermissionLevel, RiskLevel
 from .tool_registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 class CapabilityMatch:
     """Represents a match between decision requirements and tool capabilities"""
@@ -183,7 +186,18 @@ class CapabilityMatcher:
             "asset_management_list_credentials": ["credential_access", "secret_retrieval"]
         }
         
-        expected_capabilities = intent_capability_map.get(intent_key, [])
+        # NO FALLBACKS! If intent_key is not mapped, we should know about it
+        if intent_key not in intent_capability_map:
+            # Log warning but don't fail - this is a scoring function
+            # Return empty list so score will be low (0.1) but not crash
+            logger.warning(
+                f"Unknown intent key '{intent_key}' in capability matcher. "
+                f"This should be added to intent_capability_map. "
+                f"Available keys: {sorted(intent_capability_map.keys())}"
+            )
+            expected_capabilities = []
+        else:
+            expected_capabilities = intent_capability_map[intent_key]
         
         # Check for exact matches
         tool_capability_names = {cap.name for cap in tool.capabilities}

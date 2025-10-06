@@ -255,53 +255,27 @@ class StageBSelector:
     
     def _rule_based_tool_selection(self, matches: List[CapabilityMatch], 
                                  decision: DecisionV1) -> List[SelectedTool]:
-        """Rule-based tool selection as fallback"""
+        """Rule-based tool selection - NO FALLBACKS!"""
         
         if not matches:
-            return self._create_default_tools(decision)
+            raise ValueError(
+                f"No capability matches found for action '{decision.intent.action}'. "
+                f"This indicates a problem with capability mapping or tool registration. "
+                f"Decision: {decision.intent.category}/{decision.intent.action}"
+            )
         
         # Use capability matcher's selection logic
         selected_tools = self.capability_matcher.select_optimal_tools(matches, decision)
         
-        # Ensure we have at least one tool
-        if not selected_tools and matches:
-            # Select the highest confidence match
-            best_match = max(matches, key=lambda x: x.confidence)
-            selected_tools = [
-                SelectedTool(
-                    tool_name=best_match.tool.name,
-                    justification=best_match.justification,
-                    inputs_needed=best_match.missing_inputs,
-                    execution_order=1,
-                    depends_on=best_match.tool.dependencies
-                )
-            ]
+        # NO FALLBACKS! If no tools selected, raise an error
+        if not selected_tools:
+            raise ValueError(
+                f"Capability matcher failed to select tools from {len(matches)} matches. "
+                f"Matches: {[m.tool.name for m in matches]}. "
+                f"This indicates a problem with the selection logic."
+            )
         
         return selected_tools
-    
-    def _create_default_tools(self, decision: DecisionV1) -> List[SelectedTool]:
-        """Create default tool selection when no matches found"""
-        
-        # Default tools based on intent category
-        default_mappings = {
-            "automation": "systemctl",
-            "monitoring": "ps",
-            "troubleshooting": "journalctl",
-            "configuration": "config_manager",
-            "information": "info_display"
-        }
-        
-        default_tool_name = default_mappings.get(decision.intent.category, "info_display")
-        
-        return [
-            SelectedTool(
-                tool_name=default_tool_name,
-                justification=f"Default tool for {decision.intent.category} operations",
-                inputs_needed=["user_request"],
-                execution_order=1,
-                depends_on=[]
-            )
-        ]
     
     def _calculate_additional_inputs(self, decision: DecisionV1, 
                                    selected_tools: List[SelectedTool]) -> List[str]:
@@ -477,37 +451,6 @@ class StageBSelector:
         unique_id = str(uuid.uuid4())[:8]
         return f"sel_{timestamp}_{unique_id}"
     
-    async def _create_fallback_selection(self, decision: DecisionV1, error: str) -> SelectionV1:
-        """Create fallback selection when main selection fails"""
-        
-        # Create minimal safe selection
-        fallback_tools = self._create_default_tools(decision)
-        
-        # Create conservative policy
-        fallback_policy = ExecutionPolicy(
-            requires_approval=True,  # Conservative: require approval
-            production_environment=True,  # Assume production for safety
-            risk_level="medium",  # Conservative risk level
-            max_execution_time=60,
-            parallel_execution=False,
-            rollback_required=True
-        )
-        
-        return SelectionV1(
-            selection_id=self._generate_selection_id(),
-            decision_id=decision.decision_id,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            selected_tools=fallback_tools,
-            total_tools=len(fallback_tools),
-            policy=fallback_policy,
-            additional_inputs_needed=["user_confirmation"],
-            environment_requirements={"fallback_mode": True},
-            processing_time_ms=0,
-            selection_confidence=0.2,  # Low confidence for fallback
-            next_stage="stage_c",  # Always go to planner for fallback
-            ready_for_execution=False
-        )
-    
     def _extract_capabilities_from_decision(self, decision: DecisionV1) -> List[str]:
         """
         Extract required capabilities from DecisionV1
@@ -533,12 +476,29 @@ class StageBSelector:
             "get_asset": ["asset_query", "infrastructure_info"],
             "search_assets": ["asset_query", "infrastructure_info", "resource_listing"],
             "count_assets": ["asset_query", "infrastructure_info"],
+            "find_asset": ["asset_query", "infrastructure_info"],
+            "find_asset_by_ip": ["asset_query", "infrastructure_info"],
+            "query_assets": ["asset_query", "infrastructure_info", "resource_listing"],
+            "list_servers": ["asset_query", "infrastructure_info", "resource_listing"],
+            "list_hosts": ["asset_query", "infrastructure_info", "resource_listing"],
+            "get_asset_info": ["asset_query", "infrastructure_info"],
+            "asset_count": ["asset_query", "infrastructure_info"],
+            "asset_discovery": ["asset_query", "infrastructure_info", "resource_listing"],
             "get_credentials": ["credential_access", "secret_retrieval"],
             "list_credentials": ["credential_access", "secret_retrieval"]
         }
         
         action = decision.intent.action
-        capabilities = capability_mapping.get(action, ["system_monitoring"])  # Default to monitoring for unknown actions
+        
+        # NO FALLBACKS! If action is not mapped, raise an error
+        if action not in capability_mapping:
+            raise ValueError(
+                f"Unknown action '{action}' from Stage A. "
+                f"This action must be added to capability_mapping in selector.py. "
+                f"Available actions: {sorted(capability_mapping.keys())}"
+            )
+        
+        capabilities = capability_mapping[action]
         
         return capabilities
     
@@ -593,7 +553,15 @@ class StageBSelector:
             "secret_retrieval": ["secret_name"]
         }
         
-        return input_mapping.get(capability_name, ["user_input"])
+        # NO FALLBACKS! If capability is not mapped, raise an error
+        if capability_name not in input_mapping:
+            raise ValueError(
+                f"Unknown capability '{capability_name}'. "
+                f"This capability must be added to input_mapping in selector.py. "
+                f"Available capabilities: {sorted(input_mapping.keys())}"
+            )
+        
+        return input_mapping[capability_name]
     
     def _build_execution_policy_from_result(self, tool_result, decision: DecisionV1) -> ExecutionPolicy:
         """
