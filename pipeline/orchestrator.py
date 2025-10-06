@@ -25,6 +25,7 @@ from pipeline.stages.stage_e.executor import StageEExecutor
 from pipeline.schemas.decision_v1 import DecisionV1, ConfidenceLevel
 from pipeline.schemas.response_v1 import ResponseV1, ResponseType, ClarificationResponse, ClarificationRequest
 from execution.dtos import ExecutionRequest
+from pipeline.conversation_history import get_conversation_manager
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,8 @@ class PipelineOrchestrator:
         self, 
         user_request: str, 
         request_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> PipelineResult:
         """
         Process a user request through the complete 4-stage pipeline with confidence-driven clarification.
@@ -143,6 +145,7 @@ class PipelineOrchestrator:
             user_request: The user's natural language request
             request_id: Optional request identifier for tracking
             context: Optional context including clarification history
+            session_id: Optional session identifier for conversation history
             
         Returns:
             PipelineResult containing the response and execution metrics
@@ -162,6 +165,17 @@ class PipelineOrchestrator:
         context.setdefault("clarification_attempts", 0)
         context.setdefault("original_request", user_request)
         context.setdefault("clarification_history", [])
+        
+        # Add conversation history to context if session_id is provided
+        if session_id:
+            conversation_manager = get_conversation_manager()
+            # Add user message to history
+            conversation_manager.add_message(session_id, "user", user_request)
+            # Get formatted history for context injection
+            conversation_history = conversation_manager.get_formatted_history(session_id, max_messages=10)
+            context["conversation_history"] = conversation_history
+            context["session_id"] = session_id
+            logger.info(f"Session {session_id}: {conversation_manager.get_message_count(session_id)} messages in history")
         
         try:
             # Stage A: Classification
@@ -193,6 +207,11 @@ class PipelineOrchestrator:
                     timestamp=start_time,
                     status=PipelineStatus.COMPLETED
                 )
+                
+                # Store assistant response in conversation history
+                if session_id and response_result:
+                    conversation_manager = get_conversation_manager()
+                    conversation_manager.add_message(session_id, "assistant", response_result.message)
                 
                 return PipelineResult(
                     response=response_result,
@@ -403,6 +422,11 @@ class PipelineOrchestrator:
             self._success_count += 1
             self._update_metrics_history(metrics)
             
+            # Store assistant response in conversation history
+            if session_id and response_result:
+                conversation_manager = get_conversation_manager()
+                conversation_manager.add_message(session_id, "assistant", response_result.message)
+            
             return PipelineResult(
                 response=response_result,
                 metrics=metrics,
@@ -466,7 +490,7 @@ class PipelineOrchestrator:
     async def _execute_stage_c(self, decision: DecisionV1, selection: Any) -> Any:
         """Execute Stage C: Planning."""
         try:
-            result = self.stage_c.create_plan(decision, selection)
+            result = await self.stage_c.create_plan(decision, selection)
             return result
         except Exception as e:
             raise Exception(f"Stage C failed: {str(e)}")
@@ -705,6 +729,32 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
         
         return missing_info
     
+    def _format_asset_list_directly(self, assets: List[Dict]) -> str:
+        """Format asset list directly without LLM - for simple listing queries."""
+        if not assets:
+            return "No assets found."
+        
+        result = f"### Asset List ({len(assets)} total)\n\n"
+        
+        for i, asset in enumerate(assets, 1):
+            result += f"**{i}. {asset.get('name', 'Unknown')}**\n"
+            result += f"   - Hostname: {asset.get('hostname', 'N/A')}\n"
+            result += f"   - IP Address: {asset.get('ip_address', 'N/A')}\n"
+            result += f"   - OS: {asset.get('os_version', asset.get('os_type', 'N/A'))}\n"
+            result += f"   - Device Type: {asset.get('device_type', 'N/A')}\n"
+            result += f"   - Environment: {asset.get('environment', 'N/A')}\n"
+            result += f"   - Service: {asset.get('service_type', 'N/A')}"
+            if asset.get('database_type'):
+                result += f" ({asset.get('database_type')})"
+            result += f"\n"
+            result += f"   - Data Center: {asset.get('data_center', 'N/A')}\n"
+            result += f"   - Criticality: {asset.get('criticality', 'N/A')}\n"
+            if asset.get('description'):
+                result += f"   - Description: {asset.get('description')}\n"
+            result += "\n"
+        
+        return result
+    
     async def _analyze_execution_results(
         self,
         user_request: str,
@@ -725,6 +775,7 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
         try:
             # Extract relevant data from execution steps
             execution_data = []
+            raw_assets = []
             for step in execution_steps:
                 if step.output_data and isinstance(step.output_data, dict):
                     if step.output_data.get("status") != "failed":
@@ -734,30 +785,110 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
                             "count": step.output_data.get("count"),
                             "query_type": step.output_data.get("query_type")
                         })
+                        # Extract raw asset data for direct formatting
+                        if step.output_data.get("data") and isinstance(step.output_data.get("data"), list):
+                            raw_assets.extend(step.output_data.get("data"))
             
             if not execution_data:
                 return "No data was retrieved from the execution."
             
+            # Check if this is a simple asset listing query - format directly without LLM!
+            is_simple_asset_list = (
+                decision and 
+                decision.intent.category == "asset_management" and
+                any(keyword in user_request.lower() for keyword in ["list all", "show all", "list assets", "show assets"])
+            )
+            
+            if is_simple_asset_list and raw_assets:
+                logger.info(f"🔍 ORCHESTRATOR: Simple asset list detected, formatting {len(raw_assets)} assets directly")
+                return self._format_asset_list_directly(raw_assets)
+            
+            
+            # Check if this is an asset-related query and inject asset schema context
+            is_asset_query = (
+                decision and 
+                decision.intent.category == "asset_management"
+            ) or any(
+                keyword in user_request.lower() 
+                for keyword in ["asset", "server", "host", "machine", "device", "database", "redis", "postgres", "mysql", "linux", "windows"]
+            )
+            
+            asset_schema_context = ""
+            if is_asset_query:
+                logger.info("🔍 ORCHESTRATOR: Detected asset query, injecting asset schema context")
+                asset_schema_context = """
+
+**Asset Data Schema:**
+Each asset in the data has the following fields:
+- id: Unique asset identifier
+- name: Asset name (e.g., "prod-db-primary-01")
+- hostname: Fully qualified hostname
+- ip_address: IP address
+- description: Asset description
+- tags: Array of tags (e.g., ["database", "production", "postgresql"])
+- os_type: Operating system type (e.g., "linux", "windows")
+- os_version: OS version (e.g., "Ubuntu 22.04 LTS", "Windows Server 2022")
+- device_type: Type of device (e.g., "server", "workstation")
+- hardware_make: Hardware manufacturer (e.g., "Dell", "HP", "Cisco")
+- hardware_model: Hardware model
+- serial_number: Serial number
+- physical_address: Physical location address
+- data_center: Data center name (e.g., "DC-West-01", "DC-East-01")
+- building, room, rack_position, rack_location: Physical location details
+- gps_coordinates: GPS coordinates
+- service_type: Primary service type (e.g., "postgresql", "ssh", "winrm", "redis", "mongodb", "elasticsearch")
+- port: Primary service port
+- is_secure: Whether the service uses encryption
+- credential_type: Type of credentials (e.g., "password", "ssh_key")
+- username: Service username
+- domain: Windows domain (if applicable)
+- database_type: Database type (e.g., "postgresql", "mysql", "mongodb", "redis", "elasticsearch")
+- database_name: Database name
+- secondary_service_type: Secondary service (usually "ssh" or "rdp")
+- secondary_port: Secondary service port
+- status: Asset status (e.g., "active")
+- environment: Environment (e.g., "production", "development", "staging")
+- criticality: Criticality level (e.g., "critical", "high", "medium", "low")
+- owner: Team or person responsible
+- support_contact: Support contact email
+- contract_number: Support contract number
+- notes: Operational notes and details
+- connection_status: Current connection status
+- created_at, updated_at: Timestamps
+
+**IMPORTANT:** When analyzing asset data, look at ALL these fields to provide accurate answers."""
+            
             # Build prompt for LLM to analyze results
+            # Format execution data as JSON for better LLM parsing
+            import json
+            execution_data_json = json.dumps(execution_data, indent=2, default=str)
+            
+            logger.info(f"🔍 ORCHESTRATOR: Execution data length: {len(execution_data_json)} chars")
+            logger.info(f"🔍 ORCHESTRATOR: Execution data preview: {execution_data_json[:500]}...")
+            
             prompt = f"""You are analyzing execution results to answer a user's question.
 
 **User's Question:** {user_request}
+{asset_schema_context}
 
-**Execution Results:**
-{execution_data}
+**Execution Results (JSON format):**
+```json
+{execution_data_json}
+```
 
 **Your Task:**
 1. Extract the specific information the user asked for from the execution results
 2. Provide a clear, concise answer to their question
-3. If the data contains lists, summarize unique values
-4. Format the answer in a user-friendly way
+3. If the data contains lists of assets, analyze ALL fields in each asset object
+4. Format the answer in a user-friendly way with proper categorization
 
 **Important:**
 - Focus ONLY on answering the user's specific question
-- Don't just say "6 assets retrieved" - extract what they actually asked for
-- If they asked for OS types, list the unique OS types found
-- If they asked for counts, provide the counts
-- Be specific and direct
+- For asset queries, look at the ACTUAL data in each asset object, not just the count
+- If they asked "list all assets", provide a summary with key details (name, hostname, OS, environment, service type)
+- If they asked for specific attributes (OS types, environments, locations), extract unique values from the data
+- If they asked for counts, provide accurate counts based on the data
+- Be specific and direct - analyze the actual data structure provided
 
 **Answer:**"""
 
@@ -765,14 +896,25 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
             from llm.client import LLMRequest
             llm_request = LLMRequest(
                 prompt=prompt,
-                temperature=0.3,  # Low temperature for factual extraction
-                max_tokens=500
+                temperature=0.1,  # Very low temperature for factual extraction
+                max_tokens=1000  # Increased for detailed asset listings
             )
+            
+            logger.info(f"🔍 ORCHESTRATOR: Sending prompt to LLM (length: {len(prompt)} chars)")
+            
+            # DEBUG: Save the full prompt to a file to see what's being sent
+            with open("/tmp/llm_prompt_debug.txt", "w") as f:
+                f.write(prompt)
+            logger.info("🔍 ORCHESTRATOR: Full prompt saved to /tmp/llm_prompt_debug.txt")
+            
             response = await self.llm_client.generate(llm_request)
             
             if response and response.content:
+                logger.info(f"🔍 ORCHESTRATOR: LLM response length: {len(response.content)} chars")
+                logger.info(f"🔍 ORCHESTRATOR: LLM response preview: {response.content[:500]}...")
                 return response.content.strip()
             else:
+                logger.warning("🔍 ORCHESTRATOR: LLM returned no content")
                 return "Unable to analyze execution results."
                 
         except Exception as e:

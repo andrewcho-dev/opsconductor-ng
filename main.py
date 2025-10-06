@@ -275,10 +275,12 @@ async def process_pipeline_request(request: PipelineRequest):
         # Get the global pipeline orchestrator with proper LLM client
         orchestrator = await get_pipeline_orchestrator(llm_client)
         
-        # Process the request through the integrated pipeline
+        # Process the request through the integrated pipeline with conversation history
         pipeline_result = await orchestrator.process_request(
             user_request=request.request,
-            request_id=request_id
+            request_id=request_id,
+            context=request.context,
+            session_id=request.session_id
         )
         
         if pipeline_result.success:

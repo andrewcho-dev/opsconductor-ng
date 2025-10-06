@@ -7,6 +7,7 @@ comprehensive, safe, executable step-by-step plans.
 
 import time
 import threading
+import logging
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -18,6 +19,8 @@ from .step_generator import StepGenerator
 from .dependency_resolver import DependencyResolver, DependencyError
 from .safety_planner import SafetyPlanner
 from .resource_planner import ResourcePlanner
+
+logger = logging.getLogger(__name__)
 
 
 class PlanningError(Exception):
@@ -66,7 +69,7 @@ class StageCPlanner:
             "fallback_plans_used": 0
         }
     
-    def create_plan(
+    async def create_plan(
         self, 
         decision: DecisionV1, 
         selection: SelectionV1,
@@ -90,7 +93,7 @@ class StageCPlanner:
         
         try:
             # Generate execution steps
-            steps = self._generate_execution_steps(decision, selection)
+            steps = await self._generate_execution_steps(decision, selection)
             
             # Check if we have any steps to work with
             if not steps:
@@ -136,31 +139,31 @@ class StageCPlanner:
             # Update error statistics
             self._update_stats(max(1, int((time.time() - start_time) * 1000)), success=False)
             
-            # Try fallback planning
-            try:
-                return self._create_fallback_plan(decision, selection, str(e))
-            except Exception as fallback_error:
-                raise PlanningError(
-                    f"Planning failed: {str(e)}. Fallback also failed: {str(fallback_error)}"
-                )
+            # FAIL FAST: No fallbacks! OpsConductor requires AI-BRAIN to function
+            raise PlanningError(
+                f"Stage C planning failed - OpsConductor requires AI-BRAIN (LLM) to function: {str(e)}"
+            )
     
-    def _generate_execution_steps(
+    async def _generate_execution_steps(
         self, 
         decision: DecisionV1, 
         selection: SelectionV1
     ) -> List:
         """Generate execution steps from decision and selection"""
         try:
-            # Use LLM for intelligent step generation if available
-            if self.llm_client and self._should_use_llm(decision, selection):
-                return self._generate_steps_with_llm(decision, selection)
+            # ALWAYS use LLM for intelligent step generation if available
+            if self.llm_client:
+                logger.info("🧠 Stage C using LLM for intelligent planning (NO RULES!)")
+                return await self._generate_steps_with_llm(decision, selection)
             else:
-                # Use rule-based step generation
-                return self.step_generator.generate_steps(decision, selection)
+                # No LLM available - fail fast
+                logger.error("❌ Stage C: No LLM client available - FAILING FAST")
+                raise PlanningError("LLM is required for Stage C planning - OpsConductor cannot function without AI-BRAIN")
         
         except Exception as e:
-            # Fallback to basic step generation
-            return self.step_generator.generate_steps(decision, selection)
+            # FAIL FAST: OpsConductor requires AI-BRAIN to function
+            logger.error(f"❌ Stage C: LLM planning failed - {str(e)}")
+            raise PlanningError(f"AI-BRAIN (LLM) unavailable for Stage C - OpsConductor cannot function without LLM: {str(e)}")
     
     def _resolve_dependencies(self, steps) -> List:
         """Resolve step dependencies and create proper execution order"""
@@ -198,28 +201,39 @@ class StageCPlanner:
         """Plan resources, observability, and execution metadata"""
         return self.resource_planner.create_resource_plan(steps, decision, selection)
     
-    def _should_use_llm(self, decision: DecisionV1, selection: SelectionV1) -> bool:
-        """Determine if LLM should be used for planning"""
-        # Use LLM for complex scenarios
-        complex_indicators = [
-            len(selection.selected_tools) > 3,  # Multiple tools
-            decision.risk_level.value in ["high", "critical"],  # High risk
-            selection.policy.requires_approval,  # Requires approval
-            len(decision.entities) > 5  # Complex entity extraction
-        ]
-        
-        return any(complex_indicators)
-    
-    def _generate_steps_with_llm(
+    async def _generate_steps_with_llm(
         self, 
         decision: DecisionV1, 
         selection: SelectionV1
     ) -> List:
         """Generate steps using LLM for intelligent planning"""
-        # This would integrate with the LLM client for intelligent step generation
-        # For now, fall back to rule-based generation
+        from ...schemas.plan_v1 import ExecutionStep
+        from llm.client import LLMRequest
+        import json
+        
         self._increment_stat("llm_calls_made")
-        return self.step_generator.generate_steps(decision, selection)
+        
+        # Build the system prompt with schema knowledge
+        system_prompt = self._build_planning_system_prompt()
+        
+        # Build the user prompt with decision and selection context
+        user_prompt = self._build_planning_user_prompt(decision, selection)
+        
+        # Create LLM request
+        llm_request = LLMRequest(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            temperature=0.1,  # Low temperature for consistent planning
+            max_tokens=2000
+        )
+        
+        # Get response from LLM
+        response = await self.llm_client.generate(llm_request)
+        
+        # Parse the response into execution steps
+        steps = self._parse_llm_planning_response(response.content, selection)
+        
+        return steps
     
     def _fix_dependency_issues(self, steps) -> List:
         """Attempt to fix common dependency issues"""
@@ -252,64 +266,7 @@ class StageCPlanner:
         
         return fixed_steps
     
-    def _create_fallback_plan(
-        self, 
-        decision: DecisionV1, 
-        selection: SelectionV1, 
-        error_message: str
-    ) -> PlanV1:
-        """Create a minimal fallback plan when main planning fails"""
-        self._increment_stat("fallback_plans_used")
-        
-        # Create a single, safe information-gathering step
-        from ...schemas.plan_v1 import ExecutionStep, SafetyCheck, RollbackStep, ObservabilityConfig
-        
-        fallback_step = ExecutionStep(
-            id="fallback_001_info_gathering",
-            description="Gather basic system information (fallback plan)",
-            tool="info_display",
-            inputs={"info_type": "system_status", "format": "basic"},
-            preconditions=["system_accessible"],
-            success_criteria=["information_retrieved"],
-            failure_handling="Log error and report to user",
-            estimated_duration=10,
-            depends_on=[],
-            execution_order=1
-        )
-        
-        safety_check = SafetyCheck(
-            check="Verify system is accessible for information gathering",
-            stage="before",
-            failure_action="abort"
-        )
-        
-        observability = ObservabilityConfig(
-            metrics_to_collect=["execution_time"],
-            logs_to_monitor=["/var/log/syslog"],
-            alerts_to_set=["execution_timeout"]
-        )
-        
-        metadata = ExecutionMetadata(
-            total_estimated_time=10,
-            risk_factors=["fallback", f"original_error: {error_message}"],
-            approval_points=[],
-            checkpoint_steps=["fallback_001_info_gathering"]
-        )
-        
-        execution_plan = ExecutionPlan(
-            steps=[fallback_step],
-            safety_checks=[safety_check],
-            rollback_plan=[],
-            observability=observability
-        )
-        
-        return PlanV1(
-            plan=execution_plan,
-            execution_metadata=metadata,
-            timestamp=datetime.now().isoformat(),
-            processing_time_ms=50  # Minimal processing time for fallback
-        )
-    
+
     def _update_stats(self, processing_time_ms: int, success: bool) -> None:
         """Update planning statistics (thread-safe)"""
         with self._stats_lock:
@@ -456,3 +413,167 @@ class StageCPlanner:
         optimized_plan.execution_metadata.risk_factors.append("plan_optimized")
         
         return optimized_plan
+    
+    def _build_planning_system_prompt(self) -> str:
+        """Build the system prompt for LLM-based planning with schema knowledge"""
+        return """You are Stage C Planner - the intelligent planning component of OpsConductor.
+
+Your role is to create detailed execution plans based on the user's intent and selected tools.
+
+# ASSET DATABASE SCHEMA
+When planning asset queries, you have access to the following fields in the assets database:
+
+**Basic Information:**
+- name: Asset name
+- hostname: Hostname
+- ip_address: IP address
+- description: Description
+- tags: List of tags
+
+**Device/Hardware:**
+- device_type: Type of device (server, router, switch, firewall, load_balancer, storage, other)
+- hardware_make: Hardware manufacturer
+- hardware_model: Hardware model
+- serial_number: Serial number
+
+**Operating System:**
+- os_type: OS type (linux, windows, macos, unix, other)
+- os_version: OS version
+
+**Location:**
+- physical_address: Physical address
+- data_center: Data center name
+- building: Building name
+- room: Room number
+- rack_position: Rack position
+- rack_location: Rack location
+- gps_coordinates: GPS coordinates
+
+**Status and Management:**
+- status: Status (active, inactive, maintenance, decommissioned)
+- environment: Environment (production, staging, development, testing)
+- criticality: Criticality level (low, medium, high, critical)
+- owner: Owner name
+- support_contact: Support contact
+- contract_number: Contract number
+
+**Services:**
+- service_type: Primary service type (ssh, rdp, http, https, database, ftp, etc.)
+- port: Primary service port
+- is_secure: Whether primary service is secure
+- database_type: Database type (if applicable: mysql, postgresql, mongodb, oracle, mssql, redis)
+- database_name: Database name (if applicable)
+- secondary_service_type: Secondary service type
+- secondary_port: Secondary service port
+
+# YOUR TASK
+For each selected tool, create an execution step with:
+1. **Intelligent field selection**: Choose ONLY the fields needed to answer the user's query
+   - For "list all" queries: Select key identifying fields (name, hostname, ip_address, os_version, device_type, environment, service_type, database_type, criticality)
+   - For specific queries: Select only relevant fields
+   - NEVER request all fields unless explicitly needed
+
+2. **Proper parameters**: Extract query parameters from the user's intent
+   - query_type: "list_all", "filter", "search", "get_by_id"
+   - filters: Dictionary of field filters (e.g., {"environment": "production", "device_type": "server"})
+   - fields: List of field names to retrieve (CRITICAL - be selective!)
+
+3. **Clear descriptions**: Describe what each step will do
+
+4. **Dependencies**: Identify if steps depend on each other
+
+Return your response as a JSON array of execution steps with this structure:
+[
+  {
+    "tool": "asset-service-query",
+    "description": "Brief description of what this step does",
+    "inputs": {
+      "query_type": "list_all" | "filter" | "search" | "get_by_id",
+      "filters": {},
+      "fields": ["field1", "field2", ...],
+      "search_term": "optional search term",
+      "asset_id": "optional asset ID"
+    },
+    "preconditions": ["list of preconditions"],
+    "success_criteria": ["list of success criteria"],
+    "failure_handling": "what to do if this step fails",
+    "estimated_duration": 10
+  }
+]
+
+CRITICAL: Be intelligent about field selection. Don't fetch all 50+ fields when only 5-10 are needed!"""
+
+    def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1) -> str:
+        """Build the user prompt with decision and selection context"""
+        import json
+        
+        # Extract key information
+        user_query = decision.original_request
+        intent_category = decision.intent.category
+        intent_action = decision.intent.action
+        entities = decision.entities
+        selected_tools = [tool.tool_name for tool in selection.selected_tools]
+        
+        prompt = f"""Create an execution plan for the following request:
+
+**User Query:** {user_query}
+
+**Intent:**
+- Category: {intent_category}
+- Action: {intent_action}
+
+**Extracted Entities:**
+{json.dumps(entities, indent=2)}
+
+**Selected Tools:**
+{json.dumps(selected_tools, indent=2)}
+
+**Tool Details:**
+"""
+        
+        for tool in selection.selected_tools:
+            prompt += f"\n- {tool.tool_name}: {tool.justification}\n"
+        
+        prompt += "\nGenerate the execution steps as a JSON array. Remember to be intelligent about field selection!"
+        
+        return prompt
+    
+    def _parse_llm_planning_response(self, response_content: str, selection: SelectionV1) -> List:
+        """Parse LLM response into execution steps"""
+        from ...schemas.plan_v1 import ExecutionStep
+        import json
+        import uuid
+        
+        try:
+            # Extract JSON from response (handle markdown code blocks)
+            content = response_content.strip()
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+            
+            # Parse JSON
+            steps_data = json.loads(content)
+            
+            # Convert to ExecutionStep objects
+            steps = []
+            for idx, step_data in enumerate(steps_data):
+                step = ExecutionStep(
+                    id=f"step_{uuid.uuid4().hex[:8]}",
+                    description=step_data.get("description", "Execute operation"),
+                    tool=step_data.get("tool"),
+                    inputs=step_data.get("inputs", {}),
+                    preconditions=step_data.get("preconditions", []),
+                    success_criteria=step_data.get("success_criteria", ["operation_completed"]),
+                    failure_handling=step_data.get("failure_handling", "Log error and abort"),
+                    estimated_duration=step_data.get("estimated_duration", 10),
+                    depends_on=[],
+                    execution_order=idx + 1
+                )
+                steps.append(step)
+            
+            return steps
+            
+        except Exception as e:
+            # If LLM parsing fails, raise error - no fallback to rules!
+            raise PlanningError(f"Failed to parse LLM planning response: {str(e)}\nResponse: {response_content}")

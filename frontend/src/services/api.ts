@@ -706,9 +706,11 @@ export const aiApi = {
   process: async (
     request: string, 
     context?: any,
-    onProgress?: (status: string) => void
+    onProgress?: (status: string) => void,
+    sessionId?: string
   ): Promise<any> => {
     console.log('🚀 Sending AI pipeline request:', request);
+    console.log('📋 Session ID:', sessionId);
     
     // Retry configuration
     const maxRetries = 2;
@@ -726,7 +728,7 @@ export const aiApi = {
           request: request,
           context: context || {},
           user_id: `user_${Date.now()}`,
-          session_id: `session_${Date.now()}`
+          session_id: sessionId || `session_${Date.now()}`
         }, {
           timeout: 120000
         });

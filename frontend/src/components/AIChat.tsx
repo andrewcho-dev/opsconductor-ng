@@ -30,6 +30,24 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Generate persistent session ID - ONE per chat TAB (tied to activeChatId)
+  const [sessionId, setSessionId] = useState<string>(() => {
+    // Each chat tab gets its own session ID
+    const chatId = props.activeChatId || 'default';
+    const storageKey = `opsconductor_session_${chatId}`;
+    
+    // Try to load existing session ID for this chat tab
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      return saved;
+    }
+    
+    // Generate new session ID for this chat tab
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    localStorage.setItem(storageKey, newSessionId);
+    return newSessionId;
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -69,10 +87,33 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
     }
   }, [messages]);
 
+  // Update session ID when switching chat tabs
+  useEffect(() => {
+    const chatId = props.activeChatId || 'default';
+    const storageKey = `opsconductor_session_${chatId}`;
+    
+    // Try to load existing session ID for this chat tab
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      setSessionId(saved);
+    } else {
+      // Generate new session ID for this new chat tab
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      localStorage.setItem(storageKey, newSessionId);
+      setSessionId(newSessionId);
+    }
+  }, [props.activeChatId]);
+
   useImperativeHandle(ref, () => ({
     clearChat: () => {
       setMessages([]);
       localStorage.removeItem('opsconductor_ai_chat_history');
+      // Generate NEW session ID for this chat tab when clearing
+      const chatId = props.activeChatId || 'default';
+      const storageKey = `opsconductor_session_${chatId}`;
+      const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      localStorage.setItem(storageKey, newSessionId);
+      setSessionId(newSessionId);
     }
   }));
 
@@ -107,7 +148,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
     };
     setMessages(prev => [...prev, loadingMessage]);
 
-    // Call the real AI Pipeline API with progress callback
+    // Call the real AI Pipeline API with progress callback and session ID
     try {
       const response = await aiApi.process(
         userMessage.content,
@@ -119,7 +160,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
               ? { ...msg, loadingStatus: status }
               : msg
           ));
-        }
+        },
+        sessionId  // Pass the persistent session ID for this chat tab
       );
       
       let aiContent = '';

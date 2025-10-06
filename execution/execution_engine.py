@@ -569,11 +569,25 @@ class ExecutionEngine:
                 # Fetch all assets
                 assets = await self.asset_client.get_all_assets(limit=limit)
                 
+                # Filter fields if specified
+                if fields and len(fields) > 0:
+                    filtered_data = []
+                    for asset in assets:
+                        asset_dict = asset.dict() if hasattr(asset, 'dict') else asset
+                        # Only include requested fields
+                        filtered_asset = {field: asset_dict.get(field) for field in fields if field in asset_dict}
+                        filtered_data.append(filtered_asset)
+                    data = filtered_data
+                else:
+                    # Return all fields if no field filter specified
+                    data = [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets]
+                
                 return {
                     "status": "success",
                     "count": len(assets),
-                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "data": data,
                     "query_type": query_type,
+                    "fields_requested": fields if fields else "all",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             
@@ -596,12 +610,24 @@ class ExecutionEngine:
                 
                 assets = await self.asset_client.get_assets_by_type(asset_type, limit=limit)
                 
+                # Filter fields if specified
+                if fields and len(fields) > 0:
+                    filtered_data = []
+                    for asset in assets:
+                        asset_dict = asset.dict() if hasattr(asset, 'dict') else asset
+                        filtered_asset = {field: asset_dict.get(field) for field in fields if field in asset_dict}
+                        filtered_data.append(filtered_asset)
+                    data = filtered_data
+                else:
+                    data = [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets]
+                
                 return {
                     "status": "success",
                     "count": len(assets),
-                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "data": data,
                     "query_type": query_type,
                     "filter": {"type": asset_type},
+                    "fields_requested": fields if fields else "all",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             
@@ -610,11 +636,23 @@ class ExecutionEngine:
                 logger.warning(f"Unknown query_type: {query_type}, defaulting to list_all")
                 assets = await self.asset_client.get_all_assets(limit=limit)
                 
+                # Filter fields if specified
+                if fields and len(fields) > 0:
+                    filtered_data = []
+                    for asset in assets:
+                        asset_dict = asset.dict() if hasattr(asset, 'dict') else asset
+                        filtered_asset = {field: asset_dict.get(field) for field in fields if field in asset_dict}
+                        filtered_data.append(filtered_asset)
+                    data = filtered_data
+                else:
+                    data = [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets]
+                
                 return {
                     "status": "success",
                     "count": len(assets),
-                    "data": [asset.dict() if hasattr(asset, 'dict') else asset for asset in assets],
+                    "data": data,
                     "query_type": "list_all",
+                    "fields_requested": fields if fields else "all",
                     "timestamp": datetime.utcnow().isoformat(),
                 }
         

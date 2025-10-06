@@ -680,8 +680,14 @@ class StageDAnswerer:
             # Check if this is an asset-related query
             should_inject_assets = should_inject_asset_context(user_request)
             
-            # Build system prompt with optional asset context
+            # Build system prompt with optional asset context and conversation history
             system_prompt = "You are a helpful assistant that answers questions directly and accurately."
+            
+            # Inject conversation history if available
+            conversation_history = ""
+            if context and "conversation_history" in context:
+                conversation_history = context["conversation_history"]
+                logger.info(f"📜 Injecting conversation history into response generation")
             
             if should_inject_assets:
                 logger.info(f"🚀 FAST PATH: Detected asset query, injecting comprehensive asset context")
@@ -712,12 +718,20 @@ IMPORTANT INSTRUCTIONS:
                     logger.error(f"Failed to inject asset context: {e}")
                     # Continue without asset context
             
-            # Build prompt
-            prompt = f"""Answer this question directly and concisely:
-
-Question: {user_request}
-
-Provide a clear, accurate answer. If you have asset data, use it. Otherwise, answer based on general knowledge."""
+            # Build prompt with conversation history
+            prompt_parts = []
+            
+            # Add conversation history if available
+            if conversation_history:
+                prompt_parts.append(conversation_history)
+                prompt_parts.append("## Current Question:")
+                prompt_parts.append("")
+            
+            prompt_parts.append(f"Question: {user_request}")
+            prompt_parts.append("")
+            prompt_parts.append("Provide a clear, accurate answer. If you have asset data, use it. If this question refers to previous conversation, use the conversation history above. Otherwise, answer based on general knowledge.")
+            
+            prompt = "\n".join(prompt_parts)
 
             # Use LLM to generate direct response
             from llm.client import LLMRequest

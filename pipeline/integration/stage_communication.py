@@ -381,7 +381,7 @@ class StageCommunicationValidator:
             requires_approval=False,
             next_stage="stage_b"
         )
-        return self.stage_c.create_plan(decision, stage_b_output)
+        return await self.stage_c.create_plan(decision, stage_b_output)
     
     async def _test_c_to_d(self, stage_c_output: PlanV1) -> ResponseV1:
         """Test Stage C → Stage D communication."""
