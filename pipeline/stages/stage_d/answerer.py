@@ -92,7 +92,11 @@ class StageDAnswerer:
             logger.info(f"Generating response for {decision.intent.category}/{decision.intent.action}")
             
             # 🚀 FAST PATH: Handle simple information requests without selection/plan
-            if selection is None and plan is None and decision.intent.category == "information":
+            # Check if selection has no tools (information-only request)
+            has_no_tools = (selection is None or 
+                           (hasattr(selection, 'selected_tools') and len(selection.selected_tools) == 0))
+            
+            if has_no_tools and plan is None and decision.intent.category == "information":
                 logger.info("🚀 FAST PATH: Generating direct information response")
                 
                 # Generate direct answer using LLM for simple questions
@@ -257,13 +261,13 @@ class StageDAnswerer:
     ) -> ResponseType:
         """Determine the appropriate response type based on pipeline results"""
         
+        # Check if this is an information-only request (no plan)
+        if plan is None or decision.decision_type == DecisionType.INFO:
+            return ResponseType.INFORMATION
+        
         # Check if approval is required
         if plan.execution_metadata.approval_points:
             return ResponseType.APPROVAL_REQUEST
-        
-        # Check if this is an information-only request
-        if decision.decision_type == DecisionType.INFO:
-            return ResponseType.INFORMATION
         
         # Check if plan is ready for execution
         if (plan.plan.steps and 
