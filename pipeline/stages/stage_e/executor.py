@@ -153,6 +153,9 @@ class StageEExecutor:
             else:
                 # Level 0: Auto-execute
                 await self._route_execution(execution, execution_mode)
+                
+                # Fetch updated execution after routing (to get results)
+                execution = self.repository.get_execution_by_id(execution.execution_id)
             
             # Step 9: Return response
             return self._build_execution_response(execution)
@@ -210,9 +213,13 @@ class StageEExecutor:
                 previous_status=ExecutionStatus.RUNNING
             )
             
+            # Build complete result including step results
+            complete_result = result.result or {}
+            complete_result["steps"] = result.step_results
+            
             self.repository.update_execution_result(
                 execution.execution_id,
-                result.result or {},
+                complete_result,
                 result.completed_at
             )
             

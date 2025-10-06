@@ -15,6 +15,7 @@ import os
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from uuid import uuid4
 
 from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
@@ -150,7 +151,7 @@ class PipelineOrchestrator:
             PipelineResult containing the response and execution metrics
         """
         if request_id is None:
-            request_id = f"req_{int(time.time() * 1000)}"
+            request_id = str(uuid4())
         
         start_time = time.time()
         self._active_requests[request_id] = start_time

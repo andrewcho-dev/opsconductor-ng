@@ -401,7 +401,7 @@ class ExecutionEngine:
         elif step_type in ["api", "http", "rest"]:
             return await self._execute_api_step(step, asset)
         
-        elif step_type in ["asset-service-query", "asset-query", "asset-service"]:
+        elif step_type in ["asset-service-query", "asset-query", "asset-service", "asset-list", "list-assets"]:
             # Handle asset service queries
             return await self._execute_asset_service_query(step)
         
