@@ -47,6 +47,8 @@ class LLMTieBreaker:
 
 USER QUERY: {query}
 
+{asset_context}
+
 OPTION A: {tool1_name}.{pattern1_name}
 - Time: {time1_ms}ms
 - Cost: ${cost1:.3f}
@@ -101,8 +103,8 @@ Respond in JSON format:
         if self.llm_client is None:
             raise RuntimeError("LLM client is required for tie-breaking but was not provided")
         
-        # Build prompt
-        prompt = self._build_prompt(query, candidate1, candidate2)
+        # Build prompt (now async to support asset context injection)
+        prompt = await self._build_prompt(query, candidate1, candidate2)
         
         # Call LLM with timeout
         response = await self._call_llm(prompt, timeout_ms)
@@ -125,14 +127,18 @@ Respond in JSON format:
             llm_response_raw=response
         )
     
-    def _build_prompt(
+    async def _build_prompt(
         self,
         query: str,
         candidate1: Dict,
         candidate2: Dict
     ) -> str:
         """
-        Build compact prompt for LLM.
+        Build compact prompt for LLM with optional asset context.
+        
+        NOW WITH ASSET AWARENESS:
+        - Injects compact asset schema when query is infrastructure-related
+        - Helps LLM make better tool selection decisions based on asset knowledge
         
         Args:
             query: User query
@@ -142,12 +148,27 @@ Respond in JSON format:
         Returns:
             Formatted prompt string
         """
+        # Check if we should inject asset context
+        from pipeline.integration.asset_service_context import (
+            should_inject_asset_context,
+            get_compact_asset_context
+        )
+        
+        asset_context = ""
+        if should_inject_asset_context(query):
+            try:
+                asset_context = f"INFRASTRUCTURE CONTEXT:\n{get_compact_asset_context()}\n"
+                logger.info("✓ Injected asset context into Stage B tie-breaker")
+            except Exception as e:
+                logger.error(f"Failed to inject asset context: {e}")
+        
         # Extract features from candidates
         raw1 = candidate1.get('raw_features', {})
         raw2 = candidate2.get('raw_features', {})
         
         return self.TIEBREAKER_PROMPT.format(
             query=query,
+            asset_context=asset_context,
             tool1_name=candidate1.get('tool_name', 'unknown'),
             pattern1_name=candidate1.get('pattern_name', 'unknown'),
             time1_ms=raw1.get('time_ms', 0),

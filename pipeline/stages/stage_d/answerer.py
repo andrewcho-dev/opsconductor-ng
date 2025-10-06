@@ -655,126 +655,76 @@ class StageDAnswerer:
         This bypasses all the complex plan analysis and approval workflows
         for simple questions that just need direct answers.
         
+        NOW WITH COMPREHENSIVE ASSET AWARENESS:
+        - Injects full asset context (50+ fields) when relevant
+        - Uses live asset data for accurate responses
+        - Supports both asset-based and ad-hoc queries
+        
         Args:
-            user_request: Original user request (e.g., "what is 2+2")
+            user_request: Original user request (e.g., "what is 2+2", "how many Linux servers")
             context: Optional context information
             
         Returns:
             Direct answer string
         """
         try:
-            # Check if this is an asset query that needs real data
-            import re
-            import httpx
-            import os
-            
-            asset_keywords = r'\b(asset|server|host|machine|node|linux|windows|database|vm|container)\b'
-            query_keywords = r'\b(how many|count|list|show|get|find|search)\b'
-            
-            is_asset_query = (
-                re.search(asset_keywords, user_request.lower()) and 
-                re.search(query_keywords, user_request.lower())
+            # Import asset context provider
+            from pipeline.integration.asset_service_context import (
+                should_inject_asset_context,
+                get_comprehensive_asset_context,
+                fetch_all_assets
             )
             
-            if is_asset_query:
-                logger.info(f"🚀 FAST PATH: Detected asset query, calling asset service directly")
+            # Check if this is an asset-related query
+            should_inject_assets = should_inject_asset_context(user_request)
+            
+            # Build system prompt with optional asset context
+            system_prompt = "You are a helpful assistant that answers questions directly and accurately."
+            
+            if should_inject_assets:
+                logger.info(f"🚀 FAST PATH: Detected asset query, injecting comprehensive asset context")
                 
                 try:
-                    # Call asset service API directly
-                    asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://assets:8001")
-                    
-                    # Extract filters from the query using LLM
-                    filter_prompt = f"""Extract asset filters from this query. Return ONLY a JSON object with these optional fields:
-- os_type: operating system (e.g., "linux", "windows")
-- environment: environment name (e.g., "production", "staging")
-- status: asset status (e.g., "active", "inactive")
-
-Query: {user_request}
-
-Return ONLY the JSON object, no explanation:"""
-                    
-                    from llm.client import LLMRequest
-                    llm_request = LLMRequest(
-                        prompt=filter_prompt,
-                        system_prompt="You extract structured data from queries. Return only valid JSON.",
-                        temperature=0.1,
-                        max_tokens=100
+                    # Get comprehensive asset context (schema + live data)
+                    asset_context = await get_comprehensive_asset_context(
+                        include_summary=True,
+                        max_assets_in_summary=100
                     )
                     
-                    filter_response = await self.llm_client.generate(llm_request)
-                    filter_text = filter_response.content.strip() if hasattr(filter_response, 'content') else str(filter_response)
+                    # Enhance system prompt with asset knowledge
+                    system_prompt = f"""You are a helpful assistant with complete knowledge of our infrastructure assets.
+
+{asset_context}
+
+IMPORTANT INSTRUCTIONS:
+- Use the asset data above to answer questions accurately
+- When counting or listing assets, use the EXACT data provided
+- Include relevant details (hostname, IP, OS, environment) when listing assets
+- If asked about specific assets, reference the data above
+- For ad-hoc targets (not in asset list), acknowledge they're not in the inventory
+- Answer directly and concisely without explaining the system"""
                     
-                    # Parse filters
-                    import json
-                    try:
-                        # Extract JSON from response (handle markdown code blocks)
-                        if '```json' in filter_text:
-                            filter_text = filter_text.split('```json')[1].split('```')[0].strip()
-                        elif '```' in filter_text:
-                            filter_text = filter_text.split('```')[1].split('```')[0].strip()
-                        
-                        filters = json.loads(filter_text)
-                    except:
-                        filters = {}
+                    logger.info(f"✓ Injected asset context: {len(asset_context)} chars")
                     
-                    # Build query parameters
-                    params = {}
-                    if filters.get('os_type'):
-                        params['os_type'] = filters['os_type']
-                    if filters.get('environment'):
-                        params['environment'] = filters['environment']
-                    if filters.get('status'):
-                        params['status'] = filters['status']
-                    
-                    # Call asset service
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        response = await client.get(f"{asset_service_url}/api/v1/assets", params=params)
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            assets = data.get('assets', [])
-                            total_count = len(assets)
-                            
-                            # Format response based on query
-                            if 'how many' in user_request.lower() or 'count' in user_request.lower():
-                                filter_desc = ""
-                                if params:
-                                    filter_parts = [f"{k.replace('_', ' ')}: {v}" for k, v in params.items()]
-                                    filter_desc = f" ({', '.join(filter_parts)})"
-                                
-                                return f"We have **{total_count}** assets{filter_desc}."
-                            else:
-                                # List format
-                                if total_count == 0:
-                                    return "No assets found matching your criteria."
-                                elif total_count <= 10:
-                                    asset_list = "\n".join([f"- {a.get('hostname', 'Unknown')} ({a.get('os_type', 'Unknown')})" for a in assets[:10]])
-                                    return f"Found {total_count} assets:\n{asset_list}"
-                                else:
-                                    asset_list = "\n".join([f"- {a.get('hostname', 'Unknown')} ({a.get('os_type', 'Unknown')})" for a in assets[:10]])
-                                    return f"Found {total_count} assets (showing first 10):\n{asset_list}"
-                        else:
-                            logger.warning(f"Asset service returned {response.status_code}")
-                            
                 except Exception as e:
-                    logger.error(f"Failed to query asset service: {e}")
-                    # Fall through to LLM-based response
+                    logger.error(f"Failed to inject asset context: {e}")
+                    # Continue without asset context
             
-            # Default: Use LLM to generate direct response
-            prompt = f"""You are a helpful assistant. Answer this question directly and concisely:
+            # Build prompt
+            prompt = f"""Answer this question directly and concisely:
 
 Question: {user_request}
 
-Provide a clear, accurate answer without explaining OpsConductor systems or referencing plans/tools/automation. Just answer the question directly."""
+Provide a clear, accurate answer. If you have asset data, use it. Otherwise, answer based on general knowledge."""
 
             # Use LLM to generate direct response
             from llm.client import LLMRequest
             
             llm_request = LLMRequest(
                 prompt=prompt,
-                system_prompt="You are a helpful assistant that answers questions directly and accurately.",
+                system_prompt=system_prompt,
                 temperature=0.1,  # Low temperature for consistent, factual responses
-                max_tokens=200   # Keep responses concise
+                max_tokens=500   # Allow more tokens for asset listings
             )
             
             response = await self.llm_client.generate(llm_request)

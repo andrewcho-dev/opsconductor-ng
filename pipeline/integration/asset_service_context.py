@@ -1,23 +1,38 @@
 """
 Asset-Service Context Module
 
-This module provides compact schema information and selection scoring
-for the asset-service integration with the AI-BRAIN.
+This module provides comprehensive asset context injection for the AI-BRAIN pipeline.
 
 Key Features:
-- Compact schema context (~80 tokens)
+- Full asset schema (50+ fields) for complete awareness
+- Live asset data fetching with smart caching
 - Deterministic selection scoring
 - Dynamic context injection heuristic
 - Infrastructure keyword detection
+- Hybrid approach: works with both assets and ad-hoc targets
+
+Architecture:
+    Asset Context Provider (this module)
+            ↓
+    ┌───────┼───────┬───────┐
+    ↓       ↓       ↓       ↓
+  Stage A Stage B Stage C Stage D
+  (Knows) (Knows) (Knows) (Knows)
 
 Expert-validated and production-ready.
 """
 
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, List, Optional
+import httpx
+import asyncio
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Asset-Service Schema Definition
+# Asset-Service Schema Definition (COMPREHENSIVE - 50+ FIELDS)
 # =============================================================================
 
 ASSET_SERVICE_SCHEMA = {
@@ -29,16 +44,62 @@ ASSET_SERVICE_SCHEMA = {
         "query_asset_by_ip", 
         "query_asset_by_hostname",
         "list_assets_by_type",
-        "get_asset_services"
+        "get_asset_services",
+        "filter_by_environment",
+        "filter_by_status",
+        "filter_by_os_type",
+        "filter_by_location",
+        "filter_by_criticality"
     ],
     "queryable_fields": [
-        "name", "hostname", "ip_address", "os_type", "service_type",
-        "environment", "status", "tags", "location", "owner"
+        # Basic Information
+        "name", "hostname", "ip_address", "description", "tags",
+        
+        # Operating System
+        "os_type", "os_version",
+        
+        # Hardware/Device
+        "device_type", "hardware_make", "hardware_model", "serial_number",
+        
+        # Location
+        "physical_address", "data_center", "building", "room", 
+        "rack_position", "rack_location", "gps_coordinates",
+        
+        # Primary Service
+        "service_type", "port", "is_secure",
+        
+        # Credentials
+        "credential_type", "username", "domain", "has_credentials",
+        
+        # Database
+        "database_type", "database_name",
+        
+        # Secondary Services
+        "secondary_service_type", "secondary_port", "ftp_type",
+        "additional_services", "additional_services_count",
+        
+        # Status & Management
+        "is_active", "connection_status", "status", "environment", 
+        "criticality", "owner", "support_contact", "contract_number",
+        
+        # Audit
+        "created_at", "updated_at", "created_by", "updated_by"
     ],
     "required_fields": [
         "id", "name", "hostname", "ip_address", "environment", 
         "status", "updated_at"
-    ]
+    ],
+    "field_categories": {
+        "identity": ["name", "hostname", "ip_address", "description"],
+        "os": ["os_type", "os_version"],
+        "hardware": ["device_type", "hardware_make", "hardware_model", "serial_number"],
+        "location": ["physical_address", "data_center", "building", "room", "rack_position", "rack_location", "gps_coordinates"],
+        "connectivity": ["service_type", "port", "is_secure", "secondary_service_type", "secondary_port"],
+        "credentials": ["credential_type", "username", "domain", "has_credentials"],
+        "database": ["database_type", "database_name"],
+        "management": ["status", "environment", "criticality", "owner", "support_contact", "contract_number"],
+        "audit": ["created_at", "updated_at", "created_by", "updated_by"]
+    }
 }
 
 
@@ -54,35 +115,388 @@ INFRA_NOUNS: Set[str] = {
 
 
 # =============================================================================
-# Compact Context Generation
+# Asset Data Cache (Smart Caching to Avoid Repeated API Calls)
+# =============================================================================
+
+class AssetDataCache:
+    """
+    Simple in-memory cache for asset data with TTL.
+    
+    This prevents repeated API calls within the same request lifecycle.
+    Cache is cleared after TTL expires (default: 60 seconds).
+    """
+    def __init__(self, ttl_seconds: int = 60):
+        self._cache: Dict[str, Any] = {}
+        self._timestamps: Dict[str, datetime] = {}
+        self._ttl = timedelta(seconds=ttl_seconds)
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get cached value if not expired."""
+        if key in self._cache:
+            if datetime.now() - self._timestamps[key] < self._ttl:
+                return self._cache[key]
+            else:
+                # Expired - remove
+                del self._cache[key]
+                del self._timestamps[key]
+        return None
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set cached value with current timestamp."""
+        self._cache[key] = value
+        self._timestamps[key] = datetime.now()
+    
+    def clear(self) -> None:
+        """Clear all cached data."""
+        self._cache.clear()
+        self._timestamps.clear()
+
+
+# Global cache instance
+_asset_cache = AssetDataCache(ttl_seconds=60)
+
+
+# =============================================================================
+# Asset Data Fetcher (Live Data from Asset Service)
+# =============================================================================
+
+async def fetch_all_assets(
+    limit: int = 1000,
+    use_cache: bool = True
+) -> List[Dict[str, Any]]:
+    """
+    Fetch all assets from the asset-service API.
+    
+    This function retrieves comprehensive asset data including all 50+ fields.
+    Results are cached for 60 seconds to avoid repeated API calls.
+    
+    Args:
+        limit: Maximum number of assets to fetch (default: 1000)
+        use_cache: Whether to use cached data if available (default: True)
+    
+    Returns:
+        List[Dict]: List of asset dictionaries with all fields
+        
+    Example:
+        >>> assets = await fetch_all_assets()
+        >>> print(f"Found {len(assets)} assets")
+        >>> print(assets[0]['hostname'], assets[0]['os_type'])
+    """
+    cache_key = f"all_assets_{limit}"
+    
+    # Check cache first
+    if use_cache:
+        cached = _asset_cache.get(cache_key)
+        if cached is not None:
+            logger.debug(f"Asset cache HIT: {len(cached)} assets")
+            return cached
+    
+    # Fetch from API
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{ASSET_SERVICE_SCHEMA['base_url']}/",
+                params={"limit": limit}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = data.get("assets", [])
+            logger.info(f"Fetched {len(assets)} assets from asset-service")
+            
+            # Cache the results
+            _asset_cache.set(cache_key, assets)
+            
+            return assets
+            
+    except Exception as e:
+        logger.error(f"Failed to fetch assets from asset-service: {e}")
+        return []
+
+
+async def fetch_asset_by_identifier(
+    identifier: str,
+    use_cache: bool = True
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch a single asset by name, hostname, or IP address.
+    
+    Args:
+        identifier: Asset name, hostname, or IP address
+        use_cache: Whether to use cached data if available (default: True)
+    
+    Returns:
+        Optional[Dict]: Asset dictionary if found, None otherwise
+        
+    Example:
+        >>> asset = await fetch_asset_by_identifier("web-prod-01")
+        >>> if asset:
+        ...     print(f"Found: {asset['hostname']} at {asset['ip_address']}")
+    """
+    cache_key = f"asset_{identifier}"
+    
+    # Check cache first
+    if use_cache:
+        cached = _asset_cache.get(cache_key)
+        if cached is not None:
+            logger.debug(f"Asset cache HIT: {identifier}")
+            return cached
+    
+    # Fetch from API
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{ASSET_SERVICE_SCHEMA['base_url']}/",
+                params={"search": identifier, "limit": 1}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            assets = data.get("assets", [])
+            if assets:
+                asset = assets[0]
+                logger.info(f"Found asset: {identifier} -> {asset['hostname']}")
+                
+                # Cache the result
+                _asset_cache.set(cache_key, asset)
+                
+                return asset
+            else:
+                logger.info(f"Asset not found: {identifier}")
+                return None
+                
+    except Exception as e:
+        logger.error(f"Failed to fetch asset {identifier}: {e}")
+        return None
+
+
+def clear_asset_cache() -> None:
+    """Clear the asset data cache. Useful for testing or forced refresh."""
+    _asset_cache.clear()
+    logger.info("Asset cache cleared")
+
+
+# =============================================================================
+# Compact Context Generation (Schema Only - No Live Data)
 # =============================================================================
 
 def get_compact_asset_context() -> str:
     """
-    Generate compact asset-service context for LLM prompts.
+    Generate compact asset-service schema context for LLM prompts.
     
     This function returns a concise description of the asset-service
     that enables LLM reasoning without verbose explanations.
     
+    NOTE: This is SCHEMA-ONLY context. For live asset data, use
+    get_comprehensive_asset_context() instead.
+    
     Returns:
-        str: Compact context string (~80 tokens)
+        str: Compact context string (~150 tokens)
         
     Example:
         >>> context = get_compact_asset_context()
         >>> print(context)
-        ASSET-SERVICE: Infrastructure inventory API
-        - Query assets by: name, hostname, IP, OS, service, environment, tags
-        - Get: server details, services, location, status (NOT credentials)
-        - Endpoints: GET /?search={term}, GET /{id}
-        - Use for: "What's the IP of X?", "Show servers in Y"
     """
     return """
-ASSET-SERVICE: Infrastructure inventory API
-- Query assets by: name, hostname, IP, OS, service, environment, tags
-- Get: server details, services, location, status (NOT credentials)
-- Endpoints: GET /?search={term}, GET /{id}
-- Use for: "What's the IP of X?", "Show servers in Y"
+ASSET-SERVICE: Infrastructure inventory with 50+ fields per asset
+
+QUERYABLE FIELDS (organized by category):
+• Identity: name, hostname, ip_address, description, tags
+• OS: os_type, os_version
+• Hardware: device_type, hardware_make, hardware_model, serial_number
+• Location: physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates
+• Connectivity: service_type, port, is_secure, secondary_service_type, secondary_port
+• Credentials: credential_type, username, domain, has_credentials
+• Database: database_type, database_name
+• Management: status, environment, criticality, owner, support_contact, contract_number
+• Audit: created_at, updated_at, created_by, updated_by
+
+CAPABILITIES:
+- Query by: name, hostname, IP, OS, service, environment, status, location, criticality
+- Filter by: environment (prod/staging/dev), status (active/inactive), os_type
+- Get: Complete asset details including hardware, location, services, credentials status
+
+API: GET /?search={term}&os_type={os}&environment={env}&status={status}
+
+USE FOR: "What's the IP of X?", "Show all prod servers", "Find Linux databases", "List assets in datacenter Y"
 """.strip()
+
+
+# =============================================================================
+# Comprehensive Context Generation (Schema + Live Data)
+# =============================================================================
+
+async def get_comprehensive_asset_context(
+    include_summary: bool = True,
+    max_assets_in_summary: int = 50
+) -> str:
+    """
+    Generate comprehensive asset context including live data.
+    
+    This function provides:
+    1. Full schema definition (50+ fields)
+    2. Live asset summary (counts, environments, OS types)
+    3. Sample assets for context
+    
+    This is the PRIMARY function for injecting asset awareness into
+    pipeline stages. It gives the AI complete knowledge of the infrastructure.
+    
+    Args:
+        include_summary: Whether to include live asset summary (default: True)
+        max_assets_in_summary: Max assets to include in summary (default: 50)
+    
+    Returns:
+        str: Comprehensive context string with schema + live data
+        
+    Example:
+        >>> context = await get_comprehensive_asset_context()
+        >>> print(context)
+        # Shows schema + "You have 47 assets: 23 Linux, 15 Windows..."
+    """
+    # Start with schema
+    context_parts = [
+        "=== ASSET INVENTORY KNOWLEDGE ===",
+        "",
+        get_compact_asset_context()
+    ]
+    
+    # Add live data summary if requested
+    if include_summary:
+        try:
+            assets = await fetch_all_assets(limit=max_assets_in_summary)
+            
+            if assets:
+                # Calculate statistics
+                total = len(assets)
+                os_counts = {}
+                env_counts = {}
+                status_counts = {}
+                
+                for asset in assets:
+                    # OS type counts
+                    os_type = asset.get("os_type", "unknown")
+                    os_counts[os_type] = os_counts.get(os_type, 0) + 1
+                    
+                    # Environment counts
+                    env = asset.get("environment", "unknown")
+                    env_counts[env] = env_counts.get(env, 0) + 1
+                    
+                    # Status counts
+                    status = asset.get("status", "unknown")
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                
+                # Build summary
+                context_parts.extend([
+                    "",
+                    "=== CURRENT INFRASTRUCTURE ===",
+                    f"Total Assets: {total}",
+                    "",
+                    "By Operating System:",
+                ])
+                for os_type, count in sorted(os_counts.items(), key=lambda x: x[1], reverse=True):
+                    context_parts.append(f"  • {os_type}: {count}")
+                
+                context_parts.extend([
+                    "",
+                    "By Environment:",
+                ])
+                for env, count in sorted(env_counts.items(), key=lambda x: x[1], reverse=True):
+                    context_parts.append(f"  • {env}: {count}")
+                
+                context_parts.extend([
+                    "",
+                    "By Status:",
+                ])
+                for status, count in sorted(status_counts.items(), key=lambda x: x[1], reverse=True):
+                    context_parts.append(f"  • {status}: {count}")
+                
+                # Add sample assets (first 10)
+                context_parts.extend([
+                    "",
+                    f"Sample Assets (showing {min(10, total)} of {total}):",
+                ])
+                for i, asset in enumerate(assets[:10], 1):
+                    hostname = asset.get("hostname", "N/A")
+                    ip = asset.get("ip_address", "N/A")
+                    os_type = asset.get("os_type", "N/A")
+                    env = asset.get("environment", "N/A")
+                    context_parts.append(f"  {i}. {hostname} ({ip}) - {os_type} [{env}]")
+                
+                context_parts.extend([
+                    "",
+                    "NOTE: You can query ANY asset by name, hostname, or IP address.",
+                    "NOTE: You can filter by os_type, environment, status, and other fields.",
+                ])
+                
+        except Exception as e:
+            logger.error(f"Failed to generate asset summary: {e}")
+            context_parts.extend([
+                "",
+                "=== CURRENT INFRASTRUCTURE ===",
+                "(Asset data temporarily unavailable - schema knowledge still active)",
+            ])
+    
+    return "\n".join(context_parts)
+
+
+async def get_asset_context_for_target(
+    target: str
+) -> Dict[str, Any]:
+    """
+    Get asset context for a specific target (hostname, IP, or name).
+    
+    This function attempts to enrich a target with asset data.
+    If the target is not found in assets, returns a minimal context
+    indicating it's an ad-hoc target.
+    
+    Args:
+        target: Hostname, IP address, or asset name
+    
+    Returns:
+        Dict with keys:
+            - is_asset: bool (True if found in asset database)
+            - asset_data: Dict or None (full asset data if found)
+            - target_type: str ("asset" or "ad_hoc")
+            - context_summary: str (human-readable summary)
+    
+    Example:
+        >>> ctx = await get_asset_context_for_target("web-prod-01")
+        >>> if ctx["is_asset"]:
+        ...     print(f"Known asset: {ctx['asset_data']['os_type']}")
+        ... else:
+        ...     print("Ad-hoc target - no asset data available")
+    """
+    asset = await fetch_asset_by_identifier(target)
+    
+    if asset:
+        # Known asset - provide full context
+        summary_parts = [
+            f"Target '{target}' is a KNOWN ASSET:",
+            f"  • Hostname: {asset.get('hostname')}",
+            f"  • IP: {asset.get('ip_address')}",
+            f"  • OS: {asset.get('os_type')} {asset.get('os_version', '')}",
+            f"  • Environment: {asset.get('environment')}",
+            f"  • Service: {asset.get('service_type')} on port {asset.get('port')}",
+            f"  • Credentials: {'Available' if asset.get('has_credentials') else 'Not configured'}",
+        ]
+        
+        if asset.get('location'):
+            summary_parts.append(f"  • Location: {asset.get('location')}")
+        
+        return {
+            "is_asset": True,
+            "asset_data": asset,
+            "target_type": "asset",
+            "context_summary": "\n".join(summary_parts)
+        }
+    else:
+        # Ad-hoc target - no asset data
+        return {
+            "is_asset": False,
+            "asset_data": None,
+            "target_type": "ad_hoc",
+            "context_summary": f"Target '{target}' is NOT in asset database (ad-hoc target). You may need to request connection details from the user."
+        }
 
 
 # =============================================================================
@@ -273,30 +687,47 @@ def log_selection_decision(
 # Module Info
 # =============================================================================
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "OpsConductor Team"
 __status__ = "Production"
 
 
 if __name__ == "__main__":
     # Demo usage
-    print("Asset-Service Context Module")
-    print("=" * 60)
+    print("Asset-Service Context Module v2.0")
+    print("=" * 80)
     print()
     
-    print("Compact Context:")
-    print("-" * 60)
+    print("1. COMPACT CONTEXT (Schema Only):")
+    print("-" * 80)
     print(get_compact_asset_context())
     print()
+    print()
     
-    print("Selection Scoring Examples:")
-    print("-" * 60)
+    print("2. COMPREHENSIVE CONTEXT (Schema + Live Data):")
+    print("-" * 80)
+    print("Run: await get_comprehensive_asset_context()")
+    print("This fetches live asset data and provides complete infrastructure awareness.")
+    print()
+    print()
+    
+    print("3. TARGET-SPECIFIC CONTEXT (Asset vs Ad-hoc):")
+    print("-" * 80)
+    print("Run: await get_asset_context_for_target('web-prod-01')")
+    print("This enriches a target with asset data if available, or marks it as ad-hoc.")
+    print()
+    print()
+    
+    print("4. SELECTION SCORING EXAMPLES:")
+    print("-" * 80)
     
     test_cases = [
         ("What's the IP of web-prod-01?", {"hostname": "web-prod-01"}, "information"),
         ("Show all servers", {}, "information"),
         ("How do I center a div?", {}, "information"),
         ("Restart nginx on db-prod-01", {"hostname": "db-prod-01", "service": "nginx"}, "automation"),
+        ("List all Linux servers in production", {}, "information"),
+        ("Check disk space on 192.168.1.50", {"ip": "192.168.1.50"}, "information"),
     ]
     
     for text, entities, intent in test_cases:
@@ -307,3 +738,18 @@ if __name__ == "__main__":
         print(f"  Inject Context: {inject}")
         print(f"  Decision: {'SELECT' if score >= 0.6 else 'CLARIFY' if score >= 0.4 else 'SKIP'}")
         print()
+    
+    print()
+    print("5. KEY FEATURES:")
+    print("-" * 80)
+    print("✓ Full schema awareness (50+ fields)")
+    print("✓ Live asset data fetching with caching")
+    print("✓ Hybrid approach: works with assets AND ad-hoc targets")
+    print("✓ Smart context injection (only when needed)")
+    print("✓ Target enrichment (asset lookup)")
+    print("✓ Comprehensive statistics (OS, environment, status)")
+    print()
+    print("USAGE IN PIPELINE:")
+    print("  Stage A/B/D: Inject comprehensive context for full awareness")
+    print("  Stage C/E: Use target-specific context for execution planning")
+    print()
