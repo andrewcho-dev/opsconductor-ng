@@ -295,6 +295,7 @@ fix_*.py
 # Old documentation (replaced by current docs)
 *_GUIDE.md
 *_SUMMARY.md
+!OCTOBER_2025_RELEASE_SUMMARY.md
 *_READINESS.md
 *_PLAN.md
 *_REPORT.md
