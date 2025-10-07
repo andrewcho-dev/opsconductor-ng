@@ -191,6 +191,9 @@ class PipelineOrchestrator:
             logger.info(f"✅ [STAGE A] Complete in {stage_durations['stage_a']:.2f}ms")
             logger.info(f"   Intent: {classification_result.intent.category}/{classification_result.intent.action}, Confidence: {classification_result.overall_confidence:.2f} ({classification_result.confidence_level.value})")
             
+            # Compress Stage A result for context management
+            context["compressed_stage_a"] = await self._compress_stage_result("Stage A", classification_result, user_request)
+            
             if progress_callback:
                 await progress_callback("stage_a", "complete", {"stage": "A", "name": "Classification", "duration_ms": stage_durations["stage_a"], "message": f"✅ Classification complete ({stage_durations['stage_a']:.0f}ms)"})
             
@@ -236,6 +239,9 @@ class PipelineOrchestrator:
             if selection_result and hasattr(selection_result, 'selected_tools'):
                 logger.info(f"   Selected {len(selection_result.selected_tools)} tools")
             
+            # Compress Stage B result for context management
+            context["compressed_stage_b"] = await self._compress_stage_result("Stage B", selection_result, user_request)
+            
             if progress_callback:
                 await progress_callback("stage_b", "complete", {"stage": "B", "name": "Tool Selection", "duration_ms": stage_durations["stage_b"], "message": f"✅ Tool selection complete ({stage_durations['stage_b']:.0f}ms)"})
             
@@ -259,6 +265,9 @@ class PipelineOrchestrator:
                     plan_dict = planning_result.plan if isinstance(planning_result.plan, dict) else {}
                     steps = plan_dict.get('steps', [])
                     logger.info(f"   Created plan with {len(steps)} steps")
+                
+                # Compress Stage C result for context management
+                context["compressed_stage_c"] = await self._compress_stage_result("Stage C", planning_result, user_request)
                 
                 if progress_callback:
                     await progress_callback("stage_c", "complete", {"stage": "C", "name": "Planning", "duration_ms": stage_durations["stage_c"], "message": f"✅ Planning complete ({stage_durations['stage_c']:.0f}ms)"})
@@ -567,6 +576,93 @@ class PipelineOrchestrator:
         self._completed_requests.append(metrics)
         if len(self._completed_requests) > self._max_history:
             self._completed_requests = self._completed_requests[-self._max_history:]
+    
+    async def _compress_stage_result(self, stage_name: str, result: Any, user_request: str) -> str:
+        """
+        Compress stage result into a compact summary (200-400 tokens).
+        This prevents context window explosion in multi-stage pipelines.
+        
+        Args:
+            stage_name: Name of the stage (e.g., "Stage A", "Stage B")
+            result: Stage result object
+            user_request: Original user request for context
+            
+        Returns:
+            Compressed summary string (200-400 tokens)
+        """
+        from llm.client import LLMRequest
+        
+        # Convert result to string representation
+        if hasattr(result, '__dict__'):
+            result_str = str(result.__dict__)
+        else:
+            result_str = str(result)
+        
+        # Truncate if too long (rough estimate: 4 chars = 1 token)
+        if len(result_str) > 4000:  # ~1000 tokens
+            result_str = result_str[:4000] + "... [truncated]"
+        
+        compression_prompt = f"""Compress the following {stage_name} result into a compact summary (≤ 250 tokens).
+
+**User Request:** {user_request}
+
+**{stage_name} Result:**
+{result_str}
+
+**Instructions:**
+- Preserve: numeric settings, file paths, API params, tool names, entity IDs, and key decisions
+- Omit: narrative text, boilerplate, and redundant details
+- Format: Bullet points, each ≤ 25 tokens
+- Output under "Summary:" heading
+
+Summary:"""
+
+        try:
+            request = LLMRequest(
+                prompt=compression_prompt,
+                system_prompt="You are a compression agent. Summarize technical data into compact, loss-aware summaries.",
+                temperature=0.1,
+                max_tokens=400  # Cap at 400 tokens for summary
+            )
+            
+            response = await self.llm_client.generate(request)
+            compressed = response.content.strip()
+            
+            logger.info(f"📦 Compressed {stage_name}: {len(result_str)} chars → {len(compressed)} chars")
+            return compressed
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to compress {stage_name} result: {e}. Using truncated version.")
+            # Fallback: simple truncation
+            return result_str[:1000] + "... [compression failed, truncated]"
+    
+    async def _create_rolling_summary(self, context: Dict[str, Any]) -> str:
+        """
+        Create a rolling summary of all stage results so far.
+        This is used to pass compressed context between stages.
+        
+        Args:
+            context: Pipeline context with intermediate results
+            
+        Returns:
+            Rolling summary string (≤ 500 tokens)
+        """
+        summaries = []
+        
+        # Collect compressed summaries from context
+        if "compressed_stage_a" in context:
+            summaries.append(f"**Stage A (Classification):**\n{context['compressed_stage_a']}")
+        
+        if "compressed_stage_b" in context:
+            summaries.append(f"**Stage B (Tool Selection):**\n{context['compressed_stage_b']}")
+        
+        if "compressed_stage_c" in context:
+            summaries.append(f"**Stage C (Planning):**\n{context['compressed_stage_c']}")
+        
+        if not summaries:
+            return ""
+        
+        return "\n\n".join(summaries)
     
     async def _needs_clarification(self, classification_result: DecisionV1, context: Dict[str, Any]) -> bool:
         """

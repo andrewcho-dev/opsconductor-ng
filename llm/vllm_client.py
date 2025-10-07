@@ -15,9 +15,14 @@ class VLLMClient(LLMClient):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:8000/v1")
-        self.default_model = config.get("default_model", "Qwen/Qwen2.5-14B-Instruct-AWQ")
+        self.default_model = config.get("default_model", "Qwen/Qwen2.5-7B-Instruct-AWQ")
         self.timeout = config.get("timeout", 60)  # vLLM can be faster, but keep reasonable timeout
         self.client: Optional[httpx.AsyncClient] = None
+        
+        # Token budgeting configuration (aligned with vLLM server settings)
+        self.max_model_len = config.get("max_model_len", 12288)  # Match vLLM --max-model-len
+        self.output_reserve = config.get("output_reserve", 3000)  # Reserve tokens for output
+        self.safety_margin = config.get("safety_margin", 128)  # Safety buffer
     
     async def connect(self) -> bool:
         """Connect to vLLM instance"""
@@ -47,6 +52,51 @@ class VLLMClient(LLMClient):
             self.client = None
         self.is_connected = False
     
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count for text.
+        Uses rough approximation: 1 token ≈ 4 characters for English text.
+        For more accuracy, could use tiktoken, but this is fast and good enough.
+        """
+        return len(text) // 4
+    
+    def _calculate_safe_max_tokens(self, prompt: str, system_prompt: Optional[str] = None) -> int:
+        """
+        Calculate safe max_tokens for generation based on input size.
+        
+        Formula: max_tokens = max_model_len - input_tokens - output_reserve - safety_margin
+        
+        Args:
+            prompt: User prompt text
+            system_prompt: Optional system prompt
+            
+        Returns:
+            Safe max_tokens value that won't cause OOM
+        """
+        # Estimate input tokens
+        prompt_tokens = self._estimate_tokens(prompt)
+        system_tokens = self._estimate_tokens(system_prompt) if system_prompt else 0
+        input_tokens = prompt_tokens + system_tokens
+        
+        # Calculate available tokens for output
+        available = self.max_model_len - input_tokens - self.safety_margin
+        
+        # Cap at output_reserve to leave room for generation
+        safe_max = min(available, self.output_reserve)
+        
+        # Ensure minimum viable output (at least 256 tokens)
+        if safe_max < 256:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"⚠️  Input too large! Estimated {input_tokens} tokens, "
+                f"only {safe_max} tokens available for output. "
+                f"Consider summarizing input or increasing max_model_len."
+            )
+            safe_max = 256  # Minimum viable output
+        
+        return safe_max
+    
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate response using vLLM OpenAI-compatible API"""
         if not self.is_connected or not self.client:
@@ -59,7 +109,12 @@ class VLLMClient(LLMClient):
         model = request.model or self.default_model
         prompt_preview = request.prompt[:100] if request.prompt else ""
         
-        logger.info(f"🚀 vLLM Call starting - Model: {model}, Prompt: {prompt_preview}...")
+        # Estimate input tokens for logging
+        estimated_input = self._estimate_tokens(request.prompt) + (
+            self._estimate_tokens(request.system_prompt) if request.system_prompt else 0
+        )
+        
+        logger.info(f"🚀 vLLM Call starting - Model: {model}, Est. input: ~{estimated_input} tokens, Prompt: {prompt_preview}...")
         
         try:
             # Prepare OpenAI-compatible request payload
@@ -78,16 +133,30 @@ class VLLMClient(LLMClient):
                 "content": request.prompt
             })
             
+            # Smart token budgeting: calculate safe max_tokens based on input size
+            if request.max_tokens:
+                # User specified max_tokens, but ensure it's safe
+                safe_max = self._calculate_safe_max_tokens(request.prompt, request.system_prompt)
+                max_tokens = min(request.max_tokens, safe_max)
+                if max_tokens < request.max_tokens:
+                    logger.warning(
+                        f"⚠️  Requested max_tokens ({request.max_tokens}) reduced to {max_tokens} "
+                        f"to prevent OOM based on input size"
+                    )
+            else:
+                # Auto-calculate safe max_tokens
+                max_tokens = self._calculate_safe_max_tokens(request.prompt, request.system_prompt)
+            
             payload = {
                 "model": model,
                 "messages": messages,
                 "temperature": request.temperature,
-                "max_tokens": request.max_tokens or 2000,
+                "max_tokens": max_tokens,
                 "stream": False
             }
             
             # Make request to vLLM
-            logger.info(f"📡 Sending request to vLLM at {self.base_url}/chat/completions (timeout: {self.timeout}s)")
+            logger.info(f"📡 Sending request to vLLM at {self.base_url}/chat/completions (max_tokens: {max_tokens}, timeout: {self.timeout}s)")
             response = await self.client.post("/chat/completions", json=payload)
             response.raise_for_status()
             

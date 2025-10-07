@@ -33,11 +33,14 @@ def create_llm_client(config: Optional[Dict[str, Any]] = None) -> LLMClient:
     provider = config.get("provider", os.getenv("LLM_PROVIDER", "ollama")).lower()
     
     if provider == "vllm":
-        # vLLM configuration
+        # vLLM configuration with token budgeting
         vllm_config = {
             "base_url": config.get("base_url", os.getenv("LLM_BASE_URL", "http://localhost:8000/v1")),
-            "default_model": config.get("default_model", os.getenv("LLM_MODEL", "Qwen/Qwen2.5-14B-Instruct-AWQ")),
-            "timeout": int(config.get("timeout", os.getenv("LLM_TIMEOUT", "60")))
+            "default_model": config.get("default_model", os.getenv("LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct-AWQ")),
+            "timeout": int(config.get("timeout", os.getenv("LLM_TIMEOUT", "60"))),
+            "max_model_len": int(config.get("max_model_len", os.getenv("LLM_MAX_MODEL_LEN", "12288"))),
+            "output_reserve": int(config.get("output_reserve", os.getenv("LLM_OUTPUT_RESERVE", "3000"))),
+            "safety_margin": int(config.get("safety_margin", os.getenv("LLM_SAFETY_MARGIN", "128")))
         }
         return VLLMClient(vllm_config)
     
