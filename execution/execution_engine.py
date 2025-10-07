@@ -8,6 +8,8 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+import httpx
+import base64
 
 from execution.dtos import ExecutionResult, StepExecutionResult
 from execution.models import (
@@ -19,7 +21,7 @@ from execution.repository import ExecutionRepository
 from execution.services.asset_service_client import AssetServiceClient
 from execution.services.automation_service_client import AutomationServiceClient
 
-# Import WinRM library
+# Import WinRM and SSH libraries
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'automation-service'))
 try:
@@ -28,6 +30,13 @@ try:
 except ImportError:
     WindowsPowerShellLibrary = None
     WINRM_AVAILABLE = False
+
+try:
+    from libraries.linux_ssh import LinuxSSHLibrary
+    SSH_AVAILABLE = True
+except ImportError:
+    LinuxSSHLibrary = None
+    SSH_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +83,17 @@ class ExecutionEngine:
                 logger.warning(f"Failed to initialize WinRM library: {e}")
         else:
             logger.warning("WinRM library not available - Windows PowerShell execution will not work")
+        
+        # Initialize SSH library if available
+        self.ssh_library = None
+        if SSH_AVAILABLE:
+            try:
+                self.ssh_library = LinuxSSHLibrary()
+                logger.info("SSH library initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize SSH library: {e}")
+        else:
+            logger.warning("SSH library not available - Linux SSH execution will not work")
         
         logger.info("ExecutionEngine initialized with service integrations")
     
@@ -418,6 +438,16 @@ class ExecutionEngine:
             logger.info(f"Detected Windows PowerShell tool: {step.step_type}")
             return await self._execute_winrm_step(step, asset)
         
+        # Step 2.5: Check if this is a Linux/SSH tool
+        if self._is_linux_ssh_tool(step):
+            logger.info(f"Detected Linux SSH tool: {step.step_type}")
+            return await self._execute_ssh_step(step, asset)
+        
+        # Step 2.6: Check if this is an API/HTTP tool
+        if self._is_api_http_tool(step):
+            logger.info(f"Detected API/HTTP tool: {step.step_type}")
+            return await self._execute_api_step(step, asset)
+        
         # Step 3: Execute based on step type
         step_type = step.step_type.lower()
         
@@ -522,7 +552,7 @@ class ExecutionEngine:
         asset: Optional[Any]
     ) -> Dict[str, Any]:
         """
-        Execute an API call step
+        Execute an API/HTTP call step
         
         Args:
             step: Execution step model
@@ -531,40 +561,108 @@ class ExecutionEngine:
         Returns:
             Output data
         """
-        # TODO: Implement API execution
-        # For now, use curl command as fallback
-        logger.info("API step execution - using curl fallback")
+        try:
+            logger.info(f"Executing API step: {step.step_name}")
+            
+            # Extract connection parameters
+            url = step.input_data.get("url") or step.input_data.get("endpoint")
+            method = step.input_data.get("method", "GET").upper()
+            headers = step.input_data.get("headers", {})
+            body = step.input_data.get("body") or step.input_data.get("data")
+            params = step.input_data.get("params", {})
+            timeout = step.input_data.get("timeout", 30)
+            
+            # Extract authentication
+            username = step.input_data.get("username") or step.input_data.get("user")
+            password = step.input_data.get("password")
+            auth_type = step.input_data.get("auth_type", "basic").lower()
+            
+            # Try to get from asset if not in input_data
+            if asset and not username:
+                username = asset.username
+                password = asset.password
+            
+            # Build URL if host is provided separately
+            host = step.input_data.get("host") or step.input_data.get("target_host")
+            if host and not url:
+                protocol = step.input_data.get("protocol", "http")
+                port = step.input_data.get("port", "")
+                path = step.input_data.get("path", "")
+                
+                if port:
+                    url = f"{protocol}://{host}:{port}{path}"
+                else:
+                    url = f"{protocol}://{host}{path}"
+            
+            if not url:
+                raise ValueError("No URL or endpoint specified for API call")
+            
+            logger.info(f"API Request: {method} {url}")
+            logger.info(f"Authentication: {auth_type} (username: {username})")
+            
+            # Prepare authentication
+            auth = None
+            if username and password:
+                if auth_type == "digest":
+                    # Use httpx DigestAuth for digest authentication
+                    auth = httpx.DigestAuth(username, password)
+                    logger.info("Using Digest authentication")
+                else:  # default to basic
+                    # Use httpx BasicAuth
+                    auth = httpx.BasicAuth(username, password)
+                    logger.info("Using Basic authentication")
+            
+            # Make the HTTP request using httpx
+            start_time = datetime.utcnow()
+            
+            async with httpx.AsyncClient(verify=False) as client:  # Disable SSL verification for internal devices
+                response = await client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=body if isinstance(body, dict) else None,
+                    content=body if isinstance(body, str) else None,
+                    params=params,
+                    auth=auth,
+                    timeout=timeout
+                )
+                response_text = response.text
+                response_status = response.status_code
+                response_headers = dict(response.headers)
+            
+            end_time = datetime.utcnow()
+            duration = (end_time - start_time).total_seconds()
+            
+            logger.info(f"API Response: Status {response_status}, Duration {duration}s")
+            
+            return {
+                "status": "success" if 200 <= response_status < 300 else "error",
+                "http_status": response_status,
+                "response": response_text,
+                "response_headers": response_headers,
+                "duration": duration,
+                "url": url,
+                "method": method,
+                "connection_type": "api",
+                "timestamp": end_time.isoformat(),
+            }
         
-        url = step.input_data.get("url")
-        method = step.input_data.get("method", "GET")
-        headers = step.input_data.get("headers", {})
-        body = step.input_data.get("body")
-        
-        # Build curl command
-        curl_cmd = f"curl -X {method}"
-        
-        for key, value in headers.items():
-            curl_cmd += f" -H '{key}: {value}'"
-        
-        if body:
-            import json
-            curl_cmd += f" -d '{json.dumps(body)}'"
-        
-        curl_cmd += f" '{url}'"
-        
-        # Execute via automation service
-        result = await self.automation_client.execute_command(
-            command=curl_cmd,
-            connection_type="local",
-            timeout=step.input_data.get("timeout", 60),
-        )
-        
-        return {
-            "status": result.status,
-            "response": result.stdout,
-            "error": result.stderr,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP client error: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": f"HTTP client error: {str(e)}",
+                "error_type": "HTTPError",
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        except Exception as e:
+            logger.error(f"API execution failed: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
     
     async def _execute_asset_service_query(
         self,
@@ -857,6 +955,17 @@ class ExecutionEngine:
         Returns:
             True if this is a Windows PowerShell tool
         """
+        # FIRST: Check if input_data explicitly indicates connection type
+        # This takes precedence over tool name detection
+        if step.input_data:
+            connection_type = step.input_data.get('connection_type', '').lower()
+            # If explicitly marked as SSH/Linux, this is NOT a PowerShell tool
+            if connection_type in ['ssh', 'linux', 'unix']:
+                return False
+            # If explicitly marked as WinRM/PowerShell, this IS a PowerShell tool
+            if connection_type in ['winrm', 'powershell', 'windows']:
+                return True
+        
         step_type = step.step_type.lower()
         
         # Check for PowerShell cmdlets (they typically use Verb-Noun format)
@@ -871,15 +980,84 @@ class ExecutionEngine:
         if step_type in powershell_cmdlets:
             return True
         
-        # Check if input_data indicates Windows/PowerShell
+        # Check if command contains PowerShell cmdlets
         if step.input_data:
-            connection_type = step.input_data.get('connection_type', '').lower()
-            if connection_type in ['winrm', 'powershell', 'windows']:
-                return True
-            
-            # Check if command contains PowerShell cmdlets
             command = step.input_data.get('command', '').lower()
             if any(cmdlet in command for cmdlet in powershell_cmdlets):
+                return True
+        
+        return False
+    
+    def _is_linux_ssh_tool(self, step: ExecutionStepModel) -> bool:
+        """
+        Determine if a step is a Linux SSH tool
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            True if this is a Linux SSH tool
+        """
+        step_type = step.step_type.lower()
+        
+        # Check for common Linux commands
+        linux_commands = [
+            'ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top', 'df', 'du',
+            'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'touch', 'echo',
+            'systemctl', 'service', 'apt', 'yum', 'dnf', 'zypper',
+            'ssh', 'scp', 'rsync', 'curl', 'wget', 'tar', 'gzip', 'unzip'
+        ]
+        
+        if step_type in linux_commands:
+            return True
+        
+        # Check if input_data indicates Linux/SSH
+        if step.input_data:
+            connection_type = step.input_data.get('connection_type', '').lower()
+            if connection_type in ['ssh', 'linux', 'unix']:
+                return True
+            
+            # Check if command contains Linux commands
+            command = step.input_data.get('command', '').lower()
+            if any(cmd in command for cmd in linux_commands):
+                return True
+        
+        return False
+    
+    def _is_api_http_tool(self, step: ExecutionStepModel) -> bool:
+        """
+        Check if this step is an API/HTTP tool
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            True if this is an API/HTTP tool
+        """
+        step_type = step.step_type.lower()
+        
+        # Check for explicit API/HTTP markers
+        api_keywords = [
+            'api', 'http', 'https', 'rest', 'restful', 'web', 'curl', 'wget',
+            'get', 'post', 'put', 'patch', 'delete', 'request'
+        ]
+        
+        if any(keyword in step_type for keyword in api_keywords):
+            return True
+        
+        # Check if input_data indicates API/HTTP
+        if step.input_data:
+            connection_type = step.input_data.get('connection_type', '').lower()
+            if connection_type in ['api', 'http', 'https', 'rest']:
+                return True
+            
+            # Check for URL in input_data
+            if 'url' in step.input_data or 'endpoint' in step.input_data:
+                return True
+            
+            # Check for HTTP method
+            method = step.input_data.get('method', '').upper()
+            if method in ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']:
                 return True
         
         return False
@@ -1025,4 +1203,152 @@ class ExecutionEngine:
         else:
             # Default: use step_type as cmdlet name
             logger.warning(f"Unknown PowerShell cmdlet: {step_type}, using as-is")
+            return step_type
+    
+    async def _execute_ssh_step(
+        self,
+        step: ExecutionStepModel,
+        asset: Optional[Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute a Linux bash step via SSH
+        
+        Args:
+            step: Execution step model
+            asset: Asset details (optional)
+        
+        Returns:
+            Output data
+        """
+        if not self.ssh_library:
+            raise RuntimeError(
+                "SSH library not available. Install with: pip install paramiko"
+            )
+        
+        try:
+            # Extract connection parameters
+            target_host = None
+            username = None
+            password = None
+            private_key = None
+            port = 22
+            
+            # Try to get from asset first
+            if asset:
+                target_host = asset.hostname or asset.ip_address
+                username = asset.username
+                password = asset.password
+                if hasattr(asset, 'private_key'):
+                    private_key = asset.private_key
+            
+            # Override with step input_data if provided
+            if step.input_data:
+                # Support multiple naming conventions
+                target_host = step.input_data.get('target_host') or \
+                             step.input_data.get('hostname') or \
+                             step.input_data.get('host') or \
+                             target_host
+                
+                username = step.input_data.get('username') or \
+                          step.input_data.get('user') or \
+                          username
+                
+                password = step.input_data.get('password', password)
+                private_key = step.input_data.get('private_key', private_key)
+                port = step.input_data.get('port', port)
+            
+            # Validate required parameters
+            if not target_host:
+                raise ValueError("target_host is required for SSH execution")
+            if not username:
+                raise ValueError("username is required for SSH execution")
+            if not password and not private_key:
+                raise ValueError("password or private_key is required for SSH execution")
+            
+            # Build bash script
+            script = self._build_bash_script(step)
+            
+            logger.info(
+                f"Executing bash via SSH: host={target_host}, "
+                f"user={username}, script_length={len(script)}"
+            )
+            
+            # Execute via SSH
+            result = self.ssh_library.execute_bash(
+                target_host=target_host,
+                username=username,
+                password=password,
+                private_key=private_key,
+                script=script,
+                timeout=step.input_data.get('timeout', 300) if step.input_data else 300,
+                port=port
+            )
+            
+            # Return output
+            return {
+                "status": "completed" if result.get("success") else "failed",
+                "exit_code": result.get("exit_code", 0),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "duration_seconds": result.get("duration_seconds", 0),
+                "attempts": result.get("attempts", 1),
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": "ssh",
+            }
+        
+        except Exception as e:
+            logger.error(f"SSH execution failed: {e}", exc_info=True)
+            raise
+    
+    def _build_bash_script(self, step: ExecutionStepModel) -> str:
+        """
+        Build bash script from step
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            Bash script string
+        """
+        # If there's a direct script/command in input_data, use it
+        if step.input_data:
+            if 'script' in step.input_data:
+                return step.input_data['script']
+            if 'command' in step.input_data:
+                return step.input_data['command']
+        
+        # Otherwise, build from step_type and inputs
+        step_type = step.step_type.lower()
+        inputs = step.input_data or {}
+        
+        # Handle common Linux commands
+        if step_type == 'ls':
+            path = inputs.get('path', inputs.get('directory', '/root'))
+            options = inputs.get('options', '-la')
+            return f"ls {options} {path}"
+        
+        elif step_type == 'cat':
+            file_path = inputs.get('file', inputs.get('path', ''))
+            if file_path:
+                return f"cat {file_path}"
+            return "cat"
+        
+        elif step_type == 'ps':
+            options = inputs.get('options', 'aux')
+            return f"ps {options}"
+        
+        elif step_type == 'df':
+            options = inputs.get('options', '-h')
+            return f"df {options}"
+        
+        elif step_type == 'systemctl':
+            action = inputs.get('action', 'status')
+            service = inputs.get('service', '')
+            if service:
+                return f"systemctl {action} {service}"
+            return f"systemctl {action}"
+        
+        else:
+            # Default: use step_type as command
+            logger.warning(f"Unknown Linux command: {step_type}, using as-is")
             return step_type

@@ -531,6 +531,29 @@ For each selected tool, create an execution step with:
      * use_ssl: true/false (default: false for HTTP WinRM on port 5985)
      * port: WinRM port (default: 5985 for HTTP, 5986 for HTTPS)
      * connection_type: "winrm" (to explicitly mark as WinRM execution)
+   
+   - For Linux/SSH commands (ls, cat, ps, systemctl, etc.):
+     * target_host: IP address or hostname of the Linux machine
+     * username: SSH username for authentication
+     * password: SSH password for authentication (or private_key)
+     * command or script: The bash command/script to execute
+     * port: SSH port (default: 22)
+     * connection_type: "ssh" (to explicitly mark as SSH execution)
+   
+   - For API/HTTP requests (REST APIs, web services, device APIs like Axis cameras, etc.):
+     * url: Full URL of the API endpoint OR
+     * host: IP address or hostname (if building URL from parts)
+     * path: API path (e.g., /axis-cgi/com/ptz.cgi)
+     * protocol: http or https (default: http)
+     * port: Port number (optional)
+     * method: HTTP method (GET, POST, PUT, DELETE, etc.)
+     * username: Username for authentication
+     * password: Password for authentication
+     * auth_type: "basic" or "digest" (default: basic, use "digest" for Axis cameras)
+     * params: Query parameters as a dictionary
+     * headers: HTTP headers as a dictionary (optional)
+     * body: Request body for POST/PUT (optional)
+     * connection_type: "api" (to explicitly mark as API execution)
 
 3. **Clear descriptions**: Describe what each step will do
 
@@ -578,9 +601,62 @@ For Windows/PowerShell/WinRM commands:
   }
 ]
 
+For Linux/SSH commands:
+[
+  {
+    "tool": "ls" | "cat" | "ps" | "systemctl" | etc.,
+    "description": "Brief description of what this step does",
+    "inputs": {
+      "target_host": "192.168.50.12",
+      "username": "root",
+      "password": "password123",
+      "command": "ls -la /root",
+      "connection_type": "ssh",
+      "port": 22
+    },
+    "preconditions": ["SSH service is running", "Credentials are valid"],
+    "success_criteria": ["Command executed successfully", "Output received"],
+    "failure_handling": "Log error and report connection failure",
+    "estimated_duration": 10
+  }
+]
+
+For API/HTTP requests (Axis cameras, REST APIs, etc.):
+[
+  {
+    "tool": "api-request" | "http-get" | "http-post" | etc.,
+    "description": "Brief description of what this API call does",
+    "inputs": {
+      "host": "192.168.10.90",
+      "path": "/axis-cgi/com/ptz.cgi",
+      "protocol": "http",
+      "method": "GET",
+      "params": {
+        "autofocus": "on",
+        "camera": "1"
+      },
+      "username": "root",
+      "password": "password123",
+      "auth_type": "digest",  // REQUIRED for Axis cameras! Use "basic" only for other APIs
+      "connection_type": "api"
+    },
+    "preconditions": ["Device is reachable", "Credentials are valid"],
+    "success_criteria": ["HTTP 200 or 204 response", "Command accepted"],
+    "failure_handling": "Log error and report API failure",
+    "estimated_duration": 5
+  }
+]
+
+IMPORTANT: 
+- Axis cameras use HTTP Digest auth (auth_type: "digest")
+- Axis VAPIX params: PTZ home={"move":"home"}, autofocus={"autofocus":"on","camera":"1"}
+- Use GET method for Axis VAPIX commands
+
 CRITICAL: 
 - Be intelligent about field selection for asset queries. Don't fetch all 50+ fields when only 5-10 are needed!
-- For WinRM commands, ALWAYS extract target_host, username, and password from the user's query!"""
+- For WinRM commands, ALWAYS extract target_host, username, and password from the user's query!
+- For SSH commands, ALWAYS extract target_host, username, and password from the user's query!
+- For API requests, ALWAYS extract host/url, username, password, and API-specific parameters from the user's query!"""
 
     def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1) -> str:
         """Build the user prompt with decision and selection context"""
