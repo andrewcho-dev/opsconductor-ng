@@ -399,6 +399,39 @@ class AssetServiceClient:
         return await self.list_assets(search=query, limit=limit)
     
     # ========================================================================
+    # EXPORT METHODS
+    # ========================================================================
+    
+    async def export_assets_csv(self) -> str:
+        """
+        Export all assets to CSV format.
+        
+        Returns:
+            CSV string with all assets
+            
+        Raises:
+            Exception: If export fails
+        """
+        try:
+            url = f"{self.base_url}/export/csv"
+            logger.info(f"Exporting assets to CSV from {url}")
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        csv_content = await response.text()
+                        logger.info(f"Successfully exported {len(csv_content)} bytes of CSV data")
+                        return csv_content
+                    else:
+                        error_msg = f"CSV export failed with status {response.status}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
+                        
+        except Exception as e:
+            logger.error(f"Failed to export CSV: {e}")
+            raise
+    
+    # ========================================================================
     # CREDENTIAL METHODS (GATED, HIGH RISK)
     # ========================================================================
     

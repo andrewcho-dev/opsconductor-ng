@@ -17,10 +17,12 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, AsyncGenerator
 import httpx
 import uuid
+import json
 from datetime import datetime
 
 # Add paths
@@ -343,6 +345,89 @@ async def process_pipeline_request(request: PipelineRequest):
             error=f"Pipeline orchestrator error: {str(e)}",
             architecture="integrated-pipeline"
         )
+
+
+@app.post("/pipeline/stream")
+async def process_pipeline_request_streaming(request: PipelineRequest):
+    """
+    Process user request through the pipeline with real-time progress updates via Server-Sent Events.
+    
+    This endpoint streams progress updates as each stage completes, allowing the frontend
+    to show real-time feedback to the user.
+    
+    Returns: Server-Sent Events stream with stage progress and final result
+    """
+    request_id = str(uuid.uuid4())
+    
+    async def event_generator() -> AsyncGenerator[str, None]:
+        """Generate Server-Sent Events for pipeline progress"""
+        try:
+            # Send initial event
+            yield f"data: {json.dumps({'type': 'start', 'request_id': request_id, 'message': 'Starting pipeline...'})}\n\n"
+            
+            # Get orchestrator
+            orchestrator = await get_pipeline_orchestrator(llm_client)
+            
+            # Define progress callback for real-time updates
+            async def progress_callback(stage: str, status: str, data: dict):
+                """Stream progress updates in real-time"""
+                event_type = 'stage_start' if status == 'start' else 'stage_complete'
+                yield f"data: {json.dumps({'type': event_type, **data})}\n\n"
+            
+            # Create a queue for progress events
+            import asyncio
+            progress_queue = asyncio.Queue()
+            
+            async def queue_progress(stage: str, status: str, data: dict):
+                """Queue progress updates for streaming"""
+                event_type = 'stage_start' if status == 'start' else 'stage_complete'
+                await progress_queue.put({'type': event_type, **data})
+            
+            # Process the request with progress callback
+            async def process_with_progress():
+                result = await orchestrator.process_request(
+                    user_request=request.request,
+                    request_id=request_id,
+                    context=request.context,
+                    session_id=request.session_id,
+                    progress_callback=queue_progress
+                )
+                await progress_queue.put(None)  # Signal completion
+                return result
+            
+            # Start processing in background
+            process_task = asyncio.create_task(process_with_progress())
+            
+            # Stream progress events as they arrive
+            while True:
+                event = await progress_queue.get()
+                if event is None:  # Processing complete
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+            
+            # Get the final result
+            pipeline_result = await process_task
+            
+            # Send final result
+            if pipeline_result.success:
+                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'total_duration_ms': pipeline_result.metrics.total_duration_ms, 'message': pipeline_result.response.message, 'response': pipeline_result.response.model_dump(mode='json')})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'success': False, 'error': pipeline_result.error_message})}\n\n"
+            
+        except Exception as e:
+            logger.error(f"❌ Streaming pipeline failed: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'success': False, 'error': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
 
 @app.get("/pipeline/health")
 async def get_pipeline_health():

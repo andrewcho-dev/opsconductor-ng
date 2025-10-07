@@ -91,8 +91,10 @@ class PipelineOrchestrator:
             from llm.ollama_client import OllamaClient
             default_config = {
                 "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-                "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
-                "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
+                "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5-gpu"),
+                # Increased timeout for full LLM pipeline (no fast paths)
+                # Set to 180s (3 minutes) to handle slow Ollama responses
+                "timeout": int(os.getenv("OLLAMA_TIMEOUT", "180"))
             }
             llm_client = OllamaClient(default_config)
         
@@ -136,7 +138,8 @@ class PipelineOrchestrator:
         user_request: str, 
         request_id: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None
     ) -> PipelineResult:
         """
         Process a user request through the complete 4-stage pipeline with confidence-driven clarification.
@@ -146,6 +149,8 @@ class PipelineOrchestrator:
             request_id: Optional request identifier for tracking
             context: Optional context including clarification history
             session_id: Optional session identifier for conversation history
+            progress_callback: Optional callback function for real-time progress updates
+                              Called with (stage: str, status: str, data: dict)
             
         Returns:
             PipelineResult containing the response and execution metrics
@@ -178,47 +183,27 @@ class PipelineOrchestrator:
             logger.info(f"Session {session_id}: {conversation_manager.get_message_count(session_id)} messages in history")
         
         try:
+            logger.info(f"🚀 [REQUEST {request_id}] Starting pipeline processing")
+            logger.info(f"📝 User request: {user_request[:100]}...")
+            
             # Stage A: Classification
+            logger.info(f"⏱️  [STAGE A] Starting classification...")
+            if progress_callback:
+                await progress_callback("stage_a", "start", {"stage": "A", "name": "Classification", "message": "🔍 Analyzing your request..."})
+            
             stage_start = time.time()
             classification_result = await self._execute_stage_a(user_request, context)
             stage_durations["stage_a"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_a"] = classification_result
+            logger.info(f"✅ [STAGE A] Complete in {stage_durations['stage_a']:.2f}ms")
+            logger.info(f"   Intent: {classification_result.intent.category}/{classification_result.intent.action}, Confidence: {classification_result.overall_confidence:.2f} ({classification_result.confidence_level.value})")
             
-            # 🚀 FAST PATH: Check if Stage A suggests skipping to a specific stage
-            print(f"DEBUG: hasattr next_stage: {hasattr(classification_result, 'next_stage')}")
-            if hasattr(classification_result, 'next_stage'):
-                print(f"DEBUG: next_stage value: '{classification_result.next_stage}'")
-                print(f"DEBUG: next_stage == 'stage_d': {classification_result.next_stage == 'stage_d'}")
+            if progress_callback:
+                await progress_callback("stage_a", "complete", {"stage": "A", "name": "Classification", "duration_ms": stage_durations["stage_a"], "message": f"✅ Classification complete ({stage_durations['stage_a']:.0f}ms)"})
             
-            if hasattr(classification_result, 'next_stage') and classification_result.next_stage == "stage_d":
-                print("🚀 FAST PATH: Taking Stage A → Stage D shortcut!")
-                # Skip Stage B and C for simple questions
-                response_result = await self._execute_stage_d(classification_result, None, None, context)
-                stage_durations["stage_d"] = (time.time() - stage_start) * 1000
-                intermediate_results["stage_d"] = response_result
-                
-                # Calculate metrics for fast path
-                total_duration = (time.time() - start_time) * 1000
-                metrics = PipelineMetrics(
-                    total_duration_ms=total_duration,
-                    stage_durations=stage_durations,
-                    memory_usage_mb=self._get_memory_usage(),
-                    request_id=request_id,
-                    timestamp=start_time,
-                    status=PipelineStatus.COMPLETED
-                )
-                
-                # Store assistant response in conversation history
-                if session_id and response_result:
-                    conversation_manager = get_conversation_manager()
-                    conversation_manager.add_message(session_id, "assistant", response_result.message)
-                
-                return PipelineResult(
-                    response=response_result,
-                    metrics=metrics,
-                    intermediate_results=intermediate_results,
-                    success=True
-                )
+            # ✅ PURE LLM PIPELINE: All requests go through Stage B → C → D → E
+            # No fast paths, no shortcuts - full intelligent routing
+            logger.info(f"🧠 Stage A complete, routing to Stage B for tool selection")
             
             # Check if clarification is needed due to low confidence
             if await self._needs_clarification(classification_result, context):
@@ -246,10 +231,20 @@ class PipelineOrchestrator:
                 )
             
             # Stage B: Selection
+            logger.info(f"⏱️  [STAGE B] Starting tool selection...")
+            if progress_callback:
+                await progress_callback("stage_b", "start", {"stage": "B", "name": "Tool Selection", "message": "🔧 Selecting tools..."})
+            
             stage_start = time.time()
             selection_result = await self._execute_stage_b(classification_result, context)
             stage_durations["stage_b"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_b"] = selection_result
+            logger.info(f"✅ [STAGE B] Complete in {stage_durations['stage_b']:.2f}ms")
+            if selection_result and hasattr(selection_result, 'selected_tools'):
+                logger.info(f"   Selected {len(selection_result.selected_tools)} tools")
+            
+            if progress_callback:
+                await progress_callback("stage_b", "complete", {"stage": "B", "name": "Tool Selection", "duration_ms": stage_durations["stage_b"], "message": f"✅ Tool selection complete ({stage_durations['stage_b']:.0f}ms)"})
             
             # Stage C: Planning (skip if no tool selection)
             planning_result = None
@@ -258,19 +253,40 @@ class PipelineOrchestrator:
                         len(selection_result.selected_tools) > 0)
             
             if has_tools:
+                logger.info(f"⏱️  [STAGE C] Starting plan creation...")
+                if progress_callback:
+                    await progress_callback("stage_c", "start", {"stage": "C", "name": "Planning", "message": "📋 Creating execution plan..."})
+                
                 stage_start = time.time()
                 planning_result = await self._execute_stage_c(classification_result, selection_result)
                 stage_durations["stage_c"] = (time.time() - stage_start) * 1000
                 intermediate_results["stage_c"] = planning_result
+                logger.info(f"✅ [STAGE C] Complete in {stage_durations['stage_c']:.2f}ms")
+                if planning_result and hasattr(planning_result, 'plan'):
+                    plan_dict = planning_result.plan if isinstance(planning_result.plan, dict) else {}
+                    steps = plan_dict.get('steps', [])
+                    logger.info(f"   Created plan with {len(steps)} steps")
+                
+                if progress_callback:
+                    await progress_callback("stage_c", "complete", {"stage": "C", "name": "Planning", "duration_ms": stage_durations["stage_c"], "message": f"✅ Planning complete ({stage_durations['stage_c']:.0f}ms)"})
             else:
                 logger.info("⏭️  Skipping Stage C: No tool selection (information-only request)")
                 stage_durations["stage_c"] = 0
             
             # Stage D: Response Generation
+            logger.info(f"⏱️  [STAGE D] Starting response generation...")
+            if progress_callback:
+                await progress_callback("stage_d", "start", {"stage": "D", "name": "Response Generation", "message": "💬 Generating response..."})
+            
             stage_start = time.time()
             response_result = await self._execute_stage_d(classification_result, selection_result, planning_result, context)
             stage_durations["stage_d"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_d"] = response_result
+            logger.info(f"✅ [STAGE D] Complete in {stage_durations['stage_d']:.2f}ms")
+            logger.info(f"   Response type: {response_result.response_type}, Approval required: {response_result.approval_required}")
+            
+            if progress_callback:
+                await progress_callback("stage_d", "complete", {"stage": "D", "name": "Response Generation", "duration_ms": stage_durations["stage_d"], "message": f"✅ Response complete ({stage_durations['stage_d']:.0f}ms)"})
             
             # 🚀 PHASE 7: Stage E - Execution (if plan exists and should be executed)
             should_execute = False
@@ -417,6 +433,16 @@ class PipelineOrchestrator:
                 timestamp=start_time,
                 status=PipelineStatus.COMPLETED
             )
+            
+            # Log comprehensive performance summary
+            logger.info(f"🎉 [REQUEST {request_id}] Pipeline complete in {total_duration:.2f}ms")
+            logger.info(f"📊 Performance breakdown:")
+            logger.info(f"   Stage A (Classification): {stage_durations.get('stage_a', 0):.2f}ms")
+            logger.info(f"   Stage B (Tool Selection): {stage_durations.get('stage_b', 0):.2f}ms")
+            logger.info(f"   Stage C (Planning):       {stage_durations.get('stage_c', 0):.2f}ms")
+            logger.info(f"   Stage D (Response):       {stage_durations.get('stage_d', 0):.2f}ms")
+            logger.info(f"   Stage E (Execution):      {stage_durations.get('stage_e', 0):.2f}ms")
+            logger.info(f"   Memory usage: {metrics.memory_usage_mb:.2f}MB")
             
             # Update success metrics
             self._success_count += 1
@@ -897,7 +923,7 @@ Each asset in the data has the following fields:
             llm_request = LLMRequest(
                 prompt=prompt,
                 temperature=0.1,  # Very low temperature for factual extraction
-                max_tokens=1000  # Increased for detailed asset listings
+                max_tokens=8000  # Allow large responses for CSV exports and detailed listings
             )
             
             logger.info(f"🔍 ORCHESTRATOR: Sending prompt to LLM (length: {len(prompt)} chars)")

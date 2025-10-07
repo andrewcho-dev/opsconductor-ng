@@ -67,8 +67,8 @@ class StageCommunicationValidator:
             from llm.ollama_client import OllamaClient
             default_config = {
                 "base_url": "http://localhost:11434",
-                "default_model": "llama2",
-                "timeout": 30
+                "default_model": "qwen2.5:7b-instruct-q4_k_m",
+                "timeout": 180
             }
             llm_client = OllamaClient(default_config)
         

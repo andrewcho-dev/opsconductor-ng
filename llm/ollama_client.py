@@ -52,16 +52,24 @@ class OllamaClient(LLMClient):
         if not self.is_connected or not self.client:
             raise LLMConnectionError("Not connected to Ollama")
         
+        import logging
+        logger = logging.getLogger(__name__)
+        
         start_time = time.time()
+        model = request.model or self.default_model
+        prompt_preview = request.prompt[:100] if request.prompt else ""
+        
+        logger.info(f"🤖 LLM Call starting - Model: {model}, Prompt: {prompt_preview}...")
         
         try:
             # Prepare request payload
             payload = {
-                "model": request.model or self.default_model,
+                "model": model,
                 "prompt": request.prompt,
                 "stream": False,
                 "options": {
                     "temperature": request.temperature,
+                    "num_ctx": 16384,  # Increase context window to 16K tokens
                 }
             }
             
@@ -72,11 +80,14 @@ class OllamaClient(LLMClient):
                 payload["options"]["num_predict"] = request.max_tokens
             
             # Make request to Ollama
+            logger.info(f"📡 Sending request to Ollama at {self.base_url}/api/generate (timeout: {self.timeout}s)")
             response = await self.client.post("/api/generate", json=payload)
             response.raise_for_status()
             
             result = response.json()
             processing_time_ms = int((time.time() - start_time) * 1000)
+            
+            logger.info(f"✅ LLM Call complete in {processing_time_ms}ms - Tokens: {result.get('eval_count', 'N/A')}")
             
             return LLMResponse(
                 content=result.get("response", ""),
@@ -92,11 +103,21 @@ class OllamaClient(LLMClient):
                 }
             )
             
+        except httpx.TimeoutException as e:
+            elapsed = int((time.time() - start_time) * 1000)
+            logger.error(f"❌ LLM Call TIMEOUT after {elapsed}ms - Model: {model}")
+            raise LLMGenerationError(f"Ollama timeout after {elapsed}ms: {e}")
         except httpx.HTTPStatusError as e:
+            elapsed = int((time.time() - start_time) * 1000)
+            logger.error(f"❌ LLM Call HTTP ERROR after {elapsed}ms - Status: {e.response.status_code}")
             raise LLMGenerationError(f"Ollama HTTP error: {e.response.status_code} - {e.response.text}")
         except httpx.RequestError as e:
+            elapsed = int((time.time() - start_time) * 1000)
+            logger.error(f"❌ LLM Call REQUEST ERROR after {elapsed}ms - {str(e)}")
             raise LLMGenerationError(f"Ollama request error: {e}")
         except Exception as e:
+            elapsed = int((time.time() - start_time) * 1000)
+            logger.error(f"❌ LLM Call UNKNOWN ERROR after {elapsed}ms - {str(e)}")
             raise LLMGenerationError(f"Ollama generation failed: {e}")
     
     async def health_check(self) -> bool:

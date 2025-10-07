@@ -729,6 +729,17 @@ IMPORTANT INSTRUCTIONS:
             
             prompt_parts.append(f"Question: {user_request}")
             prompt_parts.append("")
+            
+            # Add specific instructions for CSV exports
+            if "csv" in user_request.lower() or "export" in user_request.lower():
+                prompt_parts.append("CRITICAL INSTRUCTIONS FOR CSV GENERATION:")
+                prompt_parts.append("- Generate a COMPLETE CSV file with ALL assets from the data provided")
+                prompt_parts.append("- Include EVERY SINGLE asset - do not truncate or summarize")
+                prompt_parts.append("- Format as a proper CSV with headers and one row per asset")
+                prompt_parts.append("- Wrap the CSV in a ```csv code block for proper formatting")
+                prompt_parts.append("- Include all relevant columns: ID, Name, Hostname, IP Address, OS, Environment, Location, Service Type, etc.")
+                prompt_parts.append("")
+            
             prompt_parts.append("Provide a clear, accurate answer. If you have asset data, use it. If this question refers to previous conversation, use the conversation history above. Otherwise, answer based on general knowledge.")
             
             prompt = "\n".join(prompt_parts)
@@ -740,7 +751,7 @@ IMPORTANT INSTRUCTIONS:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=0.1,  # Low temperature for consistent, factual responses
-                max_tokens=500   # Allow more tokens for asset listings
+                max_tokens=8000   # Allow more tokens for large CSV files and asset listings
             )
             
             response = await self.llm_client.generate(llm_request)

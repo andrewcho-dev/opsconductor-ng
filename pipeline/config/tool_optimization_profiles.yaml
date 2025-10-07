@@ -179,6 +179,47 @@ tools:
               cost: 0.6          # Moderate cost
               complexity: 0.6    # Moderate complexity
               completeness: 0.95 # Very complete
+          
+          csv_export:
+            description: "Export all assets to CSV format for download/analysis"
+            typical_use_cases:
+              - "export"
+              - "csv"
+              - "download"
+              - "spreadsheet"
+              - "file"
+              - "export to csv"
+              - "download csv"
+            
+            # Performance - single API call to export endpoint
+            time_estimate_ms: "250 + 3 * N"  # ~250ms base + 3ms per asset for CSV formatting
+            cost_estimate: 1  # Single API call to /export/csv
+            complexity_score: 0.2  # Simple - single endpoint call
+            
+            # Quality
+            scope: "full_export"
+            completeness: "comprehensive (all fields in CSV format)"
+            
+            # Limitations
+            limitations:
+              - "Data may be 5-15 minutes stale (cached)"
+              - "Returns all assets (no filtering)"
+              - "Large exports may take time to download"
+            
+            # Policy
+            policy:
+              max_N_immediate: 10000  # Can handle large exports
+              max_cost: 10
+              requires_approval: false
+              production_safe: true
+            
+            # Preference matching
+            preference_match:
+              speed: 0.8         # Fast for exports
+              accuracy: 0.6      # Cached data
+              cost: 0.95         # Very low cost (single call)
+              complexity: 0.9    # Very simple
+              completeness: 1.0  # Complete export with all fields
 
   asset-direct-poll:
     description: "Poll assets directly via SSH/API for real-time information"

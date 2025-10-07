@@ -93,6 +93,9 @@ Examples:
 - "show me all assets" -> {{"category": "asset_management", "action": "list_assets", "confidence": 0.95, "capabilities": ["asset_query", "infrastructure_info", "resource_listing"]}}
 - "what are the IPs of our linux servers?" -> {{"category": "asset_management", "action": "list_linux_asset_ips", "confidence": 0.95, "capabilities": ["asset_query"]}}
 - "list all windows hosts" -> {{"category": "asset_management", "action": "list_windows_hosts", "confidence": 0.95, "capabilities": ["asset_query", "resource_listing"]}}
+- "export all assets to csv" -> {{"category": "asset_management", "action": "export_assets_csv", "confidence": 0.95, "capabilities": ["asset_query"]}}
+- "download asset list as spreadsheet" -> {{"category": "asset_management", "action": "export_assets_csv", "confidence": 0.90, "capabilities": ["asset_query"]}}
+- "give me a csv file of all servers" -> {{"category": "asset_management", "action": "export_assets_csv", "confidence": 0.92, "capabilities": ["asset_query"]}}
 - "what kind of credentials do we use?" -> {{"category": "information", "action": "explain_credential_types", "confidence": 0.85, "capabilities": []}}
 - "get credentials for server-01" -> {{"category": "asset_management", "action": "retrieve_credentials", "confidence": 0.90, "capabilities": ["credential_access", "secret_retrieval"]}}
 - "show running processes on server X" -> {{"category": "monitoring", "action": "list_processes", "confidence": 0.92, "capabilities": ["process_monitoring"]}}

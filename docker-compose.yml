@@ -306,6 +306,7 @@ services:
       - ./frontend/package-lock.json:/app/package-lock.json
       - ./frontend/tsconfig.json:/app/tsconfig.json
       - ./frontend/.env:/app/.env
+      - /app/node_modules  # Preserve node_modules from container
     networks:
       - opsconductor
     environment:

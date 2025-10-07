@@ -37,14 +37,16 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       sql: 'sql',
       jsx: 'jsx',
       tsx: 'tsx',
+      csv: 'csv',
     };
 
     const ext = extensions[language?.toLowerCase()] || 'txt';
-    const blob = new Blob([code], { type: 'text/plain' });
+    const mimeType = language?.toLowerCase() === 'csv' ? 'text/csv' : 'text/plain';
+    const blob = new Blob([code], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `code.${ext}`;
+    a.download = language?.toLowerCase() === 'csv' ? `export_${Date.now()}.csv` : `code.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -56,7 +58,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          code({ node, inline, className, children, ...props }) {
+          code({ node, inline, className, children, ...props }: any) {
             const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
             const codeString = String(children).replace(/\n$/, '');
@@ -128,33 +130,42 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
                       <button
                         onClick={() => downloadCode(codeString, language)}
                         style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#888',
+                          background: language?.toLowerCase() === 'csv' ? '#10b981' : 'none',
+                          border: language?.toLowerCase() === 'csv' ? '1px solid #10b981' : 'none',
+                          color: language?.toLowerCase() === 'csv' ? '#fff' : '#888',
                           cursor: 'pointer',
                           padding: '4px 8px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
                           fontSize: '12px',
-                          transition: 'color 0.2s',
+                          transition: 'all 0.2s',
                           borderRadius: '4px',
+                          fontWeight: language?.toLowerCase() === 'csv' ? 600 : 400,
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#3d3d3d';
+                          if (language?.toLowerCase() === 'csv') {
+                            e.currentTarget.style.backgroundColor = '#059669';
+                          } else {
+                            e.currentTarget.style.backgroundColor = '#3d3d3d';
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
+                          if (language?.toLowerCase() === 'csv') {
+                            e.currentTarget.style.backgroundColor = '#10b981';
+                          } else {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                          }
                         }}
-                        title="Download code"
+                        title={language?.toLowerCase() === 'csv' ? 'Download CSV file' : 'Download code'}
                       >
                         <Download size={14} />
-                        <span>Download</span>
+                        <span>{language?.toLowerCase() === 'csv' ? 'Download CSV' : 'Download'}</span>
                       </button>
                     </div>
                   </div>
                   <SyntaxHighlighter
-                    style={vscDarkPlus}
+                    style={vscDarkPlus as any}
                     language={language}
                     PreTag="div"
                     customStyle={{

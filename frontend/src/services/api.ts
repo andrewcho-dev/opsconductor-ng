@@ -54,6 +54,17 @@ export const getServiceUrl = (service: string) => {
   return getApiBaseUrl();
 };
 
+// Get direct backend URL for streaming (bypasses Kong to avoid buffering)
+export const getStreamingUrl = () => {
+  // In production, streaming goes directly to backend on port 3005
+  // This bypasses Kong which buffers SSE responses
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  
+  // Use port 3005 for direct backend access (ai-pipeline service)
+  return `${protocol}//${hostname}:3005`;
+};
+
 // Create axios instance with dynamic baseURL
 const api = axios.create({
   headers: {
@@ -712,64 +723,112 @@ export const aiApi = {
     console.log('🚀 Sending AI pipeline request:', request);
     console.log('📋 Session ID:', sessionId);
     
-    // Retry configuration
-    const maxRetries = 2;
-    const retryDelay = 1000; // Start with 1 second
-    
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Use fetch with streaming for real-time progress updates
+    return new Promise(async (resolve, reject) => {
       try {
-        if (attempt > 0) {
-          onProgress?.(`Retrying... (attempt ${attempt + 1}/${maxRetries + 1})`);
-          await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, attempt - 1)));
-        }
+        // Use direct backend URL for streaming to bypass Kong buffering
+        const streamingUrl = getStreamingUrl();
+        const accessToken = localStorage.getItem('access_token');
         
-        // Use Kong API gateway for AI pipeline
-        const response = await api.post('/api/ai/pipeline', {
-          request: request,
-          context: context || {},
-          user_id: `user_${Date.now()}`,
-          session_id: sessionId || `session_${Date.now()}`
-        }, {
-          timeout: 120000
+        console.log('🔗 Streaming URL (direct to backend):', `${streamingUrl}/pipeline/stream`);
+        
+        const response = await fetch(`${streamingUrl}/pipeline/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+          },
+          body: JSON.stringify({
+            request: request,
+            context: context || {},
+            user_id: `user_${Date.now()}`,
+            session_id: sessionId || `session_${Date.now()}`
+          })
         });
-        console.log('✅ AI pipeline response received:', response.data);
         
-        // Transform response to match expected format
-        if (response.data.success) {
-          return {
-            success: true,
-            result: {
-              message: response.data.result.message,
-              response: response.data.result.response,
-              execution_id: response.data.result.response?.execution_id
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalResult: any = null;
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+          
+          // Decode the chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages (separated by \n\n)
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || ''; // Keep incomplete message in buffer
+          
+          for (const message of messages) {
+            if (!message.trim() || !message.startsWith('data: ')) {
+              continue;
             }
-          };
+            
+            try {
+              const jsonStr = message.substring(6); // Remove 'data: ' prefix
+              const data = JSON.parse(jsonStr);
+              console.log('📡 Stream Event:', data);
+              
+              switch (data.type) {
+                case 'start':
+                  onProgress?.('🚀 Starting pipeline...');
+                  break;
+                  
+                case 'stage_start':
+                  onProgress?.(`${data.message || `Starting ${data.name}...`}`);
+                  break;
+                  
+                case 'stage_complete':
+                  const durationSec = (data.duration_ms / 1000).toFixed(1);
+                  onProgress?.(`${data.message || `✅ ${data.name} complete (${durationSec}s)`}`);
+                  break;
+                  
+                case 'complete':
+                  finalResult = {
+                    success: true,
+                    result: {
+                      message: data.message,
+                      response: data.response,
+                      execution_id: data.response?.execution_id
+                    }
+                  };
+                  break;
+                  
+                case 'error':
+                  reject(new Error(data.error || 'Pipeline failed'));
+                  return;
+              }
+            } catch (error) {
+              console.error('Failed to parse SSE message:', error, message);
+            }
+          }
+        }
+        
+        if (finalResult) {
+          resolve(finalResult);
         } else {
-          return {
-            success: false,
-            error: response.data.error
-          };
+          reject(new Error('Pipeline completed without final result'));
         }
+        
       } catch (error: any) {
-        console.error(`AI API Error (attempt ${attempt + 1}):`, error);
-        
-        // Don't retry on client errors (4xx)
-        if (error.response?.status >= 400 && error.response?.status < 500) {
-          throw error;
-        }
-        
-        // If this was the last attempt, throw the error
-        if (attempt === maxRetries) {
-          throw error;
-        }
-        
-        // Otherwise, continue to next retry
-        console.log(`Retrying in ${retryDelay * Math.pow(2, attempt)}ms...`);
+        console.error('❌ Streaming failed:', error);
+        reject(error);
       }
-    }
-    
-    // This should never be reached, but TypeScript needs it
-    throw new Error('Max retries exceeded');
+    });
   },
 
   health: async (): Promise<any> => {

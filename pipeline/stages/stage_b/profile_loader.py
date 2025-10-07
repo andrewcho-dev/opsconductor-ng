@@ -55,19 +55,16 @@ class ProfileLoader:
         database_url: Optional[str] = None
     ):
         """
-        Initialize loader
+        Initialize loader - DATABASE ONLY, NO YAML
         
         Args:
-            config_path: Path to YAML config file. If None, uses default location.
-            use_database: Whether to use database (default: True)
+            config_path: DEPRECATED - not used
+            use_database: DEPRECATED - always True
             database_url: Database URL (defaults to env var)
         """
-        if config_path is None:
-            # Default location
-            config_path = Path(__file__).parent.parent.parent / "config" / "tool_optimization_profiles.yaml"
-        
-        self.config_path = Path(config_path)
-        self.use_database = use_database
+        # YAML support removed - database only
+        self.config_path = None
+        self.use_database = True  # Always True
         self.database_url = database_url
         self._profiles: Optional[OptimizationProfilesConfig] = None
         self._catalog_service = None
@@ -222,51 +219,13 @@ class ProfileLoader:
     
     def _load_from_yaml(self) -> OptimizationProfilesConfig:
         """
-        Load profiles from YAML file
-        
-        Returns:
-            Validated optimization profiles
-            
-        Raises:
-            FileNotFoundError: If config file doesn't exist
-            ValueError: If config is invalid
+        YAML LOADING REMOVED - DATABASE ONLY
         """
-        # Check file exists
-        if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Optimization profiles config not found: {self.config_path}\n"
-                f"Please create the config file or specify a different path."
-            )
-        
-        # Load YAML
-        logger.info(f"Loading optimization profiles from {self.config_path}")
-        try:
-            with open(self.config_path, 'r') as f:
-                raw_config = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML in {self.config_path}: {e}") from e
-        
-        # Validate with Pydantic
-        try:
-            self._profiles = OptimizationProfilesConfig(**raw_config)
-        except Exception as e:
-            raise ValueError(f"Invalid optimization profiles config: {e}") from e
-        
-        logger.info(f"Loaded {len(self._profiles.tools)} tool profiles from YAML")
-        
-        # Log summary
-        for tool_name, tool_profile in self._profiles.tools.items():
-            pattern_count = sum(
-                len(cap.patterns)
-                for cap in tool_profile.capabilities.values()
-            )
-            logger.debug(f"  {tool_name}: {len(tool_profile.capabilities)} capabilities, {pattern_count} patterns")
-        
-        return self._profiles
+        raise NotImplementedError("YAML loading has been removed. Use database only.")
     
     def load(self, force_reload: bool = False) -> OptimizationProfilesConfig:
         """
-        Load profiles from database or YAML
+        Load profiles from database ONLY
         
         Args:
             force_reload: Force reload even if cached
@@ -275,18 +234,14 @@ class ProfileLoader:
             Validated optimization profiles
             
         Raises:
-            FileNotFoundError: If YAML mode and config file doesn't exist
-            ValueError: If config is invalid
+            ValueError: If database load fails
         """
         # Return cached if available
         if self._profiles is not None and not force_reload:
             return self._profiles
         
-        # Load from database or YAML
-        if self.use_database:
-            return self._load_from_database()
-        else:
-            return self._load_from_yaml()
+        # ALWAYS load from database - NO YAML FALLBACK
+        return self._load_from_database()
     
     def get_tool_profile(self, tool_name: str) -> Optional[ToolProfile]:
         """

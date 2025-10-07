@@ -511,7 +511,8 @@ CRITICAL: Be intelligent about field selection. Don't fetch all 50+ fields when 
         user_query = decision.original_request
         intent_category = decision.intent.category
         intent_action = decision.intent.action
-        entities = decision.entities
+        # Convert Pydantic EntityV1 objects to dicts for JSON serialization
+        entities = [entity.dict() if hasattr(entity, 'dict') else entity for entity in decision.entities]
         selected_tools = [tool.tool_name for tool in selection.selected_tools]
         
         prompt = f"""Create an execution plan for the following request:

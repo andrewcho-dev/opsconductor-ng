@@ -671,6 +671,159 @@ class ConsolidatedAssetService(BaseService):
                     detail="Failed to list assets"
                 )
 
+        @self.app.get("/export/csv")
+        async def export_assets_csv(
+            search: Optional[str] = Query(None),
+            os_type: Optional[str] = Query(None),
+            service_type: Optional[str] = Query(None),
+            is_active: Optional[bool] = Query(None)
+        ):
+            """Export all assets as CSV (no pagination - returns ALL matching assets)"""
+            try:
+                import csv
+                import io
+                from fastapi.responses import StreamingResponse
+                
+                # Build WHERE clause (same as list_assets)
+                where_conditions = []
+                params = []
+                param_count = 0
+                
+                if search:
+                    param_count += 1
+                    where_conditions.append(f"(name ILIKE ${param_count} OR hostname ILIKE ${param_count} OR description ILIKE ${param_count})")
+                    params.append(f"%{search}%")
+                
+                if os_type:
+                    param_count += 1
+                    where_conditions.append(f"os_type = ${param_count}")
+                    params.append(os_type)
+                
+                if service_type:
+                    param_count += 1
+                    where_conditions.append(f"service_type = ${param_count}")
+                    params.append(service_type)
+                
+                if is_active is not None:
+                    param_count += 1
+                    where_conditions.append(f"is_active = ${param_count}")
+                    params.append(is_active)
+                
+                where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+                
+                async with self.db.pool.acquire() as conn:
+                    # Get ALL assets (no pagination for CSV export)
+                    query = f"""
+                        SELECT id, name, hostname, ip_address, description, tags,
+                               os_type, os_version,
+                               device_type, hardware_make, hardware_model, serial_number,
+                               physical_address, data_center, building, room, rack_position, rack_location, gps_coordinates,
+                               service_type, port, is_secure,
+                               credential_type, username, domain,
+                               database_type, database_name,
+                               secondary_service_type, secondary_port, ftp_type, secondary_username,
+                               is_active, connection_status, last_tested_at,
+                               status, environment, criticality, owner, support_contact, contract_number, notes,
+                               created_by, updated_by, created_at, updated_at
+                        FROM assets.assets
+                        {where_clause}
+                        ORDER BY id ASC
+                    """
+                    
+                    assets = await conn.fetch(query, *params)
+                    
+                    # Create CSV in memory
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+                    
+                    # Write header
+                    writer.writerow([
+                        'ID', 'Name', 'Hostname', 'IP Address', 'Description', 'Tags',
+                        'OS Type', 'OS Version',
+                        'Device Type', 'Hardware Make', 'Hardware Model', 'Serial Number',
+                        'Physical Address', 'Data Center', 'Building', 'Room', 'Rack Position', 'Rack Location', 'GPS Coordinates',
+                        'Service Type', 'Port', 'Is Secure',
+                        'Credential Type', 'Username', 'Domain',
+                        'Database Type', 'Database Name',
+                        'Secondary Service Type', 'Secondary Port', 'FTP Type', 'Secondary Username',
+                        'Is Active', 'Connection Status', 'Last Tested At',
+                        'Status', 'Environment', 'Criticality', 'Owner', 'Support Contact', 'Contract Number', 'Notes',
+                        'Created By', 'Updated By', 'Created At', 'Updated At'
+                    ])
+                    
+                    # Write data rows
+                    for asset in assets:
+                        # Parse tags
+                        tags = asset['tags'] if asset['tags'] else []
+                        if isinstance(tags, str):
+                            tags = json.loads(tags)
+                        tags_str = ','.join(tags) if tags else ''
+                        
+                        writer.writerow([
+                            asset['id'],
+                            asset['name'],
+                            asset['hostname'],
+                            asset['ip_address'] or '',
+                            asset['description'] or '',
+                            tags_str,
+                            asset['os_type'],
+                            asset['os_version'] or '',
+                            asset['device_type'],
+                            asset['hardware_make'] or '',
+                            asset['hardware_model'] or '',
+                            asset['serial_number'] or '',
+                            asset['physical_address'] or '',
+                            asset['data_center'] or '',
+                            asset['building'] or '',
+                            asset['room'] or '',
+                            asset['rack_position'] or '',
+                            asset['rack_location'] or '',
+                            asset['gps_coordinates'] or '',
+                            asset['service_type'],
+                            asset['port'],
+                            'Yes' if asset['is_secure'] else 'No',
+                            asset['credential_type'] or '',
+                            asset['username'] or '',
+                            asset['domain'] or '',
+                            asset['database_type'] or '',
+                            asset['database_name'] or '',
+                            asset['secondary_service_type'] or '',
+                            asset['secondary_port'] or '',
+                            asset['ftp_type'] or '',
+                            asset['secondary_username'] or '',
+                            'Yes' if asset['is_active'] else 'No',
+                            asset['connection_status'] or '',
+                            asset['last_tested_at'].isoformat() if asset['last_tested_at'] else '',
+                            asset['status'],
+                            asset['environment'],
+                            asset['criticality'],
+                            asset['owner'] or '',
+                            asset['support_contact'] or '',
+                            asset['contract_number'] or '',
+                            asset['notes'] or '',
+                            asset['created_by'] or '',
+                            asset['updated_by'] or '',
+                            asset['created_at'].isoformat() if asset['created_at'] else '',
+                            asset['updated_at'].isoformat() if asset['updated_at'] else ''
+                        ])
+                    
+                    # Return CSV as downloadable file
+                    output.seek(0)
+                    return StreamingResponse(
+                        iter([output.getvalue()]),
+                        media_type="text/csv",
+                        headers={
+                            "Content-Disposition": f"attachment; filename=assets_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                        }
+                    )
+                    
+            except Exception as e:
+                self.logger.error("Failed to export assets to CSV", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to export assets to CSV"
+                )
+
         @self.app.post("/")
         async def create_asset(asset_data: AssetCreate):
             """Create a new asset"""

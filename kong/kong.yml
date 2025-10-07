@@ -86,6 +86,10 @@ services:
   # AI Pipeline Service
   - name: ai-pipeline-service
     url: http://ai-pipeline:8000
+    # Increased timeouts for full LLM pipeline processing (no fast paths)
+    connect_timeout: 120000  # 120 seconds
+    write_timeout: 120000    # 120 seconds
+    read_timeout: 120000     # 120 seconds
     plugins:
       - name: cors
         config:
