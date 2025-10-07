@@ -37,33 +37,39 @@ class ToolCatalogService:
         """
         self.database_url = database_url or os.getenv(
             "DATABASE_URL",
-            "postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor"
+            "postgresql://opsconductor:opsconductor_secure_2024@localhost:5432/opsconductor"
         )
         
-        # Optimized connection pool for performance
-        # Settings based on workload analysis:
-        # - minconn=5: Keep warm connections ready
-        # - maxconn=20: Support higher concurrency
-        # - Connection reuse reduces overhead
-        self.pool = ThreadedConnectionPool(
-            minconn=5,
-            maxconn=20,
-            dsn=self.database_url
-        )
+        # Lazy-loaded connection pool (initialized on first use)
+        # This allows the service to be instantiated without requiring DB access
+        self._pool = None
+        self._pool_config = {
+            "minconn": 5,  # Keep warm connections ready
+            "maxconn": 20,  # Support higher concurrency
+            "dsn": self.database_url
+        }
         
         # LRU cache for hot paths (memory-bounded)
         # - max_size=1000: Limit memory usage
         # - default_ttl=300: 5-minute cache lifetime
         # - Automatic LRU eviction prevents unbounded growth
-        # NO FALLBACKS - if cache initialization fails, we fail
         from pipeline.services.lru_cache import get_tool_cache
         self._cache = get_tool_cache(max_size=1000, default_ttl=300)
         
-        # Initialize metrics collector - NO FALLBACKS
+        # Initialize metrics collector
         from pipeline.services.metrics_collector import get_metrics_collector
         self.metrics = get_metrics_collector()
         
-        logger.info("ToolCatalogService initialized with optimized connection pool and LRU cache")
+        logger.info("ToolCatalogService initialized (connection pool will be created on first use)")
+    
+    @property
+    def pool(self):
+        """Lazy-load the connection pool on first access"""
+        if self._pool is None:
+            logger.info("Creating database connection pool...")
+            self._pool = ThreadedConnectionPool(**self._pool_config)
+            logger.info("Database connection pool created successfully")
+        return self._pool
     
     def _get_connection(self):
         """Get a connection from the pool"""

@@ -74,7 +74,7 @@ class DecisionV1(BaseModel):
     
     # Next Stage Routing
     requires_approval: bool = Field(default=False, description="Whether this decision requires approval")
-    next_stage: Literal["stage_b", "stage_d"] = Field(..., description="Next pipeline stage")
+    next_stage: Literal["stage_b", "stage_c", "stage_d", "stage_e"] = Field(..., description="Next pipeline stage")
     
     model_config = ConfigDict(
         json_schema_extra={

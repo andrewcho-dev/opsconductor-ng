@@ -12,6 +12,8 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: opsconductor-postgres
+    ports:
+      - "5432:5432"  # Expose for local testing
     environment:
       POSTGRES_DB: opsconductor
       POSTGRES_USER: opsconductor
@@ -30,6 +32,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: opsconductor-redis
+    ports:
+      - "6379:6379"  # Expose for local testing
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data

@@ -518,15 +518,27 @@ For each selected tool, create an execution step with:
    - NEVER request all fields unless explicitly needed
 
 2. **Proper parameters**: Extract query parameters from the user's intent
-   - query_type: "list_all", "filter", "search", "get_by_id"
-   - filters: Dictionary of field filters (e.g., {"environment": "production", "device_type": "server"})
-   - fields: List of field names to retrieve (CRITICAL - be selective!)
+   - For asset queries:
+     * query_type: "list_all", "filter", "search", "get_by_id"
+     * filters: Dictionary of field filters (e.g., {"environment": "production", "device_type": "server"})
+     * fields: List of field names to retrieve (CRITICAL - be selective!)
+   
+   - For Windows/PowerShell/WinRM commands (Invoke-Command, Get-ChildItem, Get-Process, etc.):
+     * target_host: IP address or hostname of the Windows machine
+     * username: Windows username for authentication
+     * password: Windows password for authentication
+     * command or script: The PowerShell command/script to execute
+     * use_ssl: true/false (default: false for HTTP WinRM on port 5985)
+     * port: WinRM port (default: 5985 for HTTP, 5986 for HTTPS)
+     * connection_type: "winrm" (to explicitly mark as WinRM execution)
 
 3. **Clear descriptions**: Describe what each step will do
 
 4. **Dependencies**: Identify if steps depend on each other
 
 Return your response as a JSON array of execution steps with this structure:
+
+For asset queries:
 [
   {
     "tool": "asset-service-query",
@@ -545,7 +557,30 @@ Return your response as a JSON array of execution steps with this structure:
   }
 ]
 
-CRITICAL: Be intelligent about field selection. Don't fetch all 50+ fields when only 5-10 are needed!"""
+For Windows/PowerShell/WinRM commands:
+[
+  {
+    "tool": "Invoke-Command" | "Get-ChildItem" | "Get-Process" | etc.,
+    "description": "Brief description of what this step does",
+    "inputs": {
+      "target_host": "192.168.1.100",
+      "username": "administrator",
+      "password": "password123",
+      "command": "Get-ChildItem C:\\",
+      "connection_type": "winrm",
+      "use_ssl": false,
+      "port": 5985
+    },
+    "preconditions": ["WinRM service is running", "Credentials are valid"],
+    "success_criteria": ["Command executed successfully", "Output received"],
+    "failure_handling": "Log error and report connection failure",
+    "estimated_duration": 15
+  }
+]
+
+CRITICAL: 
+- Be intelligent about field selection for asset queries. Don't fetch all 50+ fields when only 5-10 are needed!
+- For WinRM commands, ALWAYS extract target_host, username, and password from the user's query!"""
 
     def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1) -> str:
         """Build the user prompt with decision and selection context"""

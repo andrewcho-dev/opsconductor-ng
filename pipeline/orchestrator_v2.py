@@ -358,14 +358,14 @@ class PipelineOrchestratorV2:
             self._error_count += 1
             
             # Create error response
+            from pipeline.schemas.response_v1 import ConfidenceLevel
             error_response = ResponseV1(
                 response_id=f"resp_{request_id}",
-                decision_id=request_id,
-                timestamp=time.time(),
                 response_type=ResponseType.ERROR,
                 message=f"I encountered an error processing your request: {str(e)}",
+                confidence=ConfidenceLevel.LOW,
                 approval_required=False,
-                confidence_score=0.0
+                processing_time_ms=int(total_duration)
             )
             
             return PipelineResult(
@@ -414,13 +414,20 @@ class PipelineOrchestratorV2:
         from execution.dtos import ExecutionRequest
         
         # Convert planning result to execution request
+        # ExecutionRequest expects plan as a dict, so convert ExecutionPlan to dict
+        plan_dict = planning_result.plan.model_dump() if hasattr(planning_result.plan, 'model_dump') else planning_result.plan
+        
         execution_request = ExecutionRequest(
-            plan=planning_result.plan,
+            plan=plan_dict,
             context=context or {}
         )
         
+        # Get tenant_id and actor_id from context, or use defaults
+        tenant_id = context.get("tenant_id", "default") if context else "default"
+        actor_id = context.get("actor_id", 1) if context else 1
+        
         # Execute with progress tracking
-        return await self.stage_e.execute(execution_request, progress_callback)
+        return await self.stage_e.execute(execution_request, tenant_id, actor_id)
     
     async def _update_response_with_execution(self, response, execution_result, context):
         """Update response with execution results"""

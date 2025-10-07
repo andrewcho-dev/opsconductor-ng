@@ -19,6 +19,16 @@ from execution.repository import ExecutionRepository
 from execution.services.asset_service_client import AssetServiceClient
 from execution.services.automation_service_client import AutomationServiceClient
 
+# Import WinRM library
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'automation-service'))
+try:
+    from libraries.windows_powershell import WindowsPowerShellLibrary
+    WINRM_AVAILABLE = True
+except ImportError:
+    WindowsPowerShellLibrary = None
+    WINRM_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +63,17 @@ class ExecutionEngine:
         # Initialize service clients
         self.asset_client = AssetServiceClient(base_url=asset_service_url)
         self.automation_client = AutomationServiceClient(base_url=automation_service_url)
+        
+        # Initialize WinRM library if available
+        self.winrm_library = None
+        if WINRM_AVAILABLE:
+            try:
+                self.winrm_library = WindowsPowerShellLibrary()
+                logger.info("WinRM library initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize WinRM library: {e}")
+        else:
+            logger.warning("WinRM library not available - Windows PowerShell execution will not work")
         
         logger.info("ExecutionEngine initialized with service integrations")
     
@@ -392,7 +413,12 @@ class ExecutionEngine:
                 logger.error(f"Failed to fetch asset {step.target_hostname}: {e}")
                 raise
         
-        # Step 2: Execute based on step type
+        # Step 2: Check if this is a Windows/PowerShell tool
+        if self._is_windows_powershell_tool(step):
+            logger.info(f"Detected Windows PowerShell tool: {step.step_type}")
+            return await self._execute_winrm_step(step, asset)
+        
+        # Step 3: Execute based on step type
         step_type = step.step_type.lower()
         
         if step_type in ["command", "shell", "bash", "powershell", "script"]:
@@ -820,3 +846,183 @@ class ExecutionEngine:
             return ExecutionStatus.FAILED
         else:
             return ExecutionStatus.PARTIAL
+    
+    def _is_windows_powershell_tool(self, step: ExecutionStepModel) -> bool:
+        """
+        Determine if a step is a Windows PowerShell tool
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            True if this is a Windows PowerShell tool
+        """
+        step_type = step.step_type.lower()
+        
+        # Check for PowerShell cmdlets (they typically use Verb-Noun format)
+        powershell_cmdlets = [
+            'invoke-command', 'get-childitem', 'get-process', 'get-service',
+            'set-service', 'start-service', 'stop-service', 'restart-service',
+            'get-eventlog', 'get-winevent', 'test-connection', 'get-content',
+            'set-content', 'new-item', 'remove-item', 'copy-item', 'move-item',
+            'get-computerinfo', 'get-hotfix', 'get-windowsfeature'
+        ]
+        
+        if step_type in powershell_cmdlets:
+            return True
+        
+        # Check if input_data indicates Windows/PowerShell
+        if step.input_data:
+            connection_type = step.input_data.get('connection_type', '').lower()
+            if connection_type in ['winrm', 'powershell', 'windows']:
+                return True
+            
+            # Check if command contains PowerShell cmdlets
+            command = step.input_data.get('command', '').lower()
+            if any(cmdlet in command for cmdlet in powershell_cmdlets):
+                return True
+        
+        return False
+    
+    async def _execute_winrm_step(
+        self,
+        step: ExecutionStepModel,
+        asset: Optional[Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute a Windows PowerShell step via WinRM
+        
+        Args:
+            step: Execution step model
+            asset: Asset details (optional)
+        
+        Returns:
+            Output data
+        """
+        if not self.winrm_library:
+            raise RuntimeError(
+                "WinRM library not available. Install with: pip install pywinrm"
+            )
+        
+        try:
+            # Extract connection parameters
+            target_host = None
+            username = None
+            password = None
+            
+            # Try to get from asset first
+            if asset:
+                target_host = asset.hostname or asset.ip_address
+                username = asset.username
+                password = asset.password
+            
+            # Override with step input_data if provided
+            if step.input_data:
+                # Support multiple naming conventions
+                target_host = step.input_data.get('target_host') or \
+                             step.input_data.get('computerName') or \
+                             step.input_data.get('computer_name') or \
+                             target_host
+                
+                # Check for credential object (PowerShell style)
+                if 'credential' in step.input_data and isinstance(step.input_data['credential'], dict):
+                    username = step.input_data['credential'].get('username', username)
+                    password = step.input_data['credential'].get('password', password)
+                else:
+                    username = step.input_data.get('username', username)
+                    password = step.input_data.get('password', password)
+            
+            # Validate required parameters
+            if not target_host:
+                raise ValueError("target_host is required for WinRM execution")
+            if not username:
+                raise ValueError("username is required for WinRM execution")
+            if not password:
+                raise ValueError("password is required for WinRM execution")
+            
+            # Build PowerShell script
+            script = self._build_powershell_script(step)
+            
+            logger.info(
+                f"Executing PowerShell via WinRM: host={target_host}, "
+                f"user={username}, script_length={len(script)}"
+            )
+            
+            # Execute via WinRM
+            result = self.winrm_library.execute_powershell(
+                target_host=target_host,
+                username=username,
+                password=password,
+                script=script,
+                timeout=step.input_data.get('timeout', 300) if step.input_data else 300,
+                use_ssl=step.input_data.get('use_ssl', False) if step.input_data else False,
+                port=step.input_data.get('port') if step.input_data else None
+            )
+            
+            # Return output
+            return {
+                "status": "completed" if result.get("success") else "failed",
+                "exit_code": result.get("exit_code", 0),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "duration_seconds": result.get("duration_seconds", 0),
+                "attempts": result.get("attempts", 1),
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": "winrm",
+            }
+        
+        except Exception as e:
+            logger.error(f"WinRM execution failed: {e}", exc_info=True)
+            raise
+    
+    def _build_powershell_script(self, step: ExecutionStepModel) -> str:
+        """
+        Build PowerShell script from step
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            PowerShell script string
+        """
+        # If there's a direct script/command in input_data, use it
+        if step.input_data:
+            if 'script' in step.input_data:
+                return step.input_data['script']
+            if 'command' in step.input_data:
+                return step.input_data['command']
+        
+        # Otherwise, build from step_type and inputs
+        step_type = step.step_type
+        inputs = step.input_data or {}
+        
+        # Handle common PowerShell cmdlets
+        if step_type.lower() == 'invoke-command':
+            # Invoke-Command with ScriptBlock
+            script_block = inputs.get('ScriptBlock', inputs.get('script_block', ''))
+            if script_block:
+                return script_block
+            else:
+                # Default: Get directory listing
+                return "Get-ChildItem"
+        
+        elif step_type.lower() == 'get-childitem':
+            path = inputs.get('Path', inputs.get('path', 'C:\\'))
+            return f"Get-ChildItem -Path '{path}'"
+        
+        elif step_type.lower() == 'get-process':
+            name = inputs.get('Name', inputs.get('name', ''))
+            if name:
+                return f"Get-Process -Name '{name}'"
+            return "Get-Process"
+        
+        elif step_type.lower() == 'get-service':
+            name = inputs.get('Name', inputs.get('name', ''))
+            if name:
+                return f"Get-Service -Name '{name}'"
+            return "Get-Service"
+        
+        else:
+            # Default: use step_type as cmdlet name
+            logger.warning(f"Unknown PowerShell cmdlet: {step_type}, using as-is")
+            return step_type

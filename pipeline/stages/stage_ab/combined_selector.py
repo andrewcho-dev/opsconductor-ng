@@ -147,8 +147,8 @@ class CombinedSelector:
             List of tool dictionaries with metadata
         """
         try:
-            # Get all tools from database (synchronous call)
-            tools = self.tool_catalog.get_all_tools()
+            # Get all tools with full structure (capabilities + patterns) from database
+            tools = self.tool_catalog.get_all_tools_with_structure()
             
             # Format for LLM consumption (simplified view)
             formatted_tools = []
@@ -156,7 +156,7 @@ class CombinedSelector:
                 formatted_tools.append({
                     "tool_name": tool["tool_name"],
                     "description": tool["description"],
-                    "capabilities": tool["capabilities"],
+                    "capabilities": tool.get("capabilities", {}),
                     "typical_use_cases": tool.get("typical_use_cases", []),
                     "platform": tool.get("platform", "any"),
                     "category": tool.get("category", "custom"),
@@ -457,24 +457,22 @@ Return your analysis in the JSON format specified above."""
                              policy: ExecutionPolicy) -> str:
         """
         Determine the next pipeline stage
+        
+        ROUTING LOGIC:
+        - No tools selected → Stage D (information-only response)
+        - Tools selected → Stage C (create execution plan)
+        
+        The risk level and approval requirements affect HOW execution happens,
+        not WHETHER execution happens. If the user requested an action and we
+        selected tools, we should execute them.
         """
         # If no tools selected, go directly to answerer (information-only)
         if not selected_tools:
             return "stage_d"
         
-        # If high risk or requires approval, go to planner
-        if policy.requires_approval or policy.risk_level.value in ["high", "critical"]:
-            return "stage_c"
-        
-        # If multiple tools, go to planner for orchestration
-        if len(selected_tools) > 1:
-            return "stage_c"
-        
-        # Simple, low-risk single tool can skip to answerer
-        if len(selected_tools) == 1 and policy.risk_level.value == "low":
-            return "stage_d"
-        
-        # Default to planner for safety
+        # If tools were selected, they need to be executed
+        # Route to Stage C (Planner) to create an execution plan
+        # The planner will handle approval requirements, risk mitigation, etc.
         return "stage_c"
     
     def _is_ready_for_execution(self, selected_tools: List[SelectedTool], 
