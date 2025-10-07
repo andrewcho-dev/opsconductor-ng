@@ -964,12 +964,12 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
             # Calculate max_tokens dynamically based on prompt size
             # Rough estimate: 1 token ≈ 4 characters for English text
             estimated_prompt_tokens = len(prompt) // 4
-            max_context_length = 4096  # Qwen2.5-7B-Instruct-AWQ context window
+            max_context_length = 131072  # Qwen2.5-14B-Instruct-AWQ context window (131K tokens)
             safety_buffer = 100  # Reserve tokens for formatting overhead
             
             # Calculate available tokens for output
             available_tokens = max_context_length - estimated_prompt_tokens - safety_buffer
-            max_output_tokens = max(500, min(available_tokens, 2000))  # Between 500-2000 tokens
+            max_output_tokens = max(500, min(available_tokens, 8000))  # Between 500-8000 tokens
             
             logger.info(f"🔍 ORCHESTRATOR: Prompt length: {len(prompt)} chars (~{estimated_prompt_tokens} tokens)")
             logger.info(f"🔍 ORCHESTRATOR: Available output tokens: {available_tokens}, using: {max_output_tokens}")

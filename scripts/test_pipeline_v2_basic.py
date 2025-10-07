@@ -56,7 +56,7 @@ def test_simple_llm_generation():
     
     try:
         payload = {
-            "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+            "model": "Qwen/Qwen2.5-14B-Instruct-AWQ",
             "messages": [
                 {"role": "user", "content": "Say 'Hello from Pipeline V2!' and nothing else."}
             ],

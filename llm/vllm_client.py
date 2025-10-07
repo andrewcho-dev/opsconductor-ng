@@ -15,7 +15,7 @@ class VLLMClient(LLMClient):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:8000/v1")
-        self.default_model = config.get("default_model", "Qwen/Qwen2.5-7B-Instruct-AWQ")
+        self.default_model = config.get("default_model", "Qwen/Qwen2.5-14B-Instruct-AWQ")
         self.timeout = config.get("timeout", 60)  # vLLM can be faster, but keep reasonable timeout
         self.client: Optional[httpx.AsyncClient] = None
     
@@ -164,8 +164,8 @@ class VLLMClient(LLMClient):
         """Get available vLLM models"""
         return [
             self.default_model,
-            "Qwen/Qwen2.5-7B-Instruct-AWQ",
-            "Qwen/Qwen2.5-7B-Instruct"
+            "Qwen/Qwen2.5-14B-Instruct-AWQ",
+            "Qwen/Qwen2.5-14B-Instruct"
         ]
     
     async def list_models(self) -> List[Dict[str, Any]]:

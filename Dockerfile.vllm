@@ -17,13 +17,13 @@ RUN pip3 install --no-cache-dir huggingface-hub && \
 # Expose vLLM port
 EXPOSE 8000
 
-# Start vLLM server
+# Start vLLM server with 7B model and 32K context (fits in 12GB GPU)
 CMD ["python3", "-m", "vllm.entrypoints.openai.api_server", \
      "--model", "Qwen/Qwen2.5-7B-Instruct-AWQ", \
      "--dtype", "auto", \
      "--port", "8000", \
-     "--max-model-len", "4096", \
-     "--gpu-memory-utilization", "0.92", \
+     "--max-model-len", "32768", \
+     "--gpu-memory-utilization", "0.90", \
      "--enforce-eager", \
      "--quantization", "awq", \
      "--host", "0.0.0.0"]
