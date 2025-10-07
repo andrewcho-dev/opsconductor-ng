@@ -45,11 +45,23 @@ class ResponseFormatter:
             context = {
                 "intent": f"{decision.intent.category}/{decision.intent.action}",
                 "confidence": decision.overall_confidence,
-                "steps_planned": len(plan.plan.steps),
-                "tools_involved": list(set(step.tool for step in plan.plan.steps)),
-                "safety_checks": len(plan.plan.safety_checks),
                 "analysis_results": analysis
             }
+            
+            # Add plan details if plan exists
+            if plan:
+                context.update({
+                    "steps_planned": len(plan.plan.steps),
+                    "tools_involved": list(set(step.tool for step in plan.plan.steps)),
+                    "safety_checks": len(plan.plan.safety_checks)
+                })
+            else:
+                context.update({
+                    "steps_planned": 0,
+                    "tools_involved": [],
+                    "safety_checks": 0,
+                    "is_information_only": True
+                })
             
             # Generate user-friendly response using LLM
             prompt = self._create_information_response_prompt(context)
@@ -308,6 +320,10 @@ Keep the message encouraging and clear (2-3 sentences)."""
     
     def _create_fallback_information_response(self, decision: DecisionV1, plan: PlanV1) -> str:
         """Create fallback information response when LLM fails"""
+        
+        if plan is None:
+            return (f"I understand you're asking about {decision.intent.action}. "
+                    f"This is an information request that doesn't require any tool execution.")
         
         tools = list(set(step.tool for step in plan.plan.steps))
         time_estimate = plan.execution_metadata.total_estimated_time

@@ -90,53 +90,9 @@ class StageDAnswerer:
         
         try:
             logger.info(f"Generating response for {decision.intent.category}/{decision.intent.action}")
+            logger.info(f"🔍 Response generation: plan={'present' if plan else 'None'}, tools={len(selection.selected_tools) if selection else 0}")
             
-            # 🚀 FAST PATH: Handle simple information/asset_management requests without selection/plan
-            # Check if selection has no tools (information-only request)
-            has_no_tools = (selection is None or 
-                           (hasattr(selection, 'selected_tools') and len(selection.selected_tools) == 0))
-            
-            logger.info(f"🔍 FAST PATH DEBUG: has_no_tools={has_no_tools}, plan={plan}, category={decision.intent.category}")
-            
-            if has_no_tools and plan is None and decision.intent.category in ["information", "asset_management"]:
-                logger.info(f"🚀 FAST PATH: Generating direct {decision.intent.category} response")
-                
-                # Generate direct answer using LLM for simple questions
-                direct_response = await self._generate_direct_information_response(
-                    decision.original_request, context
-                )
-                
-                processing_time_ms = int((time.time() - start_time) * 1000)
-                self.stats["responses_generated"] += 1
-                self.stats["response_types"]["information"] += 1
-                self.stats["total_processing_time_ms"] += processing_time_ms
-                
-                return ResponseV1(
-                    response_type=ResponseType.INFORMATION,
-                    message=direct_response,
-                    confidence=ConfidenceLevel.HIGH,
-                    execution_summary=None,
-                    approval_required=False,
-                    approval_points=[],
-                    suggested_actions=[],
-                    sources_consulted=["LLM Direct Response"],
-                    related_documentation=[],
-                    warnings=[],
-                    limitations=[],
-                    technical_details=None,
-                    clarification_needed=None,
-                    partial_analysis=None,
-                    metadata={
-                        "fast_path": True,
-                        "processing_method": "direct_llm_response",
-                        "bypassed_components": ["plan_analysis", "tool_selection", "approval_workflow"]
-                    },
-                    response_id=response_id,
-                    timestamp=datetime.now().isoformat(),
-                    processing_time_ms=processing_time_ms
-                )
-            
-            # Normal path: Analyze context and determine response type
+            # Analyze context and determine response type
             response_type = await self._determine_response_type(decision, selection, plan)
             
             # Generate appropriate response based on type
@@ -461,6 +417,17 @@ class StageDAnswerer:
     def _create_execution_summary(self, plan: PlanV1) -> ExecutionSummary:
         """Create execution summary from plan"""
         
+        # Handle None plan (information-only requests)
+        if plan is None:
+            return ExecutionSummary(
+                total_steps=0,
+                estimated_duration=0,
+                risk_level="low",  # Information-only requests have low risk
+                tools_involved=[],
+                safety_checks=0,
+                approval_points=0
+            )
+        
         # Determine risk level based on risk factors and approval points
         risk_level = "low"
         if plan.execution_metadata.approval_points:
@@ -494,6 +461,10 @@ class StageDAnswerer:
         
         warnings = []
         
+        # Handle None plan (information-only requests)
+        if plan is None:
+            return warnings
+        
         # Check for high-risk operations
         if any("high" in factor or "critical" in factor for factor in plan.execution_metadata.risk_factors):
             warnings.append("This operation involves high-risk activities")
@@ -518,8 +489,8 @@ class StageDAnswerer:
         
         suggestions = []
         
-        # Common monitoring suggestion
-        if plan.plan.steps:
+        # Common monitoring suggestion (only if plan exists)
+        if plan and plan.plan.steps:
             suggestions.append(ActionSuggestion(
                 action="Monitor execution",
                 description="Watch the execution progress and system metrics",

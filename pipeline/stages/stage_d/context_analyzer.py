@@ -318,6 +318,20 @@ class ContextAnalyzer:
     ) -> Dict[str, Any]:
         """General context analysis for unspecified intent types"""
         
+        # Handle None plan (information-only requests)
+        if plan is None:
+            return {
+                "sources": ["llm_knowledge"],
+                "insights": [
+                    "Information-only request, no execution plan needed",
+                    "Response generated from available knowledge"
+                ],
+                "technical_details": {
+                    "execution_approach": "Direct information response",
+                    "safety_measures": "No execution required"
+                }
+            }
+        
         return {
             "sources": ["execution_plan", "tool_capabilities"],
             "insights": [
@@ -350,18 +364,21 @@ class ContextAnalyzer:
             insights.append("Request understanding has some uncertainties")
             recommendations.append("Consider providing additional context for better results")
         
-        # Plan complexity insights
-        if len(plan.plan.steps) > 5:
-            insights.append("Complex operation with multiple steps")
-            recommendations.append("Monitor execution progress closely")
+        # Plan complexity insights (only if plan exists)
+        if plan:
+            if len(plan.plan.steps) > 5:
+                insights.append("Complex operation with multiple steps")
+                recommendations.append("Monitor execution progress closely")
+            else:
+                insights.append("Straightforward operation with manageable complexity")
+            
+            # Safety insights
+            if len(plan.plan.safety_checks) > 10:
+                insights.append("Comprehensive safety measures in place")
+            else:
+                recommendations.append("Consider additional safety monitoring")
         else:
-            insights.append("Straightforward operation with manageable complexity")
-        
-        # Safety insights
-        if len(plan.plan.safety_checks) > 10:
-            insights.append("Comprehensive safety measures in place")
-        else:
-            recommendations.append("Consider additional safety monitoring")
+            insights.append("Information-only request, no execution plan needed")
         
         return {
             "general_insights": insights,

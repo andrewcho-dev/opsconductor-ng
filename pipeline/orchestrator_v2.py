@@ -1,0 +1,546 @@
+"""
+Pipeline Orchestrator V2 - Simplified Architecture
+
+Uses the new Stage AB (Combined Understanding & Selection) instead of separate Stage A + Stage B.
+This eliminates the fragile handoff and makes the system more reliable.
+
+Pipeline Flow:
+User Request → Stage AB (Understanding + Selection) → Stage C (Planner) → Stage D (Answerer) → Stage E (Executor) → Response
+"""
+
+import asyncio
+import logging
+import time
+import os
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
+from enum import Enum
+from uuid import uuid4
+
+from pipeline.stages.stage_ab.combined_selector import CombinedSelector
+from pipeline.stages.stage_c.planner import StageCPlanner
+from pipeline.stages.stage_d.answerer import StageDAnswerer
+from pipeline.stages.stage_e.executor import StageEExecutor
+from pipeline.schemas.response_v1 import ResponseV1, ResponseType
+from pipeline.conversation_history import get_conversation_manager
+
+logger = logging.getLogger(__name__)
+
+
+class PipelineStage(Enum):
+    """Pipeline stage enumeration for tracking and monitoring."""
+    STAGE_AB = "stage_ab"  # Combined understanding + selection
+    STAGE_C = "stage_c"
+    STAGE_D = "stage_d"
+    STAGE_E = "stage_e"
+
+
+class PipelineStatus(Enum):
+    """Pipeline execution status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class PipelineMetrics:
+    """Performance metrics for pipeline execution."""
+    total_duration_ms: float
+    stage_durations: Dict[str, float]
+    memory_usage_mb: float
+    request_id: str
+    timestamp: float
+    status: PipelineStatus
+    error_details: Optional[str] = None
+
+
+@dataclass
+class PipelineResult:
+    """Complete pipeline execution result."""
+    response: ResponseV1
+    metrics: PipelineMetrics
+    intermediate_results: Dict[str, Any]
+    success: bool
+    error_message: Optional[str] = None
+
+
+class PipelineOrchestratorV2:
+    """
+    Simplified pipeline orchestrator using Stage AB (combined understanding + selection).
+    
+    This eliminates the Stage A → Stage B handoff that was causing capability extraction issues.
+    """
+    
+    def __init__(self, llm_client=None):
+        """Initialize the pipeline orchestrator with all stage components."""
+        # Initialize LLM client if not provided
+        if llm_client is None:
+            from llm.factory import get_default_llm_client
+            llm_client = get_default_llm_client()
+        
+        self.llm_client = llm_client
+        
+        # Initialize stages
+        self.stage_ab = CombinedSelector(llm_client)  # NEW: Combined stage
+        self.stage_c = StageCPlanner(llm_client)
+        self.stage_d = StageDAnswerer(llm_client)
+        self.stage_e = StageEExecutor()
+        
+        # Performance tracking
+        self._active_requests: Dict[str, float] = {}
+        self._completed_requests: List[PipelineMetrics] = []
+        self._max_history = 1000
+        
+        # Health status
+        self._last_health_check = time.time()
+        self._health_status = "healthy"
+        self._error_count = 0
+        self._success_count = 0
+    
+    async def initialize(self):
+        """Initialize the orchestrator and connect to LLM."""
+        try:
+            # Connect to LLM
+            await self.llm_client.connect()
+            if not self.llm_client.is_connected:
+                raise Exception("Failed to connect to LLM")
+            logger.info("✅ Pipeline Orchestrator V2 initialized successfully")
+        except Exception as e:
+            raise Exception(f"Orchestrator initialization failed: {str(e)}")
+    
+    async def process_request(
+        self, 
+        user_request: str, 
+        request_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None
+    ) -> PipelineResult:
+        """
+        Process a user request through the simplified 3-stage pipeline.
+        
+        Args:
+            user_request: The user's natural language request
+            request_id: Optional request identifier for tracking
+            context: Optional context information
+            session_id: Optional session identifier for conversation history
+            progress_callback: Optional callback for real-time progress updates
+            
+        Returns:
+            PipelineResult containing the response and execution metrics
+        """
+        if request_id is None:
+            request_id = str(uuid4())
+        
+        start_time = time.time()
+        self._active_requests[request_id] = start_time
+        
+        stage_durations = {}
+        intermediate_results = {}
+        
+        # Initialize context
+        if context is None:
+            context = {}
+        
+        # Add conversation history to context if session_id is provided
+        if session_id:
+            conversation_manager = get_conversation_manager()
+            conversation_manager.add_message(session_id, "user", user_request)
+            conversation_history = conversation_manager.get_formatted_history(session_id, max_messages=10)
+            context["conversation_history"] = conversation_history
+            context["session_id"] = session_id
+            logger.info(f"Session {session_id}: {conversation_manager.get_message_count(session_id)} messages in history")
+        
+        try:
+            logger.info(f"🚀 [REQUEST {request_id}] Starting pipeline V2 processing")
+            logger.info(f"📝 User request: {user_request[:100]}...")
+            
+            # ============================================================
+            # Stage AB: Combined Understanding + Selection
+            # ============================================================
+            logger.info(f"⏱️  [STAGE AB] Starting combined understanding + selection...")
+            if progress_callback:
+                await progress_callback("stage_ab", "start", {
+                    "stage": "AB", 
+                    "name": "Understanding & Selection", 
+                    "message": "🧠 Analyzing request and selecting tools..."
+                })
+            
+            stage_start = time.time()
+            selection_result = await self.stage_ab.process(user_request, context)
+            stage_durations["stage_ab"] = (time.time() - stage_start) * 1000
+            intermediate_results["stage_ab"] = selection_result
+            
+            logger.info(f"✅ [STAGE AB] Complete in {stage_durations['stage_ab']:.2f}ms")
+            logger.info(f"   Selected {len(selection_result.selected_tools)} tools, next_stage={selection_result.next_stage}")
+            
+            if progress_callback:
+                await progress_callback("stage_ab", "complete", {
+                    "stage": "AB", 
+                    "name": "Understanding & Selection", 
+                    "duration_ms": stage_durations["stage_ab"], 
+                    "message": f"✅ Analysis complete ({stage_durations['stage_ab']:.0f}ms)"
+                })
+            
+            # ============================================================
+            # Stage C: Planning (if tools were selected)
+            # ============================================================
+            planning_result = None
+            has_tools = len(selection_result.selected_tools) > 0
+            
+            if has_tools and selection_result.next_stage == "stage_c":
+                logger.info(f"⏱️  [STAGE C] Starting plan creation...")
+                if progress_callback:
+                    await progress_callback("stage_c", "start", {
+                        "stage": "C", 
+                        "name": "Planning", 
+                        "message": "📋 Creating execution plan..."
+                    })
+                
+                stage_start = time.time()
+                # Stage C expects a DecisionV1, so we need to create a minimal one from SelectionV1
+                mock_decision = self._create_mock_decision_from_selection(selection_result, user_request)
+                planning_result = await self.stage_c.create_plan(mock_decision, selection_result)
+                stage_durations["stage_c"] = (time.time() - stage_start) * 1000
+                intermediate_results["stage_c"] = planning_result
+                
+                logger.info(f"✅ [STAGE C] Complete in {stage_durations['stage_c']:.2f}ms")
+                if planning_result and hasattr(planning_result, 'plan'):
+                    plan_dict = planning_result.plan if isinstance(planning_result.plan, dict) else {}
+                    steps = plan_dict.get('steps', [])
+                    logger.info(f"   Created plan with {len(steps)} steps")
+                
+                if progress_callback:
+                    await progress_callback("stage_c", "complete", {
+                        "stage": "C", 
+                        "name": "Planning", 
+                        "duration_ms": stage_durations["stage_c"], 
+                        "message": f"✅ Planning complete ({stage_durations['stage_c']:.0f}ms)"
+                    })
+            else:
+                logger.info("⏭️  Skipping Stage C: No tools selected or direct to answerer")
+                stage_durations["stage_c"] = 0
+            
+            # ============================================================
+            # Stage D: Response Generation
+            # ============================================================
+            logger.info(f"⏱️  [STAGE D] Starting response generation...")
+            if progress_callback:
+                await progress_callback("stage_d", "start", {
+                    "stage": "D", 
+                    "name": "Response Generation", 
+                    "message": "💬 Generating response..."
+                })
+            
+            stage_start = time.time()
+            # Stage D also expects DecisionV1, so we use the mock decision
+            mock_decision = self._create_mock_decision_from_selection(selection_result, user_request)
+            response_result = await self.stage_d.generate_response(mock_decision, selection_result, planning_result, context)
+            stage_durations["stage_d"] = (time.time() - stage_start) * 1000
+            intermediate_results["stage_d"] = response_result
+            
+            logger.info(f"✅ [STAGE D] Complete in {stage_durations['stage_d']:.2f}ms")
+            logger.info(f"   Response type: {response_result.response_type}, Approval required: {response_result.approval_required}")
+            
+            if progress_callback:
+                await progress_callback("stage_d", "complete", {
+                    "stage": "D", 
+                    "name": "Response Generation", 
+                    "duration_ms": stage_durations["stage_d"], 
+                    "message": f"✅ Response complete ({stage_durations['stage_d']:.0f}ms)"
+                })
+            
+            # ============================================================
+            # Stage E: Execution (if plan exists and should be executed)
+            # ============================================================
+            should_execute = False
+            
+            if planning_result is None:
+                logger.info("⏭️  Skipping Stage E: No execution plan (information-only request)")
+            elif planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
+                plan_steps = planning_result.plan.get('steps', []) if isinstance(planning_result.plan, dict) else getattr(planning_result.plan, 'steps', [])
+                if plan_steps and len(plan_steps) > 0:
+                    # Check if approval is required
+                    if response_result.approval_required:
+                        logger.info("⏸️  Stage E: Execution requires approval - waiting for user confirmation")
+                    else:
+                        should_execute = True
+            
+            if should_execute:
+                logger.info(f"⏱️  [STAGE E] Starting execution...")
+                if progress_callback:
+                    await progress_callback("stage_e", "start", {
+                        "stage": "E", 
+                        "name": "Execution", 
+                        "message": "⚙️ Executing plan..."
+                    })
+                
+                stage_start = time.time()
+                execution_result = await self._execute_stage_e(planning_result, context, progress_callback)
+                stage_durations["stage_e"] = (time.time() - stage_start) * 1000
+                intermediate_results["stage_e"] = execution_result
+                
+                logger.info(f"✅ [STAGE E] Complete in {stage_durations['stage_e']:.2f}ms")
+                
+                if progress_callback:
+                    await progress_callback("stage_e", "complete", {
+                        "stage": "E", 
+                        "name": "Execution", 
+                        "duration_ms": stage_durations["stage_e"], 
+                        "message": f"✅ Execution complete ({stage_durations['stage_e']:.0f}ms)"
+                    })
+                
+                # Update response with execution results
+                response_result = await self._update_response_with_execution(response_result, execution_result, context)
+            else:
+                stage_durations["stage_e"] = 0
+            
+            # ============================================================
+            # Calculate final metrics and return result
+            # ============================================================
+            total_duration = (time.time() - start_time) * 1000
+            
+            metrics = PipelineMetrics(
+                total_duration_ms=total_duration,
+                stage_durations=stage_durations,
+                memory_usage_mb=self._get_memory_usage(),
+                request_id=request_id,
+                timestamp=start_time,
+                status=PipelineStatus.COMPLETED
+            )
+            
+            # Store metrics
+            self._completed_requests.append(metrics)
+            if len(self._completed_requests) > self._max_history:
+                self._completed_requests.pop(0)
+            
+            # Clean up active request
+            if request_id in self._active_requests:
+                del self._active_requests[request_id]
+            
+            self._success_count += 1
+            
+            # Add assistant response to conversation history
+            if session_id:
+                conversation_manager = get_conversation_manager()
+                conversation_manager.add_message(session_id, "assistant", response_result.message)
+            
+            logger.info(f"✅ [REQUEST {request_id}] Pipeline complete in {total_duration:.2f}ms")
+            
+            return PipelineResult(
+                response=response_result,
+                metrics=metrics,
+                intermediate_results=intermediate_results,
+                success=True
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ [REQUEST {request_id}] Pipeline failed: {str(e)}", exc_info=True)
+            
+            # Calculate metrics for failed request
+            total_duration = (time.time() - start_time) * 1000
+            metrics = PipelineMetrics(
+                total_duration_ms=total_duration,
+                stage_durations=stage_durations,
+                memory_usage_mb=self._get_memory_usage(),
+                request_id=request_id,
+                timestamp=start_time,
+                status=PipelineStatus.FAILED,
+                error_details=str(e)
+            )
+            
+            # Clean up
+            if request_id in self._active_requests:
+                del self._active_requests[request_id]
+            
+            self._error_count += 1
+            
+            # Create error response
+            error_response = ResponseV1(
+                response_id=f"resp_{request_id}",
+                decision_id=request_id,
+                timestamp=time.time(),
+                response_type=ResponseType.ERROR,
+                message=f"I encountered an error processing your request: {str(e)}",
+                approval_required=False,
+                confidence_score=0.0
+            )
+            
+            return PipelineResult(
+                response=error_response,
+                metrics=metrics,
+                intermediate_results=intermediate_results,
+                success=False,
+                error_message=str(e)
+            )
+    
+    def _create_mock_decision_from_selection(self, selection, user_request: str):
+        """
+        Create a minimal DecisionV1 object from SelectionV1 for compatibility with Stage C/D.
+        
+        This is a temporary bridge until we refactor Stage C/D to work directly with SelectionV1.
+        """
+        from pipeline.schemas.decision_v1 import DecisionV1, IntentV1, DecisionType, ConfidenceLevel, RiskLevel
+        
+        # Extract intent information from selection metadata (if available)
+        # For now, we'll create a minimal intent
+        intent = IntentV1(
+            category="automation",  # Default category
+            action="execute_request",  # Generic action
+            confidence=selection.selection_confidence,
+            capabilities=[]  # Capabilities already used for tool selection
+        )
+        
+        return DecisionV1(
+            decision_id=selection.decision_id,
+            decision_type=DecisionType.ACTION if selection.selected_tools else DecisionType.INFO,
+            timestamp=selection.timestamp,
+            intent=intent,
+            entities=[],  # Entities already extracted during selection
+            overall_confidence=selection.selection_confidence,
+            confidence_level=ConfidenceLevel.HIGH if selection.selection_confidence >= 0.8 else 
+                           (ConfidenceLevel.MEDIUM if selection.selection_confidence >= 0.5 else ConfidenceLevel.LOW),
+            risk_level=selection.policy.risk_level,
+            original_request=user_request,
+            context={},
+            requires_approval=selection.policy.requires_approval,
+            next_stage="stage_c" if selection.selected_tools else "stage_d"
+        )
+    
+    async def _execute_stage_e(self, planning_result, context, progress_callback):
+        """Execute Stage E (Executor)"""
+        from execution.dtos import ExecutionRequest
+        
+        # Convert planning result to execution request
+        execution_request = ExecutionRequest(
+            plan=planning_result.plan,
+            context=context or {}
+        )
+        
+        # Execute with progress tracking
+        return await self.stage_e.execute(execution_request, progress_callback)
+    
+    async def _update_response_with_execution(self, response, execution_result, context):
+        """Update response with execution results"""
+        # This would update the response message with execution outcomes
+        # For now, we'll just return the original response
+        # TODO: Implement proper response enrichment with execution results
+        return response
+    
+    def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB"""
+        try:
+            import psutil
+            process = psutil.Process()
+            return process.memory_info().rss / 1024 / 1024
+        except:
+            return 0.0
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform comprehensive health check on all pipeline components.
+        """
+        health_status = {
+            "orchestrator": "healthy",
+            "version": "2.0.0",
+            "stages": {},
+            "metrics": {
+                "active_requests": len(self._active_requests),
+                "completed_requests": len(self._completed_requests),
+                "success_count": self._success_count,
+                "error_count": self._error_count,
+                "success_rate": self._success_count / max(1, self._success_count + self._error_count)
+            },
+            "timestamp": time.time()
+        }
+        
+        try:
+            # Check Stage AB
+            stage_ab_health = await self.stage_ab.health_check()
+            health_status["stages"]["stage_ab"] = stage_ab_health
+            
+            # Check LLM
+            llm_healthy = await self.llm_client.health_check()
+            health_status["llm"] = "healthy" if llm_healthy else "unhealthy"
+            
+            # Overall health
+            if not llm_healthy or stage_ab_health.get("stage_ab") != "healthy":
+                health_status["orchestrator"] = "degraded"
+            
+        except Exception as e:
+            health_status["orchestrator"] = "unhealthy"
+            health_status["error"] = str(e)
+        
+        return health_status
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get pipeline performance metrics"""
+        if not self._completed_requests:
+            return {
+                "total_requests": 0,
+                "average_duration_ms": 0,
+                "stage_averages": {}
+            }
+        
+        total_duration = sum(m.total_duration_ms for m in self._completed_requests)
+        avg_duration = total_duration / len(self._completed_requests)
+        
+        # Calculate stage averages
+        stage_averages = {}
+        for stage in ["stage_ab", "stage_c", "stage_d", "stage_e"]:
+            stage_durations = [m.stage_durations.get(stage, 0) for m in self._completed_requests]
+            stage_averages[stage] = sum(stage_durations) / len(stage_durations)
+        
+        return {
+            "total_requests": len(self._completed_requests),
+            "average_duration_ms": avg_duration,
+            "stage_averages": stage_averages,
+            "success_count": self._success_count,
+            "error_count": self._error_count,
+            "success_rate": self._success_count / max(1, self._success_count + self._error_count)
+        }
+
+
+# ============================================================================
+# GLOBAL ORCHESTRATOR INSTANCE (for backward compatibility)
+# ============================================================================
+
+_pipeline_orchestrator: Optional[PipelineOrchestratorV2] = None
+
+
+async def get_pipeline_orchestrator(llm_client=None) -> PipelineOrchestratorV2:
+    """
+    Get the global pipeline orchestrator V2 instance.
+    
+    This function provides backward compatibility with V1 API.
+    
+    Args:
+        llm_client: Optional LLM client instance
+        
+    Returns:
+        PipelineOrchestratorV2 instance
+    """
+    global _pipeline_orchestrator
+    if _pipeline_orchestrator is None:
+        _pipeline_orchestrator = PipelineOrchestratorV2(llm_client)
+        await _pipeline_orchestrator.initialize()
+    return _pipeline_orchestrator
+
+
+async def process_user_request(user_request: str, request_id: Optional[str] = None) -> PipelineResult:
+    """
+    Convenience function to process a user request through Pipeline V2.
+    
+    This function provides backward compatibility with V1 API.
+    
+    Args:
+        user_request: The user's natural language request
+        request_id: Optional request identifier for tracking
+        
+    Returns:
+        PipelineResult containing the response and execution metrics
+    """
+    orchestrator = await get_pipeline_orchestrator()
+    return await orchestrator.process_request(user_request, request_id)
