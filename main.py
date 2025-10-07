@@ -39,7 +39,8 @@ from pipeline.stages.stage_a.classifier import StageAClassifier
 from pipeline.stages.stage_b.selector import StageBSelector
 from pipeline.stages.stage_c.planner import StageCPlanner
 from pipeline.stages.stage_d.answerer import StageDAnswerer
-from llm.ollama_client import OllamaClient
+from llm.factory import get_default_llm_client
+from llm.client import LLMClient
 from pipeline.schemas.decision_v1 import DecisionV1
 from pipeline.schemas.selection_v1 import SelectionV1
 from pipeline.schemas.plan_v1 import PlanV1
@@ -80,7 +81,7 @@ stage_a_classifier: Optional[StageAClassifier] = None
 stage_b_selector: Optional[StageBSelector] = None
 stage_c_planner: Optional[StageCPlanner] = None
 stage_d_answerer: Optional[StageDAnswerer] = None
-llm_client: Optional[OllamaClient] = None
+llm_client: Optional[LLMClient] = None
 
 # ============================================================================
 # STARTUP/SHUTDOWN LIFECYCLE
@@ -96,16 +97,11 @@ async def lifespan(app: FastAPI):
     logger.info("🔗 Flow: User → Stage A → Stage B → Stage C → Stage D → [Stage E] → Execution")
     
     try:
-        # Check Ollama availability - CRITICAL
-        await check_ollama_availability()
+        # Check LLM availability - CRITICAL
+        await check_llm_availability()
         
-        # Initialize LLM Client
-        ollama_config = {
-            "base_url": os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
-            "default_model": os.getenv("OLLAMA_MODEL", "llama2"),
-            "timeout": 120  # Increased timeout for LLM generation (first load can be slow)
-        }
-        llm_client = OllamaClient(ollama_config)
+        # Initialize LLM Client using factory (supports both Ollama and vLLM)
+        llm_client = get_default_llm_client()
         await llm_client.connect()
         
         # Declare global variables
@@ -134,7 +130,7 @@ async def lifespan(app: FastAPI):
         
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}")
-        # Continue startup even if Ollama is not available for development
+        # Continue startup even if LLM is not available for development
         logger.warning("⚠️  Continuing startup without LLM - limited functionality")
         yield
     finally:
@@ -142,21 +138,29 @@ async def lifespan(app: FastAPI):
             await llm_client.disconnect()
         logger.info("🛑 NEWIDEA.MD Pipeline shutting down")
 
-async def check_ollama_availability():
-    """Check if Ollama is available - CRITICAL for pipeline"""
-    ollama_host = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+async def check_llm_availability():
+    """Check if LLM service is available - CRITICAL for pipeline"""
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    base_url = os.getenv("LLM_BASE_URL", "http://localhost:8000/v1")
     
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(f"{ollama_host}/api/tags")
+            if provider == "vllm":
+                # vLLM health check
+                response = await client.get(f"{base_url.replace('/v1', '')}/health")
+            else:
+                # Ollama health check
+                ollama_host = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+                response = await client.get(f"{ollama_host}/api/tags")
+            
             response.raise_for_status()
         
-        logger.info("✅ Ollama LLM available - Pipeline ready")
+        logger.info(f"✅ {provider.upper()} LLM available - Pipeline ready")
         
     except Exception as e:
-        logger.error(f"❌ Ollama LLM unavailable: {e}")
-        logger.error("🚨 CRITICAL: NEWIDEA.MD pipeline requires Ollama for all stages")
-        raise RuntimeError(f"Ollama unavailable - Pipeline cannot start: {e}")
+        logger.error(f"❌ {provider.upper()} LLM unavailable: {e}")
+        logger.error("🚨 CRITICAL: NEWIDEA.MD pipeline requires LLM for all stages")
+        raise RuntimeError(f"{provider.upper()} unavailable - Pipeline cannot start: {e}")
 
 # ============================================================================
 # FASTAPI APPLICATION
@@ -189,6 +193,14 @@ try:
     logger.info("✅ Tool Catalog API registered")
 except Exception as e:
     logger.warning(f"⚠️ Tool Catalog API not available: {e}")
+
+# Import and include Cache API (Phase 3)
+try:
+    from api.routes.cache import router as cache_router
+    app.include_router(cache_router, prefix="/api/v1")
+    logger.info("✅ Cache API registered (Phase 3)")
+except Exception as e:
+    logger.warning(f"⚠️ Cache API not available: {e}")
 
 # ============================================================================
 # API ENDPOINTS

@@ -25,6 +25,7 @@ class ConfidenceScorer:
     ) -> Dict[str, Any]:
         """
         Calculate overall confidence for the classification
+        NOW ALSO RETURNS RISK (rule-based for speed, LLM fallback for edge cases)
         
         Args:
             user_request: Original user request
@@ -32,16 +33,30 @@ class ConfidenceScorer:
             entities: Extracted entities
             
         Returns:
-            Dictionary with confidence score and level
+            Dictionary with confidence score, level, AND risk assessment
         """
-        # Get LLM-based confidence assessment
-        llm_confidence = await self._get_llm_confidence(user_request, intent, entities)
-        
         # Calculate rule-based confidence
         rule_confidence = self._calculate_rule_based_confidence(user_request, intent, entities)
         
-        # Combine confidences (weighted average)
-        overall_confidence = (llm_confidence * 0.6) + (rule_confidence * 0.4)
+        # Calculate rule-based risk (fast, no LLM call)
+        risk_assessment = self._calculate_rule_based_risk(user_request, intent, entities)
+        
+        # Only use LLM for edge cases (low confidence or ambiguous risk)
+        use_llm = rule_confidence < 0.6 or risk_assessment['risk'] == 'medium'
+        
+        if use_llm:
+            # Get LLM-based confidence AND risk assessment (merged, single call)
+            llm_assessment = await self._get_llm_confidence_and_risk(user_request, intent, entities)
+            
+            # Combine confidences (weighted average)
+            overall_confidence = (llm_assessment['confidence'] * 0.6) + (rule_confidence * 0.4)
+            risk_level = llm_assessment['risk']
+            risk_reasoning = llm_assessment.get('reasoning', '')
+        else:
+            # Use rule-based only (no LLM call - faster!)
+            overall_confidence = rule_confidence
+            risk_level = risk_assessment['risk']
+            risk_reasoning = risk_assessment['reasoning']
         
         # Determine confidence level
         confidence_level = self._determine_confidence_level(overall_confidence)
@@ -49,25 +64,30 @@ class ConfidenceScorer:
         return {
             "overall_confidence": overall_confidence,
             "confidence_level": confidence_level,
-            "llm_confidence": llm_confidence,
-            "rule_confidence": rule_confidence
+            "llm_confidence": None if not use_llm else llm_assessment['confidence'],
+            "rule_confidence": rule_confidence,
+            "risk_level": risk_level,
+            "risk_reasoning": risk_reasoning
         }
     
-    async def _get_llm_confidence(
+    async def _get_llm_confidence_and_risk(
         self,
         user_request: str,
         intent: IntentV1,
         entities: List[EntityV1]
-    ) -> float:
-        """Get confidence assessment from LLM"""
+    ) -> Dict[str, Any]:
+        """
+        Get MERGED confidence AND risk assessment from LLM (single call)
+        This replaces separate confidence and risk LLM calls
+        """
         try:
             # Format entities for prompt
             entities_str = ", ".join([f"{e.type}:{e.value}" for e in entities])
             intent_str = f"{intent.category}/{intent.action}"
             
-            # Get confidence scoring prompt
+            # Get merged confidence+risk scoring prompt
             prompts = self.prompt_manager.get_prompt(
-                PromptType.CONFIDENCE_SCORING,
+                PromptType.CONFIDENCE_SCORING,  # Now returns both confidence AND risk
                 user_request=user_request,
                 intent=intent_str,
                 entities=entities_str
@@ -78,20 +98,48 @@ class ConfidenceScorer:
                 prompt=prompts["user"],
                 system_prompt=prompts["system"],
                 temperature=0.1,
-                max_tokens=50
+                max_tokens=80  # Reduced: compact JSON response
             )
             
             # Get response from LLM
             response = await self.llm_client.generate(llm_request)
             
-            # Parse confidence score
-            confidence = self.response_parser.parse_confidence_response(response.content)
-            
-            return confidence
+            # Parse merged confidence+risk response
+            import json
+            try:
+                result = json.loads(response.content)
+                # Validate response structure
+                assert 'confidence' in result and 'risk' in result
+                assert 0.0 <= result['confidence'] <= 1.0
+                assert result['risk'] in ['low', 'medium', 'high', 'critical']
+                return result
+            except (json.JSONDecodeError, AssertionError, KeyError):
+                # Fallback: try to parse as old format
+                confidence = self.response_parser.parse_confidence_response(response.content)
+                return {
+                    'confidence': confidence,
+                    'risk': 'medium',  # Conservative default
+                    'reasoning': 'Fallback assessment'
+                }
             
         except Exception as e:
-            # Fallback to rule-based confidence if LLM fails
-            return self._calculate_rule_based_confidence(user_request, intent, entities)
+            # Fallback to rule-based assessment if LLM fails
+            rule_confidence = self._calculate_rule_based_confidence(user_request, intent, entities)
+            return {
+                'confidence': rule_confidence,
+                'risk': 'medium',  # Conservative default
+                'reasoning': f'LLM failed, using rule-based: {e}'
+            }
+    
+    async def _get_llm_confidence(
+        self,
+        user_request: str,
+        intent: IntentV1,
+        entities: List[EntityV1]
+    ) -> float:
+        """DEPRECATED: Use _get_llm_confidence_and_risk instead"""
+        result = await self._get_llm_confidence_and_risk(user_request, intent, entities)
+        return result['confidence']
     
     def _calculate_rule_based_confidence(
         self,
@@ -276,6 +324,61 @@ class ConfidenceScorer:
         term_score = min(1.0, total_terms_found / 5)  # Normalize to max 5 terms
         
         return (category_score * 0.6) + (term_score * 0.4)
+    
+    def _calculate_rule_based_risk(
+        self,
+        user_request: str,
+        intent: IntentV1,
+        entities: List[EntityV1]
+    ) -> Dict[str, str]:
+        """
+        Calculate risk level using rule-based approach (fast, no LLM call)
+        
+        Returns:
+            Dictionary with 'risk' (low|medium|high|critical) and 'reasoning'
+        """
+        request_lower = user_request.lower()
+        
+        # CRITICAL RISK: Destructive operations
+        critical_keywords = ['delete', 'remove', 'drop', 'destroy', 'purge', 'wipe', 'erase', 'truncate']
+        if any(keyword in request_lower for keyword in critical_keywords):
+            return {'risk': 'critical', 'reasoning': 'Destructive operation detected'}
+        
+        # HIGH RISK: Production changes, security operations, database operations
+        high_risk_keywords = ['production', 'prod', 'live', 'security', 'firewall', 'iptables', 'database', 'db']
+        high_risk_actions = ['modify', 'change', 'update', 'alter', 'grant', 'revoke']
+        
+        has_high_risk_context = any(keyword in request_lower for keyword in high_risk_keywords)
+        has_high_risk_action = any(action in request_lower for action in high_risk_actions)
+        
+        if has_high_risk_context and has_high_risk_action:
+            return {'risk': 'high', 'reasoning': 'Production or security modification'}
+        
+        # HIGH RISK: Action intents in production environment
+        prod_entities = [e for e in entities if e.type == 'environment' and e.value.lower() in ['prod', 'production']]
+        if intent.category in ['execution', 'deployment', 'configuration'] and prod_entities:
+            return {'risk': 'high', 'reasoning': 'Action in production environment'}
+        
+        # MEDIUM RISK: Service restarts, configuration changes
+        medium_risk_keywords = ['restart', 'reload', 'config', 'configure', 'install', 'upgrade']
+        if any(keyword in request_lower for keyword in medium_risk_keywords):
+            return {'risk': 'medium', 'reasoning': 'Service or configuration change'}
+        
+        # MEDIUM RISK: Action intents without clear context
+        if intent.category in ['execution', 'deployment', 'configuration']:
+            return {'risk': 'medium', 'reasoning': 'Action intent requires validation'}
+        
+        # LOW RISK: Read-only operations, status checks, information requests
+        low_risk_keywords = ['show', 'list', 'get', 'status', 'check', 'view', 'display', 'info']
+        if any(keyword in request_lower for keyword in low_risk_keywords):
+            return {'risk': 'low', 'reasoning': 'Read-only operation'}
+        
+        # LOW RISK: Information category
+        if intent.category == 'information':
+            return {'risk': 'low', 'reasoning': 'Information request'}
+        
+        # DEFAULT: Medium risk (conservative)
+        return {'risk': 'medium', 'reasoning': 'Default conservative assessment'}
     
     def _determine_confidence_level(self, confidence_score: float) -> ConfidenceLevel:
         """Determine confidence level from score"""

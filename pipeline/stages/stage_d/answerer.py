@@ -751,7 +751,7 @@ IMPORTANT INSTRUCTIONS:
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=0.1,  # Low temperature for consistent, factual responses
-                max_tokens=8000   # Allow more tokens for large CSV files and asset listings
+                max_tokens=2000   # Reduced to fit within 4096 token context window (input + output)
             )
             
             response = await self.llm_client.generate(llm_request)

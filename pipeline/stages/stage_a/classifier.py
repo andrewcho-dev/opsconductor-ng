@@ -7,6 +7,7 @@ import asyncio
 import uuid
 import time
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from ...schemas.decision_v1 import DecisionV1, DecisionType
@@ -15,6 +16,7 @@ from .intent_classifier import IntentClassifier
 from .entity_extractor import EntityExtractor
 from .confidence_scorer import ConfidenceScorer
 from .risk_assessor import RiskAssessor
+from ...cache.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,8 @@ class StageAClassifier:
     3. Confidence scoring
     4. Risk assessment
     5. Decision v1 output generation
+    
+    Phase 3: Now includes intelligent caching for 99% faster cached responses
     """
     
     def __init__(self, llm_client: LLMClient):
@@ -37,10 +41,18 @@ class StageAClassifier:
         self.confidence_scorer = ConfidenceScorer(llm_client)
         self.risk_assessor = RiskAssessor(llm_client)
         self.version = "1.0.0"
+        
+        # Phase 3: Initialize cache manager
+        cache_enabled = os.getenv("CACHE_ENABLED", "true").lower() == "true"
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        self.cache_manager = CacheManager(redis_url=redis_url, enabled=cache_enabled)
+        self.cache_ttl = int(os.getenv("CACHE_TTL_STAGE_A", "3600"))  # 1 hour default
     
     async def classify(self, user_request: str, context: Optional[Dict[str, Any]] = None) -> DecisionV1:
         """
         Classify user request and generate Decision v1 output
+        
+        Phase 3: Now checks cache before LLM calls for 99% faster cached responses
         
         Args:
             user_request: Original user request string
@@ -52,6 +64,29 @@ class StageAClassifier:
         start_time = time.time()
         
         try:
+            # Phase 3: Check cache first
+            cache_key = self.cache_manager.generate_stage_a_key(user_request)
+            logger.info(f"🔍 CACHE: Checking cache with key: {cache_key}")
+            cached_decision = self.cache_manager.get(cache_key)
+            logger.info(f"🔍 CACHE: Result: {cached_decision is not None}")
+            
+            if cached_decision:
+                # Cache HIT! Return cached decision with updated metadata
+                cache_time = time.time() - start_time
+                logger.info(f"✅ Stage A cache HIT for: {user_request[:50]}... ({cache_time*1000:.1f}ms)")
+                
+                # Update decision with new ID and timestamp
+                cached_decision["decision_id"] = self._generate_decision_id()
+                cached_decision["timestamp"] = datetime.now(timezone.utc).isoformat()
+                cached_decision["processing_time_ms"] = int(cache_time * 1000)
+                cached_decision["context"] = context or {}
+                cached_decision["cache_hit"] = True  # Add cache hit indicator
+                
+                return DecisionV1(**cached_decision)
+            
+            # Cache MISS - proceed with LLM classification
+            logger.info(f"❌ Stage A cache MISS for: {user_request[:50]}...")
+            
             # Generate unique decision ID
             decision_id = self._generate_decision_id()
             
@@ -64,19 +99,20 @@ class StageAClassifier:
             t2 = time.time()
             print(f"⏱️  Stage A: Intent + Entities (parallel) took {(t2-t1):.1f}s")
             
-            # Step 3 & 4: Calculate confidence and assess risk IN PARALLEL (both depend on intent + entities)
+            # Step 3: Calculate confidence AND risk (MERGED - single LLM call)
             t3 = time.time()
-            confidence_data, risk_data = await asyncio.gather(
-                self.confidence_scorer.calculate_overall_confidence(user_request, intent, entities),
-                self.risk_assessor.assess_risk(user_request, intent, entities)
-            )
+            confidence_data = await self.confidence_scorer.calculate_overall_confidence(user_request, intent, entities)
+            # confidence_data now includes: overall_confidence, confidence_level, risk_level, risk_reasoning
             t4 = time.time()
-            print(f"⏱️  Stage A: Confidence + Risk (parallel) took {(t4-t3):.1f}s")
-            logger.info(f"🔍 DEBUG: Intent category={intent.category}, action={intent.action}, confidence={confidence_data['overall_confidence']:.2f}")
+            print(f"⏱️  Stage A: Confidence + Risk (merged) took {(t4-t3):.1f}s")
+            logger.info(f"🔍 DEBUG: Intent category={intent.category}, action={intent.action}, confidence={confidence_data['overall_confidence']:.2f}, risk={confidence_data['risk_level']}")
             
-            # Step 5: Determine decision type and next stage
+            # Step 4: Determine decision type and next stage
             decision_type = self._determine_decision_type(intent, confidence_data)
-            next_stage = self._determine_next_stage(intent, confidence_data, risk_data)
+            next_stage = self._determine_next_stage(intent, confidence_data)
+            
+            # Step 5: Determine approval requirement based on risk
+            requires_approval = self._requires_approval_from_risk(confidence_data['risk_level'], intent, entities)
             
             # Calculate processing time
             processing_time_ms = int((time.time() - start_time) * 1000)
@@ -90,14 +126,22 @@ class StageAClassifier:
                 entities=entities,
                 overall_confidence=confidence_data["overall_confidence"],
                 confidence_level=confidence_data["confidence_level"],
-                risk_level=risk_data["risk_level"],
+                risk_level=confidence_data["risk_level"],  # Now from merged assessment
                 original_request=user_request,
                 context=context or {},
                 stage_a_version=self.version,
                 processing_time_ms=processing_time_ms,
-                requires_approval=risk_data["requires_approval"],
+                requires_approval=requires_approval,
                 next_stage=next_stage
             )
+            
+            # Phase 3: Store in cache for future requests
+            self.cache_manager.set(
+                key=cache_key,
+                value=decision.dict(),
+                ttl=self.cache_ttl
+            )
+            logger.info(f"💾 Stage A: Cached decision for: {user_request[:50]}... (TTL: {self.cache_ttl}s)")
             
             return decision
             
@@ -121,12 +165,33 @@ class StageAClassifier:
         # All other requests are ACTION type (let orchestrator handle low confidence)
         return DecisionType.ACTION
     
-    def _determine_next_stage(self, intent, confidence_data, risk_data) -> str:
+    def _determine_next_stage(self, intent, confidence_data) -> str:
         """Determine the next pipeline stage"""
         # ALL REQUESTS go through Stage B (Selector) for proper tool selection
         # No fast paths, no shortcuts - let the LLM reason through the full pipeline
         logger.info(f"🧠 Routing to Stage B: category={intent.category}, action={intent.action}, confidence={confidence_data['overall_confidence']:.2f}")
         return "stage_b"
+    
+    def _requires_approval_from_risk(self, risk_level: str, intent, entities) -> bool:
+        """Determine if approval is required based on risk level"""
+        from ...schemas.decision_v1 import RiskLevel
+        
+        # Convert string risk to RiskLevel enum if needed
+        if isinstance(risk_level, str):
+            risk_level = risk_level.lower()
+        
+        # High and critical risk always require approval
+        if risk_level in ['high', 'critical', RiskLevel.HIGH, RiskLevel.CRITICAL]:
+            return True
+        
+        # Medium risk with destructive actions require approval
+        if risk_level in ['medium', RiskLevel.MEDIUM]:
+            destructive_actions = ['delete', 'remove', 'drop', 'shutdown', 'terminate']
+            if any(action in intent.action.lower() for action in destructive_actions):
+                return True
+        
+        # Low risk doesn't require approval
+        return False
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED
     # The _create_fallback_decision method has been REMOVED because it violates

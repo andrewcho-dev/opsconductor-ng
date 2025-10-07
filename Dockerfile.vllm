@@ -1,0 +1,29 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vLLM
+RUN pip3 install --no-cache-dir vllm==0.11.0
+
+# Pre-download the model (optional but recommended)
+RUN pip3 install --no-cache-dir huggingface-hub && \
+    python3 -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen2.5-7B-Instruct-AWQ')"
+
+# Expose vLLM port
+EXPOSE 8000
+
+# Start vLLM server
+CMD ["python3", "-m", "vllm.entrypoints.openai.api_server", \
+     "--model", "Qwen/Qwen2.5-7B-Instruct-AWQ", \
+     "--dtype", "auto", \
+     "--port", "8000", \
+     "--max-model-len", "4096", \
+     "--gpu-memory-utilization", "0.92", \
+     "--enforce-eager", \
+     "--quantization", "awq", \
+     "--host", "0.0.0.0"]

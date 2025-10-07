@@ -9,8 +9,8 @@ defaults:
   freshness: live
   data_source: direct
 capabilities:
-  primary_capability:
-    description: asset-query primary capability
+  asset_management:
+    description: Query and manage asset inventory
     patterns:
       execute:
         description: Execute asset-query command
@@ -18,6 +18,9 @@ capabilities:
         - use asset-query
         - asset-query command
         - query asset inventory
+        - count assets
+        - list assets
+        - get asset information
         time_estimate_ms: '500'
         cost_estimate: '1'
         complexity_score: 0.2

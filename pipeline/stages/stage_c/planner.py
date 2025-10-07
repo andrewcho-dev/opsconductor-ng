@@ -5,6 +5,7 @@ The main planner that coordinates all planning components to create
 comprehensive, safe, executable step-by-step plans.
 """
 
+import os
 import time
 import threading
 import logging
@@ -14,6 +15,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from ...schemas.decision_v1 import DecisionV1
 from ...schemas.selection_v1 import SelectionV1
 from ...schemas.plan_v1 import PlanV1, ExecutionPlan, ExecutionMetadata
+from ...cache.cache_manager import CacheManager
 
 from .step_generator import StepGenerator
 from .dependency_resolver import DependencyResolver, DependencyError
@@ -58,6 +60,12 @@ class StageCPlanner:
         self.safety_planner = SafetyPlanner()
         self.resource_planner = ResourcePlanner()
         
+        # Initialize cache manager
+        cache_enabled = os.getenv("CACHE_ENABLED", "true").lower() == "true"
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        self.cache_manager = CacheManager(redis_url=redis_url, enabled=cache_enabled)
+        self.cache_ttl = int(os.getenv("CACHE_TTL_STAGE_C", "3600"))  # 1 hour default
+        
         # Planning statistics (thread-safe)
         self._stats_lock = threading.Lock()
         self.stats = {
@@ -92,6 +100,37 @@ class StageCPlanner:
         start_time = time.time()
         
         try:
+            # Check cache first
+            cache_key = self.cache_manager.generate_stage_c_key(
+                action=decision.intent.action,
+                entities=[e.dict() if hasattr(e, 'dict') else e for e in decision.entities],
+                tools=[tool.tool_name for tool in selection.selected_tools]
+            )
+            logger.info(f"🔍 CACHE: Stage C checking cache with key: {cache_key}")
+            cached_plan = self.cache_manager.get(cache_key)
+            logger.info(f"🔍 CACHE: Stage C result: {cached_plan is not None}")
+            
+            if cached_plan:
+                # Cache HIT! Return cached plan with updated metadata
+                cache_time = time.time() - start_time
+                logger.info(f"✅ Stage C cache HIT for action: {decision.intent.action} ({cache_time*1000:.1f}ms)")
+                
+                # Update plan with new timestamp and processing time
+                cached_plan["timestamp"] = datetime.now().isoformat()
+                cached_plan["processing_time_ms"] = int(cache_time * 1000)
+                
+                # Add cache hit indicator to metadata
+                if "execution_metadata" in cached_plan and cached_plan["execution_metadata"]:
+                    if "risk_factors" not in cached_plan["execution_metadata"]:
+                        cached_plan["execution_metadata"]["risk_factors"] = []
+                    if "cache_hit" not in cached_plan["execution_metadata"]["risk_factors"]:
+                        cached_plan["execution_metadata"]["risk_factors"].append("cache_hit")
+                
+                return PlanV1(**cached_plan)
+            
+            # Cache MISS - proceed with planning
+            logger.info(f"❌ Stage C cache MISS for action: {decision.intent.action}")
+            
             # Generate execution steps
             steps = await self._generate_execution_steps(decision, selection)
             
@@ -129,6 +168,11 @@ class StageCPlanner:
                 timestamp=datetime.now().isoformat(),
                 processing_time_ms=processing_time_ms
             )
+            
+            # Cache the plan for future requests
+            plan_dict = plan.dict()
+            self.cache_manager.set(cache_key, plan_dict, ttl=self.cache_ttl)
+            logger.info(f"✅ Stage C cached plan with key: {cache_key} (TTL: {self.cache_ttl}s)")
             
             # Update statistics
             self._update_stats(processing_time_ms, success=True)

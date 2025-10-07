@@ -136,7 +136,7 @@ class EntityExtractor:
                 prompt=prompts["user"],
                 system_prompt=prompts["system"],
                 temperature=0.1,
-                max_tokens=300
+                max_tokens=150  # Reduced: JSON array rarely needs more
             )
             
             # Get response from LLM

@@ -43,7 +43,7 @@ class IntentClassifier:
                 prompt=prompts["user"],
                 system_prompt=prompts["system"],
                 temperature=0.1,  # Low temperature for consistent classification
-                max_tokens=200
+                max_tokens=100  # Reduced: only needs category/action
             )
             
             # Get response from LLM

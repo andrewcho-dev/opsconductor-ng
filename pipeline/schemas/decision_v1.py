@@ -70,6 +70,7 @@ class DecisionV1(BaseModel):
     # Processing Metadata
     stage_a_version: str = Field(default="1.0.0", description="Stage A version")
     processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
+    cache_hit: Optional[bool] = Field(default=False, description="Whether this decision was served from cache (Phase 3)")
     
     # Next Stage Routing
     requires_approval: bool = Field(default=False, description="Whether this decision requires approval")

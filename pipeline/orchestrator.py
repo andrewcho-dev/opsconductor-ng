@@ -88,15 +88,8 @@ class PipelineOrchestrator:
         """Initialize the pipeline orchestrator with all stage components."""
         # Initialize LLM client if not provided
         if llm_client is None:
-            from llm.ollama_client import OllamaClient
-            default_config = {
-                "base_url": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-                "default_model": os.getenv("DEFAULT_MODEL", "qwen2.5-gpu"),
-                # Increased timeout for full LLM pipeline (no fast paths)
-                # Set to 180s (3 minutes) to handle slow Ollama responses
-                "timeout": int(os.getenv("OLLAMA_TIMEOUT", "180"))
-            }
-            llm_client = OllamaClient(default_config)
+            from llm.factory import get_default_llm_client
+            llm_client = get_default_llm_client()
         
         self.llm_client = llm_client
         
@@ -830,100 +823,161 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
                 return self._format_asset_list_directly(raw_assets)
             
             
-            # Check if this is an asset-related query and inject asset schema context
-            is_asset_query = (
-                decision and 
-                decision.intent.category == "asset_management"
-            ) or any(
+            # OPTIMIZATION: Detect query type and intelligently truncate data
+            import json
+            
+            # Detect if this is a "count" or "how many" query
+            is_count_query = any(
                 keyword in user_request.lower() 
-                for keyword in ["asset", "server", "host", "machine", "device", "database", "redis", "postgres", "mysql", "linux", "windows"]
+                for keyword in ["how many", "count", "number of", "total"]
             )
             
-            asset_schema_context = ""
-            if is_asset_query:
-                logger.info("🔍 ORCHESTRATOR: Detected asset query, injecting asset schema context")
-                asset_schema_context = """
-
-**Asset Data Schema:**
-Each asset in the data has the following fields:
-- id: Unique asset identifier
-- name: Asset name (e.g., "prod-db-primary-01")
-- hostname: Fully qualified hostname
-- ip_address: IP address
-- description: Asset description
-- tags: Array of tags (e.g., ["database", "production", "postgresql"])
-- os_type: Operating system type (e.g., "linux", "windows")
-- os_version: OS version (e.g., "Ubuntu 22.04 LTS", "Windows Server 2022")
-- device_type: Type of device (e.g., "server", "workstation")
-- hardware_make: Hardware manufacturer (e.g., "Dell", "HP", "Cisco")
-- hardware_model: Hardware model
-- serial_number: Serial number
-- physical_address: Physical location address
-- data_center: Data center name (e.g., "DC-West-01", "DC-East-01")
-- building, room, rack_position, rack_location: Physical location details
-- gps_coordinates: GPS coordinates
-- service_type: Primary service type (e.g., "postgresql", "ssh", "winrm", "redis", "mongodb", "elasticsearch")
-- port: Primary service port
-- is_secure: Whether the service uses encryption
-- credential_type: Type of credentials (e.g., "password", "ssh_key")
-- username: Service username
-- domain: Windows domain (if applicable)
-- database_type: Database type (e.g., "postgresql", "mysql", "mongodb", "redis", "elasticsearch")
-- database_name: Database name
-- secondary_service_type: Secondary service (usually "ssh" or "rdp")
-- secondary_port: Secondary service port
-- status: Asset status (e.g., "active")
-- environment: Environment (e.g., "production", "development", "staging")
-- criticality: Criticality level (e.g., "critical", "high", "medium", "low")
-- owner: Team or person responsible
-- support_contact: Support contact email
-- contract_number: Support contract number
-- notes: Operational notes and details
-- connection_status: Current connection status
-- created_at, updated_at: Timestamps
-
-**IMPORTANT:** When analyzing asset data, look at ALL these fields to provide accurate answers."""
+            # Detect if this is asking for specific attributes (OS types, environments, etc.)
+            is_attribute_query = any(
+                keyword in user_request.lower()
+                for keyword in ["what os", "which os", "what environment", "which environment", 
+                               "what type", "which type", "what database", "which database"]
+            )
             
-            # Build prompt for LLM to analyze results
-            # Format execution data as JSON for better LLM parsing
-            import json
-            execution_data_json = json.dumps(execution_data, indent=2, default=str)
+            # Detect if query asks for breakdowns (by OS, environment, etc.)
+            is_breakdown_query = any(
+                keyword in user_request.lower()
+                for keyword in ["windows", "linux", "ubuntu", "centos", "macos", "os", "operating system",
+                               "environment", "production", "staging", "development",
+                               "database", "mysql", "postgres", "mongodb",
+                               "device type", "server", "workstation", "laptop"]
+            )
+            
+            # Optimize execution data based on query type
+            if is_count_query:
+                # Check if this is a count query with breakdown requirements
+                if is_breakdown_query and raw_assets:
+                    # Count query with breakdown - include aggregated counts by attributes
+                    logger.info("🚀 OPTIMIZATION: Count query with breakdown detected - sending counts + breakdowns")
+                    
+                    # Calculate breakdowns
+                    os_counts = {}
+                    env_counts = {}
+                    device_counts = {}
+                    
+                    for asset in raw_assets:
+                        # OS breakdown
+                        os_type = asset.get("os_type", "Unknown")
+                        os_counts[os_type] = os_counts.get(os_type, 0) + 1
+                        
+                        # Environment breakdown
+                        environment = asset.get("environment", "Unknown")
+                        env_counts[environment] = env_counts.get(environment, 0) + 1
+                        
+                        # Device type breakdown
+                        device_type = asset.get("device_type", "Unknown")
+                        device_counts[device_type] = device_counts.get(device_type, 0) + 1
+                    
+                    optimized_data = [{
+                        "total_count": len(raw_assets),
+                        "breakdown_by_os": os_counts,
+                        "breakdown_by_environment": env_counts,
+                        "breakdown_by_device_type": device_counts,
+                        "query_type": "count_with_breakdown"
+                    }]
+                    execution_data_json = json.dumps(optimized_data, indent=2, default=str)
+                    asset_schema_context = "\n**Note:** Data includes total count and breakdowns by OS, environment, and device type."
+                else:
+                    # Simple count query - only send counts
+                    logger.info("🚀 OPTIMIZATION: Count query detected - sending only counts")
+                    optimized_data = []
+                    for item in execution_data:
+                        optimized_data.append({
+                            "step_name": item["step_name"],
+                            "count": item.get("count", len(item.get("data", [])) if item.get("data") else 0),
+                            "query_type": item.get("query_type")
+                        })
+                    execution_data_json = json.dumps(optimized_data, indent=2, default=str)
+                    asset_schema_context = ""  # No schema needed for counts
+                
+            elif is_attribute_query and raw_assets and len(raw_assets) > 10:
+                # For attribute queries with many results, send summary + sample
+                logger.info(f"🚀 OPTIMIZATION: Attribute query with {len(raw_assets)} assets - sending summary")
+                
+                # Extract unique values for common attributes
+                summary = {
+                    "total_count": len(raw_assets),
+                    "sample_assets": raw_assets[:5],  # First 5 as examples
+                    "unique_os_types": list(set(a.get("os_type") for a in raw_assets if a.get("os_type"))),
+                    "unique_environments": list(set(a.get("environment") for a in raw_assets if a.get("environment"))),
+                    "unique_device_types": list(set(a.get("device_type") for a in raw_assets if a.get("device_type"))),
+                    "unique_database_types": list(set(a.get("database_type") for a in raw_assets if a.get("database_type"))),
+                    "unique_data_centers": list(set(a.get("data_center") for a in raw_assets if a.get("data_center")))
+                }
+                execution_data_json = json.dumps(summary, indent=2, default=str)
+                asset_schema_context = "\n**Note:** Data includes summary statistics and sample assets."
+                
+            elif raw_assets and len(raw_assets) > 15:
+                # For large result sets, truncate to first 10 + summary
+                logger.info(f"🚀 OPTIMIZATION: Large result set ({len(raw_assets)} assets) - truncating to 10 + summary")
+                truncated_data = []
+                for item in execution_data:
+                    if item.get("data") and isinstance(item["data"], list) and len(item["data"]) > 15:
+                        truncated_data.append({
+                            "step_name": item["step_name"],
+                            "count": len(item["data"]),
+                            "data": item["data"][:10],  # First 10 items
+                            "truncated": True,
+                            "query_type": item.get("query_type")
+                        })
+                    else:
+                        truncated_data.append(item)
+                execution_data_json = json.dumps(truncated_data, indent=2, default=str)
+                asset_schema_context = "\n**Note:** Large result set truncated to first 10 items for analysis."
+                
+            else:
+                # Normal query - send full data but with condensed schema
+                execution_data_json = json.dumps(execution_data, indent=2, default=str)
+                asset_schema_context = "\n**Asset Fields:** name, hostname, ip_address, os_type, os_version, device_type, environment, service_type, database_type, data_center, criticality"
             
             logger.info(f"🔍 ORCHESTRATOR: Execution data length: {len(execution_data_json)} chars")
             logger.info(f"🔍 ORCHESTRATOR: Execution data preview: {execution_data_json[:500]}...")
             
-            prompt = f"""You are analyzing execution results to answer a user's question.
+            # Simplified prompt - reduced verbosity
+            prompt = f"""Answer the user's question based on the execution results.
 
-**User's Question:** {user_request}
+**Question:** {user_request}
 {asset_schema_context}
 
-**Execution Results (JSON format):**
+**Data:**
 ```json
 {execution_data_json}
 ```
 
-**Your Task:**
-1. Extract the specific information the user asked for from the execution results
-2. Provide a clear, concise answer to their question
-3. If the data contains lists of assets, analyze ALL fields in each asset object
-4. Format the answer in a user-friendly way with proper categorization
-
-**Important:**
-- Focus ONLY on answering the user's specific question
-- For asset queries, look at the ACTUAL data in each asset object, not just the count
-- If they asked "list all assets", provide a summary with key details (name, hostname, OS, environment, service type)
-- If they asked for specific attributes (OS types, environments, locations), extract unique values from the data
-- If they asked for counts, provide accurate counts based on the data
-- Be specific and direct - analyze the actual data structure provided
+**Instructions:**
+- Extract the specific information requested
+- Provide a clear, direct answer
+- For counts: state the number
+- For lists: summarize key details
+- For attributes: list unique values
 
 **Answer:**"""
 
             # Call LLM to analyze results
             from llm.client import LLMRequest
+            
+            # Calculate max_tokens dynamically based on prompt size
+            # Rough estimate: 1 token ≈ 4 characters for English text
+            estimated_prompt_tokens = len(prompt) // 4
+            max_context_length = 4096  # Qwen2.5-7B-Instruct-AWQ context window
+            safety_buffer = 100  # Reserve tokens for formatting overhead
+            
+            # Calculate available tokens for output
+            available_tokens = max_context_length - estimated_prompt_tokens - safety_buffer
+            max_output_tokens = max(500, min(available_tokens, 2000))  # Between 500-2000 tokens
+            
+            logger.info(f"🔍 ORCHESTRATOR: Prompt length: {len(prompt)} chars (~{estimated_prompt_tokens} tokens)")
+            logger.info(f"🔍 ORCHESTRATOR: Available output tokens: {available_tokens}, using: {max_output_tokens}")
+            
             llm_request = LLMRequest(
                 prompt=prompt,
                 temperature=0.1,  # Very low temperature for factual extraction
-                max_tokens=8000  # Allow large responses for CSV exports and detailed listings
+                max_tokens=max_output_tokens  # Dynamically calculated to fit within context window
             )
             
             logger.info(f"🔍 ORCHESTRATOR: Sending prompt to LLM (length: {len(prompt)} chars)")
