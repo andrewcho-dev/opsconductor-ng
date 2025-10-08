@@ -486,25 +486,31 @@ class ExecutionEngine:
         # Step 1: Fetch asset details if target_asset_id is provided
         asset = None
         if step.target_asset_id:
-            try:
-                logger.info(f"   🔍 Fetching asset by ID: {step.target_asset_id}")
-                asset = await self.asset_client.get_asset_by_id(step.target_asset_id)
-                if not asset:
-                    raise ValueError(f"Asset not found: {step.target_asset_id}")
-                logger.info(f"   ✅ Asset found: {asset.hostname if hasattr(asset, 'hostname') else 'N/A'}")
-            except Exception as e:
-                logger.error(f"   ❌ Failed to fetch asset {step.target_asset_id}: {e}")
-                raise
+            if hasattr(self, 'asset_client') and self.asset_client:
+                try:
+                    logger.info(f"   🔍 Fetching asset by ID: {step.target_asset_id}")
+                    asset = await self.asset_client.get_asset_by_id(step.target_asset_id)
+                    if not asset:
+                        raise ValueError(f"Asset not found: {step.target_asset_id}")
+                    logger.info(f"   ✅ Asset found: {asset.hostname if hasattr(asset, 'hostname') else 'N/A'}")
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to fetch asset {step.target_asset_id}: {e}")
+                    raise
+            else:
+                logger.warning(f"   ⚠️  Asset client not available, skipping asset lookup for ID: {step.target_asset_id}")
         elif step.target_hostname:
-            try:
-                logger.info(f"   🔍 Fetching asset by hostname: {step.target_hostname}")
-                asset = await self.asset_client.get_asset_by_hostname(step.target_hostname)
-                if not asset:
-                    raise ValueError(f"Asset not found: {step.target_hostname}")
-                logger.info(f"   ✅ Asset found")
-            except Exception as e:
-                logger.error(f"   ❌ Failed to fetch asset {step.target_hostname}: {e}")
-                raise
+            if hasattr(self, 'asset_client') and self.asset_client:
+                try:
+                    logger.info(f"   🔍 Fetching asset by hostname: {step.target_hostname}")
+                    asset = await self.asset_client.get_asset_by_hostname(step.target_hostname)
+                    if not asset:
+                        raise ValueError(f"Asset not found: {step.target_hostname}")
+                    logger.info(f"   ✅ Asset found")
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to fetch asset {step.target_hostname}: {e}")
+                    raise
+            else:
+                logger.warning(f"   ⚠️  Asset client not available, skipping asset lookup for hostname: {step.target_hostname}")
         else:
             logger.info("   ℹ️  No target asset specified")
         
@@ -1140,7 +1146,9 @@ class ExecutionEngine:
             'ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top', 'df', 'du',
             'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'touch', 'echo',
             'systemctl', 'service', 'apt', 'yum', 'dnf', 'zypper',
-            'ssh', 'scp', 'rsync', 'curl', 'wget', 'tar', 'gzip', 'unzip'
+            'ssh', 'scp', 'rsync', 'curl', 'wget', 'tar', 'gzip', 'unzip',
+            'ping', 'traceroute', 'netstat', 'ss', 'ip', 'ifconfig', 'dig', 'nslookup',
+            'journalctl', 'dmesg', 'free', 'vmstat', 'iostat', 'sar'
         ]
         
         if step_type in linux_commands:
@@ -1482,6 +1490,12 @@ class ExecutionEngine:
             if service:
                 return f"systemctl {action} {service}"
             return f"systemctl {action}"
+        
+        elif step_type == 'ping':
+            target = inputs.get('target', inputs.get('host', inputs.get('hostname', '8.8.8.8')))
+            count = inputs.get('count', inputs.get('packets', 4))
+            timeout = inputs.get('timeout', 5)
+            return f"ping -c {count} -W {timeout} {target}"
         
         else:
             # Default: use step_type as command
