@@ -1,0 +1,328 @@
+# Test-Connection - Test network connectivity (Windows ping)
+tool_name: "Test-Connection"
+version: "1.0"
+description: "Test network connectivity and measure round-trip time using ICMP echo requests on Windows systems"
+platform: "windows"
+category: "network"
+
+defaults:
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "network"
+
+capabilities:
+  network_testing:
+    description: "Test network connectivity, measure latency, and detect packet loss using PowerShell Test-Connection cmdlet"
+    
+    patterns:
+      test_connectivity:
+        description: "Test if host is reachable and measure network latency"
+        
+        typical_use_cases:
+          - "ping host"
+          - "test network connectivity"
+          - "check if server is up"
+          - "measure network latency"
+          - "verify network path"
+          - "troubleshoot network issues"
+        
+        time_estimate_ms: "1000 * count + 500"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "ICMP may be blocked by firewalls"
+          - "Some hosts configured to not respond to ping"
+          - "Requires ICMP protocol support"
+          - "Does not test application-layer connectivity"
+          - "May require elevated privileges for some options"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "ComputerName"
+            type: "string"
+            description: "Target computer name, FQDN, or IP address to test. Examples: 'SERVER01', 'web-server.domain.com', '192.168.1.100'"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "SERVER01"
+              - "web-server.domain.com"
+              - "192.168.1.100"
+              - "api.example.com"
+        
+        optional_inputs:
+          - name: "Count"
+            type: "integer"
+            description: "Number of ping packets to send. Default 4 for quick test, use 10+ for statistics"
+            default: 4
+            examples:
+              - 4
+              - 10
+              - 20
+          - name: "Delay"
+            type: "integer"
+            description: "Delay between pings in seconds"
+            default: 1
+            examples:
+              - 1
+              - 2
+              - 5
+          - name: "BufferSize"
+            type: "integer"
+            description: "Size of the buffer sent with this command (default 32 bytes)"
+            default: 32
+            examples:
+              - 32
+              - 64
+              - 1024
+          - name: "TimeToLive"
+            type: "integer"
+            description: "Maximum number of hops (TTL) for the packet"
+            default: 128
+            examples:
+              - 64
+              - 128
+              - 255
+          - name: "DontFragment"
+            type: "boolean"
+            description: "Set the Don't Fragment flag in the IP header (for MTU testing)"
+            default: "false"
+          - name: "Quiet"
+            type: "boolean"
+            description: "Return only success/failure status without detailed output"
+            default: "false"
+        
+        expected_outputs:
+          - name: "is_reachable"
+            type: "boolean"
+            description: "Whether target host responded to ping"
+          - name: "packets_sent"
+            type: "integer"
+            description: "Number of packets transmitted"
+          - name: "packets_received"
+            type: "integer"
+            description: "Number of packets received"
+          - name: "packet_loss_percent"
+            type: "number"
+            description: "Percentage of packets lost (0-100)"
+          - name: "response_time_ms"
+            type: "number"
+            description: "Average response time in milliseconds"
+          - name: "status"
+            type: "string"
+            description: "Connection status (Success, TimedOut, DestinationUnreachable, etc.)"
+      
+      continuous_monitor:
+        description: "Continuously monitor network connectivity and latency"
+        
+        typical_use_cases:
+          - "monitor network stability"
+          - "detect intermittent connectivity issues"
+          - "measure network performance over time"
+          - "troubleshoot packet loss"
+        
+        time_estimate_ms: "count * delay * 1000"
+        cost_estimate: "2"
+        complexity_score: 0.2
+        
+        scope: "continuous"
+        completeness: "complete"
+        
+        limitations:
+          - "Long duration may consume resources"
+          - "Results are statistical, not real-time alerts"
+          - "May be rate-limited by network devices"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 300
+        
+        preference_match:
+          speed: 0.7
+          accuracy: 0.95
+          cost: 0.85
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "ComputerName"
+            type: "string"
+            description: "Target computer to monitor"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+          - name: "Count"
+            type: "integer"
+            description: "Number of pings to send for monitoring"
+            validation: "^[1-9][0-9]*$"
+            examples:
+              - 60
+              - 300
+              - 600
+        
+        optional_inputs:
+          - name: "Delay"
+            type: "integer"
+            description: "Interval between pings in seconds"
+            default: 1
+          - name: "Continuous"
+            type: "boolean"
+            description: "Continue pinging until stopped (use with caution)"
+            default: "false"
+        
+        expected_outputs:
+          - name: "statistics"
+            type: "object"
+            description: "Comprehensive statistics over monitoring period"
+          - name: "packet_loss_events"
+            type: "array"
+            description: "Timestamps of packet loss occurrences"
+          - name: "latency_spikes"
+            type: "array"
+            description: "Timestamps of unusual latency increases"
+      
+      test_path_mtu:
+        description: "Test path MTU by sending packets with Don't Fragment flag"
+        
+        typical_use_cases:
+          - "determine maximum packet size"
+          - "troubleshoot MTU issues"
+          - "test network path MTU"
+          - "diagnose fragmentation problems"
+        
+        time_estimate_ms: "3000"
+        cost_estimate: "1"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires administrator privileges"
+          - "Some networks may not support"
+          - "Results depend on network path"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 0.9
+          cost: 0.9
+          complexity: 0.8
+          completeness: 0.95
+        
+        required_inputs:
+          - name: "ComputerName"
+            type: "string"
+            description: "Target computer for MTU test"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "BufferSize"
+            type: "integer"
+            description: "Starting packet size for MTU discovery"
+            default: 1472
+          - name: "DontFragment"
+            type: "boolean"
+            description: "Set Don't Fragment flag (required for MTU testing)"
+            default: "true"
+        
+        expected_outputs:
+          - name: "path_mtu"
+            type: "integer"
+            description: "Discovered path MTU in bytes"
+          - name: "fragmentation_needed"
+            type: "boolean"
+            description: "Whether fragmentation was required"
+
+dependencies:
+  - name: "network_access"
+    type: "permission"
+    required: true
+  - name: "PowerShell"
+    type: "runtime"
+    required: true
+    version: ">=3.0"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "windows"
+    - "network"
+    - "connectivity"
+    - "icmp"
+    - "latency"
+    - "monitoring"
+    - "powershell"
+  documentation_url: "https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.management/test-connection"
+  related_tools:
+    - "Test-NetConnection"
+    - "tracert"
+    - "pathping"
+    - "Get-NetAdapter"
+
+examples:
+  - name: "Quick connectivity test"
+    description: "Test if web server is reachable"
+    inputs:
+      ComputerName: "WEB-SERVER-01"
+      Count: 4
+    expected_time_ms: 4500
+    expected_cost: 1
+  
+  - name: "Measure network latency"
+    description: "Get accurate latency statistics with 20 pings"
+    inputs:
+      ComputerName: "api.example.com"
+      Count: 20
+      Delay: 1
+    expected_time_ms: 20500
+    expected_cost: 1
+  
+  - name: "Test with large packets"
+    description: "Test network with larger packet size to detect MTU issues"
+    inputs:
+      ComputerName: "192.168.1.100"
+      Count: 10
+      BufferSize: 1472
+      DontFragment: true
+    expected_time_ms: 10500
+    expected_cost: 1
+  
+  - name: "Monitor network stability"
+    description: "Monitor connection for 5 minutes to detect intermittent issues"
+    inputs:
+      ComputerName: "DB-SERVER-01"
+      Count: 300
+      Delay: 1
+    expected_time_ms: 300000
+    expected_cost: 2
+  
+  - name: "Quick status check"
+    description: "Quick check if server is responding (quiet mode)"
+    inputs:
+      ComputerName: "FILE-SERVER-01"
+      Count: 2
+      Quiet: true
+    expected_time_ms: 2500
+    expected_cost: 1

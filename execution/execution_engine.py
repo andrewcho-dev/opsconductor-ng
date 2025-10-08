@@ -1106,6 +1106,13 @@ class ExecutionEngine:
             # If explicitly marked as WinRM/PowerShell, this IS a PowerShell tool
             if connection_type in ['winrm', 'powershell', 'windows']:
                 return True
+            
+            # Check for OS type in input_data
+            os_type = step.input_data.get('os_type', '').lower()
+            if os_type in ['windows', 'win']:
+                return True
+            if os_type in ['linux', 'unix']:
+                return False
         
         step_type = step.step_type.lower()
         
@@ -1126,6 +1133,10 @@ class ExecutionEngine:
             command = step.input_data.get('command', '').lower()
             if any(cmdlet in command for cmdlet in powershell_cmdlets):
                 return True
+            
+            # Check for Windows-specific parameter names (e.g., computerName)
+            if any(key in step.input_data for key in ['computerName', 'computer_name']):
+                return True
         
         return False
     
@@ -1141,26 +1152,51 @@ class ExecutionEngine:
         """
         step_type = step.step_type.lower()
         
-        # Check for common Linux commands
+        # Cross-platform commands that need OS detection
+        cross_platform_commands = ['ping', 'traceroute', 'nslookup', 'curl']
+        
+        # Linux-specific commands
         linux_commands = [
             'ls', 'cd', 'pwd', 'cat', 'grep', 'find', 'ps', 'top', 'df', 'du',
             'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'touch', 'echo',
             'systemctl', 'service', 'apt', 'yum', 'dnf', 'zypper',
-            'ssh', 'scp', 'rsync', 'curl', 'wget', 'tar', 'gzip', 'unzip',
-            'ping', 'traceroute', 'netstat', 'ss', 'ip', 'ifconfig', 'dig', 'nslookup',
+            'ssh', 'scp', 'rsync', 'wget', 'tar', 'gzip', 'unzip',
+            'traceroute', 'netstat', 'ss', 'ip', 'ifconfig', 'dig',
             'journalctl', 'dmesg', 'free', 'vmstat', 'iostat', 'sar'
         ]
         
-        if step_type in linux_commands:
-            return True
-        
-        # Check if input_data indicates Linux/SSH
+        # Check if input_data explicitly indicates Linux/SSH
         if step.input_data:
             connection_type = step.input_data.get('connection_type', '').lower()
             if connection_type in ['ssh', 'linux', 'unix']:
                 return True
+            # If explicitly marked as Windows, this is NOT a Linux tool
+            if connection_type in ['winrm', 'powershell', 'windows']:
+                return False
             
-            # Check if command contains Linux commands
+            # Check for OS type in input_data or asset
+            os_type = step.input_data.get('os_type', '').lower()
+            if os_type in ['linux', 'unix']:
+                return True
+            if os_type in ['windows', 'win']:
+                return False
+        
+        # For cross-platform commands, default to Linux unless Windows is indicated
+        if step_type in cross_platform_commands:
+            # Check if there are Windows-specific indicators
+            if step.input_data:
+                # Check for Windows-style paths or parameters
+                if any(key in step.input_data for key in ['computerName', 'computer_name']):
+                    return False
+            # Default to Linux for cross-platform commands
+            return True
+        
+        # Linux-specific commands
+        if step_type in linux_commands:
+            return True
+        
+        # Check if command contains Linux commands
+        if step.input_data:
             command = step.input_data.get('command', '').lower()
             if any(cmd in command for cmd in linux_commands):
                 return True
@@ -1342,6 +1378,27 @@ class ExecutionEngine:
             if name:
                 return f"Get-Service -Name '{name}'"
             return "Get-Service"
+        
+        elif step_type.lower() == 'ping':
+            # Windows ping command (can also use Test-Connection cmdlet)
+            target = inputs.get('target') or inputs.get('host') or inputs.get('hostname') or inputs.get('computerName')
+            count = inputs.get('count') or inputs.get('packets') or 4
+            
+            if not target:
+                raise ValueError("Target host is required for ping")
+            
+            # Use Test-Connection PowerShell cmdlet for better output
+            return f"Test-Connection -ComputerName '{target}' -Count {count}"
+        
+        elif step_type.lower() == 'test-connection':
+            # Native PowerShell Test-Connection cmdlet
+            computer_name = inputs.get('ComputerName') or inputs.get('computerName') or inputs.get('target') or inputs.get('host')
+            count = inputs.get('Count') or inputs.get('count') or 4
+            
+            if not computer_name:
+                raise ValueError("ComputerName is required for Test-Connection")
+            
+            return f"Test-Connection -ComputerName '{computer_name}' -Count {count}"
         
         else:
             # Default: use step_type as cmdlet name
