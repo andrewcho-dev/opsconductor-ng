@@ -1411,7 +1411,7 @@ class ExecutionEngine:
         asset: Optional[Any]
     ) -> Dict[str, Any]:
         """
-        Execute a Linux bash step via SSH
+        Execute a Linux bash step via SSH or locally
         
         Args:
             step: Execution step model
@@ -1420,11 +1420,6 @@ class ExecutionEngine:
         Returns:
             Output data
         """
-        if not self.ssh_library:
-            raise RuntimeError(
-                "SSH library not available. Install with: pip install paramiko"
-            )
-        
         try:
             # Extract connection parameters
             target_host = None
@@ -1457,9 +1452,17 @@ class ExecutionEngine:
                 private_key = step.input_data.get('private_key', private_key)
                 port = step.input_data.get('port', port)
             
-            # Validate required parameters
+            # Check if we should execute locally or via SSH
+            # If no target_host is specified, execute locally
             if not target_host:
-                raise ValueError("target_host is required for SSH execution")
+                logger.info("No target_host specified, executing command locally")
+                return await self._execute_local_command(step)
+            
+            # Validate SSH parameters
+            if not self.ssh_library:
+                raise RuntimeError(
+                    "SSH library not available. Install with: pip install paramiko"
+                )
             if not username:
                 raise ValueError("username is required for SSH execution")
             if not password and not private_key:
@@ -1558,3 +1561,84 @@ class ExecutionEngine:
             # Default: use step_type as command
             logger.warning(f"Unknown Linux command: {step_type}, using as-is")
             return step_type
+    
+    async def _execute_local_command(
+        self,
+        step: ExecutionStepModel
+    ) -> Dict[str, Any]:
+        """
+        Execute a command locally using subprocess
+        
+        Args:
+            step: Execution step model
+        
+        Returns:
+            Output data
+        """
+        import subprocess
+        import shlex
+        from datetime import datetime
+        
+        try:
+            # Build the command
+            command = self._build_bash_script(step)
+            
+            logger.info(f"Executing command locally: {command}")
+            
+            # Get timeout from input_data
+            timeout = step.input_data.get('timeout', 300) if step.input_data else 300
+            
+            # Execute command
+            started_at = datetime.utcnow()
+            
+            # Use shell=True for complex commands with pipes, redirects, etc.
+            result = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+            
+            completed_at = datetime.utcnow()
+            duration_seconds = (completed_at - started_at).total_seconds()
+            
+            # Return output
+            return {
+                "status": "completed" if result.returncode == 0 else "failed",
+                "exit_code": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "duration_seconds": duration_seconds,
+                "attempts": 1,
+                "timestamp": completed_at.isoformat(),
+                "connection_type": "local",
+            }
+        
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"Local command execution timed out: {e}")
+            return {
+                "status": "error",
+                "error": f"Command timed out after {timeout} seconds",
+                "exit_code": -1,
+                "stdout": e.stdout.decode() if e.stdout else "",
+                "stderr": e.stderr.decode() if e.stderr else "",
+                "duration_seconds": timeout,
+                "attempts": 1,
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": "local",
+            }
+        
+        except Exception as e:
+            logger.error(f"Local command execution failed: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": str(e),
+                "duration_seconds": 0,
+                "attempts": 1,
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": "local",
+            }
