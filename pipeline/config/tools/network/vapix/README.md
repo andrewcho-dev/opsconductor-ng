@@ -6,9 +6,9 @@ This directory contains a comprehensive suite of tools for controlling Axis netw
 
 ## 📊 Coverage
 
-- **Total Tools**: 14
-- **VAPIX APIs Covered**: 14 (out of 90+ available)
-- **Coverage**: ~15% of Network Video APIs, ~80% of common use cases
+- **Total Tools**: 15
+- **VAPIX APIs Covered**: 15 (out of 90+ available)
+- **Coverage**: ~16% of APIs, ~80% of common use cases
 
 ## 📁 Directory Structure
 
@@ -33,9 +33,11 @@ vapix/
 ├── overlay/                            # Overlays & Privacy
 │   ├── axis_vapix_overlay.yaml
 │   └── axis_vapix_privacy_mask.yaml
-└── system/                             # System Information
-    ├── axis_vapix_device_info.yaml
-    └── axis_vapix_stream_profiles.yaml
+├── system/                             # System Information
+│   ├── axis_vapix_device_info.yaml
+│   └── axis_vapix_stream_profiles.yaml
+└── device-config/                      # Device Configuration
+    └── axis_vapix_network_settings.yaml
 ```
 
 ## 🎯 Tool Categories
@@ -115,6 +117,13 @@ vapix/
 - List available profiles
 - Create custom profiles
 - Manage stream configurations
+
+### Device Configuration (1 tool)
+**axis_vapix_network_settings.yaml** - Network settings and switch management
+- Manage Axis switch ports (enable/disable)
+- Configure port security (802.1X, MACsec)
+- Monitor port status and connected devices
+- Control network interface settings
 
 ## ✅ Quality Standards
 
@@ -263,7 +272,8 @@ Additional VAPIX APIs that could be added:
 - PTZ Autotracker
 - Guard Tour
 - MQTT Integration
-- Network Settings
+- LLDP Configuration
+- Firewall Configuration
 - Firmware Management
 - Audio Control
 - Advanced Analytics

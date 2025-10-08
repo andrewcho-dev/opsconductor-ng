@@ -1,0 +1,905 @@
+---
+# VAPIX Network Settings API Tool
+# Category: Device Configuration > Network Settings
+# Purpose: Configure and manage network settings on Axis devices, especially switch management
+# API Version: v2 (AXIS OS 11.8+)
+# Documentation: https://developer.axis.com/vapix/device-configuration/network-settings-api/
+
+metadata:
+  name: axis_vapix_network_settings
+  version: "1.0"
+  description: |
+    Configure and manage network settings on Axis devices with built-in switches.
+    This tool enables switch port management, security configuration, and network interface control.
+    
+    **Primary Use Cases:**
+    - Manage Axis switch ports (enable/disable ports)
+    - Configure port security (802.1X authentication, MACsec)
+    - Monitor port status and connected devices
+    - Control network interface settings
+    
+    **Key Features:**
+    - Dynamic switch support detection
+    - Per-port configuration and monitoring
+    - Security enforcement levels (NONE, AUTHENTICATED, MACSEC_SECURED)
+    - Remote device MAC address tracking
+    - Real-time port status monitoring
+    
+    **Important Notes:**
+    - Requires AXIS OS 11.8 or later
+    - Switch support varies by device model (check switch_supported first)
+    - Security features are dynamically supported (check security_supported per port)
+    - Uses Device Configuration API framework (JSON-based)
+    - Requires secured channel (HTTPS) for sensitive operations
+    
+  category: network_device_configuration
+  subcategory: network_settings
+  tags:
+    - vapix
+    - axis
+    - network
+    - switch
+    - port-management
+    - security
+    - 802.1x
+    - macsec
+  
+  # Axis device compatibility
+  compatibility:
+    min_axis_os_version: "11.8"
+    device_types:
+      - network_switches
+      - cameras_with_switch
+      - encoders_with_switch
+    requires_switch_support: true
+  
+  # Security and access requirements
+  security:
+    authentication: digest
+    requires_https: true  # Required for sensitive operations
+    min_user_level: administrator  # Most operations require admin
+    sensitive_data: true
+  
+  # Cost estimates (per operation)
+  estimated_time_seconds: 2
+  estimated_cost_usd: 0.001
+
+# Tool capabilities define what this tool can do
+capabilities:
+  # Capability 1: Check switch support
+  - name: check_switch_support
+    description: |
+      Check if the Axis device supports built-in switch functionality.
+      
+      **When to use:**
+      - Before attempting any switch operations
+      - During device discovery/inventory
+      - To validate device capabilities
+      
+      **What it does:**
+      - Queries the network-settings.v2 entity
+      - Returns switch_supported boolean flag
+      - Determines if switch operations are available
+      
+      **Natural language patterns:**
+      - "Does this camera have a switch?"
+      - "Check if switch is supported"
+      - "Can I manage switch ports on this device?"
+      - "Is this device a switch?"
+    
+    parameters:
+      - name: device_ip
+        type: string
+        required: true
+        description: |
+          IP address or hostname of the Axis device.
+          
+          **Format:** IPv4 address (e.g., "192.168.1.100") or hostname (e.g., "camera01.local")
+          
+          **Examples:**
+          - "192.168.1.100"
+          - "10.0.0.50"
+          - "axis-camera.local"
+      
+      - name: username
+        type: string
+        required: true
+        description: |
+          Username for authentication (Viewer level or higher).
+          
+          **User levels:**
+          - Viewer: Can check support (read-only)
+          - Operator: Can check support (read-only)
+          - Administrator: Can check support (read-only)
+          
+          **Examples:**
+          - "admin"
+          - "operator"
+          - "viewer"
+      
+      - name: password
+        type: string
+        required: true
+        sensitive: true
+        description: |
+          Password for authentication.
+          
+          **Security notes:**
+          - Transmitted via HTTP Digest Authentication
+          - HTTPS recommended for production
+          - Never log or display passwords
+    
+    http_request:
+      method: POST
+      url: "http://{device_ip}/axis-cgi/apidiscovery.cgi"
+      headers:
+        Content-Type: "application/json"
+      auth:
+        type: digest
+        username: "{username}"
+        password: "{password}"
+      body: |
+        {
+          "apiVersion": "1.0",
+          "context": "device-config-check",
+          "method": "getApiList"
+        }
+      timeout_seconds: 10
+    
+    response:
+      success_codes: [200]
+      format: json
+      schema:
+        type: object
+        properties:
+          data:
+            type: object
+            properties:
+              apiList:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    version:
+                      type: string
+    
+    examples:
+      - description: "Check if device supports switch management"
+        input:
+          device_ip: "192.168.1.100"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Switch support: Yes
+          Device supports network-settings.v2 API
+          You can now manage switch ports on this device.
+
+  # Capability 2: Get switch configuration
+  - name: get_switch_config
+    description: |
+      Retrieve complete switch configuration including all port settings.
+      
+      **When to use:**
+      - To view current switch configuration
+      - Before making configuration changes
+      - For monitoring and auditing
+      - To check port status and connected devices
+      
+      **What it returns:**
+      - All switch ports with their IDs
+      - Port enable/disable status
+      - Link state (UP/DOWN)
+      - Connected device MAC addresses
+      - Security configuration (if supported)
+      - Authentication and MACsec states
+      
+      **Natural language patterns:**
+      - "Show me the switch configuration"
+      - "What ports are enabled?"
+      - "List all switch ports"
+      - "Show connected devices on switch"
+      - "Get switch port status"
+    
+    parameters:
+      - name: device_ip
+        type: string
+        required: true
+        description: |
+          IP address or hostname of the Axis device.
+          
+          **Format:** IPv4 address or hostname
+          
+          **Examples:**
+          - "192.168.1.100"
+          - "axis-switch.local"
+      
+      - name: username
+        type: string
+        required: true
+        description: |
+          Username for authentication (Viewer level or higher).
+          
+          **User levels:**
+          - Viewer: Can view configuration (read-only)
+          - Operator: Can view configuration (read-only)
+          - Administrator: Can view configuration (read-only)
+      
+      - name: password
+        type: string
+        required: true
+        sensitive: true
+        description: "Password for authentication."
+    
+    http_request:
+      method: POST
+      url: "http://{device_ip}/axis-cgi/device_config.cgi"
+      headers:
+        Content-Type: "application/json"
+      auth:
+        type: digest
+        username: "{username}"
+        password: "{password}"
+      body: |
+        {
+          "apiVersion": "1.0",
+          "context": "get-switch-config",
+          "method": "execute",
+          "params": {
+            "request": {
+              "operation": "GET",
+              "path": "network-settings.v2.switch"
+            }
+          }
+        }
+      timeout_seconds: 10
+    
+    response:
+      success_codes: [200]
+      format: json
+      schema:
+        type: object
+        properties:
+          response:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [success, error]
+              data:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    port:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          portId:
+                            type: string
+                          enabled:
+                            type: boolean
+                          lowerState:
+                            type: string
+                            enum: [UP, DOWN]
+                          remoteAddresses:
+                            type: array
+                            items:
+                              type: string
+                          security_supported:
+                            type: boolean
+                          security:
+                            type: object
+                            properties:
+                              authServerEnabled:
+                                type: boolean
+                              authServerEnforced:
+                                type: string
+                                enum: [NONE, AUTHENTICATED, MACSEC_SECURED]
+                              authState:
+                                type: string
+                                enum: [UNKNOWN, AUTHENTICATED, AUTHENTICATING, STOPPED, FAILED]
+                              macSecState:
+                                type: string
+                                enum: [UNKNOWN, SECURED, CONNECTING, STOPPED, FAILED]
+    
+    examples:
+      - description: "Get complete switch configuration"
+        input:
+          device_ip: "192.168.1.100"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Switch Configuration:
+          
+          Port 1:
+            Status: Enabled
+            Link State: UP
+            Connected Devices: 1 (MAC: 55:72:97:5a:c7:cf)
+            Security Supported: Yes
+            Auth Server: Enabled
+            Auth State: AUTHENTICATED
+            MACsec State: SECURED
+          
+          Port 2:
+            Status: Enabled
+            Link State: DOWN
+            Connected Devices: 0
+            Security Supported: Yes
+            Auth Server: Enabled
+            Auth State: UNKNOWN
+            MACsec State: UNKNOWN
+
+  # Capability 3: Get specific port configuration
+  - name: get_port_config
+    description: |
+      Retrieve configuration for a specific switch port.
+      
+      **When to use:**
+      - To check a specific port's status
+      - To view connected devices on a port
+      - To verify security settings for a port
+      - Before modifying a specific port
+      
+      **What it returns:**
+      - Port ID and enable status
+      - Link state (UP/DOWN)
+      - Connected device MAC addresses
+      - Security support flag
+      - Authentication and MACsec configuration (if supported)
+      
+      **Natural language patterns:**
+      - "Show me port 1 configuration"
+      - "What's connected to port 2?"
+      - "Check if port 3 is enabled"
+      - "Get status of port 1"
+      - "Is port 2 up or down?"
+    
+    parameters:
+      - name: device_ip
+        type: string
+        required: true
+        description: "IP address or hostname of the Axis device."
+      
+      - name: port_id
+        type: string
+        required: true
+        description: |
+          Switch port identifier to query.
+          
+          **Format:** String representation of port number (usually "1", "2", "3", etc.)
+          
+          **How to determine:**
+          - Use get_switch_config to see all available ports
+          - Port IDs are device-specific (typically 1-4 for cameras with switch)
+          - Port numbering may vary by device model
+          
+          **Natural language mapping:**
+          - "port 1" → port_id: "1"
+          - "port 2" → port_id: "2"
+          - "first port" → port_id: "1"
+          - "second port" → port_id: "2"
+          
+          **Examples:**
+          - "1" (most common)
+          - "2"
+          - "3"
+          - "4"
+      
+      - name: username
+        type: string
+        required: true
+        description: "Username for authentication (Viewer level or higher)."
+      
+      - name: password
+        type: string
+        required: true
+        sensitive: true
+        description: "Password for authentication."
+    
+    http_request:
+      method: POST
+      url: "http://{device_ip}/axis-cgi/device_config.cgi"
+      headers:
+        Content-Type: "application/json"
+      auth:
+        type: digest
+        username: "{username}"
+        password: "{password}"
+      body: |
+        {
+          "apiVersion": "1.0",
+          "context": "get-port-config",
+          "method": "execute",
+          "params": {
+            "request": {
+              "operation": "GET",
+              "path": "network-settings.v2.switch.port['{port_id}']"
+            }
+          }
+        }
+      timeout_seconds: 10
+    
+    response:
+      success_codes: [200]
+      format: json
+    
+    examples:
+      - description: "Get configuration for port 1"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "1"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Port 1 Configuration:
+            Status: Enabled
+            Link State: UP
+            Connected Devices: 1
+              - MAC: 55:72:97:5a:c7:cf
+            Security Supported: Yes
+            Authentication Server: Enabled
+            Auth Enforcement: MACSEC_SECURED
+            Auth State: AUTHENTICATED
+            MACsec State: SECURED
+
+  # Capability 4: Enable/disable port
+  - name: set_port_enabled
+    description: |
+      Enable or disable a specific switch port.
+      
+      **When to use:**
+      - To enable a disabled port
+      - To disable a port for security or maintenance
+      - To control network access for connected devices
+      - To isolate problematic devices
+      
+      **What it does:**
+      - Sets the enabled state of a switch port
+      - Enabled ports allow network traffic
+      - Disabled ports block all traffic
+      - Changes take effect immediately
+      
+      **Natural language patterns:**
+      - "Enable port 1"
+      - "Disable port 2"
+      - "Turn on port 3"
+      - "Turn off port 1"
+      - "Shut down port 2"
+      - "Activate port 1"
+      
+      **Security considerations:**
+      - Requires Administrator privileges
+      - Disabling a port disconnects all devices on that port
+      - May affect camera connectivity if disabling uplink port
+      - Use with caution in production environments
+    
+    parameters:
+      - name: device_ip
+        type: string
+        required: true
+        description: "IP address or hostname of the Axis device."
+      
+      - name: port_id
+        type: string
+        required: true
+        description: |
+          Switch port identifier to configure.
+          
+          **Format:** String representation of port number
+          
+          **Natural language mapping:**
+          - "enable port 1" → port_id: "1", enabled: true
+          - "disable port 2" → port_id: "2", enabled: false
+          - "turn off port 3" → port_id: "3", enabled: false
+          
+          **Examples:**
+          - "1"
+          - "2"
+          - "3"
+      
+      - name: enabled
+        type: boolean
+        required: true
+        description: |
+          Enable or disable the port.
+          
+          **Values:**
+          - true: Enable the port (allow traffic)
+          - false: Disable the port (block traffic)
+          
+          **When to use:**
+          - true: To activate a port for network connectivity
+          - false: To deactivate a port for security or maintenance
+          
+          **Natural language mapping:**
+          - "enable" → true
+          - "disable" → false
+          - "turn on" → true
+          - "turn off" → false
+          - "activate" → true
+          - "deactivate" → false
+          - "shut down" → false
+          
+          **Examples:**
+          - true (enable port)
+          - false (disable port)
+      
+      - name: username
+        type: string
+        required: true
+        description: |
+          Username for authentication (Administrator level required).
+          
+          **User levels:**
+          - Administrator: Required for port configuration
+      
+      - name: password
+        type: string
+        required: true
+        sensitive: true
+        description: "Password for authentication."
+    
+    http_request:
+      method: POST
+      url: "http://{device_ip}/axis-cgi/device_config.cgi"
+      headers:
+        Content-Type: "application/json"
+      auth:
+        type: digest
+        username: "{username}"
+        password: "{password}"
+      body: |
+        {
+          "apiVersion": "1.0",
+          "context": "set-port-enabled",
+          "method": "execute",
+          "params": {
+            "request": {
+              "operation": "SET",
+              "path": "network-settings.v2.switch.port['{port_id}']",
+              "data": {
+                "enabled": {enabled}
+              }
+            }
+          }
+        }
+      timeout_seconds: 10
+    
+    response:
+      success_codes: [200]
+      format: json
+      schema:
+        type: object
+        properties:
+          response:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [success, error]
+    
+    examples:
+      - description: "Enable port 1"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "1"
+          enabled: true
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Success: Port 1 enabled
+          Port is now active and will allow network traffic.
+      
+      - description: "Disable port 2"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "2"
+          enabled: false
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Success: Port 2 disabled
+          Port is now inactive and will block all network traffic.
+
+  # Capability 5: Configure port security
+  - name: set_port_security
+    description: |
+      Configure security settings for a switch port (802.1X authentication and MACsec).
+      
+      **When to use:**
+      - To enable/disable 802.1X authentication on a port
+      - To configure authentication enforcement levels
+      - To secure network access with MACsec encryption
+      - To implement network access control policies
+      
+      **What it does:**
+      - Configures 802.1X authentication server settings
+      - Sets authentication enforcement level (NONE, AUTHENTICATED, MACSEC_SECURED)
+      - Controls whether devices must authenticate to access network
+      - Enables/disables MACsec encryption requirements
+      
+      **Security enforcement levels:**
+      - NONE: No authentication required (open access)
+      - AUTHENTICATED: Devices must authenticate via 802.1X
+      - MACSEC_SECURED: Devices must authenticate AND use MACsec encryption
+      
+      **Natural language patterns:**
+      - "Enable authentication on port 1"
+      - "Require MACsec on port 2"
+      - "Disable security on port 3"
+      - "Set port 1 to require authentication"
+      - "Configure port 2 for secure access"
+      
+      **Prerequisites:**
+      - Port must support security (check security_supported)
+      - 802.1X authentication server must be configured on device
+      - For MACSEC_SECURED: Devices must support MACsec
+      
+      **Important notes:**
+      - Requires Administrator privileges
+      - Changes may disconnect currently connected devices
+      - Devices must re-authenticate after changes
+      - Use HTTPS for this operation (sensitive configuration)
+    
+    parameters:
+      - name: device_ip
+        type: string
+        required: true
+        description: "IP address or hostname of the Axis device."
+      
+      - name: port_id
+        type: string
+        required: true
+        description: |
+          Switch port identifier to configure.
+          
+          **Format:** String representation of port number
+          
+          **Examples:**
+          - "1"
+          - "2"
+      
+      - name: auth_server_enabled
+        type: boolean
+        required: true
+        description: |
+          Enable or disable the 802.1X authentication server for this port.
+          
+          **Values:**
+          - true: Enable authentication (devices must authenticate)
+          - false: Disable authentication (open access)
+          
+          **When to use:**
+          - true: For secure environments requiring device authentication
+          - false: For open networks or troubleshooting
+          
+          **Natural language mapping:**
+          - "enable authentication" → true
+          - "disable authentication" → false
+          - "require authentication" → true
+          - "turn off security" → false
+          
+          **Examples:**
+          - true (require authentication)
+          - false (allow open access)
+      
+      - name: auth_server_enforced
+        type: string
+        required: true
+        description: |
+          Authentication enforcement level for the port.
+          
+          **Values:**
+          - "NONE": No authentication required (open access)
+          - "AUTHENTICATED": Devices must successfully authenticate via 802.1X
+          - "MACSEC_SECURED": Devices must authenticate AND use MACsec encryption
+          
+          **When to use each level:**
+          - NONE: Open networks, guest access, troubleshooting
+          - AUTHENTICATED: Secure networks requiring device identity verification
+          - MACSEC_SECURED: High-security networks requiring encryption (e.g., government, finance)
+          
+          **Natural language mapping:**
+          - "no security" → "NONE"
+          - "require authentication" → "AUTHENTICATED"
+          - "require MACsec" → "MACSEC_SECURED"
+          - "maximum security" → "MACSEC_SECURED"
+          - "basic security" → "AUTHENTICATED"
+          
+          **Examples:**
+          - "NONE" (no authentication)
+          - "AUTHENTICATED" (802.1X authentication required)
+          - "MACSEC_SECURED" (802.1X + MACsec encryption required)
+          
+          **Important:**
+          - Must match auth_server_enabled setting
+          - If auth_server_enabled is false, use "NONE"
+          - If auth_server_enabled is true, use "AUTHENTICATED" or "MACSEC_SECURED"
+      
+      - name: username
+        type: string
+        required: true
+        description: |
+          Username for authentication (Administrator level required).
+          
+          **User levels:**
+          - Administrator: Required for security configuration
+      
+      - name: password
+        type: string
+        required: true
+        sensitive: true
+        description: "Password for authentication."
+    
+    http_request:
+      method: POST
+      url: "https://{device_ip}/axis-cgi/device_config.cgi"  # HTTPS required for security config
+      headers:
+        Content-Type: "application/json"
+      auth:
+        type: digest
+        username: "{username}"
+        password: "{password}"
+      body: |
+        {
+          "apiVersion": "1.0",
+          "context": "set-port-security",
+          "method": "execute",
+          "params": {
+            "request": {
+              "operation": "SET",
+              "path": "network-settings.v2.switch.port['{port_id}']",
+              "data": {
+                "security": {
+                  "authServerEnabled": {auth_server_enabled},
+                  "authServerEnforced": "{auth_server_enforced}"
+                }
+              }
+            }
+          }
+        }
+      timeout_seconds: 10
+    
+    response:
+      success_codes: [200]
+      format: json
+      schema:
+        type: object
+        properties:
+          response:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [success, error]
+    
+    examples:
+      - description: "Enable 802.1X authentication on port 1"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "1"
+          auth_server_enabled: true
+          auth_server_enforced: "AUTHENTICATED"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Success: Port 1 security configured
+          Authentication Server: Enabled
+          Enforcement Level: AUTHENTICATED
+          Devices must authenticate via 802.1X to access network.
+      
+      - description: "Require MACsec encryption on port 2"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "2"
+          auth_server_enabled: true
+          auth_server_enforced: "MACSEC_SECURED"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Success: Port 2 security configured
+          Authentication Server: Enabled
+          Enforcement Level: MACSEC_SECURED
+          Devices must authenticate via 802.1X AND use MACsec encryption.
+      
+      - description: "Disable authentication on port 3"
+        input:
+          device_ip: "192.168.1.100"
+          port_id: "3"
+          auth_server_enabled: false
+          auth_server_enforced: "NONE"
+          username: "admin"
+          password: "secure_password"
+        expected_output: |
+          Success: Port 3 security configured
+          Authentication Server: Disabled
+          Enforcement Level: NONE
+          Port is now open access (no authentication required).
+
+# Common error scenarios and troubleshooting
+error_handling:
+  common_errors:
+    - error: "401 Unauthorized"
+      cause: "Invalid credentials or insufficient privileges"
+      solution: "Verify username/password and ensure Administrator level for configuration changes"
+    
+    - error: "404 Not Found"
+      cause: "API not available or device doesn't support switch functionality"
+      solution: "Check AXIS OS version (requires 11.8+) and verify switch support with check_switch_support"
+    
+    - error: "Invalid port ID"
+      cause: "Specified port doesn't exist on device"
+      solution: "Use get_switch_config to see available ports"
+    
+    - error: "Security not supported"
+      cause: "Port doesn't support security features"
+      solution: "Check security_supported flag for the port before configuring security"
+    
+    - error: "Operation failed"
+      cause: "Configuration conflict or invalid settings"
+      solution: "Verify current configuration and ensure settings are compatible"
+
+# Usage notes and best practices
+usage_notes:
+  best_practices:
+    - "Always check switch_supported before attempting switch operations"
+    - "Use get_switch_config to view current state before making changes"
+    - "Check security_supported per port before configuring security"
+    - "Use HTTPS for all security-related operations"
+    - "Test configuration changes on non-production devices first"
+    - "Document port assignments and security policies"
+    - "Monitor authentication states after security changes"
+    - "Keep track of connected device MAC addresses for troubleshooting"
+  
+  common_workflows:
+    - name: "Initial switch setup"
+      steps:
+        - "Check switch support"
+        - "Get switch configuration"
+        - "Enable/disable ports as needed"
+        - "Configure security settings"
+        - "Verify configuration"
+    
+    - name: "Troubleshoot connectivity"
+      steps:
+        - "Get port configuration"
+        - "Check link state (UP/DOWN)"
+        - "Verify port is enabled"
+        - "Check authentication state"
+        - "Review connected device MAC addresses"
+    
+    - name: "Implement security policy"
+      steps:
+        - "Check security support per port"
+        - "Configure authentication server (if not already done)"
+        - "Set authentication enforcement level"
+        - "Enable authentication on ports"
+        - "Monitor authentication states"
+        - "Verify MACsec states (if using MACSEC_SECURED)"
+  
+  integration_examples:
+    - "Use with axis_vapix_device_info to identify switch-capable devices"
+    - "Combine with axis_vapix_event_services to monitor port state changes"
+    - "Integrate with network management systems for centralized control"
+    - "Use with LLDP Configuration API for neighbor discovery"
+
+# Related VAPIX APIs
+related_apis:
+  - name: "LLDP Configuration API"
+    description: "Configure Link Layer Discovery Protocol for network topology discovery"
+    url: "https://developer.axis.com/vapix/device-configuration/lldp-configuration-api/"
+  
+  - name: "Firewall Configuration API"
+    description: "Configure firewall rules for network security"
+    url: "https://developer.axis.com/vapix/device-configuration/firewall-configuration-api/"
+  
+  - name: "Device Configuration APIs"
+    description: "Framework documentation for all device configuration APIs"
+    url: "https://developer.axis.com/vapix/device-configuration/device-configuration-apis/"
+  
+  - name: "Basic Device Info"
+    description: "Get basic device information including model and capabilities"
+    url: "https://developer.axis.com/vapix/device-configuration/basic-device-info-api/"
