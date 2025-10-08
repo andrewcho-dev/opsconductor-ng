@@ -20,11 +20,27 @@ User Request → AI Pipeline (4-Stage Processing) → Specialized Services → R
 
 ## 🚀 Quick Start
 
-### Deploy the System
+### New Installation
+
+**First time setting up OpsConductor NG?** Follow the complete installation guide:
+
+📖 **[INSTALLATION.md](INSTALLATION.md)** - Complete step-by-step installation guide
+
+This includes:
+- Prerequisites and system requirements
+- GPU configuration (RTX 3060, 3090 Ti, 4090)
+- Docker and NVIDIA setup
+- Environment configuration
+- Troubleshooting common issues
+
+### Existing Installation
 
 ```bash
 # Standard deployment with development volume mounts
 docker compose up -d
+
+# Verify deployment
+./verify-deployment.sh
 
 # Check system status
 ./scripts/status.sh
@@ -36,11 +52,15 @@ docker compose up -d
 - **AI Pipeline API**: http://localhost:3005
 - **Kong API Gateway**: http://localhost:3000
 - **Keycloak Admin**: http://localhost:8090
+- **vLLM API**: http://localhost:8000
 
 ### Test the System
 
 ```bash
-# Submit a request to the AI Pipeline
+# Run automated verification
+./verify-deployment.sh
+
+# Or test manually
 curl -X POST http://localhost:3005/pipeline \
   -H "Content-Type: application/json" \
   -d '{
@@ -152,11 +172,19 @@ opsconductor-ng/
 
 ## 📚 Documentation
 
-For more detailed information, refer to the following documents:
+### Getting Started
+- **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide for new deployments
+- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Comprehensive deployment checklist
+- **[RTX_3090Ti_SETUP.md](RTX_3090Ti_SETUP.md)** - GPU-specific setup guide
 
-- `CLEAN_ARCHITECTURE.md` - Detailed architecture overview
-- `PHASE_*_COMPLETION_REPORT.md` - Implementation phase reports
-- `DOCKER_COMPOSE_CLEANUP.md` - Infrastructure standardization
+### Architecture & Development
+- **[CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md)** - Detailed architecture overview
+- **[PHASE_*_COMPLETION_REPORT.md](.)** - Implementation phase reports
+- **[DOCKER_COMPOSE_CLEANUP.md](DOCKER_COMPOSE_CLEANUP.md)** - Infrastructure standardization
+
+### Operations
+- **[verify-deployment.sh](verify-deployment.sh)** - Automated deployment verification script
+- **[start_vllm_3090ti.sh](start_vllm_3090ti.sh)** - vLLM startup helper with performance profiles
 
 ---
 
