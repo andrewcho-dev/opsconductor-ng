@@ -48,3 +48,12 @@ metadata:
   - network
   - get-netipaddress
   documentation_url: https://docs.opsconductor.io/tools/get-netipaddress
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Ip"
+    description: "query_ip pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 300
+    expected_cost: 1

@@ -48,3 +48,12 @@ metadata:
   - network
   - ss
   documentation_url: https://docs.opsconductor.io/tools/ss
+
+# === EXAMPLES ===
+examples:
+  - name: "List Sockets"
+    description: "list_sockets pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 300
+    expected_cost: 1

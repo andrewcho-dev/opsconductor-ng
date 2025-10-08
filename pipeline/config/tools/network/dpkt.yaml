@@ -48,3 +48,12 @@ metadata:
   - network
   - dpkt
   documentation_url: https://docs.opsconductor.io/tools/dpkt
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute dpkt command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

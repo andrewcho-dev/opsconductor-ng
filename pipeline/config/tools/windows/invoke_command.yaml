@@ -48,3 +48,12 @@ metadata:
   - automation
   - invoke-command
   documentation_url: https://docs.opsconductor.io/tools/invoke-command
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Invoke-Command command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

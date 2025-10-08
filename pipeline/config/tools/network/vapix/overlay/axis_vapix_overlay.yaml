@@ -234,3 +234,32 @@ metadata:
     
     4. List all overlays:
        GET http://192.168.1.100/axis-cgi/param.cgi?action=list&group=Overlay
+
+# === EXAMPLES ===
+examples:
+  - name: "Create Text Overlay"
+    description: "Create text overlay with custom text"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      overlay_text: "example_overlay_text"
+      position: "example_position"
+    expected_time_ms: 1500
+    expected_cost: 2
+  - name: "Disable Overlay"
+    description: "Disable text overlay"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "List Overlays"
+    description: "List all overlay settings"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

@@ -48,3 +48,12 @@ metadata:
   - cloud
   - gcloud
   documentation_url: https://docs.opsconductor.io/tools/gcloud
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute gcloud command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 5

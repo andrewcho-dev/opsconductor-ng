@@ -51,3 +51,12 @@ metadata:
   - asset
   - asset-query
   documentation_url: https://docs.opsconductor.io/tools/asset-query
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute asset-query command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

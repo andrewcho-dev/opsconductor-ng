@@ -221,3 +221,36 @@ metadata:
     
     3. Delete recording:
        GET http://192.168.1.100/axis-cgi/record/remove.cgi?diskid=SD_DISK&recordingid=12345
+
+# === EXAMPLES ===
+examples:
+  - name: "Get Recording List"
+    description: "Get list of all recordings on storage"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      disk_id: "example_disk_id"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Download Recording"
+    description: "Download recording for specified time range"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      disk_id: "example_disk_id"
+      start_time: "example_start_time"
+      end_time: "example_end_time"
+    expected_time_ms: 5000
+    expected_cost: 3
+  - name: "Remove Recording"
+    description: "Delete recording for specified time range"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      disk_id: "example_disk_id"
+      recording_id: "example_recording_id"
+    expected_time_ms: 2000
+    expected_cost: 2

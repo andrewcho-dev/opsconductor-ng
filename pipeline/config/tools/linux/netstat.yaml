@@ -48,3 +48,12 @@ metadata:
   - network
   - netstat
   documentation_url: https://docs.opsconductor.io/tools/netstat
+
+# === EXAMPLES ===
+examples:
+  - name: "List Connections"
+    description: "list_connections pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 400
+    expected_cost: 1

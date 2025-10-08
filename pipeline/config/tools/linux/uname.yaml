@@ -48,3 +48,12 @@ metadata:
   - system
   - uname
   documentation_url: https://docs.opsconductor.io/tools/uname
+
+# === EXAMPLES ===
+examples:
+  - name: "Get System Info"
+    description: "get_system_info pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 100
+    expected_cost: 1

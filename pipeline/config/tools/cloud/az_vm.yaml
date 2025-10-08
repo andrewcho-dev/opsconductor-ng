@@ -48,3 +48,12 @@ metadata:
   - cloud
   - az-vm
   documentation_url: https://docs.opsconductor.io/tools/az-vm
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute az-vm command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 5

@@ -285,3 +285,36 @@ metadata:
     - Document mask purposes
     - Review masks periodically
     - Consider PTZ camera movement (masks are fixed)
+
+# === EXAMPLES ===
+examples:
+  - name: "Add Rectangular Mask"
+    description: "Add rectangular privacy mask"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      mask_name: "example_name"
+      x_position: 100
+      y_position: 100
+      width: 100
+      height: 100
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Disable Mask"
+    description: "Disable privacy mask"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      mask_number: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Get All Masks"
+    description: "Get list of all configured privacy masks"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

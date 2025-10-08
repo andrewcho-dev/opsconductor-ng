@@ -48,3 +48,12 @@ metadata:
   - system
   - free
   documentation_url: https://docs.opsconductor.io/tools/free
+
+# === EXAMPLES ===
+examples:
+  - name: "Check Memory"
+    description: "check_memory pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 100
+    expected_cost: 1

@@ -48,3 +48,12 @@ metadata:
   - monitoring
   - top
   documentation_url: https://docs.opsconductor.io/tools/top
+
+# === EXAMPLES ===
+examples:
+  - name: "Monitor Processes"
+    description: "monitor_processes pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

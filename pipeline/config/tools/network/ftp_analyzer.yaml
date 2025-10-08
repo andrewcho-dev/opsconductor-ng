@@ -48,3 +48,12 @@ metadata:
   - network
   - ftp-analyzer
   documentation_url: https://docs.opsconductor.io/tools/ftp-analyzer
+
+# === EXAMPLES ===
+examples:
+  - name: "Analyze Ftp"
+    description: "analyze_ftp pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

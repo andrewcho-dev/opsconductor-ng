@@ -48,3 +48,12 @@ metadata:
   - system
   - killall
   documentation_url: https://docs.opsconductor.io/tools/killall
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute killall command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

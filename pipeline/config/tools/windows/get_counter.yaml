@@ -48,3 +48,12 @@ metadata:
   - monitoring
   - get-counter
   documentation_url: https://docs.opsconductor.io/tools/get-counter
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Get-Counter command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

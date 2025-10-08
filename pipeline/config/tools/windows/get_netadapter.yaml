@@ -48,3 +48,12 @@ metadata:
   - network
   - get-netadapter
   documentation_url: https://docs.opsconductor.io/tools/get-netadapter
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Adapters"
+    description: "query_adapters pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 400
+    expected_cost: 1

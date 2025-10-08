@@ -336,3 +336,46 @@ metadata:
     - Consider using schedules to limit when rules are active
     - Monitor action rule execution for errors
     - Use HTTPS for webhook URLs when possible
+
+# === EXAMPLES ===
+examples:
+  - name: "Motion Detection Alert"
+    description: "Create action rule to trigger on motion detection"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      rule_name: "example_name"
+      action_type: "example_action_type"
+      action_config: "example_action_config"
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Io Trigger Action"
+    description: "Create action rule to trigger on I/O port input"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      rule_name: "example_name"
+      input_port: 100
+      action_type: "example_action_type"
+      action_config: "example_action_config"
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Get All Rules"
+    description: "Retrieve list of all action rules"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Remove Rule"
+    description: "Remove an action rule by name"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      rule_name: "example_name"
+    expected_time_ms: 1000
+    expected_cost: 1

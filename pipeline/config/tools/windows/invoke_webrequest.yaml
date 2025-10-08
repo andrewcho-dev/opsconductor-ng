@@ -48,3 +48,12 @@ metadata:
   - network
   - invoke-webrequest
   documentation_url: https://docs.opsconductor.io/tools/invoke-webrequest
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Invoke-WebRequest command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

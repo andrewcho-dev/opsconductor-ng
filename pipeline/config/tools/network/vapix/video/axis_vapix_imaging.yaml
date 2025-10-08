@@ -402,3 +402,41 @@ metadata:
     - Test settings in actual lighting conditions
     - Consider using scene profiles for different lighting scenarios
     - Avoid extreme values (0 or 100) unless specifically needed
+
+# === EXAMPLES ===
+examples:
+  - name: "Adjust Brightness"
+    description: "Adjust camera brightness level"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      brightness: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Adjust Contrast"
+    description: "Adjust camera contrast level"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      contrast: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Adjust Saturation"
+    description: "Adjust camera color saturation level"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      saturation: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Get Current Settings"
+    description: "Get current brightness, contrast, saturation, and sharpness values"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

@@ -48,3 +48,12 @@ metadata:
   - database
   - pg_restore
   documentation_url: https://docs.opsconductor.io/tools/pg_restore
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute pg_restore command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1500
+    expected_cost: 2

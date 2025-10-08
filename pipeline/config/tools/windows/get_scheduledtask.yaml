@@ -48,3 +48,12 @@ metadata:
   - automation
   - get-scheduledtask
   documentation_url: https://docs.opsconductor.io/tools/get-scheduledtask
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Get-ScheduledTask command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

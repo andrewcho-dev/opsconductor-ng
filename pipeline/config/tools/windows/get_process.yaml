@@ -75,3 +75,18 @@ metadata:
   - system
   - get-process
   documentation_url: https://docs.opsconductor.io/tools/get-process
+
+# === EXAMPLES ===
+examples:
+  - name: "List Processes"
+    description: "list_processes pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 300
+    expected_cost: 1
+  - name: "Stop Process"
+    description: "stop_process pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 2

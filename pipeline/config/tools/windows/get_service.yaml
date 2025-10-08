@@ -100,3 +100,24 @@ metadata:
   - system
   - get-service
   documentation_url: https://docs.opsconductor.io/tools/get-service
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Service"
+    description: "query_service pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "Start Service"
+    description: "start_service pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Stop Service"
+    description: "stop_service pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 2

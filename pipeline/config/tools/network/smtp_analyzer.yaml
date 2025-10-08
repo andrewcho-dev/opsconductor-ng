@@ -48,3 +48,12 @@ metadata:
   - network
   - smtp-analyzer
   documentation_url: https://docs.opsconductor.io/tools/smtp-analyzer
+
+# === EXAMPLES ===
+examples:
+  - name: "Analyze Smtp"
+    description: "analyze_smtp pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

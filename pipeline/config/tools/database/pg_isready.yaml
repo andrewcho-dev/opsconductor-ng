@@ -48,3 +48,12 @@ metadata:
   - database
   - pg_isready
   documentation_url: https://docs.opsconductor.io/tools/pg_isready
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute pg_isready command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1500
+    expected_cost: 2

@@ -48,3 +48,12 @@ metadata:
   - database
   - mysql
   documentation_url: https://docs.opsconductor.io/tools/mysql
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute mysql command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1500
+    expected_cost: 2

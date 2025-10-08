@@ -48,3 +48,12 @@ metadata:
   - database
   - mysqlcheck
   documentation_url: https://docs.opsconductor.io/tools/mysqlcheck
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute mysqlcheck command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1500
+    expected_cost: 2

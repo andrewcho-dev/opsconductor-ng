@@ -48,3 +48,12 @@ metadata:
   - network
   - arp-scan
   documentation_url: https://docs.opsconductor.io/tools/arp-scan
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute arp-scan command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

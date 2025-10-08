@@ -324,3 +324,44 @@ metadata:
     - Test profiles before deployment
     - Document profile purposes
     - Don't delete default profiles
+
+# === EXAMPLES ===
+examples:
+  - name: "Get All Profiles"
+    description: "Get list of all configured stream profiles"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Get Profile Details"
+    description: "Get configuration details for a specific profile"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      profile_name: "example_name"
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "Add Custom Profile"
+    description: "Create custom stream profile with specific settings"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      profile_name: "example_name"
+      resolution: "example_resolution"
+      fps: 100
+      codec: "example_codec"
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Remove Profile"
+    description: "Remove custom stream profile"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      profile_name: "example_name"
+    expected_time_ms: 1000
+    expected_cost: 1

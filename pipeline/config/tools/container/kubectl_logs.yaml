@@ -48,3 +48,12 @@ metadata:
   - container
   - kubectl-logs
   documentation_url: https://docs.opsconductor.io/tools/kubectl-logs
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute kubectl-logs command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 2

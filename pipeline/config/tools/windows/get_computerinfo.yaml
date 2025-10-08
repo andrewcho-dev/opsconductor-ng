@@ -48,3 +48,12 @@ metadata:
   - system
   - get-computerinfo
   documentation_url: https://docs.opsconductor.io/tools/get-computerinfo
+
+# === EXAMPLES ===
+examples:
+  - name: "Get Info"
+    description: "get_info pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 2

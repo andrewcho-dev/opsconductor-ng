@@ -48,3 +48,12 @@ metadata:
   - network
   - ip
   documentation_url: https://docs.opsconductor.io/tools/ip
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute ip command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

@@ -292,3 +292,35 @@ metadata:
     - MJPEG uses significantly more bandwidth than H.264/H.265
     - Lower resolution and FPS reduce bandwidth usage
     - Use Zipstream technology for additional bandwidth savings
+
+# === EXAMPLES ===
+examples:
+  - name: "Get Rtsp Url"
+    description: "Generate RTSP stream URL with specified parameters"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      resolution: "example_resolution"
+      fps: 100
+      compression: "example_compression"
+    expected_time_ms: 100
+    expected_cost: 0
+  - name: "Get Http Stream Url"
+    description: "Generate HTTP stream URL for browser-based playback"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      resolution: "example_resolution"
+    expected_time_ms: 100
+    expected_cost: 0
+  - name: "Capture Image"
+    description: "Get a JPEG snapshot from the camera"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      resolution: "example_resolution"
+    expected_time_ms: 500
+    expected_cost: 1

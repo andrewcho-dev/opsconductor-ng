@@ -48,3 +48,12 @@ metadata:
   - network
   - tls-analyzer
   documentation_url: https://docs.opsconductor.io/tools/tls-analyzer
+
+# === EXAMPLES ===
+examples:
+  - name: "Analyze Tls"
+    description: "analyze_tls pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

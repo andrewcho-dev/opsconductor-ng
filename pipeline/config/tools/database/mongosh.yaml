@@ -48,3 +48,12 @@ metadata:
   - database
   - mongosh
   documentation_url: https://docs.opsconductor.io/tools/mongosh
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute mongosh command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1500
+    expected_cost: 2

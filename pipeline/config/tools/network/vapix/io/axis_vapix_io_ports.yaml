@@ -267,3 +267,41 @@ metadata:
     
     5. Pulse output (activate for 1 second):
        GET http://192.168.1.100/axis-cgi/io/output.cgi?action=/&port=1&state=active&duration=1000
+
+# === EXAMPLES ===
+examples:
+  - name: "Activate Output"
+    description: "Activate (close) output port"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      port_number: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Deactivate Output"
+    description: "Deactivate (open) output port"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      port_number: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Read Input"
+    description: "Read current state of input port"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      port_number: 100
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "List All Ports"
+    description: "Get status of all input and output ports"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

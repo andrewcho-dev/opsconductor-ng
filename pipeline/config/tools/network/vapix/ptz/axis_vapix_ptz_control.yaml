@@ -512,3 +512,46 @@ metadata:
     - Preset names are case-sensitive
     - Not all cameras support the full -180 to +180 range for pan/tilt
     - Zoom range may vary by camera model (1-9999 is typical)
+
+# === EXAMPLES ===
+examples:
+  - name: "Move To Preset By Name"
+    description: "Move Axis camera to preset position using preset name"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      preset_name: "example_name"
+    expected_time_ms: 2000
+    expected_cost: 1
+  - name: "Move To Preset By Number"
+    description: "Move Axis camera to preset position using preset number"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      preset_number: 100
+    expected_time_ms: 2000
+    expected_cost: 1
+  - name: "Absolute Position"
+    description: "Move camera to specific pan/tilt/zoom coordinates"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      pan: "example_pan"
+      tilt: "example_tilt"
+      zoom: 100
+    expected_time_ms: 2000
+    expected_cost: 1
+  - name: "Relative Position"
+    description: "Move camera by relative pan/tilt/zoom offset from current position"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      rpan: "example_rpan"
+      rtilt: "example_rtilt"
+      rzoom: 100
+    expected_time_ms: 2000
+    expected_cost: 1

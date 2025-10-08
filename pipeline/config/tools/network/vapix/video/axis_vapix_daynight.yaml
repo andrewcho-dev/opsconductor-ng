@@ -263,3 +263,38 @@ metadata:
     - Only force day/night mode for specific requirements
     - Consider lighting conditions when forcing modes
     - Test auto mode threshold settings for optimal switching
+
+# === EXAMPLES ===
+examples:
+  - name: "Set Auto Mode"
+    description: "Enable automatic day/night switching based on lighting conditions"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Set Day Mode"
+    description: "Force camera to day mode (color, IR filter enabled)"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Set Night Mode"
+    description: "Force camera to night mode (black & white, IR filter disabled)"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Get Current Mode"
+    description: "Retrieve current day/night mode and IR filter status"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

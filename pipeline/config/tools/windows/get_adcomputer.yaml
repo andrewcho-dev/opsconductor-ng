@@ -48,3 +48,12 @@ metadata:
   - security
   - get-adcomputer
   documentation_url: https://docs.opsconductor.io/tools/get-adcomputer
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Get-ADComputer command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 3

@@ -272,3 +272,38 @@ metadata:
     - Properties.PTZ.PTZ : PTZ support (yes/no)
     - Properties.Audio.Audio : Audio support (yes/no)
     - Properties.System.Soc : System on chip model
+
+# === EXAMPLES ===
+examples:
+  - name: "Get All Info"
+    description: "Get comprehensive device information"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "Check Firmware"
+    description: "Get current firmware version"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "Check Model"
+    description: "Get camera model and serial number"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1
+  - name: "List Capabilities"
+    description: "List all supported camera capabilities"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1

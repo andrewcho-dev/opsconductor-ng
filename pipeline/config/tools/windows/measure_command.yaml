@@ -48,3 +48,12 @@ metadata:
   - monitoring
   - measure-command
   documentation_url: https://docs.opsconductor.io/tools/measure-command
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Measure-Command command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

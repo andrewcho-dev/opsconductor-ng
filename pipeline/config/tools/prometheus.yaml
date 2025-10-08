@@ -63,3 +63,24 @@ metadata:
   tags:
   - monitoring-tool
 created_by: Tool Generator
+
+# === EXAMPLES ===
+examples:
+  - name: "Get CPU Metrics"
+    description: "Retrieve CPU usage metrics from Prometheus"
+    inputs:
+      metric_type: "cpu"
+    expected_time_ms: 200
+    expected_cost: 1
+  - name: "Get Memory Metrics"
+    description: "Retrieve memory usage metrics from Prometheus"
+    inputs:
+      metric_type: "memory"
+    expected_time_ms: 200
+    expected_cost: 1
+  - name: "Get Disk Metrics"
+    description: "Retrieve disk usage metrics from Prometheus"
+    inputs:
+      metric_type: "disk"
+    expected_time_ms: 200
+    expected_cost: 1

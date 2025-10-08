@@ -48,3 +48,12 @@ metadata:
   - network
   - nslookup
   documentation_url: https://docs.opsconductor.io/tools/nslookup
+
+# === EXAMPLES ===
+examples:
+  - name: "Lookup Dns"
+    description: "lookup_dns pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

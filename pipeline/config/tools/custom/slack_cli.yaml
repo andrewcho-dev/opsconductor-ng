@@ -48,3 +48,12 @@ metadata:
   - communication
   - slack-cli
   documentation_url: https://docs.opsconductor.io/tools/slack-cli
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute slack-cli command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

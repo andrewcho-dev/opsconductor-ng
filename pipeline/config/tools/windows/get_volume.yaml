@@ -48,3 +48,12 @@ metadata:
   - system
   - get-volume
   documentation_url: https://docs.opsconductor.io/tools/get-volume
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Volumes"
+    description: "query_volumes pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

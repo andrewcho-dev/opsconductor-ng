@@ -48,3 +48,12 @@ metadata:
   - system
   - get-wmiobject
   documentation_url: https://docs.opsconductor.io/tools/get-wmiobject
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Wmi"
+    description: "query_wmi pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 800
+    expected_cost: 2

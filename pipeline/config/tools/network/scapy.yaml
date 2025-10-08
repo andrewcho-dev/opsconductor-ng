@@ -48,3 +48,12 @@ metadata:
   - network
   - scapy
   documentation_url: https://docs.opsconductor.io/tools/scapy
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute scapy command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

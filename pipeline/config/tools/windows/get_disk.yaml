@@ -48,3 +48,12 @@ metadata:
   - system
   - get-disk
   documentation_url: https://docs.opsconductor.io/tools/get-disk
+
+# === EXAMPLES ===
+examples:
+  - name: "Query Disks"
+    description: "query_disks pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 500
+    expected_cost: 1

@@ -442,6 +442,14 @@ class ToolRegistry:
             dependencies=["asset_service_api", "rbac_enforcement"]
         )
         self.register_tool(asset_credentials_tool)
+        
+        # Load Windows tools
+        self._load_windows_tools()
+    
+    def _load_windows_tools(self) -> None:
+        """Load comprehensive Windows operation tools"""
+        from pipeline.stages.stage_b.windows_tools_registry import register_windows_tools
+        register_windows_tools(self)
     
     def export_config(self, output_path: str) -> None:
         """Export current tool registry to a configuration file"""

@@ -48,3 +48,12 @@ metadata:
   - network
   - http-analyzer
   documentation_url: https://docs.opsconductor.io/tools/http-analyzer
+
+# === EXAMPLES ===
+examples:
+  - name: "Analyze Http"
+    description: "analyze_http pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

@@ -48,3 +48,12 @@ metadata:
   - network
   - ping
   documentation_url: https://docs.opsconductor.io/tools/ping
+
+# === EXAMPLES ===
+examples:
+  - name: "Test Connectivity"
+    description: "test_connectivity pattern"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 1

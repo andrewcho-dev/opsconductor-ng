@@ -48,3 +48,12 @@ metadata:
   - container
   - kubectl-get
   documentation_url: https://docs.opsconductor.io/tools/kubectl-get
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute kubectl-get command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 1000
+    expected_cost: 2

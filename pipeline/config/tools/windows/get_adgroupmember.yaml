@@ -48,3 +48,12 @@ metadata:
   - security
   - get-adgroupmember
   documentation_url: https://docs.opsconductor.io/tools/get-adgroupmember
+
+# === EXAMPLES ===
+examples:
+  - name: "Execute"
+    description: "Execute Get-ADGroupMember command"
+    inputs:
+      host: "192.168.1.100"
+    expected_time_ms: 2000
+    expected_cost: 3

@@ -332,3 +332,55 @@ metadata:
     4. Get light status:
        GET http://192.168.1.100/axis-cgi/param.cgi?action=list
        &group=Properties.Image.I0.Appearance
+
+# === EXAMPLES ===
+examples:
+  - name: "Turn On Ir"
+    description: "Turn on IR illuminator"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Turn Off Ir"
+    description: "Turn off IR illuminator"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Set Ir Intensity"
+    description: "Set IR illuminator intensity level"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      intensity: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Turn On White Light"
+    description: "Turn on white light"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Turn Off White Light"
+    description: "Turn off white light"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Check Light Status"
+    description: "Get IR and white light status"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1

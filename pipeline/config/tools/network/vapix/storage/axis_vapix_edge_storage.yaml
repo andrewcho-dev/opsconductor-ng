@@ -206,3 +206,32 @@ metadata:
     
     4. Get recording status:
        GET http://192.168.1.100/axis-cgi/record/status.cgi
+
+# === EXAMPLES ===
+examples:
+  - name: "Start Continuous Recording"
+    description: "Start continuous recording to edge storage"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      disk_id: "example_disk_id"
+    expected_time_ms: 2000
+    expected_cost: 2
+  - name: "Stop Continuous Recording"
+    description: "Stop continuous recording"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      disk_id: "example_disk_id"
+    expected_time_ms: 2000
+    expected_cost: 1
+  - name: "Check Disk Status"
+    description: "Check SD card or NAS storage status"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1

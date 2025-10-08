@@ -281,3 +281,39 @@ metadata:
     - Monitor connection health
     - Handle stateful events (track active/inactive states)
     - Use WebSocket API for more efficient streaming (if available)
+
+# === EXAMPLES ===
+examples:
+  - name: "Subscribe All Events"
+    description: "Subscribe to all camera events"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Subscribe Motion Events"
+    description: "Subscribe to motion detection events only"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Subscribe Io Events"
+    description: "Subscribe to I/O port events"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+      port_number: 100
+    expected_time_ms: 1000
+    expected_cost: 1
+  - name: "Get Available Topics"
+    description: "Retrieve list of all available event topics"
+    inputs:
+      host: "192.168.1.100"
+      username: "admin"
+      password: "secure_password"
+    expected_time_ms: 500
+    expected_cost: 1
