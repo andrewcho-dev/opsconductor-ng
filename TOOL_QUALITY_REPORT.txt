@@ -1,0 +1,267 @@
+================================================================================
+TOOL CATALOG QUALITY AUDIT REPORT
+================================================================================
+
+Total Tools Audited: 168
+Average Overall Score: 15.6/100
+
+Quality Level Distribution:
+  Level 4: Excellent: 0 (0.0%)
+  Level 3: Good: 0 (0.0%)
+  Level 2: Basic: 5 (3.0%)
+  Level 1: Minimal: 163 (97.0%)
+
+================================================================================
+TOP 10 TOOLS NEEDING IMPROVEMENT (Lowest Scores)
+================================================================================
+
+1. Measure-Command (windows)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+2. Invoke-Command (windows)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+3. openssl (linux)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+4. nice (linux)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+5. sudo (linux)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+6. at (linux)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+7. docker-exec (container)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+8. kubectl-exec (container)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+9. kubectl (container)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+10. sqlite3 (database)
+   Overall Score: 8.0/100
+   Quality Level: Level 1: Minimal
+   Issues: Parameter descriptions need enrichment, Generic capability name, Generic pattern name, No examples provided, Low LLM usability - needs better examples and descriptions
+
+================================================================================
+RESULTS BY CATEGORY
+================================================================================
+
+
+CLOUD (11 tools, avg score: 12.9)
+--------------------------------------------------------------------------------
+  aws                            | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  az                             | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  az-storage                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  gcloud-compute                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  aws-ec2                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  az-vm                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  aws-rds                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  gcloud-storage                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  gcloud                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  aws-lambda                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  aws-s3                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+
+CONTAINER (21 tools, avg score: 13.1)
+--------------------------------------------------------------------------------
+  docker-exec                    | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectl-exec                   | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectl                        | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  helm                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  helm-upgrade                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker-ps                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  k9s                            | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  podman-ps                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectl-describe               | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker-inspect                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectl-get                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectl-logs                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker-stats                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  crictl                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubectx                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  helm-install                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker-compose                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  docker-logs                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  podman                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kubens                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+
+CUSTOM (9 tools, avg score: 13.3)
+--------------------------------------------------------------------------------
+  slack-cli                      | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  webhook-sender                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  asset-query                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  sendmail                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  asset-list                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  teams-cli                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  asset-create                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  asset-delete                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  asset-update                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+
+DATABASE (12 tools, avg score: 12.5)
+--------------------------------------------------------------------------------
+  sqlite3                        | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  redis-cli                      | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  mysql                          | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  redis-benchmark                | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pg_isready                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  psql                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  mysqldump                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  mysqlcheck                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  mongodump                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  mongosh                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pg_dump                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pg_restore                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+
+LINUX (54 tools, avg score: 17.2)
+--------------------------------------------------------------------------------
+  openssl                        | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  nice                           | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  sudo                           | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  at                             | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  lsb_release                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  awk                            | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  usermod                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  killall                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ip                             | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  id                             | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  crontab                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  passwd                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ifconfig                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  sort                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tail                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  whoami                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  host                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  traceroute                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pkill                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  sed                            | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  renice                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  uniq                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  find                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  hostname                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  du                             | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  kill                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  systemd-timer                  | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  useradd                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  cat                            | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  service                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  uptime                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ssh-keygen                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  fail2ban-client                | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ls                             | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pgrep                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  chmod                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  cut                            | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  head                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  chown                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  iptables                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ss                             | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  uname                          | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  curl                           | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ping                           | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  top                            | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  free                           | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  netstat                        | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  nslookup                       | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  dig                            | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  journalctl                     | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ps                             | Score:  44.0 | Level 2: Basic       | Patterns:  3 | Params:  6
+  df                             | Score:  45.0 | Level 2: Basic       | Patterns:  1 | Params:  3
+  grep                           | Score:  50.0 | Level 2: Basic       | Patterns:  1 | Params:  2
+  systemctl                      | Score:  55.7 | Level 2: Basic       | Patterns:  5 | Params: 11
+
+MONITORING (10 tools, avg score: 14.0)
+--------------------------------------------------------------------------------
+  blackbox_exporter              | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  jaeger                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  logrotate                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  zipkin                         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  telegraf                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  alertmanager                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  node_exporter                  | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  rsyslog                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  fluentd                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  collectd                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+
+NETWORK (20 tools, avg score: 17.1)
+--------------------------------------------------------------------------------
+  netdiscover                    | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  arp-scan                       | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  dpkt                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  scapy                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  masscan                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tcpflow                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  pyshark                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  nmap                           | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ngrep                          | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ssh-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tcpdump                        | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  smtp-analyzer                  | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tls-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  ftp-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  udp-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tcp-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  tshark                         | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  http-analyzer                  | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  dns-analyzer                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Axis-VAPIX-PTZ                 | Score:  27.6 | Level 1: Minimal     | Patterns:  7 | Params: 32
+
+WINDOWS (31 tools, avg score: 16.9)
+--------------------------------------------------------------------------------
+  Measure-Command                | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Invoke-Command                 | Score:   8.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ScheduledTask              | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  schtasks                       | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-WinEvent                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-HotFix                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ADGroupMember              | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Test-Path                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ADComputer                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-Acl                        | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-LocalGroup                 | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ADGroup                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Register-ScheduledTask         | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Start-Job                      | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Invoke-WebRequest              | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-LocalUser                  | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-Counter                    | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-NetRoute                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-FileHash                   | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ADUser                     | Score:  14.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-NetAdapter                 | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Test-NetConnection             | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-WmiObject                  | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-Disk                       | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-EventLog                   | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-Volume                     | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-NetIPAddress               | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-ComputerInfo               | Score:  20.0 | Level 1: Minimal     | Patterns:  1 | Params:  1
+  Get-Service                    | Score:  20.0 | Level 1: Minimal     | Patterns:  3 | Params:  3
+  Get-Process                    | Score:  20.0 | Level 1: Minimal     | Patterns:  2 | Params:  2
+  powershell                     | Score:  56.0 | Level 2: Basic       | Patterns:  2 | Params:  2
+
+================================================================================
+END OF REPORT
+================================================================================
