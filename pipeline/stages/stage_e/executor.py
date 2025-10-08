@@ -211,7 +211,9 @@ class StageEExecutor:
             self.repository.update_execution_status(
                 execution.execution_id,
                 result.status,
-                previous_status=ExecutionStatus.RUNNING
+                previous_status=ExecutionStatus.RUNNING,
+                error_message=result.error_message if hasattr(result, 'error_message') else None,
+                error_details=result.error_details if hasattr(result, 'error_details') else None
             )
             
             # Build complete result including step results
