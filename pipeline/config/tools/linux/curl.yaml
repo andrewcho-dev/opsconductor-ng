@@ -1,59 +1,439 @@
-# curl - Transfer data with URLs (HTTP, FTP, etc.)
-tool_name: curl
-version: '1.0'
-description: Transfer data with URLs (HTTP, FTP, etc.)
-platform: linux
-category: network
+# curl - Transfer data with URLs
+tool_name: "curl"
+version: "1.0"
+description: "Command-line tool for transferring data with URLs supporting HTTP, HTTPS, FTP, and many other protocols"
+platform: "linux"
+category: "network"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "network"
+
 capabilities:
   http_client:
-    description: http_client capability
+    description: "Make HTTP/HTTPS requests with full control over headers, methods, authentication, and data"
+    
     patterns:
-      http_request:
-        description: http_request pattern
+      http_get:
+        description: "Perform HTTP GET request to retrieve data"
+        
         typical_use_cases:
-        - http request
-        - api call
-        - download file
-        time_estimate_ms: 1000 + response_time
-        cost_estimate: '1'
+          - "make HTTP request"
+          - "call API endpoint"
+          - "download file"
+          - "check website response"
+          - "test API availability"
+          - "fetch web content"
+        
+        time_estimate_ms: "500 + network_latency + response_time"
+        cost_estimate: "1"
         complexity_score: 0.2
-        scope: single_item
-        completeness: complete
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Response size may be large (use -L for redirects)"
+          - "Timeout required for unresponsive servers"
+          - "SSL certificate validation may fail (use -k to skip)"
+          - "Binary responses may not display properly"
+        
         policy:
-          max_cost: 10
+          max_cost: 5
           requires_approval: false
           production_safe: true
           max_execution_time: 60
+        
         preference_match:
           speed: 0.8
-          accuracy: 0.9
+          accuracy: 1.0
           cost: 0.9
-          complexity: 0.8
-          completeness: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - network
-  - curl
-  documentation_url: https://docs.opsconductor.io/tools/curl
+          - name: "url"
+            type: "string"
+            description: "Full URL to request including protocol (http:// or https://). Examples: 'https://api.example.com/users', 'http://localhost:8080/health'"
+            validation: "^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$"
+            examples:
+              - "https://api.example.com/v1/status"
+              - "http://localhost:8080/health"
+              - "https://example.com/data.json"
+          - name: "host"
+            type: "string"
+            description: "Host from which to execute curl command (not the target URL host)"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "bastion-host"
+              - "192.168.1.100"
+        
+        optional_inputs:
+          - name: "headers"
+            type: "object"
+            description: "HTTP headers to include in request as key-value pairs"
+            default: {}
+            examples:
+              - {"Authorization": "Bearer token123", "Content-Type": "application/json"}
+              - {"User-Agent": "OpsConductor/1.0"}
+          - name: "follow_redirects"
+            type: "boolean"
+            description: "Follow HTTP redirects (curl -L)"
+            default: "true"
+          - name: "timeout_seconds"
+            type: "integer"
+            description: "Maximum time allowed for the request"
+            default: 30
+            examples:
+              - 10
+              - 30
+              - 60
+          - name: "insecure"
+            type: "boolean"
+            description: "Skip SSL certificate verification (curl -k). Use only for testing"
+            default: "false"
+          - name: "verbose"
+            type: "boolean"
+            description: "Show detailed request/response information (curl -v)"
+            default: "false"
+          - name: "output_file"
+            type: "string"
+            description: "Save response to file instead of returning content"
+            default: ""
+            examples:
+              - "/tmp/response.json"
+              - "/var/data/download.zip"
+        
+        expected_outputs:
+          - name: "response_body"
+            type: "string"
+            description: "HTTP response body content"
+          - name: "status_code"
+            type: "integer"
+            description: "HTTP status code (200, 404, 500, etc.)"
+          - name: "headers"
+            type: "object"
+            description: "Response headers"
+          - name: "response_time_ms"
+            type: "integer"
+            description: "Total request time in milliseconds"
+      
+      http_post:
+        description: "Perform HTTP POST request to send data"
+        
+        typical_use_cases:
+          - "send data to API"
+          - "create resource via API"
+          - "submit form data"
+          - "trigger webhook"
+          - "post JSON payload"
+        
+        time_estimate_ms: "600 + network_latency + response_time"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Large payloads may timeout"
+          - "Content-Type must match data format"
+          - "Authentication may be required"
+        
+        policy:
+          max_cost: 5
+          requires_approval: true
+          production_safe: false
+          max_execution_time: 60
+        
+        preference_match:
+          speed: 0.8
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "url"
+            type: "string"
+            description: "Target URL for POST request"
+            validation: "^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$"
+            examples:
+              - "https://api.example.com/v1/users"
+              - "http://localhost:8080/webhook"
+          - name: "data"
+            type: "string"
+            description: "Data to send in request body. Can be JSON string, form data, or raw text"
+            validation: ".*"
+            examples:
+              - '{"name": "John", "email": "john@example.com"}'
+              - "key1=value1&key2=value2"
+          - name: "host"
+            type: "string"
+            description: "Host from which to execute curl command"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "content_type"
+            type: "string"
+            description: "Content-Type header value"
+            default: "application/json"
+            allowed_values:
+              - "application/json"
+              - "application/x-www-form-urlencoded"
+              - "text/plain"
+              - "application/xml"
+          - name: "headers"
+            type: "object"
+            description: "Additional HTTP headers"
+            default: {}
+          - name: "timeout_seconds"
+            type: "integer"
+            description: "Request timeout"
+            default: 30
+        
+        expected_outputs:
+          - name: "response_body"
+            type: "string"
+            description: "Response content"
+          - name: "status_code"
+            type: "integer"
+            description: "HTTP status code"
+          - name: "success"
+            type: "boolean"
+            description: "Whether request was successful (2xx status)"
+      
+      download_file:
+        description: "Download file from URL to local filesystem"
+        
+        typical_use_cases:
+          - "download file from URL"
+          - "fetch remote resource"
+          - "download software package"
+          - "retrieve backup file"
+          - "download configuration"
+        
+        time_estimate_ms: "1000 + file_size_kb * 0.1"
+        cost_estimate: "2"
+        complexity_score: 0.2
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Large files may timeout"
+          - "Requires sufficient disk space"
+          - "Network interruptions may corrupt download"
+          - "Resume not supported by default"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 300
+        
+        preference_match:
+          speed: 0.7
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "url"
+            type: "string"
+            description: "URL of file to download"
+            validation: "^https?://.*"
+            examples:
+              - "https://example.com/files/data.zip"
+              - "http://releases.example.com/v1.0/package.tar.gz"
+          - name: "output_path"
+            type: "string"
+            description: "Local filesystem path where file will be saved"
+            validation: "^/.*"
+            examples:
+              - "/tmp/download.zip"
+              - "/var/data/backup.tar.gz"
+          - name: "host"
+            type: "string"
+            description: "Host where file will be downloaded to"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "show_progress"
+            type: "boolean"
+            description: "Show download progress"
+            default: "true"
+          - name: "timeout_seconds"
+            type: "integer"
+            description: "Download timeout"
+            default: 300
+          - name: "resume"
+            type: "boolean"
+            description: "Resume partial download if supported (curl -C -)"
+            default: "false"
+        
+        expected_outputs:
+          - name: "file_path"
+            type: "string"
+            description: "Path to downloaded file"
+          - name: "file_size"
+            type: "integer"
+            description: "Downloaded file size in bytes"
+          - name: "download_time_ms"
+            type: "integer"
+            description: "Time taken to download"
+      
+      test_endpoint:
+        description: "Test API endpoint availability and response time"
+        
+        typical_use_cases:
+          - "check if API is up"
+          - "test endpoint health"
+          - "measure API response time"
+          - "verify service availability"
+          - "API monitoring"
+        
+        time_estimate_ms: "400 + network_latency"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Only tests reachability, not functionality"
+          - "May not detect partial failures"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.95
+          complexity: 0.95
+          completeness: 0.9
+        
+        required_inputs:
+          - name: "url"
+            type: "string"
+            description: "Endpoint URL to test"
+            validation: "^https?://.*"
+            examples:
+              - "https://api.example.com/health"
+              - "http://localhost:8080/status"
+          - name: "host"
+            type: "string"
+            description: "Host from which to test"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "expected_status"
+            type: "integer"
+            description: "Expected HTTP status code"
+            default: 200
+            examples:
+              - 200
+              - 204
+          - name: "timeout_seconds"
+            type: "integer"
+            description: "Test timeout"
+            default: 10
+        
+        expected_outputs:
+          - name: "is_available"
+            type: "boolean"
+            description: "Whether endpoint is reachable"
+          - name: "status_code"
+            type: "integer"
+            description: "HTTP status code received"
+          - name: "response_time_ms"
+            type: "integer"
+            description: "Response time in milliseconds"
+          - name: "status"
+            type: "string"
+            description: "Overall status (healthy, degraded, down)"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "network_access"
+    type: "permission"
+    required: true
+  - name: "curl"
+    type: "package"
+    required: true
+    version: ">=7.50"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "network"
+    - "http"
+    - "api"
+    - "download"
+    - "web"
+  documentation_url: "https://curl.se/docs/manpage.html"
+  related_tools:
+    - "wget"
+    - "httpie"
+    - "ping"
+
 examples:
-  - name: "Http Request"
-    description: "http_request pattern"
+  - name: "Check API health"
+    description: "Test if API health endpoint is responding"
     inputs:
-      host: "192.168.1.100"
+      url: "https://api.example.com/v1/health"
+      host: "monitoring-server"
+      follow_redirects: true
+      timeout_seconds: 10
+    expected_time_ms: 800
+    expected_cost: 1
+  
+  - name: "Call REST API"
+    description: "Make GET request to fetch user data from API"
+    inputs:
+      url: "https://api.example.com/v1/users/123"
+      host: "app-server-01"
+      headers: {"Authorization": "Bearer token123", "Accept": "application/json"}
+      timeout_seconds: 30
     expected_time_ms: 1000
+    expected_cost: 1
+  
+  - name: "Create API resource"
+    description: "POST JSON data to create new user"
+    inputs:
+      url: "https://api.example.com/v1/users"
+      data: '{"name": "John Doe", "email": "john@example.com"}'
+      host: "app-server-01"
+      content_type: "application/json"
+      headers: {"Authorization": "Bearer token123"}
+    expected_time_ms: 1200
+    expected_cost: 2
+  
+  - name: "Download software package"
+    description: "Download application package from release server"
+    inputs:
+      url: "https://releases.example.com/app-v1.2.3.tar.gz"
+      output_path: "/tmp/app-v1.2.3.tar.gz"
+      host: "deployment-server"
+      show_progress: true
+      timeout_seconds: 300
+    expected_time_ms: 5000
+    expected_cost: 2
+  
+  - name: "Test endpoint availability"
+    description: "Quick health check of service endpoint"
+    inputs:
+      url: "http://localhost:8080/health"
+      host: "app-server-01"
+      expected_status: 200
+      timeout_seconds: 5
+    expected_time_ms: 500
     expected_cost: 1

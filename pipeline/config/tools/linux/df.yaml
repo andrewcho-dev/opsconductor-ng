@@ -1,9 +1,9 @@
 # df - Disk free space utility
 tool_name: "df"
 version: "1.0"
-description: "Report file system disk space usage"
+description: "Report file system disk space usage and availability across mounted filesystems"
 platform: "linux"
-category: "system"
+category: "storage"
 
 defaults:
   accuracy_level: "real-time"
@@ -12,30 +12,38 @@ defaults:
 
 capabilities:
   disk_monitoring:
-    description: "Monitor disk space usage"
+    description: "Monitor disk space usage, availability, and filesystem information"
     
     patterns:
-      check_disk_space:
-        description: "Check disk space usage for all filesystems"
+      check_all_filesystems:
+        description: "Check disk space usage for all mounted filesystems"
         
         typical_use_cases:
           - "check disk space"
-          - "disk usage"
-          - "free space"
-          - "filesystem usage"
+          - "show disk usage"
+          - "how much free space"
+          - "filesystem usage report"
+          - "disk capacity check"
+          - "storage monitoring"
         
-        time_estimate_ms: "200"
+        time_estimate_ms: "150 + 10 * num_filesystems"
         cost_estimate: "1"
         complexity_score: 0.1
         
         scope: "exhaustive"
         completeness: "complete"
         
+        limitations:
+          - "Shows allocated space, not actual usage (use du for actual)"
+          - "Network filesystems may timeout if unreachable"
+          - "Some pseudo-filesystems (tmpfs, devtmpfs) included by default"
+          - "Reserved blocks for root not shown in available space"
+        
         policy:
           max_cost: 2
           requires_approval: false
           production_safe: true
-          max_execution_time: 10
+          max_execution_time: 30
         
         preference_match:
           speed: 0.95
@@ -47,23 +55,243 @@ capabilities:
         required_inputs:
           - name: "host"
             type: "string"
-            description: "Target host"
-            validation: ".*"
+            description: "Target host where df command will be executed"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "web-server-01"
+              - "192.168.1.100"
+              - "storage.example.com"
         
         optional_inputs:
           - name: "human_readable"
             type: "boolean"
-            description: "Show sizes in human readable format"
+            description: "Display sizes in human-readable format (KB, MB, GB, TB) instead of blocks. Equivalent to -h flag"
             default: "true"
+          - name: "show_inodes"
+            type: "boolean"
+            description: "Show inode information instead of block usage. Useful for detecting inode exhaustion. Equivalent to -i flag"
+            default: "false"
+          - name: "filesystem_type"
+            type: "string"
+            description: "Filter by filesystem type (ext4, xfs, nfs, etc.). Use 'local' for all local filesystems"
+            default: "all"
+            allowed_values:
+              - "all"
+              - "local"
+              - "ext4"
+              - "xfs"
+              - "btrfs"
+              - "nfs"
+              - "tmpfs"
+            examples:
+              - "ext4"
+              - "local"
+          - name: "exclude_type"
+            type: "string"
+            description: "Exclude specific filesystem types (e.g., 'tmpfs,devtmpfs' to hide pseudo-filesystems)"
+            default: ""
+            examples:
+              - "tmpfs"
+              - "tmpfs,devtmpfs"
+          - name: "show_type"
+            type: "boolean"
+            description: "Include filesystem type in output. Equivalent to -T flag"
+            default: "true"
+        
+        expected_outputs:
+          - name: "filesystems"
+            type: "array"
+            description: "List of filesystems with usage details (device, mount point, size, used, available, use%, type)"
+          - name: "total_capacity"
+            type: "integer"
+            description: "Total storage capacity across all filesystems in bytes"
+          - name: "total_used"
+            type: "integer"
+            description: "Total used space in bytes"
+          - name: "total_available"
+            type: "integer"
+            description: "Total available space in bytes"
+          - name: "alerts"
+            type: "array"
+            description: "Filesystems exceeding usage thresholds"
+      
+      check_specific_filesystem:
+        description: "Check disk space for a specific filesystem or mount point"
+        
+        typical_use_cases:
+          - "check specific partition"
+          - "how much space on /var"
+          - "check home directory space"
+          - "verify mount point capacity"
+          - "check data volume usage"
+        
+        time_estimate_ms: "100"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Must specify exact mount point or device"
+          - "Symbolic links not resolved automatically"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.98
+          accuracy: 1.0
+          cost: 0.98
+          complexity: 0.98
+          completeness: 1.0
+        
+        required_inputs:
           - name: "filesystem"
             type: "string"
-            description: "Specific filesystem to check"
-            default: ""
+            description: "Filesystem mount point or device path to check. Examples: '/', '/var', '/dev/sda1', '/mnt/data'"
+            validation: "^(/|/[a-zA-Z0-9/_-]+|/dev/[a-zA-Z0-9]+)$"
+            examples:
+              - "/"
+              - "/var"
+              - "/home"
+              - "/mnt/data"
+              - "/dev/sda1"
+          - name: "host"
+            type: "string"
+            description: "Target host for filesystem check"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "human_readable"
+            type: "boolean"
+            description: "Display sizes in human-readable format"
+            default: "true"
+          - name: "show_inodes"
+            type: "boolean"
+            description: "Show inode information"
+            default: "false"
+        
+        expected_outputs:
+          - name: "device"
+            type: "string"
+            description: "Device name"
+          - name: "mount_point"
+            type: "string"
+            description: "Mount point path"
+          - name: "filesystem_type"
+            type: "string"
+            description: "Filesystem type (ext4, xfs, etc.)"
+          - name: "total_size"
+            type: "integer"
+            description: "Total size in bytes"
+          - name: "used_space"
+            type: "integer"
+            description: "Used space in bytes"
+          - name: "available_space"
+            type: "integer"
+            description: "Available space in bytes"
+          - name: "use_percent"
+            type: "integer"
+            description: "Usage percentage (0-100)"
+          - name: "is_critical"
+            type: "boolean"
+            description: "Whether usage exceeds critical threshold (>90%)"
+      
+      monitor_usage_threshold:
+        description: "Monitor filesystems and alert on usage thresholds"
+        
+        typical_use_cases:
+          - "alert on high disk usage"
+          - "find full filesystems"
+          - "disk space monitoring"
+          - "capacity planning"
+          - "prevent disk full errors"
+        
+        time_estimate_ms: "200 + 15 * num_filesystems"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Threshold check is point-in-time, not continuous"
+          - "Does not predict future usage trends"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host for monitoring"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+          - name: "warning_threshold"
+            type: "integer"
+            description: "Warning threshold percentage (0-100). Alert when usage exceeds this value"
+            validation: "^([0-9]|[1-9][0-9]|100)$"
+            examples:
+              - 80
+              - 85
+              - 90
+          - name: "critical_threshold"
+            type: "integer"
+            description: "Critical threshold percentage (0-100). Critical alert when usage exceeds this value"
+            validation: "^([0-9]|[1-9][0-9]|100)$"
+            examples:
+              - 90
+              - 95
+              - 98
+        
+        optional_inputs:
+          - name: "exclude_types"
+            type: "string"
+            description: "Comma-separated list of filesystem types to exclude from monitoring"
+            default: "tmpfs,devtmpfs,squashfs"
+            examples:
+              - "tmpfs,devtmpfs"
+              - "nfs"
+          - name: "check_inodes"
+            type: "boolean"
+            description: "Also check inode usage thresholds"
+            default: "true"
+        
+        expected_outputs:
+          - name: "warnings"
+            type: "array"
+            description: "Filesystems exceeding warning threshold"
+          - name: "critical"
+            type: "array"
+            description: "Filesystems exceeding critical threshold"
+          - name: "healthy"
+            type: "array"
+            description: "Filesystems below warning threshold"
+          - name: "summary"
+            type: "object"
+            description: "Overall health summary"
 
 dependencies:
   - name: "filesystem_access"
     type: "permission"
     required: true
+  - name: "coreutils"
+    type: "package"
+    required: true
+    version: ">=8.0"
 
 metadata:
   author: "OpsConductor Team"
@@ -73,14 +301,72 @@ metadata:
     - "linux"
     - "disk"
     - "filesystem"
+    - "storage"
     - "monitoring"
+    - "capacity"
   documentation_url: "https://man7.org/linux/man-pages/man1/df.1.html"
+  related_tools:
+    - "du"
+    - "lsblk"
+    - "mount"
+    - "findmnt"
 
 examples:
   - name: "Check all disk space"
-    description: "Show disk usage for all mounted filesystems"
+    description: "Show disk usage for all mounted filesystems in human-readable format"
     inputs:
       host: "app-server-01"
       human_readable: true
+      show_type: true
+      exclude_type: "tmpfs,devtmpfs"
     expected_time_ms: 200
+    expected_cost: 1
+  
+  - name: "Check root filesystem"
+    description: "Check disk space specifically for root partition"
+    inputs:
+      filesystem: "/"
+      host: "web-server-01"
+      human_readable: true
+    expected_time_ms: 100
+    expected_cost: 1
+  
+  - name: "Monitor disk usage alerts"
+    description: "Check all filesystems and alert if usage exceeds 85%"
+    inputs:
+      host: "db-server-01"
+      warning_threshold: 85
+      critical_threshold: 95
+      exclude_types: "tmpfs,devtmpfs"
+      check_inodes: true
+    expected_time_ms: 250
+    expected_cost: 1
+  
+  - name: "Check inode usage"
+    description: "Monitor inode usage to detect inode exhaustion"
+    inputs:
+      host: "mail-server-01"
+      show_inodes: true
+      human_readable: false
+    expected_time_ms: 200
+    expected_cost: 1
+  
+  - name: "Check data volume"
+    description: "Verify available space on data mount point"
+    inputs:
+      filesystem: "/mnt/data"
+      host: "storage-server"
+      human_readable: true
+      show_inodes: false
+    expected_time_ms: 100
+    expected_cost: 1
+  
+  - name: "Local filesystems only"
+    description: "Show only local filesystem usage, excluding network mounts"
+    inputs:
+      host: "app-server-01"
+      filesystem_type: "local"
+      human_readable: true
+      show_type: true
+    expected_time_ms: 180
     expected_cost: 1

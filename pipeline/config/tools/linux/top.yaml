@@ -1,59 +1,344 @@
-# top - Display real-time process information
-tool_name: top
-version: '1.0'
-description: Display real-time process information
-platform: linux
-category: monitoring
+# top - Display real-time process and system information
+tool_name: "top"
+version: "1.0"
+description: "Real-time system monitoring showing processes, CPU, memory, and system resource usage"
+platform: "linux"
+category: "monitoring"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "procfs"
+
 capabilities:
-  process_monitoring:
-    description: process_monitoring capability
+  system_monitoring:
+    description: "Real-time monitoring of system resources, processes, CPU, memory, and load"
+    
     patterns:
-      monitor_processes:
-        description: monitor_processes pattern
+      monitor_system:
+        description: "Monitor overall system performance and resource usage"
+        
         typical_use_cases:
-        - monitor processes
-        - real-time processes
-        - cpu usage
-        time_estimate_ms: '500'
-        cost_estimate: '1'
+          - "check system performance"
+          - "monitor CPU usage"
+          - "view memory usage"
+          - "system load monitoring"
+          - "real-time resource tracking"
+          - "performance troubleshooting"
+        
+        time_estimate_ms: "500 + 100 * iterations"
+        cost_estimate: "1"
         complexity_score: 0.2
-        scope: single_item
-        completeness: complete
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Snapshot-based, not continuous streaming in API context"
+          - "CPU% averages may not reflect instantaneous spikes"
+          - "High process count can make output verbose"
+          - "Batch mode required for non-interactive use"
+        
         policy:
-          max_cost: 10
+          max_cost: 3
           requires_approval: false
           production_safe: true
-          max_execution_time: 60
+          max_execution_time: 30
+        
         preference_match:
-          speed: 0.8
-          accuracy: 0.9
+          speed: 0.85
+          accuracy: 0.95
           cost: 0.9
-          complexity: 0.8
-          completeness: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - monitoring
-  - top
-  documentation_url: https://docs.opsconductor.io/tools/top
+          - name: "host"
+            type: "string"
+            description: "Target host where top command will be executed"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "web-server-01"
+              - "192.168.1.100"
+              - "app.example.com"
+        
+        optional_inputs:
+          - name: "iterations"
+            type: "integer"
+            description: "Number of iterations to run (snapshots to take). Default 1 for single snapshot"
+            default: 1
+            examples:
+              - 1
+              - 3
+              - 5
+          - name: "delay_seconds"
+            type: "integer"
+            description: "Delay between iterations in seconds"
+            default: 3
+            examples:
+              - 1
+              - 3
+              - 5
+          - name: "sort_by"
+            type: "string"
+            description: "Sort processes by specified field"
+            default: "cpu"
+            allowed_values:
+              - "cpu"
+              - "memory"
+              - "time"
+              - "pid"
+          - name: "show_threads"
+            type: "boolean"
+            description: "Show individual threads instead of just processes"
+            default: "false"
+          - name: "filter_user"
+            type: "string"
+            description: "Show only processes owned by specific user"
+            default: ""
+            examples:
+              - "www-data"
+              - "root"
+        
+        expected_outputs:
+          - name: "system_summary"
+            type: "object"
+            description: "System-wide statistics (uptime, load average, CPU%, memory usage)"
+          - name: "processes"
+            type: "array"
+            description: "List of top processes with resource usage"
+          - name: "cpu_usage"
+            type: "object"
+            description: "CPU usage breakdown (user, system, idle, iowait)"
+          - name: "memory_usage"
+            type: "object"
+            description: "Memory usage details (total, used, free, buffers, cache)"
+          - name: "load_average"
+            type: "object"
+            description: "Load averages (1min, 5min, 15min)"
+      
+      find_resource_hogs:
+        description: "Identify processes consuming excessive CPU or memory"
+        
+        typical_use_cases:
+          - "find high CPU processes"
+          - "identify memory leaks"
+          - "troubleshoot performance issues"
+          - "find runaway processes"
+          - "resource bottleneck analysis"
+        
+        time_estimate_ms: "600"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Short-lived processes may be missed"
+          - "CPU% is average, not instantaneous"
+          - "Requires multiple samples for accuracy"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 20
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host for resource analysis"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+          - name: "resource_type"
+            type: "string"
+            description: "Type of resource to monitor"
+            allowed_values:
+              - "cpu"
+              - "memory"
+              - "both"
+            examples:
+              - "cpu"
+              - "memory"
+        
+        optional_inputs:
+          - name: "threshold_percent"
+            type: "number"
+            description: "Minimum resource usage percentage to report (0-100)"
+            default: 10.0
+            examples:
+              - 5.0
+              - 10.0
+              - 25.0
+          - name: "top_n"
+            type: "integer"
+            description: "Return top N resource consumers"
+            default: 10
+            examples:
+              - 5
+              - 10
+              - 20
+        
+        expected_outputs:
+          - name: "top_consumers"
+            type: "array"
+            description: "Processes exceeding threshold sorted by usage"
+          - name: "total_usage"
+            type: "object"
+            description: "Aggregate resource usage statistics"
+          - name: "recommendations"
+            type: "array"
+            description: "Suggested actions for high resource usage"
+      
+      monitor_specific_process:
+        description: "Monitor resource usage of specific process or process group"
+        
+        typical_use_cases:
+          - "monitor application performance"
+          - "track specific service resources"
+          - "watch process behavior"
+          - "application resource profiling"
+        
+        time_estimate_ms: "400"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Process must be running"
+          - "Process name matching is substring"
+          - "Multiple processes with same name all shown"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 20
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host for process monitoring"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "process_name"
+            type: "string"
+            description: "Process name or command to monitor"
+            default: ""
+            examples:
+              - "nginx"
+              - "java"
+              - "postgres"
+          - name: "pid"
+            type: "integer"
+            description: "Specific process ID to monitor"
+            default: null
+            examples:
+              - 1234
+              - 5678
+          - name: "iterations"
+            type: "integer"
+            description: "Number of monitoring iterations"
+            default: 3
+        
+        expected_outputs:
+          - name: "process_stats"
+            type: "object"
+            description: "Detailed process resource usage over time"
+          - name: "trends"
+            type: "object"
+            description: "Resource usage trends (increasing, stable, decreasing)"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "procfs"
+    type: "filesystem"
+    required: true
+  - name: "procps"
+    type: "package"
+    required: true
+    version: ">=3.3"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "monitoring"
+    - "performance"
+    - "cpu"
+    - "memory"
+    - "processes"
+  documentation_url: "https://man7.org/linux/man-pages/man1/top.1.html"
+  related_tools:
+    - "htop"
+    - "ps"
+    - "vmstat"
+    - "iostat"
+
 examples:
-  - name: "Monitor Processes"
-    description: "monitor_processes pattern"
+  - name: "System performance snapshot"
+    description: "Get current system performance overview"
     inputs:
-      host: "192.168.1.100"
+      host: "app-server-01"
+      iterations: 1
+      sort_by: "cpu"
     expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Find CPU hogs"
+    description: "Identify processes using more than 10% CPU"
+    inputs:
+      host: "web-server-01"
+      resource_type: "cpu"
+      threshold_percent: 10.0
+      top_n: 10
+    expected_time_ms: 600
+    expected_cost: 1
+  
+  - name: "Monitor memory usage"
+    description: "Track memory-intensive processes"
+    inputs:
+      host: "db-server-01"
+      resource_type: "memory"
+      threshold_percent: 5.0
+      top_n: 15
+    expected_time_ms: 600
+    expected_cost: 1
+  
+  - name: "Watch nginx performance"
+    description: "Monitor nginx process resource usage over time"
+    inputs:
+      host: "web-server-01"
+      process_name: "nginx"
+      iterations: 5
+      delay_seconds: 2
+    expected_time_ms: 1000
+    expected_cost: 1
+  
+  - name: "System load monitoring"
+    description: "Monitor system load and top processes"
+    inputs:
+      host: "app-server-01"
+      iterations: 3
+      delay_seconds: 3
+      sort_by: "cpu"
+    expected_time_ms: 900
     expected_cost: 1

@@ -1,59 +1,329 @@
 # ls - List directory contents
-tool_name: ls
-version: '1.0'
-description: List directory contents
-platform: linux
-category: system
+tool_name: "ls"
+version: "1.0"
+description: "List and display information about files and directories in the filesystem"
+platform: "linux"
+category: "filesystem"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "filesystem"
+
 capabilities:
-  primary_capability:
-    description: ls primary capability
+  directory_listing:
+    description: "List files and directories with various formatting and filtering options"
+    
     patterns:
-      execute:
-        description: Execute ls command
+      list_directory:
+        description: "List contents of a directory with detailed information"
+        
         typical_use_cases:
-        - use ls
-        - ls command
-        - list directory contents
-        time_estimate_ms: '500'
-        cost_estimate: '1'
-        complexity_score: 0.2
-        scope: single_item
-        completeness: complete
+          - "list files in directory"
+          - "show directory contents"
+          - "view files and folders"
+          - "display file details"
+          - "check what's in a folder"
+        
+        time_estimate_ms: "100 + 0.5 * num_entries"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires read permissions on target directory"
+          - "Hidden files require -a flag"
+          - "Performance degrades with very large directories (10000+ files)"
+          - "Symbolic links shown but not resolved by default"
+        
         policy:
-          max_cost: 10
+          max_cost: 3
           requires_approval: false
           production_safe: true
-          max_execution_time: 60
+          max_execution_time: 30
+        
         preference_match:
-          speed: 0.8
-          accuracy: 0.9
-          cost: 0.9
-          complexity: 0.8
-          completeness: 0.9
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - system
-  - ls
-  documentation_url: https://docs.opsconductor.io/tools/ls
+          - name: "path"
+            type: "string"
+            description: "Directory or file path to list. Use '.' for current directory, '..' for parent, or absolute paths like '/var/log'. Supports wildcards like '/home/*/*.txt'"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+            examples:
+              - "/var/log"
+              - "/home/user/documents"
+              - "."
+              - "../config"
+          - name: "host"
+            type: "string"
+            description: "Target host where the ls command will be executed. Can be hostname, FQDN, or IP address"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "web-server-01"
+              - "192.168.1.100"
+              - "app.example.com"
+        
+        optional_inputs:
+          - name: "show_hidden"
+            type: "boolean"
+            description: "Include hidden files (starting with .) in the listing. Equivalent to -a flag"
+            default: "false"
+          - name: "long_format"
+            type: "boolean"
+            description: "Use long listing format showing permissions, owner, size, and modification time. Equivalent to -l flag"
+            default: "true"
+          - name: "human_readable"
+            type: "boolean"
+            description: "Display file sizes in human-readable format (KB, MB, GB) instead of bytes. Equivalent to -h flag"
+            default: "true"
+          - name: "sort_by"
+            type: "string"
+            description: "Sort criteria for listing results"
+            default: "name"
+            allowed_values:
+              - "name"
+              - "size"
+              - "time"
+              - "extension"
+          - name: "reverse_order"
+            type: "boolean"
+            description: "Reverse the sort order. Equivalent to -r flag"
+            default: "false"
+          - name: "recursive"
+            type: "boolean"
+            description: "List subdirectories recursively. Equivalent to -R flag. Use with caution on large directory trees"
+            default: "false"
+        
+        expected_outputs:
+          - name: "entries"
+            type: "array"
+            description: "List of directory entries with metadata (name, size, permissions, owner, modified_time)"
+          - name: "total_count"
+            type: "integer"
+            description: "Total number of entries found"
+          - name: "total_size"
+            type: "integer"
+            description: "Combined size of all entries in bytes"
+      
+      find_files:
+        description: "Search for files matching specific patterns or criteria"
+        
+        typical_use_cases:
+          - "find files by name"
+          - "search for specific file types"
+          - "locate files matching pattern"
+          - "filter directory contents"
+        
+        time_estimate_ms: "200 + 1 * num_entries"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "batch"
+        completeness: "complete"
+        
+        limitations:
+          - "Pattern matching is shell glob, not regex"
+          - "Case-sensitive by default"
+          - "Does not search file contents"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "path"
+            type: "string"
+            description: "Directory path to search within"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+            examples:
+              - "/var/log"
+              - "/home/user"
+          - name: "pattern"
+            type: "string"
+            description: "File name pattern using shell wildcards (* for any characters, ? for single character). Examples: '*.log', 'config.*', 'test?.txt'"
+            validation: ".*"
+            examples:
+              - "*.log"
+              - "*.conf"
+              - "error_*.txt"
+              - "backup_2024*"
+          - name: "host"
+            type: "string"
+            description: "Target host for command execution"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "recursive"
+            type: "boolean"
+            description: "Search in subdirectories recursively"
+            default: "false"
+          - name: "case_insensitive"
+            type: "boolean"
+            description: "Perform case-insensitive pattern matching"
+            default: "false"
+        
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of files matching the pattern with full paths"
+          - name: "match_count"
+            type: "integer"
+            description: "Number of files found"
+      
+      check_permissions:
+        description: "Display detailed file permissions and ownership information"
+        
+        typical_use_cases:
+          - "check file permissions"
+          - "view file ownership"
+          - "audit access rights"
+          - "verify security settings"
+        
+        time_estimate_ms: "150"
+        cost_estimate: "1"
+        complexity_score: 0.1
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Shows permissions but doesn't check effective access (use 'test' or 'access' for that)"
+          - "ACLs and SELinux contexts not shown (use getfacl/ls -Z)"
+        
+        policy:
+          max_cost: 2
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.95
+          completeness: 0.9
+        
+        required_inputs:
+          - name: "path"
+            type: "string"
+            description: "File or directory path to check permissions for"
+            validation: ".*"
+            examples:
+              - "/etc/passwd"
+              - "/var/www/html"
+              - "/home/user/.ssh/id_rsa"
+          - name: "host"
+            type: "string"
+            description: "Target host for command execution"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        expected_outputs:
+          - name: "permissions"
+            type: "string"
+            description: "Permission string (e.g., 'drwxr-xr-x')"
+          - name: "owner"
+            type: "string"
+            description: "File owner username"
+          - name: "group"
+            type: "string"
+            description: "File group name"
+          - name: "numeric_mode"
+            type: "string"
+            description: "Numeric permission mode (e.g., '755')"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "filesystem_access"
+    type: "permission"
+    required: true
+  - name: "coreutils"
+    type: "package"
+    required: true
+    version: ">=8.0"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "filesystem"
+    - "directory"
+    - "files"
+    - "listing"
+  documentation_url: "https://man7.org/linux/man-pages/man1/ls.1.html"
+  related_tools:
+    - "find"
+    - "tree"
+    - "stat"
+    - "du"
+
 examples:
-  - name: "Execute"
-    description: "Execute ls command"
+  - name: "List web server logs"
+    description: "Display all log files in Apache log directory with human-readable sizes"
     inputs:
-      host: "192.168.1.100"
+      path: "/var/log/apache2"
+      host: "web-server-01"
+      show_hidden: false
+      long_format: true
+      human_readable: true
+      sort_by: "time"
+    expected_time_ms: 150
+    expected_cost: 1
+  
+  - name: "Find configuration files"
+    description: "Search for all .conf files in /etc directory recursively"
+    inputs:
+      path: "/etc"
+      pattern: "*.conf"
+      host: "app-server-01"
+      recursive: true
     expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Check SSH key permissions"
+    description: "Verify permissions on private SSH key file for security audit"
+    inputs:
+      path: "/home/admin/.ssh/id_rsa"
+      host: "bastion-host"
+    expected_time_ms: 100
+    expected_cost: 1
+  
+  - name: "List home directory contents"
+    description: "Show all files including hidden ones in user home directory"
+    inputs:
+      path: "/home/user"
+      host: "dev-workstation"
+      show_hidden: true
+      long_format: true
+      human_readable: true
+      sort_by: "name"
+    expected_time_ms: 200
+    expected_cost: 1
+  
+  - name: "Find large log files"
+    description: "List log files sorted by size to identify space usage"
+    inputs:
+      path: "/var/log"
+      pattern: "*.log"
+      host: "monitoring-server"
+      sort_by: "size"
+      reverse_order: true
+      human_readable: true
+    expected_time_ms: 300
     expected_cost: 1

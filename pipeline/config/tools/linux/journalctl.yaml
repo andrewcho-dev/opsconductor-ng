@@ -1,59 +1,461 @@
 # journalctl - Query systemd journal logs
-tool_name: journalctl
-version: '1.0'
-description: Query systemd journal logs
-platform: linux
-category: monitoring
+tool_name: "journalctl"
+version: "1.0"
+description: "Query and analyze systemd journal logs with powerful filtering and formatting capabilities"
+platform: "linux"
+category: "logging"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "systemd-journal"
+
 capabilities:
   log_analysis:
-    description: log_analysis capability
+    description: "Query, filter, and analyze system logs from systemd journal with time-based and service-based filtering"
+    
     patterns:
-      query_logs:
-        description: query_logs pattern
+      query_service_logs:
+        description: "Query logs for specific systemd service or unit"
+        
         typical_use_cases:
-        - check logs
-        - system logs
-        - service logs
-        time_estimate_ms: 800 + 5 * N
-        cost_estimate: ceil(N / 100)
-        complexity_score: 0.3
-        scope: single_item
-        completeness: complete
+          - "check service logs"
+          - "view application logs"
+          - "troubleshoot service issues"
+          - "monitor service activity"
+          - "debug service failures"
+          - "audit service events"
+        
+        time_estimate_ms: "500 + 2 * num_entries"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "batch"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires systemd-based system"
+          - "May require root/sudo for some logs"
+          - "Large log volumes can be slow"
+          - "Journal size limited by configuration"
+          - "Rotated logs may be compressed"
+        
         policy:
-          max_cost: 10
+          max_cost: 5
           requires_approval: false
           production_safe: true
           max_execution_time: 60
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "service_name"
+            type: "string"
+            description: "Systemd service/unit name to query logs for. Examples: 'nginx.service', 'sshd', 'docker.service'. The .service suffix is optional"
+            validation: "^[a-zA-Z0-9_-]+(\\.service|\\.socket|\\.timer)?$"
+            examples:
+              - "nginx.service"
+              - "sshd"
+              - "docker.service"
+              - "postgresql"
+              - "apache2.service"
+          - name: "host"
+            type: "string"
+            description: "Target host where journalctl will be executed"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "web-server-01"
+              - "192.168.1.100"
+        
+        optional_inputs:
+          - name: "since"
+            type: "string"
+            description: "Show logs since specified time. Formats: 'YYYY-MM-DD HH:MM:SS', 'yesterday', 'today', '1 hour ago', '-2h', '-30min'"
+            default: ""
+            examples:
+              - "2025-01-15 10:00:00"
+              - "yesterday"
+              - "1 hour ago"
+              - "-30min"
+              - "today"
+          - name: "until"
+            type: "string"
+            description: "Show logs until specified time (same formats as 'since')"
+            default: ""
+            examples:
+              - "2025-01-15 18:00:00"
+              - "now"
+          - name: "lines"
+            type: "integer"
+            description: "Number of most recent log lines to show (like tail -n)"
+            default: 100
+            examples:
+              - 50
+              - 100
+              - 500
+          - name: "priority"
+            type: "string"
+            description: "Filter by log priority/severity level"
+            default: "all"
+            allowed_values:
+              - "all"
+              - "emerg"
+              - "alert"
+              - "crit"
+              - "err"
+              - "warning"
+              - "notice"
+              - "info"
+              - "debug"
+            examples:
+              - "err"
+              - "warning"
+          - name: "follow"
+            type: "boolean"
+            description: "Follow log output in real-time (like tail -f)"
+            default: "false"
+          - name: "reverse"
+            type: "boolean"
+            description: "Show newest entries first"
+            default: "false"
+        
+        expected_outputs:
+          - name: "log_entries"
+            type: "array"
+            description: "List of log entries with timestamp, priority, message"
+          - name: "entry_count"
+            type: "integer"
+            description: "Number of log entries returned"
+          - name: "time_range"
+            type: "object"
+            description: "Actual time range of logs (first and last timestamp)"
+      
+      query_system_logs:
+        description: "Query system-wide logs with filtering by time, priority, or pattern"
+        
+        typical_use_cases:
+          - "check system logs"
+          - "find errors in logs"
+          - "audit system events"
+          - "troubleshoot system issues"
+          - "monitor system activity"
+          - "search for specific events"
+        
+        time_estimate_ms: "800 + 3 * num_entries"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Can be slow with large log volumes"
+          - "Pattern matching is case-sensitive by default"
+          - "May require elevated privileges"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 90
+        
         preference_match:
           speed: 0.8
-          accuracy: 0.9
-          cost: 0.9
+          accuracy: 1.0
+          cost: 0.85
           complexity: 0.8
-          completeness: 0.9
+          completeness: 1.0
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - monitoring
-  - journalctl
-  documentation_url: https://docs.opsconductor.io/tools/journalctl
+          - name: "host"
+            type: "string"
+            description: "Target host for log query"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "since"
+            type: "string"
+            description: "Start time for log query"
+            default: "-1h"
+            examples:
+              - "-1h"
+              - "today"
+              - "2025-01-15 00:00:00"
+          - name: "priority"
+            type: "string"
+            description: "Minimum priority level to show"
+            default: "info"
+            allowed_values:
+              - "emerg"
+              - "alert"
+              - "crit"
+              - "err"
+              - "warning"
+              - "notice"
+              - "info"
+              - "debug"
+          - name: "grep_pattern"
+            type: "string"
+            description: "Filter logs containing this pattern (case-insensitive)"
+            default: ""
+            examples:
+              - "error"
+              - "failed"
+              - "timeout"
+          - name: "lines"
+            type: "integer"
+            description: "Maximum number of lines to return"
+            default: 200
+          - name: "kernel_only"
+            type: "boolean"
+            description: "Show only kernel messages (dmesg equivalent)"
+            default: "false"
+        
+        expected_outputs:
+          - name: "log_entries"
+            type: "array"
+            description: "Filtered log entries"
+          - name: "error_count"
+            type: "integer"
+            description: "Number of error-level entries"
+          - name: "warning_count"
+            type: "integer"
+            description: "Number of warning-level entries"
+      
+      query_boot_logs:
+        description: "Query logs from specific boot or current boot"
+        
+        typical_use_cases:
+          - "check boot logs"
+          - "troubleshoot boot issues"
+          - "view startup messages"
+          - "compare boot sequences"
+          - "audit boot events"
+        
+        time_estimate_ms: "600 + 2 * num_entries"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "batch"
+        completeness: "complete"
+        
+        limitations:
+          - "Boot logs may be rotated/deleted"
+          - "Requires persistent journal storage"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 60
+        
+        preference_match:
+          speed: 0.85
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host for boot log query"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "boot_offset"
+            type: "integer"
+            description: "Boot to query: 0=current, -1=previous, -2=two boots ago, etc."
+            default: 0
+            examples:
+              - 0
+              - -1
+              - -2
+          - name: "priority"
+            type: "string"
+            description: "Filter by priority level"
+            default: "info"
+          - name: "lines"
+            type: "integer"
+            description: "Number of lines to show"
+            default: 100
+        
+        expected_outputs:
+          - name: "boot_id"
+            type: "string"
+            description: "Boot ID (UUID) for the queried boot"
+          - name: "boot_time"
+            type: "string"
+            description: "Timestamp when system booted"
+          - name: "log_entries"
+            type: "array"
+            description: "Boot log entries"
+      
+      analyze_disk_usage:
+        description: "Analyze journal disk usage and vacuum old logs"
+        
+        typical_use_cases:
+          - "check journal disk usage"
+          - "clean old logs"
+          - "manage journal size"
+          - "free up disk space"
+          - "audit log retention"
+        
+        time_estimate_ms: "400"
+        cost_estimate: "1"
+        complexity_score: 0.2
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires root/sudo privileges"
+          - "Vacuum operation may take time"
+        
+        policy:
+          max_cost: 3
+          requires_approval: true
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.9
+          accuracy: 1.0
+          cost: 0.9
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "host"
+            type: "string"
+            description: "Target host for journal analysis"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "action"
+            type: "string"
+            description: "Action to perform"
+            default: "show"
+            allowed_values:
+              - "show"
+              - "vacuum-size"
+              - "vacuum-time"
+            examples:
+              - "show"
+          - name: "size_limit"
+            type: "string"
+            description: "For vacuum-size: keep only this much data (e.g., '500M', '1G')"
+            default: ""
+            examples:
+              - "500M"
+              - "1G"
+          - name: "time_limit"
+            type: "string"
+            description: "For vacuum-time: keep only logs newer than this (e.g., '7days', '1month')"
+            default: ""
+            examples:
+              - "7days"
+              - "1month"
+        
+        expected_outputs:
+          - name: "current_size"
+            type: "integer"
+            description: "Current journal size in bytes"
+          - name: "archived_size"
+            type: "integer"
+            description: "Size of archived journals"
+          - name: "disk_usage"
+            type: "string"
+            description: "Human-readable disk usage"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "systemd"
+    type: "service"
+    required: true
+    version: ">=219"
+  - name: "systemd-journal"
+    type: "service"
+    required: true
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "logging"
+    - "systemd"
+    - "monitoring"
+    - "troubleshooting"
+  documentation_url: "https://man7.org/linux/man-pages/man1/journalctl.1.html"
+  related_tools:
+    - "systemctl"
+    - "dmesg"
+    - "tail"
+    - "grep"
+
 examples:
-  - name: "Query Logs"
-    description: "query_logs pattern"
+  - name: "Check nginx service logs"
+    description: "View recent nginx logs for troubleshooting"
     inputs:
-      host: "192.168.1.100"
+      service_name: "nginx.service"
+      host: "web-server-01"
+      lines: 100
+      priority: "warning"
+    expected_time_ms: 700
+    expected_cost: 1
+  
+  - name: "Find errors in last hour"
+    description: "Search for error-level messages in last hour"
+    inputs:
+      host: "app-server-01"
+      since: "-1h"
+      priority: "err"
+      lines: 200
     expected_time_ms: 1000
+    expected_cost: 2
+  
+  - name: "Check boot logs"
+    description: "View logs from current boot"
+    inputs:
+      host: "web-server-01"
+      boot_offset: 0
+      priority: "info"
+      lines: 150
+    expected_time_ms: 800
+    expected_cost: 1
+  
+  - name: "Search for failed logins"
+    description: "Find authentication failures in system logs"
+    inputs:
+      host: "bastion-host"
+      since: "today"
+      grep_pattern: "authentication failure"
+      priority: "warning"
+      lines: 100
+    expected_time_ms: 1200
+    expected_cost: 2
+  
+  - name: "Check journal disk usage"
+    description: "View how much disk space journal is using"
+    inputs:
+      host: "app-server-01"
+      action: "show"
+    expected_time_ms: 400
+    expected_cost: 1
+  
+  - name: "View docker service logs"
+    description: "Monitor Docker daemon logs from last 30 minutes"
+    inputs:
+      service_name: "docker.service"
+      host: "container-host"
+      since: "-30min"
+      lines: 200
+      reverse: true
+    expected_time_ms: 900
     expected_cost: 1

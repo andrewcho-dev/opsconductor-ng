@@ -1,59 +1,444 @@
 # find - Search for files and directories
-tool_name: find
-version: '1.0'
-description: Search for files and directories
-platform: linux
-category: system
+tool_name: "find"
+version: "1.0"
+description: "Powerful file and directory search utility with extensive filtering and action capabilities"
+platform: "linux"
+category: "filesystem"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "filesystem"
+
 capabilities:
-  primary_capability:
-    description: find primary capability
+  file_search:
+    description: "Search for files and directories using multiple criteria including name, type, size, time, and permissions"
+    
     patterns:
-      execute:
-        description: Execute find command
+      search_by_name:
+        description: "Find files and directories by name pattern"
+        
         typical_use_cases:
-        - use find
-        - find command
-        - search for files and directories
-        time_estimate_ms: '500'
-        cost_estimate: '1'
-        complexity_score: 0.2
-        scope: single_item
-        completeness: complete
+          - "find files by name"
+          - "search for specific filename"
+          - "locate files matching pattern"
+          - "find all files with extension"
+          - "search for configuration files"
+        
+        time_estimate_ms: "500 + 2 * num_directories"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Performance depends on directory tree size"
+          - "Requires read permissions on searched directories"
+          - "Symbolic links not followed by default (use -L)"
+          - "Can be slow on network filesystems"
+          - "May hit filesystem limits on very deep directory trees"
+        
         policy:
-          max_cost: 10
+          max_cost: 5
           requires_approval: false
           production_safe: true
-          max_execution_time: 60
+          max_execution_time: 120
+        
         preference_match:
-          speed: 0.8
-          accuracy: 0.9
-          cost: 0.9
+          speed: 0.7
+          accuracy: 1.0
+          cost: 0.85
           complexity: 0.8
-          completeness: 0.9
+          completeness: 1.0
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - system
-  - find
-  documentation_url: https://docs.opsconductor.io/tools/find
+          - name: "path"
+            type: "string"
+            description: "Starting directory for search. Use '/' for entire filesystem, '.' for current directory, or specific path like '/var/log'. Multiple paths can be space-separated"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+            examples:
+              - "/var/log"
+              - "/home/user"
+              - "."
+              - "/etc /usr/local/etc"
+          - name: "name_pattern"
+            type: "string"
+            description: "Filename pattern using shell wildcards. Use '*' for any characters, '?' for single character. Patterns are case-sensitive by default. Examples: '*.log', 'config.?', '*backup*'"
+            validation: ".*"
+            examples:
+              - "*.log"
+              - "*.conf"
+              - "error_*.txt"
+              - "backup_2024*"
+              - "*.py"
+          - name: "host"
+            type: "string"
+            description: "Target host where find command will be executed"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "web-server-01"
+              - "192.168.1.100"
+        
+        optional_inputs:
+          - name: "case_insensitive"
+            type: "boolean"
+            description: "Perform case-insensitive name matching (uses -iname instead of -name)"
+            default: "false"
+          - name: "max_depth"
+            type: "integer"
+            description: "Maximum directory depth to search. 1 = only specified directory, 2 = one level down, etc. Omit for unlimited depth"
+            default: null
+            examples:
+              - 1
+              - 3
+              - 5
+          - name: "file_type"
+            type: "string"
+            description: "Filter by file type"
+            default: "all"
+            allowed_values:
+              - "all"
+              - "file"
+              - "directory"
+              - "symlink"
+              - "socket"
+              - "pipe"
+        
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of matching file paths with metadata"
+          - name: "match_count"
+            type: "integer"
+            description: "Total number of matches found"
+      
+      search_by_size:
+        description: "Find files based on size criteria"
+        
+        typical_use_cases:
+          - "find large files"
+          - "locate files bigger than size"
+          - "find files consuming disk space"
+          - "search for small files"
+          - "disk space analysis"
+        
+        time_estimate_ms: "800 + 3 * num_directories"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Size check requires stat() on each file (slower than name search)"
+          - "Sparse files reported by apparent size, not disk usage"
+          - "Does not account for filesystem overhead"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 180
+        
+        preference_match:
+          speed: 0.65
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "path"
+            type: "string"
+            description: "Starting directory for search"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+            examples:
+              - "/var"
+              - "/home"
+          - name: "size_criteria"
+            type: "string"
+            description: "Size comparison: '+100M' (larger than 100MB), '-1G' (smaller than 1GB), '50k' (exactly 50KB). Units: c=bytes, k=KB, M=MB, G=GB"
+            validation: "^[+-]?\\d+[ckMG]?$"
+            examples:
+              - "+100M"
+              - "-1k"
+              - "50M"
+              - "+1G"
+          - name: "host"
+            type: "string"
+            description: "Target host for command execution"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "file_type"
+            type: "string"
+            description: "Limit search to specific file type"
+            default: "file"
+            allowed_values:
+              - "file"
+              - "directory"
+              - "all"
+          - name: "name_pattern"
+            type: "string"
+            description: "Optional filename pattern to combine with size search"
+            default: "*"
+        
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of files matching size criteria with sizes"
+          - name: "total_size"
+            type: "integer"
+            description: "Combined size of all matches in bytes"
+      
+      search_by_time:
+        description: "Find files based on modification, access, or creation time"
+        
+        typical_use_cases:
+          - "find recently modified files"
+          - "locate old files for cleanup"
+          - "find files changed in last N days"
+          - "search for recently accessed files"
+          - "audit file modifications"
+        
+        time_estimate_ms: "700 + 2.5 * num_directories"
+        cost_estimate: "2"
+        complexity_score: 0.3
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Access time may be disabled on some filesystems (noatime mount option)"
+          - "Birth time not available on all filesystems"
+          - "Time comparisons are in 24-hour increments by default"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 180
+        
+        preference_match:
+          speed: 0.7
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.8
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "path"
+            type: "string"
+            description: "Starting directory for search"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+          - name: "time_type"
+            type: "string"
+            description: "Type of time to check"
+            allowed_values:
+              - "modified"
+              - "accessed"
+              - "changed"
+            examples:
+              - "modified"
+          - name: "time_criteria"
+            type: "string"
+            description: "Time comparison: '+7' (older than 7 days), '-1' (within last day), '3' (exactly 3 days ago). Can use minutes with 'min' suffix: '+60min'"
+            validation: "^[+-]?\\d+(min)?$"
+            examples:
+              - "-7"
+              - "+30"
+              - "-60min"
+          - name: "host"
+            type: "string"
+            description: "Target host for command execution"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "name_pattern"
+            type: "string"
+            description: "Optional filename pattern to combine with time search"
+            default: "*"
+          - name: "file_type"
+            type: "string"
+            description: "Filter by file type"
+            default: "all"
+        
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of files matching time criteria with timestamps"
+          - name: "match_count"
+            type: "integer"
+            description: "Number of files found"
+      
+      search_by_permissions:
+        description: "Find files with specific permission settings or ownership"
+        
+        typical_use_cases:
+          - "find world-writable files"
+          - "locate files with specific permissions"
+          - "security audit for permission issues"
+          - "find files owned by user"
+          - "search for SUID/SGID files"
+        
+        time_estimate_ms: "900 + 3 * num_directories"
+        cost_estimate: "2"
+        complexity_score: 0.4
+        
+        scope: "exhaustive"
+        completeness: "complete"
+        
+        limitations:
+          - "Does not check ACLs or SELinux contexts"
+          - "Permission check requires stat() on each file"
+          - "May miss files in directories without execute permission"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 180
+        
+        preference_match:
+          speed: 0.65
+          accuracy: 1.0
+          cost: 0.85
+          complexity: 0.75
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "path"
+            type: "string"
+            description: "Starting directory for search"
+            validation: "^(/|\\./|\\.\\./).*|^[^/].*"
+          - name: "host"
+            type: "string"
+            description: "Target host for command execution"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "permission_mode"
+            type: "string"
+            description: "Permission mode in octal (e.g., '644', '755'). Prefix with '-' for 'at least these bits', '/' for 'any of these bits'"
+            validation: "^[-/]?[0-7]{3,4}$"
+            examples:
+              - "644"
+              - "755"
+              - "-4000"
+              - "/222"
+          - name: "owner"
+            type: "string"
+            description: "Find files owned by specific user (username or UID)"
+            default: null
+            examples:
+              - "root"
+              - "www-data"
+              - "1000"
+          - name: "group"
+            type: "string"
+            description: "Find files owned by specific group (group name or GID)"
+            default: null
+            examples:
+              - "wheel"
+              - "docker"
+          - name: "name_pattern"
+            type: "string"
+            description: "Optional filename pattern"
+            default: "*"
+        
+        expected_outputs:
+          - name: "matches"
+            type: "array"
+            description: "List of files with permission details"
+          - name: "security_issues"
+            type: "array"
+            description: "Potential security concerns found"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "filesystem_access"
+    type: "permission"
+    required: true
+  - name: "findutils"
+    type: "package"
+    required: true
+    version: ">=4.6"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "filesystem"
+    - "search"
+    - "files"
+    - "directories"
+  documentation_url: "https://man7.org/linux/man-pages/man1/find.1.html"
+  related_tools:
+    - "ls"
+    - "locate"
+    - "grep"
+    - "du"
+
 examples:
-  - name: "Execute"
-    description: "Execute find command"
+  - name: "Find large log files"
+    description: "Locate all log files larger than 100MB in /var/log for cleanup"
     inputs:
-      host: "192.168.1.100"
-    expected_time_ms: 500
-    expected_cost: 1
+      path: "/var/log"
+      size_criteria: "+100M"
+      host: "web-server-01"
+      name_pattern: "*.log"
+    expected_time_ms: 1500
+    expected_cost: 2
+  
+  - name: "Find recently modified configs"
+    description: "Find configuration files modified in the last 7 days"
+    inputs:
+      path: "/etc"
+      time_type: "modified"
+      time_criteria: "-7"
+      host: "app-server-01"
+      name_pattern: "*.conf"
+    expected_time_ms: 1200
+    expected_cost: 2
+  
+  - name: "Security audit - world-writable files"
+    description: "Find all world-writable files for security review"
+    inputs:
+      path: "/var/www"
+      permission_mode: "-002"
+      host: "web-server-01"
+    expected_time_ms: 2000
+    expected_cost: 2
+  
+  - name: "Find Python scripts"
+    description: "Locate all Python files in home directory"
+    inputs:
+      path: "/home/developer"
+      name_pattern: "*.py"
+      host: "dev-workstation"
+      case_insensitive: false
+    expected_time_ms: 800
+    expected_cost: 2
+  
+  - name: "Find old backup files"
+    description: "Locate backup files older than 30 days for archival"
+    inputs:
+      path: "/backup"
+      name_pattern: "*.tar.gz"
+      time_type: "modified"
+      time_criteria: "+30"
+      host: "backup-server"
+    expected_time_ms: 1500
+    expected_cost: 2
+  
+  - name: "Find SUID binaries"
+    description: "Security audit to find all SUID executables"
+    inputs:
+      path: "/"
+      permission_mode: "-4000"
+      host: "production-server"
+      file_type: "file"
+    expected_time_ms: 5000
+    expected_cost: 2

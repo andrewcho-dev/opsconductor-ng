@@ -1,59 +1,350 @@
-# ping - Test network connectivity (ICMP)
-tool_name: ping
-version: '1.0'
-description: Test network connectivity (ICMP)
-platform: linux
-category: network
+# ping - Test network connectivity
+tool_name: "ping"
+version: "1.0"
+description: "Test network connectivity and measure round-trip time using ICMP echo requests"
+platform: "linux"
+category: "network"
+
 defaults:
-  accuracy_level: real-time
-  freshness: live
-  data_source: direct
+  accuracy_level: "real-time"
+  freshness: "live"
+  data_source: "network"
+
 capabilities:
   network_testing:
-    description: network_testing capability
+    description: "Test network connectivity, measure latency, and detect packet loss"
+    
     patterns:
       test_connectivity:
-        description: test_connectivity pattern
+        description: "Test if host is reachable and measure network latency"
+        
         typical_use_cases:
-        - ping host
-        - test connectivity
-        - check network
-        time_estimate_ms: 1000 * count
-        cost_estimate: '1'
+          - "ping host"
+          - "test network connectivity"
+          - "check if server is up"
+          - "measure network latency"
+          - "verify network path"
+          - "troubleshoot network issues"
+        
+        time_estimate_ms: "1000 * count + 500"
+        cost_estimate: "1"
         complexity_score: 0.1
-        scope: single_item
-        completeness: complete
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "ICMP may be blocked by firewalls"
+          - "Some hosts configured to not respond to ping"
+          - "Requires ICMP protocol support"
+          - "Does not test application-layer connectivity"
+          - "May require elevated privileges for some options"
+        
         policy:
-          max_cost: 10
+          max_cost: 3
           requires_approval: false
           production_safe: true
           max_execution_time: 60
+        
         preference_match:
-          speed: 0.8
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.95
+          complexity: 0.95
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "target"
+            type: "string"
+            description: "Target hostname, FQDN, or IP address to ping. Examples: 'google.com', 'web-server-01', '192.168.1.100'"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "google.com"
+              - "web-server-01"
+              - "192.168.1.100"
+              - "api.example.com"
+          - name: "host"
+            type: "string"
+            description: "Host from which to execute ping command (source host)"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+            examples:
+              - "bastion-host"
+              - "192.168.1.50"
+        
+        optional_inputs:
+          - name: "count"
+            type: "integer"
+            description: "Number of ping packets to send. Default 4 for quick test, use 10+ for statistics"
+            default: 4
+            examples:
+              - 4
+              - 10
+              - 20
+          - name: "timeout_seconds"
+            type: "integer"
+            description: "Timeout for each ping packet in seconds"
+            default: 5
+            examples:
+              - 1
+              - 5
+              - 10
+          - name: "packet_size"
+            type: "integer"
+            description: "Size of ping packet in bytes (default 56, max typically 65507)"
+            default: 56
+            examples:
+              - 56
+              - 1024
+              - 1500
+          - name: "interval_seconds"
+            type: "number"
+            description: "Wait interval between sending packets (default 1 second, min 0.2 for non-root)"
+            default: 1.0
+            examples:
+              - 0.5
+              - 1.0
+              - 2.0
+          - name: "ipv6"
+            type: "boolean"
+            description: "Use IPv6 instead of IPv4 (ping6)"
+            default: "false"
+        
+        expected_outputs:
+          - name: "is_reachable"
+            type: "boolean"
+            description: "Whether target host responded to ping"
+          - name: "packets_sent"
+            type: "integer"
+            description: "Number of packets transmitted"
+          - name: "packets_received"
+            type: "integer"
+            description: "Number of packets received"
+          - name: "packet_loss_percent"
+            type: "number"
+            description: "Percentage of packets lost (0-100)"
+          - name: "rtt_min_ms"
+            type: "number"
+            description: "Minimum round-trip time in milliseconds"
+          - name: "rtt_avg_ms"
+            type: "number"
+            description: "Average round-trip time in milliseconds"
+          - name: "rtt_max_ms"
+            type: "number"
+            description: "Maximum round-trip time in milliseconds"
+          - name: "rtt_stddev_ms"
+            type: "number"
+            description: "Standard deviation of round-trip time"
+      
+      continuous_monitor:
+        description: "Continuously monitor network connectivity and latency"
+        
+        typical_use_cases:
+          - "monitor network stability"
+          - "detect intermittent connectivity issues"
+          - "measure network performance over time"
+          - "troubleshoot packet loss"
+        
+        time_estimate_ms: "duration_seconds * 1000"
+        cost_estimate: "2"
+        complexity_score: 0.2
+        
+        scope: "continuous"
+        completeness: "complete"
+        
+        limitations:
+          - "Long duration may consume resources"
+          - "Results are statistical, not real-time alerts"
+          - "May be rate-limited by network devices"
+        
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 300
+        
+        preference_match:
+          speed: 0.7
+          accuracy: 0.95
+          cost: 0.85
+          complexity: 0.85
+          completeness: 1.0
+        
+        required_inputs:
+          - name: "target"
+            type: "string"
+            description: "Target host to monitor"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+          - name: "duration_seconds"
+            type: "integer"
+            description: "How long to monitor (in seconds)"
+            validation: "^[1-9][0-9]*$"
+            examples:
+              - 60
+              - 300
+              - 600
+          - name: "host"
+            type: "string"
+            description: "Source host for monitoring"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "interval_seconds"
+            type: "number"
+            description: "Interval between pings"
+            default: 1.0
+          - name: "alert_on_loss"
+            type: "boolean"
+            description: "Alert if any packet loss detected"
+            default: "true"
+        
+        expected_outputs:
+          - name: "statistics"
+            type: "object"
+            description: "Comprehensive statistics over monitoring period"
+          - name: "packet_loss_events"
+            type: "array"
+            description: "Timestamps of packet loss occurrences"
+          - name: "latency_spikes"
+            type: "array"
+            description: "Timestamps of unusual latency increases"
+      
+      test_path_mtu:
+        description: "Test path MTU by sending packets with Don't Fragment flag"
+        
+        typical_use_cases:
+          - "determine maximum packet size"
+          - "troubleshoot MTU issues"
+          - "test network path MTU"
+          - "diagnose fragmentation problems"
+        
+        time_estimate_ms: "3000"
+        cost_estimate: "1"
+        complexity_score: 0.3
+        
+        scope: "single_item"
+        completeness: "complete"
+        
+        limitations:
+          - "Requires root/sudo privileges"
+          - "Some networks may not support"
+          - "Results depend on network path"
+        
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 30
+        
+        preference_match:
+          speed: 0.85
           accuracy: 0.9
           cost: 0.9
           complexity: 0.8
-          completeness: 0.9
+          completeness: 0.95
+        
         required_inputs:
-        - name: host
-          type: string
-          description: Target host
-          validation: .*
-metadata:
-  author: OpsConductor Team
-  created: '2025-10-03'
-  updated: '2025-10-03'
-  tags:
-  - linux
-  - network
-  - ping
-  documentation_url: https://docs.opsconductor.io/tools/ping
+          - name: "target"
+            type: "string"
+            description: "Target host for MTU test"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+          - name: "host"
+            type: "string"
+            description: "Source host for test"
+            validation: "^[a-zA-Z0-9][a-zA-Z0-9.-]*$|^\\d{1,3}(\\.\\d{1,3}){3}$"
+        
+        optional_inputs:
+          - name: "start_size"
+            type: "integer"
+            description: "Starting packet size for MTU discovery"
+            default: 1500
+          - name: "min_size"
+            type: "integer"
+            description: "Minimum packet size to test"
+            default: 68
+        
+        expected_outputs:
+          - name: "path_mtu"
+            type: "integer"
+            description: "Discovered path MTU in bytes"
+          - name: "fragmentation_needed"
+            type: "boolean"
+            description: "Whether fragmentation was required"
 
-# === EXAMPLES ===
+dependencies:
+  - name: "network_access"
+    type: "permission"
+    required: true
+  - name: "iputils"
+    type: "package"
+    required: true
+    version: ">=20121221"
+
+metadata:
+  author: "OpsConductor Team"
+  created: "2025-01-15"
+  updated: "2025-01-15"
+  tags:
+    - "linux"
+    - "network"
+    - "connectivity"
+    - "icmp"
+    - "latency"
+    - "monitoring"
+  documentation_url: "https://man7.org/linux/man-pages/man8/ping.8.html"
+  related_tools:
+    - "traceroute"
+    - "mtr"
+    - "netstat"
+    - "tcpdump"
+
 examples:
-  - name: "Test Connectivity"
-    description: "test_connectivity pattern"
+  - name: "Quick connectivity test"
+    description: "Test if web server is reachable"
     inputs:
-      host: "192.168.1.100"
-    expected_time_ms: 1000
+      target: "web-server-01"
+      host: "bastion-host"
+      count: 4
+      timeout_seconds: 5
+    expected_time_ms: 4500
+    expected_cost: 1
+  
+  - name: "Measure network latency"
+    description: "Get accurate latency statistics with 20 pings"
+    inputs:
+      target: "api.example.com"
+      host: "app-server-01"
+      count: 20
+      interval_seconds: 0.5
+    expected_time_ms: 10500
+    expected_cost: 1
+  
+  - name: "Test with large packets"
+    description: "Test network with larger packet size to detect MTU issues"
+    inputs:
+      target: "192.168.1.100"
+      host: "monitoring-server"
+      count: 10
+      packet_size: 1472
+    expected_time_ms: 10500
+    expected_cost: 1
+  
+  - name: "Monitor network stability"
+    description: "Monitor connection for 5 minutes to detect intermittent issues"
+    inputs:
+      target: "db-server-01"
+      duration_seconds: 300
+      host: "app-server-01"
+      interval_seconds: 1.0
+      alert_on_loss: true
+    expected_time_ms: 300000
+    expected_cost: 2
+  
+  - name: "IPv6 connectivity test"
+    description: "Test IPv6 connectivity to server"
+    inputs:
+      target: "ipv6.google.com"
+      host: "bastion-host"
+      count: 5
+      ipv6: true
+    expected_time_ms: 5500
     expected_cost: 1
