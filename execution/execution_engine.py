@@ -179,6 +179,26 @@ class ExecutionEngine:
                 if r.get("status") == ExecutionStatus.FAILED.value
             )
             
+            # Build error message if execution failed
+            error_message = None
+            if final_status == ExecutionStatus.FAILED:
+                # Collect error messages from failed steps
+                failed_steps = [
+                    r for r in step_results
+                    if r.get("status") == ExecutionStatus.FAILED.value
+                ]
+                if failed_steps:
+                    error_messages = []
+                    for step in failed_steps:
+                        step_name = step.get("step_name", "Unknown step")
+                        step_error = step.get("error_message", "Unknown error")
+                        error_messages.append(f"{step_name}: {step_error}")
+                    error_message = "; ".join(error_messages)
+                else:
+                    error_message = "Execution failed with no completed steps"
+            elif final_status == ExecutionStatus.PARTIAL:
+                error_message = f"{failed_count} of {len(steps)} steps failed"
+            
             result = ExecutionResult(
                 execution_id=execution.execution_id,
                 status=final_status,
@@ -187,6 +207,7 @@ class ExecutionEngine:
                     "completed_steps": completed_count,
                     "failed_steps": failed_count,
                 },
+                error_message=error_message,
                 step_results=step_results,
                 started_at=started_at,
                 completed_at=completed_at,
