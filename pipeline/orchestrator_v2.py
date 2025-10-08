@@ -202,7 +202,7 @@ class PipelineOrchestratorV2:
                 stage_start = time.time()
                 # Stage C expects a DecisionV1, so we need to create a minimal one from SelectionV1
                 mock_decision = self._create_mock_decision_from_selection(selection_result, user_request)
-                planning_result = await self.stage_c.create_plan(mock_decision, selection_result)
+                planning_result = await self.stage_c.create_plan(mock_decision, selection_result, context=context)
                 stage_durations["stage_c"] = (time.time() - stage_start) * 1000
                 intermediate_results["stage_c"] = planning_result
                 
@@ -431,9 +431,41 @@ class PipelineOrchestratorV2:
     
     async def _update_response_with_execution(self, response, execution_result, context):
         """Update response with execution results"""
-        # This would update the response message with execution outcomes
-        # For now, we'll just return the original response
-        # TODO: Implement proper response enrichment with execution results
+        from execution.models import ExecutionStatus
+        
+        if not execution_result:
+            return response
+        
+        # Extract execution status and results
+        status = execution_result.status if hasattr(execution_result, 'status') else None
+        
+        # Build execution summary
+        if status == ExecutionStatus.COMPLETED:
+            execution_summary = "✅ **Execution completed successfully!**\n\n"
+            
+            # Add step results if available
+            if hasattr(execution_result, 'step_results') and execution_result.step_results:
+                execution_summary += f"**Steps executed:** {len(execution_result.step_results)}\n"
+                for i, step_result in enumerate(execution_result.step_results, 1):
+                    step_status = step_result.get('status', 'unknown')
+                    step_tool = step_result.get('tool_name', 'Unknown')
+                    execution_summary += f"{i}. {step_tool}: {step_status}\n"
+            
+            # Add duration
+            if hasattr(execution_result, 'duration_seconds'):
+                execution_summary += f"\n**Duration:** {execution_result.duration_seconds:.2f}s"
+            
+            # Append to existing message
+            response.message = f"{response.message}\n\n{execution_summary}"
+            
+        elif status == ExecutionStatus.FAILED:
+            error_msg = execution_result.error_message if hasattr(execution_result, 'error_message') else "Unknown error"
+            response.message = f"{response.message}\n\n❌ **Execution failed:** {error_msg}"
+        
+        # Update response type to indicate execution happened
+        if response.response_type == ResponseType.EXECUTION_READY:
+            response.response_type = ResponseType.INFORMATION  # Change to information since execution is done
+        
         return response
     
     def _get_memory_usage(self) -> float:

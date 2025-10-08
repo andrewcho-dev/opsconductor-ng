@@ -84,16 +84,17 @@ class StageEExecutor:
             )
             
             # Step 2: Check for duplicate execution (idempotency)
-            existing_execution = self.repository.get_execution_by_idempotency_key(
-                tenant_id,
-                idempotency_key
-            )
-            
-            if existing_execution:
-                logger.info(
-                    f"Duplicate execution detected: {existing_execution.execution_id}"
-                )
-                return self._build_execution_response(existing_execution)
+            # DISABLED FOR TESTING - CACHING CAUSES ISSUES
+            # existing_execution = self.repository.get_execution_by_idempotency_key(
+            #     tenant_id,
+            #     idempotency_key
+            # )
+            # 
+            # if existing_execution:
+            #     logger.info(
+            #         f"Duplicate execution detected: {existing_execution.execution_id}"
+            #     )
+            #     return self._build_execution_response(existing_execution)
             
             # Step 3: Determine SLA class and execution mode
             estimated_duration = self._estimate_duration(request.plan)

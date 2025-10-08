@@ -1,0 +1,294 @@
+# Axis VAPIX Video Streaming - Control video streaming via VAPIX API
+tool_name: Axis-VAPIX-Video-Streaming
+version: '1.0'
+description: |
+  Control Axis camera video streaming via VAPIX HTTP/RTSP API.
+  Supports RTSP stream URLs, HTTP streaming, and stream configuration.
+platform: network
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+  protocol: http
+  auth_type: digest
+  method: GET
+capabilities:
+  get_stream_url:
+    description: Get RTSP or HTTP stream URL for video playback
+    patterns:
+      get_rtsp_url:
+        description: Generate RTSP stream URL with specified parameters
+        typical_use_cases:
+        - get camera stream url
+        - get rtsp stream
+        - get video stream url
+        - show camera feed
+        time_estimate_ms: '100'
+        cost_estimate: '0'
+        complexity_score: 0.1
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 1
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 5
+        preference_match:
+          speed: 1.0
+          accuracy: 1.0
+          cost: 1.0
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: |
+            Axis camera IP address or hostname.
+            
+            EXAMPLES:
+            - "192.168.1.100"
+            - "camera-lobby.local"
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with viewer privileges or higher
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password for authentication
+          validation: .+
+        - name: resolution
+          type: string
+          description: |
+            Video resolution for the stream.
+            
+            VALUE MEANINGS:
+            - "1920x1080": Full HD (1080p)
+            - "1280x720": HD (720p)
+            - "640x480": Standard definition (VGA)
+            - "320x240": Low resolution (QVGA)
+            
+            WHEN TO USE:
+            - Higher resolution for detailed viewing (more bandwidth)
+            - Lower resolution for bandwidth-constrained networks
+            
+            NATURAL LANGUAGE MAPPING:
+            - "high quality" → "1920x1080"
+            - "HD" → "1280x720"
+            - "standard quality" → "640x480"
+            - "low bandwidth" → "320x240"
+            
+            EXAMPLES:
+            - "1920x1080" - Full HD quality
+            - "1280x720" - HD quality
+            - "640x480" - Standard quality
+          validation: ^\d{3,4}x\d{3,4}$
+          default: "1280x720"
+        - name: fps
+          type: integer
+          description: |
+            Frames per second for the video stream.
+            
+            VALUE MEANINGS:
+            - 30: Smooth motion (standard)
+            - 25: PAL standard
+            - 15: Reduced bandwidth
+            - 10: Low bandwidth
+            - 5: Very low bandwidth
+            
+            WHEN TO USE:
+            - Higher FPS for smooth motion (more bandwidth)
+            - Lower FPS for bandwidth-constrained networks
+            
+            EXAMPLES:
+            - 30 - Smooth motion
+            - 15 - Moderate bandwidth
+            - 5 - Low bandwidth
+          validation: ^[1-9]|[1-5][0-9]|60$
+          default: 25
+        - name: compression
+          type: string
+          description: |
+            Video compression codec.
+            
+            VALUE MEANINGS:
+            - "h264": H.264/AVC (most compatible)
+            - "h265": H.265/HEVC (better compression, less compatible)
+            - "mjpeg": Motion JPEG (high bandwidth, high compatibility)
+            
+            WHEN TO USE:
+            - "h264" for best compatibility
+            - "h265" for bandwidth savings (if supported by client)
+            - "mjpeg" for simple playback or snapshots
+            
+            EXAMPLES:
+            - "h264" - Standard compression
+            - "h265" - High efficiency
+            - "mjpeg" - Simple compatibility
+          validation: ^(h264|h265|mjpeg)$
+          default: "h264"
+        output:
+          stream_url: "rtsp://{username}:{password}@{host}/axis-media/media.amp?resolution={resolution}&fps={fps}&videocodec={compression}"
+        example_request: "rtsp://user:pass@192.168.1.100/axis-media/media.amp?resolution=1280x720&fps=25&videocodec=h264"
+      get_http_stream_url:
+        description: Generate HTTP stream URL for browser-based playback
+        typical_use_cases:
+        - get http stream
+        - get browser stream url
+        - get mjpeg stream
+        time_estimate_ms: '100'
+        cost_estimate: '0'
+        complexity_score: 0.1
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 1
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 5
+        preference_match:
+          speed: 1.0
+          accuracy: 1.0
+          cost: 1.0
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        - name: resolution
+          type: string
+          description: Video resolution (e.g., "1280x720", "640x480")
+          validation: ^\d{3,4}x\d{3,4}$
+          default: "640x480"
+        output:
+          stream_url: "http://{host}/axis-cgi/mjpg/video.cgi?resolution={resolution}"
+        example_request: "http://192.168.1.100/axis-cgi/mjpg/video.cgi?resolution=640x480"
+  get_snapshot:
+    description: Capture a single frame snapshot from camera
+    patterns:
+      capture_image:
+        description: Get a JPEG snapshot from the camera
+        typical_use_cases:
+        - take snapshot
+        - capture image
+        - get camera image
+        - take picture
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        - name: resolution
+          type: string
+          description: |
+            Image resolution for snapshot.
+            
+            VALUE MEANINGS:
+            - "1920x1080": Full HD snapshot
+            - "1280x720": HD snapshot
+            - "640x480": Standard snapshot
+            
+            WHEN TO USE:
+            - Higher resolution for detailed images (larger file size)
+            - Lower resolution for quick previews
+            
+            EXAMPLES:
+            - "1920x1080" - High quality snapshot
+            - "640x480" - Quick preview
+          validation: ^\d{3,4}x\d{3,4}$
+          default: "1280x720"
+        api_parameters:
+          resolution: "{resolution}"
+        example_request: "GET http://{host}/axis-cgi/jpg/image.cgi?resolution={resolution}"
+metadata:
+  author: OpsConductor Team
+  created: '2025-01-15'
+  updated: '2025-01-15'
+  tags:
+  - axis
+  - vapix
+  - camera
+  - video
+  - streaming
+  - rtsp
+  - snapshot
+  documentation_url: https://developer.axis.com/vapix/network-video/video-streaming/
+  api_reference: https://developer.axis.com/vapix/
+  notes: |
+    Axis VAPIX Video Streaming API
+    
+    STREAMING PROTOCOLS:
+    - RTSP: Real-Time Streaming Protocol (recommended for live viewing)
+    - HTTP: HTTP-based MJPEG streaming (browser compatible)
+    
+    RTSP URL FORMAT:
+    rtsp://<host>/axis-media/media.amp?<parameters>
+    
+    COMMON PARAMETERS:
+    - resolution=<width>x<height> : Video resolution
+    - fps=<number> : Frames per second
+    - videocodec=<codec> : h264, h265, or mjpeg
+    - compression=<level> : Compression level (0-100)
+    - camera=<number> : Camera number for multi-camera products
+    
+    HTTP MJPEG URL FORMAT:
+    http://<host>/axis-cgi/mjpg/video.cgi?<parameters>
+    
+    SNAPSHOT URL FORMAT:
+    http://<host>/axis-cgi/jpg/image.cgi?<parameters>
+    
+    AUTHENTICATION:
+    - RTSP: Include credentials in URL or use RTSP authentication
+    - HTTP: Use HTTP Digest or Basic authentication
+    
+    EXAMPLES:
+    
+    1. RTSP H.264 stream (1080p, 30fps):
+       rtsp://user:pass@192.168.1.100/axis-media/media.amp?resolution=1920x1080&fps=30&videocodec=h264
+    
+    2. HTTP MJPEG stream (720p):
+       http://192.168.1.100/axis-cgi/mjpg/video.cgi?resolution=1280x720
+    
+    3. Snapshot (1080p):
+       http://192.168.1.100/axis-cgi/jpg/image.cgi?resolution=1920x1080
+    
+    BANDWIDTH CONSIDERATIONS:
+    - H.265 uses ~50% less bandwidth than H.264
+    - MJPEG uses significantly more bandwidth than H.264/H.265
+    - Lower resolution and FPS reduce bandwidth usage
+    - Use Zipstream technology for additional bandwidth savings

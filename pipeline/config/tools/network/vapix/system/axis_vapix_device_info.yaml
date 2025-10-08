@@ -1,0 +1,274 @@
+# Axis VAPIX Device Info - Get camera device information via VAPIX API
+tool_name: Axis-VAPIX-Device-Info
+version: '1.0'
+description: |
+  Get Axis camera device information via VAPIX API.
+  Supports firmware version, model info, and capabilities.
+platform: network
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+  protocol: http
+  path: /axis-cgi/basicdeviceinfo.cgi
+  auth_type: digest
+  method: GET
+capabilities:
+  get_device_info:
+    description: Get basic device information
+    patterns:
+      get_all_info:
+        description: Get comprehensive device information
+        typical_use_cases:
+        - get device info
+        - check camera model
+        - get firmware version
+        - camera information
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: |
+            Axis camera IP address or hostname.
+            
+            EXAMPLES:
+            - "192.168.1.100"
+            - "camera-info.local"
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          apiversion: "1.0"
+        example_request: "GET http://{host}/axis-cgi/basicdeviceinfo.cgi?apiversion=1.0"
+  get_firmware_version:
+    description: Get firmware version information
+    patterns:
+      check_firmware:
+        description: Get current firmware version
+        typical_use_cases:
+        - check firmware version
+        - get firmware info
+        - what firmware version
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "list"
+          group: "Properties.Firmware"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=list&group=Properties.Firmware"
+  get_model_info:
+    description: Get camera model information
+    patterns:
+      check_model:
+        description: Get camera model and serial number
+        typical_use_cases:
+        - get camera model
+        - check model number
+        - get serial number
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "list"
+          group: "Properties.System"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=list&group=Properties.System"
+  get_capabilities:
+    description: Get camera capabilities and supported features
+    patterns:
+      list_capabilities:
+        description: List all supported camera capabilities
+        typical_use_cases:
+        - get camera capabilities
+        - list supported features
+        - check camera features
+        - what can camera do
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: multiple_items
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 15
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "list"
+          group: "Properties"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=list&group=Properties"
+metadata:
+  author: OpsConductor Team
+  created: '2025-01-15'
+  updated: '2025-01-15'
+  tags:
+  - axis
+  - vapix
+  - camera
+  - device info
+  - firmware
+  - model
+  - capabilities
+  - system info
+  documentation_url: https://developer.axis.com/vapix/network-video/basic-device-information/
+  api_reference: https://developer.axis.com/vapix/
+  notes: |
+    Axis VAPIX Device Information API
+    
+    DEVICE INFORMATION INCLUDES:
+    - Model name and number
+    - Serial number
+    - Firmware version
+    - Hardware ID
+    - MAC address
+    - Supported features
+    
+    CAPABILITIES:
+    - PTZ support
+    - Audio support
+    - I/O ports
+    - Storage support
+    - Video codecs
+    - Resolution options
+    
+    RESPONSE FORMAT:
+    - JSON (basicdeviceinfo.cgi)
+    - Parameter list (param.cgi)
+    
+    EXAMPLES:
+    
+    1. Get basic device info (JSON):
+       GET http://192.168.1.100/axis-cgi/basicdeviceinfo.cgi?apiversion=1.0
+       
+       Response:
+       {
+         "apiVersion": "1.0",
+         "data": {
+           "propertyList": {
+             "ProdNbr": "M3046-V",
+             "ProdType": "Network Camera",
+             "SerialNumber": "ACCC12345678",
+             "Version": "9.80.1"
+           }
+         }
+       }
+    
+    2. Get firmware version:
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=list&group=Properties.Firmware
+       
+       Response:
+       Properties.Firmware.Version=9.80.1
+       Properties.Firmware.BuildDate=Feb 15 2023 09:12
+    
+    3. Get model info:
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=list&group=Properties.System
+       
+       Response:
+       Properties.System.SerialNumber=ACCC12345678
+       Properties.System.Architecture=armv7hf
+       Properties.System.HardwareID=123
+    
+    4. Get all capabilities:
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=list&group=Properties
+    
+    COMMON PROPERTIES:
+    - Properties.System.SerialNumber : Serial number
+    - Properties.Firmware.Version : Firmware version
+    - Properties.System.Architecture : CPU architecture
+    - Properties.API.HTTP.Version : HTTP API version
+    - Properties.API.VAPIX.Version : VAPIX version
+    - Properties.PTZ.PTZ : PTZ support (yes/no)
+    - Properties.Audio.Audio : Audio support (yes/no)
+    - Properties.System.Soc : System on chip model

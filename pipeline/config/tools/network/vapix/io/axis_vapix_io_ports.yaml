@@ -1,0 +1,269 @@
+# Axis VAPIX I/O Ports - Control digital I/O ports via VAPIX API
+tool_name: Axis-VAPIX-IO-Ports
+version: '1.0'
+description: |
+  Control Axis camera digital I/O ports via VAPIX API.
+  Supports input monitoring and output control.
+platform: network
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+  protocol: http
+  path: /axis-cgi/io
+  auth_type: digest
+  method: GET
+capabilities:
+  set_output:
+    description: Set output port state (activate/deactivate)
+    patterns:
+      activate_output:
+        description: Activate (close) output port
+        typical_use_cases:
+        - activate output
+        - turn on output
+        - close relay
+        - trigger alarm
+        - activate output port
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with operator or administrator privileges
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        - name: port_number
+          type: integer
+          description: |
+            Output port number to control.
+            
+            VALUE MEANINGS:
+            - 1-N: Physical output port number (depends on camera model)
+            
+            EXAMPLES:
+            - 1 - Output port 1
+            - 2 - Output port 2
+          validation: ^[1-9][0-9]?$
+        api_parameters:
+          action: "/"
+          port: "{port_number}"
+          state: "active"
+        example_request: "GET http://{host}/axis-cgi/io/output.cgi?action=/&port={port_number}&state=active"
+      deactivate_output:
+        description: Deactivate (open) output port
+        typical_use_cases:
+        - deactivate output
+        - turn off output
+        - open relay
+        - stop alarm
+        - deactivate output port
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with operator or administrator privileges
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        - name: port_number
+          type: integer
+          description: Output port number to control
+          validation: ^[1-9][0-9]?$
+        api_parameters:
+          action: "/"
+          port: "{port_number}"
+          state: "inactive"
+        example_request: "GET http://{host}/axis-cgi/io/output.cgi?action=/&port={port_number}&state=inactive"
+  get_input_status:
+    description: Get input port status
+    patterns:
+      read_input:
+        description: Read current state of input port
+        typical_use_cases:
+        - read input port
+        - get input status
+        - check input state
+        - monitor input
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        - name: port_number
+          type: integer
+          description: |
+            Input port number to read.
+            
+            VALUE MEANINGS:
+            - 1-N: Physical input port number
+            
+            EXAMPLES:
+            - 1 - Input port 1
+            - 2 - Input port 2
+          validation: ^[1-9][0-9]?$
+        api_parameters:
+          action: "/"
+          port: "{port_number}"
+        example_request: "GET http://{host}/axis-cgi/io/input.cgi?action=/&port={port_number}"
+  get_port_status:
+    description: Get status of all I/O ports
+    patterns:
+      list_all_ports:
+        description: Get status of all input and output ports
+        typical_use_cases:
+        - list io ports
+        - get all port status
+        - check io status
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: multiple_items
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "list"
+        example_request: "GET http://{host}/axis-cgi/io/port.cgi?action=list"
+metadata:
+  author: OpsConductor Team
+  created: '2025-01-15'
+  updated: '2025-01-15'
+  tags:
+  - axis
+  - vapix
+  - camera
+  - io ports
+  - relay
+  - digital io
+  - input
+  - output
+  documentation_url: https://developer.axis.com/vapix/network-video/input-and-outputs/
+  api_reference: https://developer.axis.com/vapix/
+  notes: |
+    Axis VAPIX I/O Ports API
+    
+    I/O PORT TYPES:
+    - Input ports: Monitor external sensors/switches
+    - Output ports: Control external devices (relays, alarms)
+    
+    OUTPUT STATES:
+    - active: Output activated (relay closed, circuit closed)
+    - inactive: Output deactivated (relay open, circuit open)
+    
+    INPUT STATES:
+    - active: Input triggered (circuit closed)
+    - inactive: Input not triggered (circuit open)
+    
+    COMMON USE CASES:
+    - Door sensors (input)
+    - Motion sensors (input)
+    - Alarm sirens (output)
+    - Door locks (output)
+    - Lights (output)
+    
+    EXAMPLES:
+    
+    1. Activate output port 1 (close relay):
+       GET http://192.168.1.100/axis-cgi/io/output.cgi?action=/&port=1&state=active
+    
+    2. Deactivate output port 1 (open relay):
+       GET http://192.168.1.100/axis-cgi/io/output.cgi?action=/&port=1&state=inactive
+    
+    3. Read input port 1 status:
+       GET http://192.168.1.100/axis-cgi/io/input.cgi?action=/&port=1
+    
+    4. List all I/O ports:
+       GET http://192.168.1.100/axis-cgi/io/port.cgi?action=list
+    
+    5. Pulse output (activate for 1 second):
+       GET http://192.168.1.100/axis-cgi/io/output.cgi?action=/&port=1&state=active&duration=1000

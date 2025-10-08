@@ -1,0 +1,265 @@
+# Axis VAPIX Day/Night - Control camera day/night mode via VAPIX API
+tool_name: Axis-VAPIX-DayNight
+version: '1.0'
+description: |
+  Control Axis camera day/night mode via VAPIX API.
+  Supports automatic, day, and night modes with IR filter control.
+platform: network
+category: network
+defaults:
+  accuracy_level: real-time
+  freshness: live
+  data_source: direct
+  protocol: http
+  path: /axis-cgi/param.cgi
+  auth_type: digest
+  method: GET
+capabilities:
+  set_daynight_mode:
+    description: Configure camera day/night mode and IR filter
+    patterns:
+      set_auto_mode:
+        description: Enable automatic day/night switching based on lighting conditions
+        typical_use_cases:
+        - enable auto day night
+        - set automatic mode
+        - auto switch day night
+        - enable ir cut filter auto
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: |
+            Axis camera IP address or hostname.
+            
+            EXAMPLES:
+            - "192.168.1.100"
+            - "camera-outdoor.local"
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with operator or administrator privileges
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "update"
+          ImageSource.I0.DayNight.IrCutFilter: "auto"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=auto"
+      set_day_mode:
+        description: Force camera to day mode (color, IR filter enabled)
+        typical_use_cases:
+        - set day mode
+        - enable color mode
+        - force day mode
+        - disable night vision
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with operator or administrator privileges
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "update"
+          ImageSource.I0.DayNight.IrCutFilter: "on"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=on"
+      set_night_mode:
+        description: Force camera to night mode (black & white, IR filter disabled)
+        typical_use_cases:
+        - set night mode
+        - enable night vision
+        - force night mode
+        - enable infrared
+        time_estimate_ms: '1000'
+        cost_estimate: '1'
+        complexity_score: 0.3
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 5
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.9
+          accuracy: 0.95
+          cost: 0.9
+          complexity: 0.8
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username with operator or administrator privileges
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "update"
+          ImageSource.I0.DayNight.IrCutFilter: "off"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=off"
+  get_daynight_status:
+    description: Get current day/night mode status
+    patterns:
+      get_current_mode:
+        description: Retrieve current day/night mode and IR filter status
+        typical_use_cases:
+        - get day night status
+        - check current mode
+        - is camera in night mode
+        time_estimate_ms: '500'
+        cost_estimate: '1'
+        complexity_score: 0.2
+        scope: single_item
+        completeness: complete
+        policy:
+          max_cost: 3
+          requires_approval: false
+          production_safe: true
+          max_execution_time: 10
+        preference_match:
+          speed: 0.95
+          accuracy: 1.0
+          cost: 0.95
+          complexity: 0.9
+          completeness: 1.0
+        required_inputs:
+        - name: host
+          type: string
+          description: Axis camera IP address or hostname
+          validation: ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$|^[a-zA-Z0-9.-]+$
+        - name: username
+          type: string
+          description: Camera API username
+          validation: .+
+        - name: password
+          type: string
+          description: Camera API password
+          validation: .+
+        api_parameters:
+          action: "list"
+          group: "ImageSource.I0.DayNight"
+        example_request: "GET http://{host}/axis-cgi/param.cgi?action=list&group=ImageSource.I0.DayNight"
+metadata:
+  author: OpsConductor Team
+  created: '2025-01-15'
+  updated: '2025-01-15'
+  tags:
+  - axis
+  - vapix
+  - camera
+  - daynight
+  - ir filter
+  - night vision
+  - infrared
+  documentation_url: https://developer.axis.com/vapix/network-video/daynight-api/
+  api_reference: https://developer.axis.com/vapix/
+  notes: |
+    Axis VAPIX Day/Night API
+    
+    DAY/NIGHT MODES:
+    - auto: Automatic switching based on lighting conditions (recommended)
+    - on: Day mode (IR filter enabled, color image)
+    - off: Night mode (IR filter disabled, black & white, IR sensitive)
+    
+    IR CUT FILTER:
+    - Enabled (on): Blocks infrared light, produces color image
+    - Disabled (off): Allows infrared light, produces black & white image
+    - Auto: Switches automatically based on ambient light level
+    
+    COMMON PARAMETERS:
+    - ImageSource.I0.DayNight.IrCutFilter : IR filter mode (auto/on/off)
+    - ImageSource.I0.DayNight.ShiftLevel : Light level threshold for auto switching
+    
+    WHEN TO USE EACH MODE:
+    
+    AUTO MODE (Recommended):
+    - General purpose surveillance
+    - Locations with varying lighting conditions
+    - Outdoor cameras
+    - Cameras that need to work 24/7
+    
+    DAY MODE (Force Color):
+    - Well-lit indoor areas
+    - When color information is critical
+    - When IR illumination interferes with image
+    - Testing color image quality
+    
+    NIGHT MODE (Force B&W):
+    - Dark environments with IR illumination
+    - When color is not needed
+    - Testing night vision capability
+    - Maximizing low-light sensitivity
+    
+    RESPONSE FORMAT:
+    - Success: HTTP 200 OK
+    - Returns current parameter values
+    
+    EXAMPLES:
+    
+    1. Enable automatic day/night switching:
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=auto
+    
+    2. Force day mode (color):
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=on
+    
+    3. Force night mode (black & white):
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=update&ImageSource.I0.DayNight.IrCutFilter=off
+    
+    4. Get current day/night status:
+       GET http://192.168.1.100/axis-cgi/param.cgi?action=list&group=ImageSource.I0.DayNight
+    
+    MULTI-CAMERA PRODUCTS:
+    - Replace I0 with I1, I2, etc. for additional cameras
+    - Example: ImageSource.I1.DayNight.IrCutFilter for camera 2
+    
+    BEST PRACTICES:
+    - Use auto mode for most scenarios
+    - Only force day/night mode for specific requirements
+    - Consider lighting conditions when forcing modes
+    - Test auto mode threshold settings for optimal switching

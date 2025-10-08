@@ -91,8 +91,26 @@ class CombinedSelector:
             parsed = self._parse_combined_response(response.content)
             logger.info(f"✅ Stage AB: Parsed response - intent={parsed['intent']['category']}/{parsed['intent']['action']}, tools={len(parsed['selected_tools'])}")
             
+            # Log detailed tool selection
+            if parsed['selected_tools']:
+                logger.info("🔧 TOOLS SELECTED BY LLM:")
+                for i, tool in enumerate(parsed['selected_tools'], 1):
+                    tool_name = tool.get('tool_name', 'unknown')
+                    confidence = tool.get('confidence', 0.0)
+                    logger.info(f"   {i}. {tool_name} (confidence: {confidence:.2f})")
+            else:
+                logger.info("ℹ️  No tools selected - information-only request")
+            
             # Step 5: Validate selected tools exist in database
             validated_tools = await self._validate_and_enrich_tools(parsed['selected_tools'], all_tools)
+            
+            # Log validated tools
+            if validated_tools:
+                logger.info("✅ VALIDATED TOOLS:")
+                for i, tool in enumerate(validated_tools, 1):
+                    logger.info(f"   {i}. {tool.tool_name} (order: {tool.execution_order})")
+            else:
+                logger.info("⚠️  No tools validated")
             
             # Step 6: Build execution policy
             execution_policy = self._build_execution_policy(
@@ -153,11 +171,29 @@ class CombinedSelector:
             # Format for LLM consumption (simplified view)
             formatted_tools = []
             for tool in tools:
+                # Extract typical use cases from patterns (they're stored at pattern level)
+                typical_use_cases = []
+                capabilities = tool.get("capabilities", {})
+                if isinstance(capabilities, dict):
+                    for cap_name, cap_data in capabilities.items():
+                        if isinstance(cap_data, dict) and 'patterns' in cap_data:
+                            for pattern in cap_data['patterns']:
+                                if pattern.get('typical_use_cases'):
+                                    typical_use_cases.extend(pattern['typical_use_cases'])
+                
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_use_cases = []
+                for uc in typical_use_cases:
+                    if uc not in seen:
+                        seen.add(uc)
+                        unique_use_cases.append(uc)
+                
                 formatted_tools.append({
                     "tool_name": tool["tool_name"],
                     "description": tool["description"],
                     "capabilities": tool.get("capabilities", {}),
-                    "typical_use_cases": tool.get("typical_use_cases", []),
+                    "typical_use_cases": unique_use_cases,
                     "platform": tool.get("platform", "any"),
                     "category": tool.get("category", "custom"),
                     "production_safe": tool.get("production_safe", False),
@@ -261,25 +297,38 @@ Return your analysis in the JSON format specified above."""
     def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """
         Format tools into a compact, LLM-friendly representation
+        
+        IMPORTANT: List TOOL NAMES first (not capabilities) to avoid LLM confusion
         """
         if not tools:
             return "No tools available (information-only mode)"
         
-        # Group tools by capability for easier LLM understanding
-        by_capability = {}
-        for tool in tools:
-            for cap in tool.get("capabilities", []):
-                if cap not in by_capability:
-                    by_capability[cap] = []
-                by_capability[cap].append(tool)
-        
-        # Format as compact list
+        # Format as simple list: TOOL_NAME first, then capabilities
         lines = []
-        for capability, cap_tools in sorted(by_capability.items()):
-            lines.append(f"\n**{capability}:**")
-            for tool in cap_tools:
-                use_cases = ", ".join(tool.get("typical_use_cases", [])[:2])  # First 2 use cases
-                lines.append(f"  - {tool['tool_name']}: {tool['description'][:80]}... (Use: {use_cases})")
+        for tool in sorted(tools, key=lambda t: t.get("tool_name", "")):
+            tool_name = tool.get("tool_name", "unknown")
+            description = tool.get("description", "")[:100]
+            
+            # Extract capability names
+            capabilities = tool.get("capabilities", {})
+            if isinstance(capabilities, dict):
+                cap_names = list(capabilities.keys())
+            elif isinstance(capabilities, list):
+                cap_names = capabilities
+            else:
+                cap_names = []
+            
+            # Get use cases
+            use_cases = tool.get("typical_use_cases", [])[:2]
+            use_cases_str = ", ".join(use_cases) if use_cases else "general use"
+            
+            # Format: TOOL_NAME (capabilities) - description [use cases]
+            caps_str = ", ".join(cap_names) if cap_names else "no capabilities"
+            lines.append(f"- **{tool_name}** (capabilities: {caps_str})")
+            lines.append(f"  Description: {description}")
+            if use_cases:
+                lines.append(f"  Use cases: {use_cases_str}")
+            lines.append("")  # Blank line between tools
         
         return "\n".join(lines)
     

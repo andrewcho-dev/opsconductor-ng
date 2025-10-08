@@ -18,8 +18,8 @@ from execution.models import (
     ExecutionStepModel,
 )
 from execution.repository import ExecutionRepository
-from execution.services.asset_service_client import AssetServiceClient
-from execution.services.automation_service_client import AutomationServiceClient
+# from execution.services.asset_service_client import AssetServiceClient
+# from execution.services.automation_service_client import AutomationServiceClient
 
 # Import WinRM and SSH libraries
 import sys
@@ -70,8 +70,8 @@ class ExecutionEngine:
         self.repository = ExecutionRepository(self.db_connection_string)
         
         # Initialize service clients
-        self.asset_client = AssetServiceClient(base_url=asset_service_url)
-        self.automation_client = AutomationServiceClient(base_url=automation_service_url)
+        # self.asset_client = AssetServiceClient(base_url=asset_service_url)
+        # self.automation_client = AutomationServiceClient(base_url=automation_service_url)
         
         # Initialize WinRM library if available
         self.winrm_library = None
@@ -111,14 +111,23 @@ class ExecutionEngine:
         step_results: List[Dict[str, Any]] = []
         
         try:
-            logger.info(f"Starting execution: {execution.execution_id}")
+            logger.info("")
+            logger.info("🎬 " + "=" * 77)
+            logger.info(f"🎬 STARTING EXECUTION")
+            logger.info(f"🎬 Execution ID: {execution.execution_id}")
+            logger.info(f"🎬 Tenant ID: {execution.tenant_id}")
+            logger.info(f"🎬 Execution Mode: {execution.execution_mode.value}")
+            logger.info(f"🎬 SLA Class: {execution.sla_class.value}")
+            logger.info("🎬 " + "=" * 77)
             
             # Step 1: Create execution steps from plan
+            logger.info("")
+            logger.info("📋 STEP 1: Creating execution steps from plan...")
             steps = await self._create_execution_steps(execution)
             
-            logger.info(
-                f"Created {len(steps)} execution steps for {execution.execution_id}"
-            )
+            logger.info(f"✅ Created {len(steps)} execution steps")
+            for i, step in enumerate(steps):
+                logger.info(f"   {i+1}. {step.step_name} (type: {step.step_type})")
             
             # Step 2: Execute steps sequentially
             for step in steps:
@@ -153,25 +162,30 @@ class ExecutionEngine:
                     })
             
             # Step 3: Determine final status
+            logger.info("")
+            logger.info("📊 DETERMINING FINAL STATUS...")
             final_status = self._determine_final_status(step_results)
             
             # Step 4: Build result
             completed_at = datetime.utcnow()
             duration_seconds = (completed_at - started_at).total_seconds()
             
+            completed_count = sum(
+                1 for r in step_results
+                if r.get("status") == ExecutionStatus.COMPLETED.value
+            )
+            failed_count = sum(
+                1 for r in step_results
+                if r.get("status") == ExecutionStatus.FAILED.value
+            )
+            
             result = ExecutionResult(
                 execution_id=execution.execution_id,
                 status=final_status,
                 result={
                     "total_steps": len(steps),
-                    "completed_steps": sum(
-                        1 for r in step_results
-                        if r.get("status") == ExecutionStatus.COMPLETED.value
-                    ),
-                    "failed_steps": sum(
-                        1 for r in step_results
-                        if r.get("status") == ExecutionStatus.FAILED.value
-                    ),
+                    "completed_steps": completed_count,
+                    "failed_steps": failed_count,
                 },
                 step_results=step_results,
                 started_at=started_at,
@@ -179,10 +193,16 @@ class ExecutionEngine:
                 duration_seconds=duration_seconds,
             )
             
-            logger.info(
-                f"Execution completed: {execution.execution_id}, "
-                f"status={final_status}, duration={duration_seconds}s"
-            )
+            logger.info("")
+            logger.info("🏁 " + "=" * 77)
+            logger.info(f"🏁 EXECUTION COMPLETED")
+            logger.info(f"🏁 Execution ID: {execution.execution_id}")
+            logger.info(f"🏁 Final Status: {final_status.value}")
+            logger.info(f"🏁 Total Steps: {len(steps)}")
+            logger.info(f"🏁 Completed: {completed_count}")
+            logger.info(f"🏁 Failed: {failed_count}")
+            logger.info(f"🏁 Duration: {duration_seconds:.3f}s")
+            logger.info("🏁 " + "=" * 77)
             
             return result
         
@@ -258,43 +278,90 @@ class ExecutionEngine:
         started_at = datetime.utcnow()
         
         try:
-            logger.info(
-                f"Executing step: {step.step_id}, "
-                f"name={step.step_name}, type={step.step_type}"
-            )
+            logger.info("")
+            logger.info("▶️  " + "=" * 78)
+            logger.info(f"▶️  EXECUTING STEP: {step.step_name}")
+            logger.info(f"▶️  Step ID: {step.step_id}")
+            logger.info(f"▶️  Step Type: {step.step_type}")
+            logger.info(f"▶️  Step Index: {step.step_index}")
+            logger.info("▶️  " + "=" * 78)
             
             # Update step status to running
+            logger.info("   📝 Updating step status to RUNNING...")
             self.repository.update_step_status(
                 step.step_id,
                 ExecutionStatus.RUNNING
             )
             
             # Execute step based on type
+            logger.info(f"   🔧 Executing step by type: {step.step_type}")
             output_data = await self._execute_step_by_type(step, execution)
             
-            # Update step status to completed
+            # Check if execution failed (output_data contains error status)
             completed_at = datetime.utcnow()
             duration_ms = int((completed_at - started_at).total_seconds() * 1000)
             
-            self.repository.update_step_status(
-                step.step_id,
-                ExecutionStatus.COMPLETED,
-                output_data=output_data,
-                duration_ms=duration_ms
-            )
+            # Determine if step succeeded or failed based on output_data
+            step_failed = False
+            error_message = None
             
-            logger.info(
-                f"Step completed: {step.step_id}, duration={duration_ms}ms"
-            )
+            if isinstance(output_data, dict):
+                # Check for error status in output
+                if output_data.get("status") == "error":
+                    step_failed = True
+                    error_message = output_data.get("error", "Unknown error")
+                    logger.info(f"   ⚠️  Step returned error status: {error_message}")
             
-            return StepExecutionResult(
-                step_id=step.step_id,
-                status=ExecutionStatus.COMPLETED,
-                output_data=output_data,
-                started_at=started_at,
-                completed_at=completed_at,
-                duration_ms=duration_ms,
-            )
+            if step_failed:
+                # Update step status to failed
+                logger.info(f"   📝 Updating step status to FAILED...")
+                self.repository.update_step_status(
+                    step.step_id,
+                    ExecutionStatus.FAILED,
+                    error_message=error_message,
+                    output_data=output_data,
+                    duration_ms=duration_ms
+                )
+                
+                logger.info("")
+                logger.info(f"❌ STEP FAILED")
+                logger.info(f"   • Duration: {duration_ms}ms")
+                logger.info(f"   • Error: {error_message}")
+                logger.info("=" * 80)
+                
+                return StepExecutionResult(
+                    step_id=step.step_id,
+                    status=ExecutionStatus.FAILED,
+                    error_message=error_message,
+                    output_data=output_data,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    duration_ms=duration_ms,
+                )
+            else:
+                # Update step status to completed
+                logger.info(f"   📝 Updating step status to COMPLETED...")
+                self.repository.update_step_status(
+                    step.step_id,
+                    ExecutionStatus.COMPLETED,
+                    output_data=output_data,
+                    duration_ms=duration_ms
+                )
+                
+                logger.info("")
+                logger.info(f"✅ STEP COMPLETED SUCCESSFULLY")
+                logger.info(f"   • Duration: {duration_ms}ms")
+                logger.info(f"   • Output keys: {list(output_data.keys()) if output_data else 'None'}")
+                logger.info("=" * 80)
+                
+                return StepExecutionResult(
+                    step_id=step.step_id,
+                    status=ExecutionStatus.COMPLETED,
+                    output_data=output_data,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    duration_ms=duration_ms,
+                )
         
         except Exception as e:
             logger.error(
@@ -409,44 +476,58 @@ class ExecutionEngine:
         Returns:
             Output data
         """
-        logger.info(
-            f"Executing step type: {step.step_type}, "
-            f"target={step.target_hostname or step.target_asset_id}"
-        )
+        logger.info("")
+        logger.info("🔍 DETERMINING STEP TYPE")
+        logger.info(f"   • Step type: {step.step_type}")
+        logger.info(f"   • Target hostname: {step.target_hostname}")
+        logger.info(f"   • Target asset ID: {step.target_asset_id}")
+        logger.info(f"   • Input data keys: {list(step.input_data.keys()) if step.input_data else 'None'}")
         
         # Step 1: Fetch asset details if target_asset_id is provided
         asset = None
         if step.target_asset_id:
             try:
+                logger.info(f"   🔍 Fetching asset by ID: {step.target_asset_id}")
                 asset = await self.asset_client.get_asset_by_id(step.target_asset_id)
                 if not asset:
                     raise ValueError(f"Asset not found: {step.target_asset_id}")
+                logger.info(f"   ✅ Asset found: {asset.hostname if hasattr(asset, 'hostname') else 'N/A'}")
             except Exception as e:
-                logger.error(f"Failed to fetch asset {step.target_asset_id}: {e}")
+                logger.error(f"   ❌ Failed to fetch asset {step.target_asset_id}: {e}")
                 raise
         elif step.target_hostname:
             try:
+                logger.info(f"   🔍 Fetching asset by hostname: {step.target_hostname}")
                 asset = await self.asset_client.get_asset_by_hostname(step.target_hostname)
                 if not asset:
                     raise ValueError(f"Asset not found: {step.target_hostname}")
+                logger.info(f"   ✅ Asset found")
             except Exception as e:
-                logger.error(f"Failed to fetch asset {step.target_hostname}: {e}")
+                logger.error(f"   ❌ Failed to fetch asset {step.target_hostname}: {e}")
                 raise
+        else:
+            logger.info("   ℹ️  No target asset specified")
         
         # Step 2: Check if this is a Windows/PowerShell tool
+        logger.info("   🔍 Checking if Windows PowerShell tool...")
         if self._is_windows_powershell_tool(step):
-            logger.info(f"Detected Windows PowerShell tool: {step.step_type}")
+            logger.info(f"   ✅ DETECTED: Windows PowerShell tool")
             return await self._execute_winrm_step(step, asset)
+        logger.info("   ❌ Not a Windows PowerShell tool")
         
         # Step 2.5: Check if this is a Linux/SSH tool
+        logger.info("   🔍 Checking if Linux SSH tool...")
         if self._is_linux_ssh_tool(step):
-            logger.info(f"Detected Linux SSH tool: {step.step_type}")
+            logger.info(f"   ✅ DETECTED: Linux SSH tool")
             return await self._execute_ssh_step(step, asset)
+        logger.info("   ❌ Not a Linux SSH tool")
         
         # Step 2.6: Check if this is an API/HTTP tool
+        logger.info("   🔍 Checking if API/HTTP tool...")
         if self._is_api_http_tool(step):
-            logger.info(f"Detected API/HTTP tool: {step.step_type}")
+            logger.info(f"   ✅ DETECTED: API/HTTP tool")
             return await self._execute_api_step(step, asset)
+        logger.info("   ❌ Not an API/HTTP tool")
         
         # Step 3: Execute based on step type
         step_type = step.step_type.lower()
@@ -562,9 +643,12 @@ class ExecutionEngine:
             Output data
         """
         try:
-            logger.info(f"Executing API step: {step.step_name}")
+            logger.info("=" * 80)
+            logger.info(f"🚀 EXECUTING API STEP: {step.step_name}")
+            logger.info("=" * 80)
             
             # Extract connection parameters
+            logger.info("📋 Extracting connection parameters...")
             url = step.input_data.get("url") or step.input_data.get("endpoint")
             method = step.input_data.get("method", "GET").upper()
             headers = step.input_data.get("headers", {})
@@ -572,33 +656,60 @@ class ExecutionEngine:
             params = step.input_data.get("params", {})
             timeout = step.input_data.get("timeout", 30)
             
+            logger.info(f"   • URL from input: {url}")
+            logger.info(f"   • Method: {method}")
+            logger.info(f"   • Headers: {headers}")
+            logger.info(f"   • Body: {body}")
+            logger.info(f"   • Params: {params}")
+            logger.info(f"   • Timeout: {timeout}s")
+            
             # Extract authentication
+            logger.info("🔐 Extracting authentication parameters...")
             username = step.input_data.get("username") or step.input_data.get("user")
             password = step.input_data.get("password")
             auth_type = step.input_data.get("auth_type", "basic").lower()
             
+            logger.info(f"   • Username from input: {username}")
+            logger.info(f"   • Password from input: {'***' if password else None}")
+            logger.info(f"   • Auth type: {auth_type}")
+            
             # Try to get from asset if not in input_data
             if asset and not username:
+                logger.info("   • No username in input, checking asset...")
                 username = asset.username
                 password = asset.password
+                logger.info(f"   • Username from asset: {username}")
+                logger.info(f"   • Password from asset: {'***' if password else None}")
             
             # Build URL if host is provided separately
             host = step.input_data.get("host") or step.input_data.get("target_host")
             if host and not url:
+                logger.info(f"🔧 Building URL from host: {host}")
                 protocol = step.input_data.get("protocol", "http")
                 port = step.input_data.get("port", "")
                 path = step.input_data.get("path", "")
+                
+                logger.info(f"   • Protocol: {protocol}")
+                logger.info(f"   • Port: {port}")
+                logger.info(f"   • Path: {path}")
                 
                 if port:
                     url = f"{protocol}://{host}:{port}{path}"
                 else:
                     url = f"{protocol}://{host}{path}"
+                
+                logger.info(f"   • Constructed URL: {url}")
             
             if not url:
                 raise ValueError("No URL or endpoint specified for API call")
             
-            logger.info(f"API Request: {method} {url}")
-            logger.info(f"Authentication: {auth_type} (username: {username})")
+            logger.info("")
+            logger.info("📤 PREPARING HTTP REQUEST")
+            logger.info(f"   • Method: {method}")
+            logger.info(f"   • URL: {url}")
+            logger.info(f"   • Auth Type: {auth_type}")
+            logger.info(f"   • Username: {username}")
+            logger.info(f"   • Password: {'***' if password else None}")
             
             # Prepare authentication
             auth = None
@@ -606,16 +717,23 @@ class ExecutionEngine:
                 if auth_type == "digest":
                     # Use httpx DigestAuth for digest authentication
                     auth = httpx.DigestAuth(username, password)
-                    logger.info("Using Digest authentication")
+                    logger.info("   ✅ Using HTTP Digest Authentication")
                 else:  # default to basic
                     # Use httpx BasicAuth
                     auth = httpx.BasicAuth(username, password)
-                    logger.info("Using Basic authentication")
+                    logger.info("   ✅ Using HTTP Basic Authentication")
+            else:
+                logger.info("   ⚠️  No authentication configured")
             
             # Make the HTTP request using httpx
+            logger.info("")
+            logger.info("🌐 SENDING HTTP REQUEST...")
             start_time = datetime.utcnow()
             
             async with httpx.AsyncClient(verify=False) as client:  # Disable SSL verification for internal devices
+                logger.info(f"   • Sending {method} request to {url}")
+                logger.info(f"   • Timeout: {timeout}s")
+                
                 response = await client.request(
                     method=method,
                     url=url,
@@ -633,10 +751,27 @@ class ExecutionEngine:
             end_time = datetime.utcnow()
             duration = (end_time - start_time).total_seconds()
             
-            logger.info(f"API Response: Status {response_status}, Duration {duration}s")
+            logger.info("")
+            logger.info("📥 RECEIVED HTTP RESPONSE")
+            logger.info(f"   • Status Code: {response_status}")
+            logger.info(f"   • Duration: {duration:.3f}s")
+            logger.info(f"   • Response Length: {len(response_text)} bytes")
+            logger.info(f"   • Response Headers: {response_headers}")
+            if response_text:
+                logger.info(f"   • Response Body: {response_text[:500]}")  # First 500 chars
+            else:
+                logger.info(f"   • Response Body: (empty)")
+            
+            success = 200 <= response_status < 300
+            logger.info("")
+            if success:
+                logger.info("✅ API REQUEST SUCCESSFUL")
+            else:
+                logger.info(f"❌ API REQUEST FAILED (Status: {response_status})")
+            logger.info("=" * 80)
             
             return {
-                "status": "success" if 200 <= response_status < 300 else "error",
+                "status": "success" if success else "error",
                 "http_status": response_status,
                 "response": response_text,
                 "response_headers": response_headers,

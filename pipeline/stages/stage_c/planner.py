@@ -66,6 +66,10 @@ class StageCPlanner:
         self.cache_manager = CacheManager(redis_url=redis_url, enabled=cache_enabled)
         self.cache_ttl = int(os.getenv("CACHE_TTL_STAGE_C", "3600"))  # 1 hour default
         
+        # Initialize tool catalog service for fetching tool details
+        from ...services.tool_catalog_service import ToolCatalogService
+        self.tool_catalog = ToolCatalogService()
+        
         # Planning statistics (thread-safe)
         self._stats_lock = threading.Lock()
         self.stats = {
@@ -81,7 +85,8 @@ class StageCPlanner:
         self, 
         decision: DecisionV1, 
         selection: SelectionV1,
-        sop_snippets: Optional[List[str]] = None
+        sop_snippets: Optional[List[str]] = None,
+        context: Optional[Dict[str, Any]] = None
     ) -> PlanV1:
         """
         Create a comprehensive execution plan.
@@ -90,6 +95,7 @@ class StageCPlanner:
             decision: Decision from Stage A
             selection: Selection from Stage B
             sop_snippets: Optional SOP procedure snippets
+            context: Optional context including conversation history
             
         Returns:
             Complete Plan v1 with execution steps, safety measures, and metadata
@@ -132,14 +138,24 @@ class StageCPlanner:
             logger.info(f"❌ Stage C cache MISS for action: {decision.intent.action}")
             
             # Generate execution steps
-            steps = await self._generate_execution_steps(decision, selection)
+            logger.info("📝 Generating execution steps...")
+            steps = await self._generate_execution_steps(decision, selection, context)
             
             # Check if we have any steps to work with
             if not steps:
                 raise PlanningError("No execution steps could be generated from the provided selection")
             
+            logger.info(f"✅ Generated {len(steps)} execution steps")
+            for i, step in enumerate(steps, 1):
+                step_dict = step if isinstance(step, dict) else step.dict() if hasattr(step, 'dict') else {}
+                tool_name = step_dict.get('tool', step_dict.get('type', 'unknown'))
+                description = step_dict.get('description', 'No description')
+                logger.info(f"   {i}. {tool_name}: {description[:80]}")
+            
             # Resolve dependencies and optimize sequencing
+            logger.info("🔗 Resolving dependencies and optimizing sequence...")
             ordered_steps = self._resolve_dependencies(steps)
+            logger.info(f"✅ Steps ordered for execution")
             
             # Create safety measures
             safety_checks = self._create_safety_measures(
@@ -191,14 +207,15 @@ class StageCPlanner:
     async def _generate_execution_steps(
         self, 
         decision: DecisionV1, 
-        selection: SelectionV1
+        selection: SelectionV1,
+        context: Optional[Dict[str, Any]] = None
     ) -> List:
         """Generate execution steps from decision and selection"""
         try:
             # ALWAYS use LLM for intelligent step generation if available
             if self.llm_client:
                 logger.info("🧠 Stage C using LLM for intelligent planning (NO RULES!)")
-                return await self._generate_steps_with_llm(decision, selection)
+                return await self._generate_steps_with_llm(decision, selection, context)
             else:
                 # No LLM available - fail fast
                 logger.error("❌ Stage C: No LLM client available - FAILING FAST")
@@ -248,7 +265,8 @@ class StageCPlanner:
     async def _generate_steps_with_llm(
         self, 
         decision: DecisionV1, 
-        selection: SelectionV1
+        selection: SelectionV1,
+        context: Optional[Dict[str, Any]] = None
     ) -> List:
         """Generate steps using LLM for intelligent planning"""
         from ...schemas.plan_v1 import ExecutionStep
@@ -261,7 +279,7 @@ class StageCPlanner:
         system_prompt = self._build_planning_system_prompt()
         
         # Build the user prompt with decision and selection context
-        user_prompt = self._build_planning_user_prompt(decision, selection)
+        user_prompt = self._build_planning_user_prompt(decision, selection, context)
         
         # Create LLM request
         llm_request = LLMRequest(
@@ -658,7 +676,7 @@ CRITICAL:
 - For SSH commands, ALWAYS extract target_host, username, and password from the user's query!
 - For API requests, ALWAYS extract host/url, username, password, and API-specific parameters from the user's query!"""
 
-    def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1) -> str:
+    def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1, context: Optional[Dict[str, Any]] = None) -> str:
         """Build the user prompt with decision and selection context"""
         import json
         
@@ -673,7 +691,21 @@ CRITICAL:
         prompt = f"""Create an execution plan for the following request:
 
 **User Query:** {user_query}
+"""
+        
+        # Add conversation history if available
+        if context and "conversation_history" in context:
+            conversation_history = context["conversation_history"]
+            if conversation_history:
+                prompt += f"""
+**Conversation History (for context):**
+{conversation_history}
 
+IMPORTANT: Extract IP addresses, hostnames, credentials, and other parameters from the conversation history above!
+If the current request refers to a device/camera mentioned earlier, use those details.
+"""
+        
+        prompt += f"""
 **Intent:**
 - Category: {intent_category}
 - Action: {intent_action}
@@ -684,12 +716,57 @@ CRITICAL:
 **Selected Tools:**
 {json.dumps(selected_tools, indent=2)}
 
-**Tool Details:**
+**Tool Details with API Specifications:**
 """
         
+        # Fetch full tool details from database to get API parameter specifications
         for tool in selection.selected_tools:
-            prompt += f"\n- {tool.tool_name}: {tool.justification}\n"
+            prompt += f"\n### {tool.tool_name}\n"
+            prompt += f"**Justification:** {tool.justification}\n"
+            
+            # Fetch tool details from database
+            try:
+                tool_details = self.tool_catalog.get_tool_by_name(tool.tool_name)
+                if tool_details:
+                    # Include tool defaults (HTTP method, protocol, auth_type, etc.)
+                    if 'defaults' in tool_details:
+                        defaults = tool_details['defaults']
+                        prompt += f"**Tool Defaults:**\n"
+                        if 'method' in defaults:
+                            prompt += f"  • HTTP Method: {defaults['method']} (REQUIRED - DO NOT CHANGE)\n"
+                        if 'protocol' in defaults:
+                            prompt += f"  • Protocol: {defaults['protocol']}\n"
+                        if 'auth_type' in defaults:
+                            prompt += f"  • Auth Type: {defaults['auth_type']}\n"
+                        if 'path' in defaults:
+                            prompt += f"  • API Path: {defaults['path']}\n"
+                    
+                    if 'capabilities' in tool_details:
+                        prompt += f"**Capabilities:**\n"
+                        for cap_name, cap_data in tool_details['capabilities'].items():
+                            prompt += f"\n- **{cap_name}:**\n"
+                            if 'patterns' in cap_data:
+                                for pattern in cap_data['patterns']:
+                                    prompt += f"  - Pattern: {pattern.get('pattern_name', 'N/A')}\n"
+                                    if 'required_inputs' in pattern:
+                                        prompt += f"    Required Inputs:\n"
+                                        for inp in pattern['required_inputs']:
+                                            prompt += f"      • {inp.get('name')}: {inp.get('description', 'N/A')}\n"
+                                            # Include API parameter mapping
+                                            if 'metadata' in inp and 'api_parameters' in inp['metadata']:
+                                                api_params = inp['metadata']['api_parameters']
+                                                prompt += f"        API Parameters: {json.dumps(api_params)}\n"
+                                            if 'metadata' in inp and 'example_request' in inp['metadata']:
+                                                prompt += f"        Example: {inp['metadata']['example_request']}\n"
+            except Exception as e:
+                logger.warning(f"Could not fetch tool details for {tool.tool_name}: {e}")
+                # Continue without tool details
         
+        prompt += "\n\n**CRITICAL REQUIREMENTS:**"
+        prompt += "\n1. Use the EXACT HTTP method specified in 'Tool Defaults' above (e.g., GET for Axis cameras, NOT POST)"
+        prompt += "\n2. Use the EXACT API parameter names shown above (e.g., 'gotoserverpresetname', NOT 'presets')"
+        prompt += "\n3. Use the EXACT auth_type specified in 'Tool Defaults' (e.g., 'digest' for Axis cameras)"
+        prompt += "\n4. Return ONLY valid JSON - NO comments, NO explanations, NO trailing commas"
         prompt += "\nGenerate the execution steps as a JSON array. Remember to be intelligent about field selection!"
         
         return prompt
@@ -699,6 +776,7 @@ CRITICAL:
         from ...schemas.plan_v1 import ExecutionStep
         import json
         import uuid
+        import re
         
         try:
             # Extract JSON from response (handle markdown code blocks)
@@ -707,6 +785,13 @@ CRITICAL:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
+            
+            # Remove JSON comments (// style) that LLMs sometimes add
+            # This regex removes // comments but preserves URLs like http://
+            content = re.sub(r'(?<!:)//.*?(?=\n|$)', '', content)
+            
+            # Remove trailing commas before closing braces/brackets (common LLM mistake)
+            content = re.sub(r',(\s*[}\]])', r'\1', content)
             
             # Parse JSON
             steps_data = json.loads(content)
