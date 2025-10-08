@@ -1060,7 +1060,7 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
             # Calculate max_tokens dynamically based on prompt size
             # Rough estimate: 1 token ≈ 4 characters for English text
             estimated_prompt_tokens = len(prompt) // 4
-            max_context_length = 131072  # Qwen2.5-14B-Instruct-AWQ context window (131K tokens)
+            max_context_length = 16000  # Qwen2.5-32B-Instruct-AWQ context window (16K tokens)
             safety_buffer = 100  # Reserve tokens for formatting overhead
             
             # Calculate available tokens for output

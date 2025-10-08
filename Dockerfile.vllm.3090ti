@@ -1,0 +1,36 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install vLLM 0.11.0
+RUN pip3 install --no-cache-dir vllm==0.11.0
+
+# Pre-download the model (optional but recommended)
+RUN pip3 install --no-cache-dir huggingface-hub && \
+    python3 -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen2.5-14B-Instruct-AWQ')"
+
+# Expose vLLM port
+EXPOSE 8000
+
+# Optimized settings for RTX 3090 Ti (24GB Ampere)
+# - 14B model for better memory efficiency
+# - auto KV cache (let vLLM choose best dtype)
+# - max-model-len 8192: Balanced context window
+# - max-num-seqs 2: Limit concurrent sequences
+# - gpu-memory-utilization 0.92: Efficient VRAM usage
+# - enforce-eager: Disable CUDA graphs for stability
+CMD ["python3", "-m", "vllm.entrypoints.openai.api_server", \
+     "--model", "Qwen/Qwen2.5-14B-Instruct-AWQ", \
+     "--quantization", "awq", \
+     "--kv-cache-dtype", "auto", \
+     "--max-model-len", "8192", \
+     "--max-num-seqs", "2", \
+     "--gpu-memory-utilization", "0.92", \
+     "--enforce-eager", \
+     "--port", "8000", \
+     "--host", "0.0.0.0"]
