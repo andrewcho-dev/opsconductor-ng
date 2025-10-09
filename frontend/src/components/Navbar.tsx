@@ -9,7 +9,8 @@ import {
   LogOut,
   Menu,
   ChevronRight,
-  Calendar
+  Calendar,
+  Settings
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -119,6 +120,20 @@ const Navbar: React.FC = () => {
                   </Link>
                 </div>
               </div>
+
+              <div className="nav-divider"></div>
+              
+              {/* Settings Section */}
+              <div className="nav-section-header">System</div>
+              
+              <Link 
+                to="/settings" 
+                className={`nav-menu-item ${location.pathname === '/settings' || location.pathname.startsWith('/settings/') ? 'active' : ''}`} 
+                onClick={closeMenu}
+              >
+                <span className="nav-icon"><Settings size={16} /></span>
+                Settings
+              </Link>
 
               <div className="nav-divider"></div>
               <button onClick={handleLogout} className="nav-menu-item logout">

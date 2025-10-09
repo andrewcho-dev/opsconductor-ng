@@ -6,7 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AIChatPage from './pages/AIChat';
 import Assets from './pages/Assets';
-import LegacySettings from './pages/LegacySettings';
+import Settings from './pages/Settings';
 import SchedulesPage from './pages/SchedulesPage';
 
 // Protected Route Component
@@ -48,8 +48,8 @@ const App: React.FC = () => {
                     <Route path="/assets/:action" element={<Assets />} />
                     <Route path="/assets/:action/:id" element={<Assets />} />
 
-                    {/* Legacy Settings */}
-                    <Route path="/legacy-settings" element={<LegacySettings />} />
+                    {/* Settings */}
+                    <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<Navigate to="/" />} />
                   </Routes>
                 </ProtectedRoute>
