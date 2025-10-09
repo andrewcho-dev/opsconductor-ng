@@ -152,6 +152,22 @@ CREATE INDEX IF NOT EXISTS idx_job_run_steps_status ON automation.job_run_steps(
 -- COMMUNICATION SERVICE SCHEMA
 -- ============================================================================
 
+-- SMTP Settings (dedicated table for email configuration)
+CREATE TABLE IF NOT EXISTS communication.smtp_settings (
+    id SERIAL PRIMARY KEY,
+    host VARCHAR(255) NOT NULL,
+    port INTEGER NOT NULL DEFAULT 587,
+    username VARCHAR(255),
+    password TEXT,
+    use_tls BOOLEAN DEFAULT true,
+    use_ssl BOOLEAN DEFAULT false,
+    from_email VARCHAR(255) NOT NULL,
+    from_name VARCHAR(255),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Communication channels
 CREATE TABLE IF NOT EXISTS communication.channels (
     id SERIAL PRIMARY KEY,
@@ -205,6 +221,7 @@ CREATE TABLE IF NOT EXISTS communication.audit_logs (
 );
 
 -- Indexes
+CREATE INDEX IF NOT EXISTS idx_smtp_settings_is_active ON communication.smtp_settings(is_active);
 CREATE INDEX IF NOT EXISTS idx_channels_name ON communication.channels(name);
 CREATE INDEX IF NOT EXISTS idx_channels_type ON communication.channels(type);
 CREATE INDEX IF NOT EXISTS idx_templates_name ON communication.templates(name);

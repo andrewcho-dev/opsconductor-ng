@@ -578,7 +578,7 @@ export const communicationApi = {
   // SMTP Settings
   getSmtpSettings: async (): Promise<SMTPSettingsResponse> => {
     try {
-      const response: AxiosResponse<SMTPSettingsResponse> = await api.get('/api/v1/smtp/settings');
+      const response: AxiosResponse<SMTPSettingsResponse> = await api.get('/api/v1/notifications/smtp');
       return response.data;
     } catch (error: any) {
       // Return default settings if none exist
@@ -608,13 +608,19 @@ export const communicationApi = {
   },
 
   saveSmtpSettings: async (settings: SMTPSettings): Promise<SMTPSettingsResponse> => {
-    const response: AxiosResponse<SMTPSettingsResponse> = await api.post('/api/v1/smtp/settings', settings);
-    return response.data;
+    // If settings has an ID, use PUT to update, otherwise POST to create
+    if (settings.id && settings.id > 0) {
+      const response: AxiosResponse<SMTPSettingsResponse> = await api.put(`/api/v1/notifications/smtp/${settings.id}`, settings);
+      return response.data;
+    } else {
+      const response: AxiosResponse<SMTPSettingsResponse> = await api.post('/api/v1/notifications/smtp', settings);
+      return response.data;
+    }
   },
 
   testSmtpSettings: async (testRequest: SMTPTestRequest): Promise<SMTPTestResponse> => {
     try {
-      const response: AxiosResponse<SMTPTestResponse> = await api.post('/api/v1/smtp/test', testRequest);
+      const response: AxiosResponse<SMTPTestResponse> = await api.post('/api/v1/notifications/smtp/test', testRequest);
       return response.data;
     } catch (error: any) {
       console.error('SMTP test failed:', error);

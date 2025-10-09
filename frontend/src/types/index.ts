@@ -233,30 +233,28 @@ export interface JobRunListResponse {
 
 
 export interface SMTPSettings {
+  id?: number;
   host: string;
   port: number;
-  username: string;
-  password: string;
+  username?: string | null;
+  password?: string | null;
   use_tls: boolean;
-  use_ssl?: boolean;
+  use_ssl: boolean;
   from_email: string;
-  from_name: string;
-}
-
-export interface SMTPSettingsData extends Omit<SMTPSettings, 'password'> {
-  id?: number;
-  password: string; // Masked
-  use_ssl?: boolean;
-  is_active?: boolean;
-  is_configured: boolean;
+  from_name?: string | null;
+  is_active: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SMTPSettingsData extends SMTPSettings {
+  is_configured?: boolean;
 }
 
 export interface SMTPSettingsResponse {
   success: boolean;
   data: SMTPSettingsData | null;
-  message: string;
+  message?: string;
 }
 
 export interface SMTPTestRequest {

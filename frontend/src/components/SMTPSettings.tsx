@@ -13,8 +13,10 @@ const SMTPSettingsComponent: React.FC = () => {
     username: '',
     password: '',
     use_tls: true,
+    use_ssl: false,
     from_email: '',
-    from_name: 'OpsConductor'
+    from_name: 'OpsConductor',
+    is_active: true
   });
 
   const [currentSettings, setCurrentSettings] = useState<SMTPSettingsResponse | null>(null);
@@ -51,13 +53,16 @@ const SMTPSettingsComponent: React.FC = () => {
       // Populate form with current settings (password will be masked)
       if (response.data) {
         setSettings({
+          id: response.data.id,
           host: response.data.host || '',
           port: response.data.port || 587,
           username: response.data.username || '',
           password: '', // Don't populate password field
           use_tls: response.data.use_tls !== false,
+          use_ssl: response.data.use_ssl || false,
           from_email: response.data.from_email || '',
-          from_name: response.data.from_name || 'OpsConductor'
+          from_name: response.data.from_name || 'OpsConductor',
+          is_active: response.data.is_active !== false
         });
       } else {
         // No SMTP configuration found, use defaults
@@ -67,8 +72,10 @@ const SMTPSettingsComponent: React.FC = () => {
           username: '',
           password: '',
           use_tls: true,
+          use_ssl: false,
           from_email: '',
-          from_name: 'OpsConductor'
+          from_name: 'OpsConductor',
+          is_active: true
         });
       }
       
@@ -405,7 +412,33 @@ const SMTPSettingsComponent: React.FC = () => {
               className="checkbox-input"
             />
             <label htmlFor="use_tls" className="checkbox-label">
-              Use TLS encryption (recommended)
+              Use TLS encryption (recommended for port 587)
+            </label>
+          </div>
+
+          <div className="form-checkbox">
+            <input
+              id="use_ssl"
+              type="checkbox"
+              checked={settings.use_ssl}
+              onChange={(e) => handleInputChange('use_ssl', e.target.checked)}
+              className="checkbox-input"
+            />
+            <label htmlFor="use_ssl" className="checkbox-label">
+              Use SSL encryption (for port 465)
+            </label>
+          </div>
+
+          <div className="form-checkbox">
+            <input
+              id="is_active"
+              type="checkbox"
+              checked={settings.is_active}
+              onChange={(e) => handleInputChange('is_active', e.target.checked)}
+              className="checkbox-input"
+            />
+            <label htmlFor="is_active" className="checkbox-label">
+              Active (enable SMTP for sending emails)
             </label>
           </div>
 

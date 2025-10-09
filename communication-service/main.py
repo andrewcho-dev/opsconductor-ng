@@ -849,11 +849,12 @@ class CommunicationService(BaseService):
             """Test SMTP configuration by sending a test email"""
             try:
                 async with self.db.pool.acquire() as conn:
-                    # Get active SMTP settings from notification_channels
+                    # Get active SMTP settings from smtp_settings table
                     row = await conn.fetchrow("""
-                        SELECT configuration
-                        FROM communication.notification_channels 
-                        WHERE channel_type = 'smtp' AND is_active = true
+                        SELECT host, port, username, password, use_tls, use_ssl, 
+                               from_email, from_name
+                        FROM communication.smtp_settings 
+                        WHERE is_active = true
                         ORDER BY created_at DESC
                         LIMIT 1
                     """)
@@ -864,13 +865,19 @@ class CommunicationService(BaseService):
                             detail="No active SMTP configuration found"
                         )
                     
-                    # Parse configuration JSON
-                    config = row['configuration']
-                    if isinstance(config, str):
-                        import json
-                        config = json.loads(config)
+                    # Build config from row data
+                    config = {
+                        'host': row['host'],
+                        'port': row['port'],
+                        'username': row['username'],
+                        'password': row['password'],
+                        'use_tls': row['use_tls'],
+                        'use_ssl': row['use_ssl'],
+                        'from_email': row['from_email'],
+                        'from_name': row['from_name']
+                    }
                     
-                    # Test SMTP connection (simplified - in production you'd use actual SMTP library)
+                    # Test SMTP connection
                     import smtplib
                     from email.mime.text import MIMEText
                     from email.mime.multipart import MIMEMultipart
