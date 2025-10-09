@@ -154,15 +154,15 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
           suppressRowHoverHighlight={false}
           headerHeight={28}
           rowHeight={32}
-          domLayout="autoHeight"
+          domLayout="normal"
         />
       </div>
 
       <style>{`
         .asset-data-grid {
-          height: auto;
+          height: 100%;
           width: 100%;
-          overflow: visible;
+          overflow: hidden;
           display: flex;
           flex-direction: column;
           border: none;
@@ -181,12 +181,12 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
         }
         
         .ag-grid-wrapper {
-          height: auto;
+          height: 100%;
           width: 100%;
           outline: none;
           background: transparent;
           border: none;
-          overflow: visible;
+          overflow: hidden;
         }
         
         .ag-grid-wrapper:focus {
@@ -211,8 +211,9 @@ const AssetDataGrid = forwardRef<AssetDataGridRef, AssetDataGridProps>((props, r
         .asset-data-grid .ag-theme-alpine .ag-root-wrapper {
           border: 1px solid var(--ag-border-color) !important;
           border-radius: 0 !important;
-          overflow: visible !important;
+          overflow: hidden !important;
           background: transparent !important;
+          height: 100% !important;
         }
 
         /* Header row border using AG-Grid's native border system */

@@ -1129,6 +1129,9 @@ const Assets: React.FC = () => {
           .assets-table-section {
             grid-column: 1;
             height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
           }
           .detail-grid-2col {
             grid-column: 2 / 4;
@@ -1275,6 +1278,8 @@ const Assets: React.FC = () => {
             width: 100%;
             box-sizing: border-box;
             border: none;
+            flex: 1;
+            overflow: hidden;
           }
           
           /* Make AG-Grid components respect the container with proper spacing */
