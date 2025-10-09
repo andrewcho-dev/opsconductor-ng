@@ -1,5 +1,6 @@
 # rsyslog - Rocket-fast system for log processing
 tool_name: rsyslog
+execution_location: automation-service
 version: '1.0'
 description: Rocket-fast system for log processing
 platform: monitoring

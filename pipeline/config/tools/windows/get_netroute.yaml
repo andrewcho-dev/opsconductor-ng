@@ -1,5 +1,6 @@
 # Get-NetRoute - Query routing table
 tool_name: Get-NetRoute
+execution_location: automation-service
 version: '1.0'
 description: Query routing table
 platform: windows

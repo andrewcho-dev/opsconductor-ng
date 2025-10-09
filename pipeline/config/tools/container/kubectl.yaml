@@ -1,5 +1,6 @@
 # kubectl - Kubernetes command-line tool
 tool_name: kubectl
+execution_location: automation-service
 version: '1.0'
 description: Kubernetes command-line tool
 platform: kubernetes

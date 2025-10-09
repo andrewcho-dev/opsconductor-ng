@@ -1,5 +1,6 @@
 # Get-ADGroup - Query Active Directory groups
 tool_name: Get-ADGroup
+execution_location: automation-service
 version: '1.0'
 description: Query Active Directory groups
 platform: windows

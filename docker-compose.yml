@@ -161,8 +161,9 @@ services:
       - ./api:/app/api
       - ./shared:/app/shared
       - ./tests:/app/tests
-      - ./execution:/app/execution
       - ./database:/app/database
+      # NOTE: execution/ directory NOT mounted - ai-pipeline does NOT execute
+      # All execution happens in automation-service container
     networks:
       - opsconductor
     depends_on:
@@ -195,6 +196,8 @@ services:
       - ./automation-service/main_clean.py:/app/main_clean.py
       - ./automation-service/libraries:/app/libraries
       - ./shared:/app/shared
+      - ./execution:/app/execution
+      # NOTE: automation-service is the ONLY container that executes commands
     networks:
       - opsconductor
     depends_on:

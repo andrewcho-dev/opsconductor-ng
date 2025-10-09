@@ -1,5 +1,6 @@
 # Start-Job - Start background PowerShell jobs
 tool_name: Start-Job
+execution_location: automation-service
 version: '1.0'
 description: Start background PowerShell jobs
 platform: windows

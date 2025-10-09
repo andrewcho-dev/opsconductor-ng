@@ -1,5 +1,6 @@
 # Get-HotFix - Query installed Windows updates
 tool_name: Get-HotFix
+execution_location: automation-service
 version: '1.0'
 description: Query installed Windows updates
 platform: windows

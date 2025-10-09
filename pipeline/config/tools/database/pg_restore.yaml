@@ -1,5 +1,6 @@
 # pg_restore - PostgreSQL database restore
 tool_name: pg_restore
+execution_location: automation-service
 version: '1.0'
 description: PostgreSQL database restore
 platform: database

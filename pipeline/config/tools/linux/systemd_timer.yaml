@@ -1,5 +1,6 @@
 # systemd-timer - Systemd timer units
 tool_name: systemd-timer
+execution_location: automation-service
 version: '1.0'
 description: Systemd timer units
 platform: linux

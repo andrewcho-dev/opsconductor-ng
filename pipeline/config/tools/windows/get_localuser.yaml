@@ -1,5 +1,6 @@
 # Get-LocalUser - Query local user accounts
 tool_name: Get-LocalUser
+execution_location: automation-service
 version: '1.0'
 description: Query local user accounts
 platform: windows

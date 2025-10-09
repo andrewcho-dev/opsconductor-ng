@@ -1,5 +1,6 @@
 # Get-FileHash - Calculate file hashes (MD5, SHA256)
 tool_name: Get-FileHash
+execution_location: automation-service
 version: '1.0'
 description: Calculate file hashes (MD5, SHA256)
 platform: windows

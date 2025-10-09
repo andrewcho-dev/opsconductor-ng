@@ -1,5 +1,6 @@
 # pg_isready - Check PostgreSQL connection status
 tool_name: pg_isready
+execution_location: automation-service
 version: '1.0'
 description: Check PostgreSQL connection status
 platform: database

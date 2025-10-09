@@ -1,5 +1,6 @@
 # asset-query - Query asset inventory
 tool_name: asset-query
+execution_location: asset-service
 version: '1.0'
 description: Query asset inventory
 platform: custom

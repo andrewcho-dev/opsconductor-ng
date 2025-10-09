@@ -1,5 +1,6 @@
 # cat - Display file contents
 tool_name: cat
+execution_location: automation-service
 version: '1.0'
 description: Display file contents
 platform: linux

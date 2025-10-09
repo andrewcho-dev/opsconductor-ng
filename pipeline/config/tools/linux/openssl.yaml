@@ -1,5 +1,6 @@
 # openssl - SSL/TLS toolkit
 tool_name: openssl
+execution_location: automation-service
 version: '1.0'
 description: SSL/TLS toolkit
 platform: linux

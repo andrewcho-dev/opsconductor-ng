@@ -1,5 +1,6 @@
 # logrotate - Log file rotation utility
 tool_name: logrotate
+execution_location: automation-service
 version: '1.0'
 description: Log file rotation utility
 platform: monitoring

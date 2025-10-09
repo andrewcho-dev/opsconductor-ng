@@ -1,5 +1,6 @@
 # Axis VAPIX Day/Night - Control camera day/night mode via VAPIX API
 tool_name: Axis-VAPIX-DayNight
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera day/night mode via VAPIX API.

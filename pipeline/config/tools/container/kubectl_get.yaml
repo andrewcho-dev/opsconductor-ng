@@ -1,5 +1,6 @@
 # kubectl-get - Display Kubernetes resources
 tool_name: kubectl-get
+execution_location: automation-service
 version: '1.0'
 description: Display Kubernetes resources
 platform: kubernetes

@@ -1,5 +1,6 @@
 # Test-Path - Test if file/folder exists
 tool_name: Test-Path
+execution_location: automation-service
 version: '1.0'
 description: Test if file/folder exists
 platform: windows

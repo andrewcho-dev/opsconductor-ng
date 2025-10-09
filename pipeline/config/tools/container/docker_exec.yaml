@@ -1,5 +1,6 @@
 # docker-exec - Execute command in container
 tool_name: docker-exec
+execution_location: automation-service
 version: '1.0'
 description: Execute command in container
 platform: container

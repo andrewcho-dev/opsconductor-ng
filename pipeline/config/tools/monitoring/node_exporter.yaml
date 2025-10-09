@@ -1,5 +1,6 @@
 # node_exporter - Prometheus exporter for hardware and OS metrics
 tool_name: node_exporter
+execution_location: automation-service
 version: '1.0'
 description: Prometheus exporter for hardware and OS metrics
 platform: monitoring

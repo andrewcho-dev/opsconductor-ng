@@ -1,5 +1,6 @@
 # killall - Kill processes by name (all instances)
 tool_name: killall
+execution_location: automation-service
 version: '1.0'
 description: Kill processes by name (all instances)
 platform: linux

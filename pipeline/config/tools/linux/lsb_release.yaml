@@ -1,5 +1,6 @@
 # lsb_release - Display Linux distribution information
 tool_name: lsb_release
+execution_location: automation-service
 version: '1.0'
 description: Display Linux distribution information
 platform: linux

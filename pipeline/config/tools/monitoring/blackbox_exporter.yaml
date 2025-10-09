@@ -1,5 +1,6 @@
 # blackbox_exporter - Prometheus exporter for blackbox probing
 tool_name: blackbox_exporter
+execution_location: automation-service
 version: '1.0'
 description: Prometheus exporter for blackbox probing
 platform: monitoring

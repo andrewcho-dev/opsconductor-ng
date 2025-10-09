@@ -1,5 +1,6 @@
 # Get-Disk - Query disk information
 tool_name: Get-Disk
+execution_location: automation-service
 version: '1.0'
 description: Query disk information
 platform: windows

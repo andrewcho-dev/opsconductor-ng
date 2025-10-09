@@ -1,5 +1,6 @@
 # systemctl - System and service manager for Linux
 tool_name: "systemctl"
+execution_location: automation-service
 version: "1.0"
 description: "Control systemd system and service manager"
 platform: "linux"

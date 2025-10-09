@@ -1,5 +1,6 @@
 # dig - DNS lookup utility
 tool_name: "dig"
+execution_location: automation-service
 version: "1.0"
 description: "Advanced DNS lookup utility for querying DNS name servers with detailed response information"
 platform: "linux"

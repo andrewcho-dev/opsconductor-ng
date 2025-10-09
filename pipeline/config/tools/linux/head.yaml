@@ -1,5 +1,6 @@
 # head - Display first lines of file
 tool_name: head
+execution_location: automation-service
 version: '1.0'
 description: Display first lines of file
 platform: linux

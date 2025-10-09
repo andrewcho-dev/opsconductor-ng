@@ -1,5 +1,6 @@
 # id - Display user and group IDs
 tool_name: id
+execution_location: automation-service
 version: '1.0'
 description: Display user and group IDs
 platform: linux

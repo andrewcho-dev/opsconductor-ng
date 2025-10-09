@@ -1,5 +1,6 @@
 # ls - List directory contents
 tool_name: "ls"
+execution_location: automation-service
 version: "1.0"
 description: "List and display information about files and directories in the filesystem"
 platform: "linux"

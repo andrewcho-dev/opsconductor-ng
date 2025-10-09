@@ -811,6 +811,108 @@ async def get_network_analysis(analysis_id: int):
         logger.error("Failed to get network analysis", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/execute-plan")
+async def execute_plan_from_pipeline(request: Dict[str, Any]):
+    """
+    Execute a network analysis plan from AI-pipeline
+    
+    Handles network-specific tools:
+    - tcpdump: Packet capture
+    - tshark: Wireshark CLI
+    - nmap: Network scanning
+    - scapy: Packet manipulation
+    - pyshark: Python packet analysis
+    - And many more network analysis tools
+    
+    Args:
+        request: {
+            "execution_id": str,
+            "plan": dict,
+            "tenant_id": str,
+            "actor_id": int
+        }
+    
+    Returns:
+        Execution result with status, output, and timing
+    """
+    try:
+        logger.info(f"Received network execution request from ai-pipeline: {request.get('execution_id')}")
+        
+        execution_id = request.get("execution_id")
+        plan = request.get("plan", {})
+        steps = plan.get("steps", [])
+        
+        if not steps:
+            return {
+                "execution_id": execution_id,
+                "status": "failed",
+                "result": {},
+                "step_results": [],
+                "completed_at": datetime.utcnow().isoformat(),
+                "error_message": "No steps in plan"
+            }
+        
+        # Execute each network step
+        step_results = []
+        overall_success = True
+        
+        for idx, step in enumerate(steps):
+            tool = step.get("tool", "unknown")
+            inputs = step.get("inputs", {})
+            
+            logger.info(f"Executing network step {idx + 1}/{len(steps)}: {tool}")
+            
+            try:
+                # Execute network tool (stub implementation)
+                # TODO: Implement actual network tool execution logic
+                result = {
+                    "success": True,
+                    "message": f"Network tool '{tool}' executed successfully (stub implementation)",
+                    "tool": tool,
+                    "details": inputs,
+                    "output": "Network analysis output would appear here"
+                }
+                
+                step_results.append({
+                    "step_index": idx,
+                    "tool": tool,
+                    "status": "completed" if result.get("success") else "failed",
+                    "output": result,
+                    "completed_at": datetime.utcnow().isoformat()
+                })
+                
+                if not result.get("success"):
+                    overall_success = False
+            
+            except Exception as e:
+                logger.error(f"Network step {idx + 1} failed: {e}", exc_info=True)
+                step_results.append({
+                    "step_index": idx,
+                    "tool": tool,
+                    "status": "failed",
+                    "error": str(e),
+                    "completed_at": datetime.utcnow().isoformat()
+                })
+                overall_success = False
+        
+        # Return result to ai-pipeline
+        return {
+            "execution_id": execution_id,
+            "status": "completed" if overall_success else "failed",
+            "result": {
+                "total_steps": len(steps),
+                "successful_steps": sum(1 for r in step_results if r.get("status") == "completed"),
+                "failed_steps": sum(1 for r in step_results if r.get("status") == "failed")
+            },
+            "step_results": step_results,
+            "completed_at": datetime.utcnow().isoformat(),
+            "error_message": None if overall_success else "One or more network steps failed"
+        }
+    
+    except Exception as e:
+        logger.error(f"Network plan execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

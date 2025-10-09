@@ -1,5 +1,6 @@
 # aws-lambda - AWS Lambda function management
 tool_name: aws-lambda
+execution_location: automation-service
 version: '1.0'
 description: AWS Lambda function management
 platform: cloud

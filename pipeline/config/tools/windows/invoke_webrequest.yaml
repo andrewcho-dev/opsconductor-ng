@@ -1,5 +1,6 @@
 # Invoke-WebRequest - Make HTTP/HTTPS requests from PowerShell
 tool_name: Invoke-WebRequest
+execution_location: automation-service
 version: '1.0'
 description: Make HTTP/HTTPS requests from PowerShell
 platform: windows

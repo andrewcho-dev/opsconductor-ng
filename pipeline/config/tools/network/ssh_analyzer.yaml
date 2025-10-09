@@ -1,5 +1,6 @@
 # ssh-analyzer - Analyze SSH protocol traffic
 tool_name: ssh-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze SSH protocol traffic
 platform: network

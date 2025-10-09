@@ -1,5 +1,6 @@
 # kubectx - Switch between Kubernetes contexts
 tool_name: kubectx
+execution_location: automation-service
 version: '1.0'
 description: Switch between Kubernetes contexts
 platform: kubernetes

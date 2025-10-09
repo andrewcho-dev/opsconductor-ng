@@ -1,5 +1,6 @@
 # Test-Connection - Test network connectivity (Windows ping)
 tool_name: "Test-Connection"
+execution_location: automation-service
 version: "1.0"
 description: "Test network connectivity and measure round-trip time using ICMP echo requests on Windows systems"
 platform: "windows"

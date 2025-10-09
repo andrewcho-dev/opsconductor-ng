@@ -1,5 +1,6 @@
 # udp-analyzer - Analyze UDP protocol traffic
 tool_name: udp-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze UDP protocol traffic
 platform: network

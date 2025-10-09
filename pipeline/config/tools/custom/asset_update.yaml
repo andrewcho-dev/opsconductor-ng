@@ -1,5 +1,6 @@
 # asset-update - Update asset information
 tool_name: asset-update
+execution_location: asset-service
 version: '1.0'
 description: Update asset information
 platform: custom

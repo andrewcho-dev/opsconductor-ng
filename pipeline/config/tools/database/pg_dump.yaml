@@ -1,5 +1,6 @@
 # pg_dump - PostgreSQL database backup
 tool_name: pg_dump
+execution_location: automation-service
 version: '1.0'
 description: PostgreSQL database backup
 platform: database

@@ -1,5 +1,6 @@
 # cut - Extract columns from text
 tool_name: cut
+execution_location: automation-service
 version: '1.0'
 description: Extract columns from text
 platform: linux

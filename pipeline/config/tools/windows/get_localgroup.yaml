@@ -1,5 +1,6 @@
 # Get-LocalGroup - Query local security groups
 tool_name: Get-LocalGroup
+execution_location: automation-service
 version: '1.0'
 description: Query local security groups
 platform: windows

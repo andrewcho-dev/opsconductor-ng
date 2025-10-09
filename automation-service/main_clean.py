@@ -378,6 +378,65 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     recent_history = service.execution_history[-limit:] if service.execution_history else []
     return {"executions": recent_history, "total": len(service.execution_history)}
 
+@service.app.post("/execute-plan")
+async def execute_plan_from_pipeline(request: Dict[str, Any]):
+    """
+    Execute a plan from AI-pipeline
+    
+    THIS IS THE ONLY CONTAINER THAT EXECUTES COMMANDS
+    AI-pipeline orchestrates, automation-service executes
+    
+    Args:
+        request: {
+            "execution_id": str,
+            "plan": dict,
+            "tenant_id": str,
+            "actor_id": int
+        }
+    
+    Returns:
+        Execution result with status, output, and timing
+    """
+    try:
+        service.logger.info(f"Received execution request from ai-pipeline: {request.get('execution_id')}")
+        
+        # Import execution engine (only available in automation-service)
+        sys.path.insert(0, '/app')
+        from execution.execution_engine import ExecutionEngine
+        from execution.models import ExecutionModel, ExecutionStatus as ExecStatus
+        
+        # Create execution model from plan
+        execution = ExecutionModel(
+            execution_id=uuid.UUID(request["execution_id"]),
+            tenant_id=request["tenant_id"],
+            actor_id=request["actor_id"],
+            plan_snapshot=request["plan"],
+            status=ExecStatus.RUNNING,
+            created_at=datetime.utcnow()
+        )
+        
+        # Execute using execution engine
+        engine = ExecutionEngine(
+            db_connection_string=os.getenv("DATABASE_URL"),
+            redis_url=os.getenv("REDIS_URL")
+        )
+        result = await engine.execute(execution)
+        
+        # Return result to ai-pipeline
+        return {
+            "execution_id": str(execution.execution_id),
+            "status": result.status.value if hasattr(result.status, 'value') else str(result.status),
+            "result": result.result or {},
+            "step_results": result.step_results,
+            "completed_at": result.completed_at.isoformat() if result.completed_at else None,
+            "error_message": result.error_message if hasattr(result, 'error_message') else None,
+            "error_details": result.error_details if hasattr(result, 'error_details') else None
+        }
+        
+    except Exception as e:
+        service.logger.error(f"Plan execution failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @service.app.get("/status")
 async def get_service_status():
     """Get service status and capabilities"""
@@ -389,6 +448,7 @@ async def get_service_status():
         "capabilities": {
             "direct_execution": True,
             "workflow_execution": True,
+            "plan_execution": True,  # NEW: Execute plans from ai-pipeline
             "background_processing": False,  # Handled by Prefect
             "job_queuing": False,  # Handled by Prefect
             "scheduling": False  # Handled by Prefect

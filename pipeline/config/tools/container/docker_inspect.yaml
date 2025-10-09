@@ -1,5 +1,6 @@
 # docker-inspect - Display detailed container information
 tool_name: docker-inspect
+execution_location: automation-service
 version: '1.0'
 description: Display detailed container information
 platform: container

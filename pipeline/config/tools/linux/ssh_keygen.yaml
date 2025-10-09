@@ -1,5 +1,6 @@
 # ssh-keygen - Generate SSH key pairs
 tool_name: ssh-keygen
+execution_location: automation-service
 version: '1.0'
 description: Generate SSH key pairs
 platform: linux

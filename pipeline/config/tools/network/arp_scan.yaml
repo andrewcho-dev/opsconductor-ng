@@ -1,5 +1,6 @@
 # arp-scan - ARP scanning and fingerprinting tool
 tool_name: arp-scan
+execution_location: network-service
 version: '1.0'
 description: ARP scanning and fingerprinting tool
 platform: network

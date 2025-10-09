@@ -1,5 +1,6 @@
 # alertmanager - Prometheus Alertmanager
 tool_name: alertmanager
+execution_location: automation-service
 version: '1.0'
 description: Prometheus Alertmanager
 platform: monitoring

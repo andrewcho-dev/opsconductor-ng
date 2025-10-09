@@ -133,13 +133,19 @@ class ExecutionEngine:
             for step in steps:
                 try:
                     step_result = await self._execute_step(step, execution)
-                    step_results.append({
+                    step_result_dict = {
                         "step_id": str(step.step_id),
                         "step_name": step.step_name,
                         "status": step_result.status.value,
                         "duration_ms": step_result.duration_ms,
                         "output_data": step_result.output_data,
-                    })
+                    }
+                    
+                    # Include error_message if step failed
+                    if step_result.status == ExecutionStatus.FAILED and step_result.error_message:
+                        step_result_dict["error_message"] = step_result.error_message
+                    
+                    step_results.append(step_result_dict)
                     
                     # Check if step failed
                     if step_result.status == ExecutionStatus.FAILED:
@@ -327,11 +333,24 @@ class ExecutionEngine:
             error_message = None
             
             if isinstance(output_data, dict):
-                # Check for error status in output
-                if output_data.get("status") == "error":
+                # Check for error or failed status in output
+                status = output_data.get("status")
+                if status == "error":
                     step_failed = True
                     error_message = output_data.get("error", "Unknown error")
                     logger.info(f"   ⚠️  Step returned error status: {error_message}")
+                elif status == "failed":
+                    step_failed = True
+                    # Build error message from exit code and stderr
+                    exit_code = output_data.get("exit_code", "unknown")
+                    stderr = output_data.get("stderr", "")
+                    stdout = output_data.get("stdout", "")
+                    error_message = f"Command failed with exit code {exit_code}"
+                    if stderr:
+                        error_message += f": {stderr}"
+                    elif stdout:
+                        error_message += f": {stdout}"
+                    logger.info(f"   ⚠️  Step returned failed status: {error_message}")
             
             if step_failed:
                 # Update step status to failed
@@ -448,7 +467,24 @@ class ExecutionEngine:
                 cmd += " --no-pager"
             return cmd
         
-        # Network tools (ping, traceroute, etc.)
+        # Ping command
+        elif tool_name == "ping":
+            target = inputs.get("target") or inputs.get("host") or inputs.get("ip_address") or "localhost"
+            count = inputs.get("count", 4)
+            return f"ping -c {count} {target}"
+        
+        # Traceroute command
+        elif tool_name == "traceroute":
+            target = inputs.get("target") or inputs.get("host") or inputs.get("ip_address") or "localhost"
+            return f"traceroute {target}"
+        
+        # Test-NetConnection (PowerShell) -> Convert to ping (Linux)
+        elif tool_name == "test-netconnection":
+            target = inputs.get("target") or inputs.get("host") or inputs.get("ip_address") or inputs.get("computername") or "localhost"
+            count = inputs.get("count", 4)
+            return f"ping -c {count} {target}"
+        
+        # Network tools (generic)
         elif tool_name == "network_tools":
             subtool = inputs.get("tool", "ping")
             if subtool == "ping":
@@ -481,6 +517,98 @@ class ExecutionEngine:
         else:
             logger.warning(f"Unknown tool: {tool_name}, using as-is")
             return tool_name
+    
+    async def _execute_via_automation_service(
+        self,
+        command: str,
+        target_host: Optional[str] = None,
+        connection_type: str = "local",
+        credentials: Optional[Dict[str, Any]] = None,
+        timeout: int = 300,
+        working_directory: Optional[str] = None,
+        environment_vars: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute a command via the automation-service HTTP API
+        
+        Args:
+            command: Command to execute
+            target_host: Target host (None for local execution in automation-service)
+            connection_type: Connection type (local, ssh, powershell)
+            credentials: Credentials dictionary
+            timeout: Timeout in seconds
+            working_directory: Working directory for command execution
+            environment_vars: Environment variables
+        
+        Returns:
+            Execution result dictionary
+        """
+        try:
+            # Get automation service URL from environment
+            automation_service_url = os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+            
+            # Build request payload
+            payload = {
+                "command": command,
+                "target_host": target_host,
+                "connection_type": connection_type,
+                "credentials": credentials,
+                "timeout": timeout,
+                "working_directory": working_directory,
+                "environment_vars": environment_vars,
+            }
+            
+            logger.info(f"Calling automation-service at {automation_service_url}/execute")
+            logger.info(f"  Command: {command}")
+            logger.info(f"  Connection type: {connection_type}")
+            logger.info(f"  Target host: {target_host}")
+            
+            # Call automation service
+            async with httpx.AsyncClient(timeout=timeout + 10) as client:
+                response = await client.post(
+                    f"{automation_service_url}/execute",
+                    json=payload
+                )
+                response.raise_for_status()
+                result = response.json()
+            
+            logger.info(f"Automation service response: status={result.get('status')}, exit_code={result.get('exit_code')}")
+            
+            # Return result in expected format
+            return {
+                "status": result.get("status", "failed"),
+                "exit_code": result.get("exit_code", -1),
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "duration_seconds": result.get("duration_seconds", 0),
+                "timestamp": result.get("completed_at") or datetime.utcnow().isoformat(),
+                "connection_type": connection_type,
+                "execution_id": result.get("execution_id"),
+            }
+        
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Automation service HTTP error: {e.response.status_code} - {e.response.text}")
+            return {
+                "status": "failed",
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Automation service error: {e.response.text}",
+                "duration_seconds": 0,
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": connection_type,
+            }
+        
+        except Exception as e:
+            logger.error(f"Failed to call automation service: {e}", exc_info=True)
+            return {
+                "status": "failed",
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Failed to call automation service: {str(e)}",
+                "duration_seconds": 0,
+                "timestamp": datetime.utcnow().isoformat(),
+                "connection_type": connection_type,
+            }
     
     async def _execute_step_by_type(
         self,
@@ -544,10 +672,16 @@ class ExecutionEngine:
         
         # Step 2.5: Check if this is a Linux/SSH tool
         logger.info("   🔍 Checking if Linux SSH tool...")
-        if self._is_linux_ssh_tool(step):
-            logger.info(f"   ✅ DETECTED: Linux SSH tool")
-            return await self._execute_ssh_step(step, asset)
-        logger.info("   ❌ Not a Linux SSH tool")
+        try:
+            is_linux_ssh = self._is_linux_ssh_tool(step)
+            logger.info(f"   🔍 _is_linux_ssh_tool returned: {is_linux_ssh}")
+            if is_linux_ssh:
+                logger.info(f"   ✅ DETECTED: Linux SSH tool")
+                return await self._execute_ssh_step(step, asset)
+            logger.info("   ❌ Not a Linux SSH tool")
+        except Exception as e:
+            logger.error(f"   ❌ ERROR in _is_linux_ssh_tool: {e}", exc_info=True)
+            logger.info("   ❌ Not a Linux SSH tool (due to error)")
         
         # Step 2.6: Check if this is an API/HTTP tool
         logger.info("   🔍 Checking if API/HTTP tool...")
@@ -607,48 +741,33 @@ class ExecutionEngine:
                 if not command or command == step.step_type:
                     raise ValueError(f"No command specified and unable to convert tool '{step.step_type}' to command")
             
-            # Determine connection type
-            connection_type = "local"
-            credentials = None
-            target_host = None
-            
-            if asset:
-                target_host = asset.hostname or asset.ip_address
-                connection_type = self.automation_client.determine_connection_type(
-                    asset.os_type,
-                    asset.service_type
+            # If no asset is specified, execute locally via automation-service
+            if not asset:
+                logger.info("No asset specified, executing command locally via automation-service")
+                result = await self._execute_via_automation_service(
+                    command=command,
+                    target_host=None,
+                    connection_type="local",
+                    credentials=None,
+                    timeout=step.input_data.get("timeout", 300),
+                    working_directory=step.input_data.get("working_directory"),
+                    environment_vars=step.input_data.get("environment_vars"),
                 )
-                
-                # Build credentials
-                credentials = self.automation_client.build_credentials_dict(
-                    username=asset.username,
-                    password=asset.password,
-                    private_key=asset.private_key,
-                    api_key=asset.api_key,
-                    bearer_token=asset.bearer_token,
-                )
+                return result
             
-            # Execute command
-            result = await self.automation_client.execute_command(
+            # If asset is specified, we need to route to the appropriate execution method
+            # based on the OS type
+            logger.warning(f"Asset-based execution not yet implemented for command step, executing locally via automation-service")
+            result = await self._execute_via_automation_service(
                 command=command,
-                target_host=target_host,
-                connection_type=connection_type,
-                credentials=credentials,
+                target_host=None,
+                connection_type="local",
+                credentials=None,
                 timeout=step.input_data.get("timeout", 300),
                 working_directory=step.input_data.get("working_directory"),
                 environment_vars=step.input_data.get("environment_vars"),
             )
-            
-            # Return output
-            return {
-                "status": result.status,
-                "execution_id": result.execution_id,
-                "exit_code": result.exit_code,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "duration_seconds": result.duration_seconds,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+            return result
         
         except Exception as e:
             logger.error(f"Command execution failed: {e}", exc_info=True)
@@ -1137,11 +1256,28 @@ class ExecutionEngine:
         
         step_type = step.step_type.lower()
         
+        # Cross-platform network tools that can be converted to Linux equivalents
+        # These should NOT be treated as PowerShell tools when no Windows target is specified
+        cross_platform_network_tools = ['test-netconnection', 'test-connection']
+        if step_type in cross_platform_network_tools:
+            # Only treat as PowerShell if there's a Windows target
+            has_windows_target = False
+            if step.input_data:
+                # Check if there's a target_host or computerName specified
+                target_host = step.input_data.get('target_host') or step.input_data.get('computerName') or step.input_data.get('computer_name')
+                if target_host:
+                    # If there's a target, we'd need to check if it's Windows
+                    # For now, if no explicit Windows indicator, treat as Linux
+                    has_windows_target = step.input_data.get('os_type', '').lower() in ['windows', 'win']
+            
+            if not has_windows_target:
+                return False
+        
         # Check for PowerShell cmdlets (they typically use Verb-Noun format)
         powershell_cmdlets = [
             'invoke-command', 'get-childitem', 'get-process', 'get-service',
             'set-service', 'start-service', 'stop-service', 'restart-service',
-            'get-eventlog', 'get-winevent', 'test-connection', 'get-content',
+            'get-eventlog', 'get-winevent', 'get-content',
             'set-content', 'new-item', 'remove-item', 'copy-item', 'move-item',
             'get-computerinfo', 'get-hotfix', 'get-windowsfeature'
         ]
@@ -1173,8 +1309,12 @@ class ExecutionEngine:
         """
         step_type = step.step_type.lower()
         
+        logger.info(f"   🔍 _is_linux_ssh_tool: step_type='{step_type}'")
+        logger.info(f"   🔍 _is_linux_ssh_tool: input_data={step.input_data}")
+        
         # Cross-platform commands that need OS detection
-        cross_platform_commands = ['ping', 'traceroute', 'nslookup', 'curl']
+        # Include PowerShell network cmdlets that can be converted to Linux equivalents
+        cross_platform_commands = ['ping', 'traceroute', 'nslookup', 'curl', 'test-netconnection', 'test-connection']
         
         # Linux-specific commands
         linux_commands = [
@@ -1189,39 +1329,53 @@ class ExecutionEngine:
         # Check if input_data explicitly indicates Linux/SSH
         if step.input_data:
             connection_type = step.input_data.get('connection_type', '').lower()
+            logger.info(f"   🔍 _is_linux_ssh_tool: connection_type='{connection_type}'")
             if connection_type in ['ssh', 'linux', 'unix']:
+                logger.info(f"   ✅ _is_linux_ssh_tool: Returning TRUE (connection_type match)")
                 return True
             # If explicitly marked as Windows, this is NOT a Linux tool
             if connection_type in ['winrm', 'powershell', 'windows']:
+                logger.info(f"   ❌ _is_linux_ssh_tool: Returning FALSE (Windows connection_type)")
                 return False
             
             # Check for OS type in input_data or asset
             os_type = step.input_data.get('os_type', '').lower()
+            logger.info(f"   🔍 _is_linux_ssh_tool: os_type='{os_type}'")
             if os_type in ['linux', 'unix']:
+                logger.info(f"   ✅ _is_linux_ssh_tool: Returning TRUE (os_type match)")
                 return True
             if os_type in ['windows', 'win']:
+                logger.info(f"   ❌ _is_linux_ssh_tool: Returning FALSE (Windows os_type)")
                 return False
         
         # For cross-platform commands, default to Linux unless Windows is indicated
+        logger.info(f"   🔍 _is_linux_ssh_tool: Checking if '{step_type}' in cross_platform_commands")
         if step_type in cross_platform_commands:
+            logger.info(f"   ✅ _is_linux_ssh_tool: '{step_type}' IS in cross_platform_commands")
             # Check if there are Windows-specific indicators
             if step.input_data:
                 # Check for Windows-style paths or parameters
                 if any(key in step.input_data for key in ['computerName', 'computer_name']):
+                    logger.info(f"   ❌ _is_linux_ssh_tool: Returning FALSE (Windows-specific parameters)")
                     return False
             # Default to Linux for cross-platform commands
+            logger.info(f"   ✅ _is_linux_ssh_tool: Returning TRUE (cross-platform default to Linux)")
             return True
+        logger.info(f"   ❌ _is_linux_ssh_tool: '{step_type}' NOT in cross_platform_commands")
         
         # Linux-specific commands
         if step_type in linux_commands:
+            logger.info(f"   ✅ _is_linux_ssh_tool: Returning TRUE (Linux-specific command)")
             return True
         
         # Check if command contains Linux commands
         if step.input_data:
             command = step.input_data.get('command', '').lower()
             if any(cmd in command for cmd in linux_commands):
+                logger.info(f"   ✅ _is_linux_ssh_tool: Returning TRUE (command contains Linux command)")
                 return True
         
+        logger.info(f"   ❌ _is_linux_ssh_tool: Returning FALSE (no match)")
         return False
     
     def _is_api_http_tool(self, step: ExecutionStepModel) -> bool:
@@ -1458,12 +1612,19 @@ class ExecutionEngine:
                     private_key = asset.private_key
             
             # Override with step input_data if provided
+            # NOTE: Only extract SSH connection parameters, not command parameters
+            # For example, 'target_host' in ping command is the host to ping, not the host to SSH into
             if step.input_data:
-                # Support multiple naming conventions
-                target_host = step.input_data.get('target_host') or \
-                             step.input_data.get('hostname') or \
-                             step.input_data.get('host') or \
-                             target_host
+                # Only extract SSH connection parameters if explicitly provided
+                # Don't confuse command parameters (like ping target) with SSH connection parameters
+                if 'ssh_host' in step.input_data:
+                    target_host = step.input_data.get('ssh_host')
+                elif 'connection_host' in step.input_data:
+                    target_host = step.input_data.get('connection_host')
+                # Only use 'hostname' or 'host' if there's also username/password (indicating SSH intent)
+                elif ('hostname' in step.input_data or 'host' in step.input_data) and \
+                     ('username' in step.input_data or 'password' in step.input_data or 'private_key' in step.input_data):
+                    target_host = step.input_data.get('hostname') or step.input_data.get('host') or target_host
                 
                 username = step.input_data.get('username') or \
                           step.input_data.get('user') or \
@@ -1474,10 +1635,26 @@ class ExecutionEngine:
                 port = step.input_data.get('port', port)
             
             # Check if we should execute locally or via SSH
-            # If no target_host is specified, execute locally
+            # If no target_host is specified, execute locally in automation-service
             if not target_host:
-                logger.info("No target_host specified, executing command locally")
-                return await self._execute_local_command(step)
+                logger.info("No target_host specified, executing command locally via automation-service")
+                
+                # Build the command
+                command = self._build_bash_script(step)
+                
+                # Execute via automation-service with connection_type="local"
+                result = await self._execute_via_automation_service(
+                    command=command,
+                    target_host=None,
+                    connection_type="local",
+                    credentials=None,
+                    timeout=step.input_data.get('timeout', 300) if step.input_data else 300,
+                    working_directory=step.input_data.get('working_directory') if step.input_data else None,
+                    environment_vars=step.input_data.get('environment_vars') if step.input_data else None,
+                )
+                
+                # Return output in the expected format
+                return result
             
             # Validate SSH parameters
             if not self.ssh_library:
@@ -1573,7 +1750,8 @@ class ExecutionEngine:
             return f"systemctl {action}"
         
         elif step_type == 'ping':
-            target = inputs.get('target', inputs.get('host', inputs.get('hostname', '8.8.8.8')))
+            # Try multiple keys for the target to ping
+            target = inputs.get('target') or inputs.get('target_host') or inputs.get('host') or inputs.get('hostname', '8.8.8.8')
             count = inputs.get('count', inputs.get('packets', 4))
             timeout = inputs.get('timeout', 5)
             return f"ping -c {count} -W {timeout} {target}"
@@ -1582,84 +1760,3 @@ class ExecutionEngine:
             # Default: use step_type as command
             logger.warning(f"Unknown Linux command: {step_type}, using as-is")
             return step_type
-    
-    async def _execute_local_command(
-        self,
-        step: ExecutionStepModel
-    ) -> Dict[str, Any]:
-        """
-        Execute a command locally using subprocess
-        
-        Args:
-            step: Execution step model
-        
-        Returns:
-            Output data
-        """
-        import subprocess
-        import shlex
-        from datetime import datetime
-        
-        try:
-            # Build the command
-            command = self._build_bash_script(step)
-            
-            logger.info(f"Executing command locally: {command}")
-            
-            # Get timeout from input_data
-            timeout = step.input_data.get('timeout', 300) if step.input_data else 300
-            
-            # Execute command
-            started_at = datetime.utcnow()
-            
-            # Use shell=True for complex commands with pipes, redirects, etc.
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout
-            )
-            
-            completed_at = datetime.utcnow()
-            duration_seconds = (completed_at - started_at).total_seconds()
-            
-            # Return output
-            return {
-                "status": "completed" if result.returncode == 0 else "failed",
-                "exit_code": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-                "duration_seconds": duration_seconds,
-                "attempts": 1,
-                "timestamp": completed_at.isoformat(),
-                "connection_type": "local",
-            }
-        
-        except subprocess.TimeoutExpired as e:
-            logger.error(f"Local command execution timed out: {e}")
-            return {
-                "status": "error",
-                "error": f"Command timed out after {timeout} seconds",
-                "exit_code": -1,
-                "stdout": e.stdout.decode() if e.stdout else "",
-                "stderr": e.stderr.decode() if e.stderr else "",
-                "duration_seconds": timeout,
-                "attempts": 1,
-                "timestamp": datetime.utcnow().isoformat(),
-                "connection_type": "local",
-            }
-        
-        except Exception as e:
-            logger.error(f"Local command execution failed: {e}", exc_info=True)
-            return {
-                "status": "error",
-                "error": str(e),
-                "exit_code": -1,
-                "stdout": "",
-                "stderr": str(e),
-                "duration_seconds": 0,
-                "attempts": 1,
-                "timestamp": datetime.utcnow().isoformat(),
-                "connection_type": "local",
-            }

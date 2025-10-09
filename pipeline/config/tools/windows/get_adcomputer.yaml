@@ -1,5 +1,6 @@
 # Get-ADComputer - Query Active Directory computers
 tool_name: Get-ADComputer
+execution_location: automation-service
 version: '1.0'
 description: Query Active Directory computers
 platform: windows

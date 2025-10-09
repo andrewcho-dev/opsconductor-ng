@@ -1,5 +1,6 @@
 # Axis VAPIX I/O Ports - Control digital I/O ports via VAPIX API
 tool_name: Axis-VAPIX-IO-Ports
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera digital I/O ports via VAPIX API.

@@ -1,5 +1,6 @@
 # Get-NetIPAddress - Query IP address configuration
 tool_name: Get-NetIPAddress
+execution_location: automation-service
 version: '1.0'
 description: Query IP address configuration
 platform: windows

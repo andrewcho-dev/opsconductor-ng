@@ -1,5 +1,6 @@
 # mongodump - MongoDB database backup
 tool_name: mongodump
+execution_location: automation-service
 version: '1.0'
 description: MongoDB database backup
 platform: database

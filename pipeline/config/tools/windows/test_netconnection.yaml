@@ -1,5 +1,6 @@
 # Test-NetConnection - Test network connectivity (ping, port)
 tool_name: Test-NetConnection
+execution_location: automation-service
 version: '1.0'
 description: Test network connectivity (ping, port)
 platform: windows

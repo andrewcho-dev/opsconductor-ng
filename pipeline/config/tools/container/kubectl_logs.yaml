@@ -1,5 +1,6 @@
 # kubectl-logs - Print container logs
 tool_name: kubectl-logs
+execution_location: automation-service
 version: '1.0'
 description: Print container logs
 platform: kubernetes

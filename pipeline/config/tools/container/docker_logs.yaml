@@ -1,5 +1,6 @@
 # docker-logs - Fetch container logs
 tool_name: docker-logs
+execution_location: automation-service
 version: '1.0'
 description: Fetch container logs
 platform: container

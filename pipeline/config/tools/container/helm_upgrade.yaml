@@ -1,5 +1,6 @@
 # helm-upgrade - Upgrade Helm release
 tool_name: helm-upgrade
+execution_location: automation-service
 version: '1.0'
 description: Upgrade Helm release
 platform: kubernetes

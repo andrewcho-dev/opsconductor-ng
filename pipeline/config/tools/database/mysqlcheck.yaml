@@ -1,5 +1,6 @@
 # mysqlcheck - MySQL table maintenance
 tool_name: mysqlcheck
+execution_location: automation-service
 version: '1.0'
 description: MySQL table maintenance
 platform: database

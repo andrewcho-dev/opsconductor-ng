@@ -1,5 +1,6 @@
 # iptables - IPv4/IPv6 firewall administration
 tool_name: iptables
+execution_location: automation-service
 version: '1.0'
 description: IPv4/IPv6 firewall administration
 platform: linux

@@ -1,5 +1,6 @@
 # asset-list - List all assets
 tool_name: asset-list
+execution_location: asset-service
 version: '1.0'
 description: List all assets
 platform: custom

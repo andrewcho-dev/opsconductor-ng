@@ -1,5 +1,6 @@
 # redis-benchmark - Redis performance testing
 tool_name: redis-benchmark
+execution_location: automation-service
 version: '1.0'
 description: Redis performance testing
 platform: database

@@ -1,5 +1,6 @@
 # Get-ScheduledTask - Query Windows scheduled tasks
 tool_name: Get-ScheduledTask
+execution_location: automation-service
 version: '1.0'
 description: Query Windows scheduled tasks
 platform: windows

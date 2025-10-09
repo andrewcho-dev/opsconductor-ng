@@ -1,5 +1,6 @@
 # ngrep - Network grep for packet payloads
 tool_name: ngrep
+execution_location: network-service
 version: '1.0'
 description: Network grep for packet payloads
 platform: network

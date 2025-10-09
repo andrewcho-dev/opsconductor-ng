@@ -1,5 +1,6 @@
 # gcloud-compute - Google Compute Engine management
 tool_name: gcloud-compute
+execution_location: automation-service
 version: '1.0'
 description: Google Compute Engine management
 platform: cloud

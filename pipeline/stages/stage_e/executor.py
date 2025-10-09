@@ -186,14 +186,97 @@ class StageEExecutor:
             logger.info(f"Routing to background execution: {execution.execution_id}")
             await self._enqueue_execution(execution)
     
+    def _get_execution_service_url(self, execution: ExecutionModel) -> str:
+        """
+        Determine which execution service should handle this execution
+        based on tool's execution_location metadata.
+        
+        Args:
+            execution: Execution model with plan_snapshot
+            
+        Returns:
+            Service URL (e.g., "http://automation-service:3003")
+        """
+        import yaml
+        from pathlib import Path
+        
+        # Get first step's tool name to determine routing
+        plan_steps = execution.plan_snapshot.get("steps", [])
+        if not plan_steps:
+            # No steps, default to automation-service
+            logger.warning(f"No steps in plan {execution.execution_id}, defaulting to automation-service")
+            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+        
+        first_tool = plan_steps[0].get("tool")
+        if not first_tool:
+            logger.warning(f"No tool specified in first step, defaulting to automation-service")
+            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+        
+        # Load tool definition to get execution_location
+        tools_dir = Path("/home/opsconductor/opsconductor-ng/pipeline/config/tools")
+        tool_file = None
+        
+        # Search for tool YAML file (try both hyphenated and underscored versions)
+        for yaml_file in tools_dir.rglob(f"{first_tool}.yaml"):
+            tool_file = yaml_file
+            break
+        
+        # If not found with hyphens, try with underscores
+        if not tool_file:
+            tool_name_underscored = first_tool.replace("-", "_")
+            for yaml_file in tools_dir.rglob(f"{tool_name_underscored}.yaml"):
+                tool_file = yaml_file
+                break
+        
+        if not tool_file or not tool_file.exists():
+            logger.warning(f"Tool definition not found for '{first_tool}', defaulting to automation-service")
+            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+        
+        # Load tool definition
+        try:
+            with open(tool_file, 'r') as f:
+                tool_def = yaml.safe_load(f)
+            
+            execution_location = tool_def.get("execution_location", "automation-service")
+            
+            # Map service name to URL
+            service_urls = {
+                "automation-service": os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"),
+                "communication-service": os.getenv("COMMUNICATION_SERVICE_URL", "http://communication-service:3004"),
+                "asset-service": os.getenv("ASSET_SERVICE_URL", "http://asset-service:3005"),
+                "network-service": os.getenv("NETWORK_SERVICE_URL", "http://network-analyzer-service:3006"),
+            }
+            
+            service_url = service_urls.get(execution_location)
+            if not service_url:
+                logger.warning(
+                    f"Unknown execution_location '{execution_location}' for tool '{first_tool}', "
+                    f"defaulting to automation-service"
+                )
+                return service_urls["automation-service"]
+            
+            logger.info(f"Routing execution {execution.execution_id} to {execution_location} (tool: {first_tool})")
+            return service_url
+            
+        except Exception as e:
+            logger.error(f"Error loading tool definition for '{first_tool}': {e}", exc_info=True)
+            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+    
     async def _execute_immediate(self, execution: ExecutionModel) -> None:
         """
-        Execute immediately (synchronous, <10s)
+        Execute immediately by delegating to appropriate execution service
+        
+        AI-PIPELINE DOES NOT EXECUTE - IT ONLY ORCHESTRATES
+        All actual execution happens in execution service containers:
+        - automation-service: infrastructure commands (SSH, WinRM, DB, etc.)
+        - communication-service: notifications (email, Slack, Teams, SMS)
+        - asset-service: asset operations (query, create, update, delete)
+        - network-service: network analysis (tcpdump, tshark, nmap, etc.)
         
         Args:
             execution: Execution model
         """
-        from execution.execution_engine import ExecutionEngine
+        import httpx
         
         try:
             # Update status to running
@@ -203,32 +286,42 @@ class StageEExecutor:
                 previous_status=execution.status
             )
             
-            # Execute using ExecutionEngine
-            engine = ExecutionEngine(self.db_connection_string, self.redis_url)
-            result = await engine.execute(execution)
+            # DETERMINE EXECUTION SERVICE BASED ON TOOL METADATA
+            service_url = self._get_execution_service_url(execution)
             
-            # Update execution with result
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                response = await client.post(
+                    f"{service_url}/execute-plan",
+                    json={
+                        "execution_id": str(execution.execution_id),
+                        "plan": execution.plan_snapshot,
+                        "tenant_id": execution.tenant_id,
+                        "actor_id": execution.actor_id
+                    }
+                )
+                response.raise_for_status()
+                result_data = response.json()
+            
+            # Update execution with result from execution service
+            result_status = ExecutionStatus(result_data.get("status", "failed"))
             self.repository.update_execution_status(
                 execution.execution_id,
-                result.status,
+                result_status,
                 previous_status=ExecutionStatus.RUNNING,
-                error_message=result.error_message if hasattr(result, 'error_message') else None,
-                error_details=result.error_details if hasattr(result, 'error_details') else None
+                error_message=result_data.get("error_message"),
+                error_details=result_data.get("error_details")
             )
             
-            # Build complete result including step results
-            complete_result = result.result or {}
-            complete_result["steps"] = result.step_results
-            
+            # Update execution result
             self.repository.update_execution_result(
                 execution.execution_id,
-                complete_result,
-                result.completed_at
+                result_data.get("result", {}),
+                datetime.fromisoformat(result_data["completed_at"]) if result_data.get("completed_at") else None
             )
             
             logger.info(
-                f"Immediate execution completed: {execution.execution_id}, "
-                f"status={result.status}"
+                f"Immediate execution completed via {service_url}: {execution.execution_id}, "
+                f"status={result_status}"
             )
         
         except Exception as e:

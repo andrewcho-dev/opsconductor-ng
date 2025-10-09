@@ -1,5 +1,6 @@
 # uptime - Show system uptime and load
 tool_name: uptime
+execution_location: automation-service
 version: '1.0'
 description: Show system uptime and load
 platform: linux

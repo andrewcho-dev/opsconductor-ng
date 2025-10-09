@@ -1,5 +1,6 @@
 # aws - AWS Command Line Interface
 tool_name: aws
+execution_location: automation-service
 version: '1.0'
 description: AWS Command Line Interface
 platform: cloud

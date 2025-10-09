@@ -337,6 +337,7 @@ class ConsolidatedAssetService(BaseService):
     async def on_startup(self):
         """Asset service startup logic"""
         self.setup_routes()
+        self._setup_execution_routes()
     
     async def _get_current_user_id(self) -> Optional[int]:
         """
@@ -2241,6 +2242,508 @@ class ConsolidatedAssetService(BaseService):
             self.logger.error(f"SNMP connection test failed: {str(e)}")
             # Fall back to basic connection test if SNMP test fails
             return await self._test_basic_connection(host, port)
+    
+    def _setup_execution_routes(self):
+        """Setup execution routes for AI-pipeline integration"""
+        
+        @self.app.post("/execute-plan")
+        async def execute_plan_from_pipeline(request: Dict[str, Any]):
+            """
+            Execute an asset management plan from AI-pipeline
+            
+            Handles asset-specific tools:
+            - asset_query: Query asset inventory
+            - asset_create: Create new assets
+            - asset_update: Update existing assets
+            - asset_delete: Delete assets
+            - asset_list: List assets
+            
+            Args:
+                request: {
+                    "execution_id": str,
+                    "plan": dict,
+                    "tenant_id": str,
+                    "actor_id": int
+                }
+            
+            Returns:
+                Execution result with status, output, and timing
+            """
+            try:
+                self.logger.info(f"Received asset execution request from ai-pipeline: {request.get('execution_id')}")
+                
+                execution_id = request.get("execution_id")
+                plan = request.get("plan", {})
+                steps = plan.get("steps", [])
+                
+                if not steps:
+                    return {
+                        "execution_id": execution_id,
+                        "status": "failed",
+                        "result": {},
+                        "step_results": [],
+                        "completed_at": datetime.utcnow().isoformat(),
+                        "error_message": "No steps in plan"
+                    }
+                
+                # Execute each asset step
+                step_results = []
+                overall_success = True
+                
+                for idx, step in enumerate(steps):
+                    tool = step.get("tool", "unknown")
+                    inputs = step.get("inputs", {})
+                    
+                    self.logger.info(f"Executing asset step {idx + 1}/{len(steps)}: {tool}")
+                    
+                    try:
+                        # Route to appropriate asset handler
+                        if tool in ["asset-query", "asset_query"]:
+                            result = await self._execute_asset_query_tool(inputs)
+                        elif tool in ["asset-create", "asset_create"]:
+                            result = await self._execute_asset_create_tool(inputs)
+                        elif tool in ["asset-update", "asset_update"]:
+                            result = await self._execute_asset_update_tool(inputs)
+                        elif tool in ["asset-delete", "asset_delete"]:
+                            result = await self._execute_asset_delete_tool(inputs)
+                        elif tool in ["asset-list", "asset_list"]:
+                            result = await self._execute_asset_list_tool(inputs)
+                        else:
+                            result = {
+                                "success": False,
+                                "message": f"Unknown asset tool: {tool}"
+                            }
+                        
+                        step_results.append({
+                            "step_index": idx,
+                            "tool": tool,
+                            "status": "completed" if result.get("success") else "failed",
+                            "output": result,
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                        
+                        if not result.get("success"):
+                            overall_success = False
+                    
+                    except Exception as e:
+                        self.logger.error(f"Asset step {idx + 1} failed: {e}", exc_info=True)
+                        step_results.append({
+                            "step_index": idx,
+                            "tool": tool,
+                            "status": "failed",
+                            "error": str(e),
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                        overall_success = False
+                
+                # Return result to ai-pipeline
+                return {
+                    "execution_id": execution_id,
+                    "status": "completed" if overall_success else "failed",
+                    "result": {
+                        "total_steps": len(steps),
+                        "successful_steps": sum(1 for r in step_results if r.get("status") == "completed"),
+                        "failed_steps": sum(1 for r in step_results if r.get("status") == "failed")
+                    },
+                    "step_results": step_results,
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "error_message": None if overall_success else "One or more asset steps failed"
+                }
+            
+            except Exception as e:
+                self.logger.error(f"Asset plan execution failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _execute_asset_query_tool(self, inputs: dict) -> dict:
+        """Execute asset query - Search/filter assets from inventory"""
+        try:
+            # Extract query parameters
+            asset_id = inputs.get("asset_id") or inputs.get("id")
+            hostname = inputs.get("hostname")
+            asset_type = inputs.get("type") or inputs.get("asset_type")
+            status = inputs.get("status")
+            environment = inputs.get("environment")
+            tags = inputs.get("tags")
+            
+            self.logger.info(f"Querying assets with filters: {inputs}")
+            
+            # If specific asset ID provided, get that asset
+            if asset_id:
+                try:
+                    asset_id_int = int(asset_id)
+                    query = "SELECT * FROM assets WHERE id = %s"
+                    result = self.db.execute_query(query, (asset_id_int,))
+                    
+                    if result:
+                        return {
+                            "success": True,
+                            "message": f"Found asset with ID {asset_id}",
+                            "asset": result[0],
+                            "count": 1
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": f"Asset with ID {asset_id} not found",
+                            "count": 0
+                        }
+                except ValueError:
+                    return {
+                        "success": False,
+                        "message": f"Invalid asset ID: {asset_id}",
+                        "error": "Asset ID must be an integer"
+                    }
+            
+            # Build dynamic query based on filters
+            query = "SELECT * FROM assets WHERE 1=1"
+            params = []
+            
+            if hostname:
+                query += " AND hostname ILIKE %s"
+                params.append(f"%{hostname}%")
+            
+            if asset_type:
+                query += " AND type = %s"
+                params.append(asset_type)
+            
+            if status:
+                query += " AND status = %s"
+                params.append(status)
+            
+            if environment:
+                query += " AND environment = %s"
+                params.append(environment)
+            
+            if tags:
+                # Tags stored as JSONB, search within
+                query += " AND tags @> %s::jsonb"
+                params.append(json.dumps(tags) if isinstance(tags, dict) else tags)
+            
+            query += " ORDER BY id LIMIT 100"  # Limit results
+            
+            # Execute query
+            assets = self.db.execute_query(query, tuple(params) if params else None)
+            
+            return {
+                "success": True,
+                "message": f"Found {len(assets)} asset(s)",
+                "assets": assets,
+                "count": len(assets),
+                "filters": inputs
+            }
+        
+        except Exception as e:
+            self.logger.error(f"Error querying assets: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error querying assets: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_asset_create_tool(self, inputs: dict) -> dict:
+        """Execute asset creation - Add new asset to inventory"""
+        try:
+            # Extract required fields
+            hostname = inputs.get("hostname")
+            ip_address = inputs.get("ip_address") or inputs.get("ip")
+            asset_type = inputs.get("type") or inputs.get("asset_type", "server")
+            
+            # Validate required fields
+            if not hostname:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'hostname'",
+                    "error": "Hostname is required"
+                }
+            
+            # Extract optional fields
+            status = inputs.get("status", "active")
+            environment = inputs.get("environment", "production")
+            location = inputs.get("location")
+            owner = inputs.get("owner")
+            tags = inputs.get("tags", {})
+            metadata = inputs.get("metadata", {})
+            
+            self.logger.info(f"Creating asset: {hostname}")
+            
+            # Insert asset into database
+            query = """
+                INSERT INTO assets (
+                    hostname, ip_address, type, status, environment,
+                    location, owner, tags, metadata, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                RETURNING id, hostname, ip_address, type, status
+            """
+            
+            params = (
+                hostname,
+                ip_address,
+                asset_type,
+                status,
+                environment,
+                location,
+                owner,
+                json.dumps(tags) if isinstance(tags, dict) else tags,
+                json.dumps(metadata) if isinstance(metadata, dict) else metadata
+            )
+            
+            result = self.db.execute_query(query, params)
+            
+            if result:
+                asset = result[0]
+                self.logger.info(f"Asset created successfully: ID {asset.get('id')}")
+                return {
+                    "success": True,
+                    "message": f"Asset '{hostname}' created successfully",
+                    "asset": asset,
+                    "asset_id": asset.get("id")
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to create asset",
+                    "error": "No result returned from database"
+                }
+        
+        except Exception as e:
+            self.logger.error(f"Error creating asset: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error creating asset: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_asset_update_tool(self, inputs: dict) -> dict:
+        """Execute asset update - Modify existing asset"""
+        try:
+            # Extract asset identifier
+            asset_id = inputs.get("asset_id") or inputs.get("id")
+            hostname = inputs.get("hostname")
+            
+            # Validate identifier
+            if not asset_id and not hostname:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'asset_id' or 'hostname'",
+                    "error": "Asset identifier required"
+                }
+            
+            # Find asset by ID or hostname
+            if asset_id:
+                find_query = "SELECT id FROM assets WHERE id = %s"
+                find_params = (int(asset_id),)
+            else:
+                find_query = "SELECT id FROM assets WHERE hostname = %s"
+                find_params = (hostname,)
+            
+            asset_result = self.db.execute_query(find_query, find_params)
+            
+            if not asset_result:
+                return {
+                    "success": False,
+                    "message": f"Asset not found: {asset_id or hostname}",
+                    "error": "Asset not found"
+                }
+            
+            found_id = asset_result[0]["id"]
+            
+            # Build update query dynamically based on provided fields
+            update_fields = []
+            update_params = []
+            
+            updatable_fields = {
+                "hostname": "hostname",
+                "ip_address": "ip_address",
+                "ip": "ip_address",
+                "type": "type",
+                "asset_type": "type",
+                "status": "status",
+                "environment": "environment",
+                "location": "location",
+                "owner": "owner"
+            }
+            
+            for input_key, db_field in updatable_fields.items():
+                if input_key in inputs and inputs[input_key] is not None:
+                    update_fields.append(f"{db_field} = %s")
+                    update_params.append(inputs[input_key])
+            
+            # Handle tags and metadata (JSONB fields)
+            if "tags" in inputs:
+                update_fields.append("tags = %s")
+                update_params.append(json.dumps(inputs["tags"]) if isinstance(inputs["tags"], dict) else inputs["tags"])
+            
+            if "metadata" in inputs:
+                update_fields.append("metadata = %s")
+                update_params.append(json.dumps(inputs["metadata"]) if isinstance(inputs["metadata"], dict) else inputs["metadata"])
+            
+            if not update_fields:
+                return {
+                    "success": False,
+                    "message": "No fields to update",
+                    "error": "No update fields provided"
+                }
+            
+            # Add updated_at timestamp
+            update_fields.append("updated_at = NOW()")
+            
+            # Build and execute update query
+            update_query = f"""
+                UPDATE assets
+                SET {', '.join(update_fields)}
+                WHERE id = %s
+                RETURNING id, hostname, ip_address, type, status, updated_at
+            """
+            update_params.append(found_id)
+            
+            self.logger.info(f"Updating asset ID {found_id}")
+            result = self.db.execute_query(update_query, tuple(update_params))
+            
+            if result:
+                asset = result[0]
+                return {
+                    "success": True,
+                    "message": f"Asset updated successfully",
+                    "asset": asset,
+                    "asset_id": found_id
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Failed to update asset",
+                    "error": "No result returned from database"
+                }
+        
+        except Exception as e:
+            self.logger.error(f"Error updating asset: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error updating asset: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_asset_delete_tool(self, inputs: dict) -> dict:
+        """Execute asset deletion - Remove asset from inventory"""
+        try:
+            # Extract asset identifier
+            asset_id = inputs.get("asset_id") or inputs.get("id")
+            hostname = inputs.get("hostname")
+            
+            # Validate identifier
+            if not asset_id and not hostname:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'asset_id' or 'hostname'",
+                    "error": "Asset identifier required"
+                }
+            
+            # Find and delete asset
+            if asset_id:
+                query = "DELETE FROM assets WHERE id = %s RETURNING id, hostname"
+                params = (int(asset_id),)
+            else:
+                query = "DELETE FROM assets WHERE hostname = %s RETURNING id, hostname"
+                params = (hostname,)
+            
+            self.logger.info(f"Deleting asset: {asset_id or hostname}")
+            result = self.db.execute_query(query, params)
+            
+            if result:
+                deleted_asset = result[0]
+                return {
+                    "success": True,
+                    "message": f"Asset '{deleted_asset.get('hostname')}' deleted successfully",
+                    "deleted_asset_id": deleted_asset.get("id"),
+                    "deleted_hostname": deleted_asset.get("hostname")
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Asset not found: {asset_id or hostname}",
+                    "error": "Asset not found"
+                }
+        
+        except Exception as e:
+            self.logger.error(f"Error deleting asset: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error deleting asset: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_asset_list_tool(self, inputs: dict) -> dict:
+        """Execute asset listing - List all assets with optional filters"""
+        try:
+            # Extract pagination parameters
+            limit = inputs.get("limit", 100)
+            offset = inputs.get("offset", 0)
+            
+            # Extract filter parameters
+            asset_type = inputs.get("type") or inputs.get("asset_type")
+            status = inputs.get("status")
+            environment = inputs.get("environment")
+            
+            self.logger.info(f"Listing assets with limit={limit}, offset={offset}")
+            
+            # Build query with filters
+            query = "SELECT * FROM assets WHERE 1=1"
+            params = []
+            
+            if asset_type:
+                query += " AND type = %s"
+                params.append(asset_type)
+            
+            if status:
+                query += " AND status = %s"
+                params.append(status)
+            
+            if environment:
+                query += " AND environment = %s"
+                params.append(environment)
+            
+            query += " ORDER BY id LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+            
+            # Execute query
+            assets = self.db.execute_query(query, tuple(params))
+            
+            # Get total count
+            count_query = "SELECT COUNT(*) as total FROM assets WHERE 1=1"
+            count_params = []
+            
+            if asset_type:
+                count_query += " AND type = %s"
+                count_params.append(asset_type)
+            
+            if status:
+                count_query += " AND status = %s"
+                count_params.append(status)
+            
+            if environment:
+                count_query += " AND environment = %s"
+                count_params.append(environment)
+            
+            count_result = self.db.execute_query(count_query, tuple(count_params) if count_params else None)
+            total_count = count_result[0]["total"] if count_result else 0
+            
+            return {
+                "success": True,
+                "message": f"Retrieved {len(assets)} asset(s)",
+                "assets": assets,
+                "count": len(assets),
+                "total": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+        
+        except Exception as e:
+            self.logger.error(f"Error listing assets: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error listing assets: {str(e)}",
+                "error": str(e)
+            }
 
 
 if __name__ == "__main__":

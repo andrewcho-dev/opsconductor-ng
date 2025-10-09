@@ -1,5 +1,6 @@
 # nmap - Network exploration and security auditing
 tool_name: nmap
+execution_location: network-service
 version: '1.0'
 description: Network exploration and security auditing
 platform: network

@@ -1,5 +1,6 @@
 # awk - Pattern scanning and text processing
 tool_name: awk
+execution_location: automation-service
 version: '1.0'
 description: Pattern scanning and text processing
 platform: linux

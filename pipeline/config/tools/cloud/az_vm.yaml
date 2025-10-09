@@ -1,5 +1,6 @@
 # az-vm - Azure Virtual Machine management
 tool_name: az-vm
+execution_location: automation-service
 version: '1.0'
 description: Azure Virtual Machine management
 platform: cloud

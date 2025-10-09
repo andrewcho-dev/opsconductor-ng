@@ -1,5 +1,6 @@
 # docker-ps - List Docker containers
 tool_name: docker-ps
+execution_location: automation-service
 version: '1.0'
 description: List Docker containers
 platform: container

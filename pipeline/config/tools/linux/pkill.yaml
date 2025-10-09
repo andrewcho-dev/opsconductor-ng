@@ -1,5 +1,6 @@
 # pkill - Kill processes by name
 tool_name: pkill
+execution_location: automation-service
 version: '1.0'
 description: Kill processes by name
 platform: linux

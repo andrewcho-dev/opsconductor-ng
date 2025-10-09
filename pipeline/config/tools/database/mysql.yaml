@@ -1,5 +1,6 @@
 # mysql - MySQL command-line client
 tool_name: mysql
+execution_location: automation-service
 version: '1.0'
 description: MySQL command-line client
 platform: database

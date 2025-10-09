@@ -1,5 +1,6 @@
 # k9s - Kubernetes CLI UI
 tool_name: k9s
+execution_location: automation-service
 version: '1.0'
 description: Kubernetes CLI UI
 platform: kubernetes

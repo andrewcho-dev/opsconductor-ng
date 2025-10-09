@@ -1,5 +1,6 @@
 # journalctl - Query systemd journal logs
 tool_name: "journalctl"
+execution_location: automation-service
 version: "1.0"
 description: "Query and analyze systemd journal logs with powerful filtering and formatting capabilities"
 platform: "linux"

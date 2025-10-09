@@ -1,5 +1,6 @@
 # Axis VAPIX Device Info - Get camera device information via VAPIX API
 tool_name: Axis-VAPIX-Device-Info
+execution_location: network-service
 version: '1.0'
 description: |
   Get Axis camera device information via VAPIX API.

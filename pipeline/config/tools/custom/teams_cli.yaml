@@ -1,5 +1,6 @@
 # teams-cli - Microsoft Teams CLI
 tool_name: teams-cli
+execution_location: communication-service
 version: '1.0'
 description: Microsoft Teams CLI
 platform: custom

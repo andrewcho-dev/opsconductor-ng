@@ -1,5 +1,6 @@
 # host - DNS lookup utility (simple)
 tool_name: host
+execution_location: automation-service
 version: '1.0'
 description: DNS lookup utility (simple)
 platform: linux

@@ -1,5 +1,6 @@
 # Get-WinEvent - Query Windows Event Log (modern)
 tool_name: Get-WinEvent
+execution_location: automation-service
 version: '1.0'
 description: Query Windows Event Log (modern)
 platform: windows

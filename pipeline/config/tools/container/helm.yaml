@@ -1,5 +1,6 @@
 # helm - Kubernetes package manager
 tool_name: helm
+execution_location: automation-service
 version: '1.0'
 description: Kubernetes package manager
 platform: kubernetes

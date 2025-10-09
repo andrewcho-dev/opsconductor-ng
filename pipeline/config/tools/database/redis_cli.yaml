@@ -1,5 +1,6 @@
 # redis-cli - Redis command-line interface
 tool_name: redis-cli
+execution_location: automation-service
 version: '1.0'
 description: Redis command-line interface
 platform: database

@@ -1,5 +1,6 @@
 # top - Display real-time process and system information
 tool_name: "top"
+execution_location: automation-service
 version: "1.0"
 description: "Real-time system monitoring showing processes, CPU, memory, and system resource usage"
 platform: "linux"

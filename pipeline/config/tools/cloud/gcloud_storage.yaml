@@ -1,5 +1,6 @@
 # gcloud-storage - Google Cloud Storage management
 tool_name: gcloud-storage
+execution_location: automation-service
 version: '1.0'
 description: Google Cloud Storage management
 platform: cloud

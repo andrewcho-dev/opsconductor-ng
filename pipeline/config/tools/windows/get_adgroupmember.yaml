@@ -1,5 +1,6 @@
 # Get-ADGroupMember - Query AD group membership
 tool_name: Get-ADGroupMember
+execution_location: automation-service
 version: '1.0'
 description: Query AD group membership
 platform: windows

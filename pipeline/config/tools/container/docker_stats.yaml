@@ -1,5 +1,6 @@
 # docker-stats - Display container resource usage
 tool_name: docker-stats
+execution_location: automation-service
 version: '1.0'
 description: Display container resource usage
 platform: container

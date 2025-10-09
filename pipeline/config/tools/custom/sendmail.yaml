@@ -1,5 +1,6 @@
 # sendmail - Send email messages
 tool_name: sendmail
+execution_location: communication-service
 version: '1.0'
 description: Send email messages
 platform: custom

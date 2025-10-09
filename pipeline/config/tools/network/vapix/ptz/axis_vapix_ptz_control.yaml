@@ -1,5 +1,6 @@
 # Axis VAPIX PTZ Control - Control Axis camera PTZ (Pan/Tilt/Zoom) via VAPIX API
 tool_name: Axis-VAPIX-PTZ-Control
+execution_location: network-service
 version: '2.0'
 description: |
   Control Axis camera PTZ (Pan/Tilt/Zoom) functions via VAPIX HTTP API.

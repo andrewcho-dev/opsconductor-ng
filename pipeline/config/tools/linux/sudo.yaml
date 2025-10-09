@@ -1,5 +1,6 @@
 # sudo - Execute command as another user
 tool_name: sudo
+execution_location: automation-service
 version: '1.0'
 description: Execute command as another user
 platform: linux

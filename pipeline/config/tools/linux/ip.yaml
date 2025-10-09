@@ -1,5 +1,6 @@
 # ip - Show/manipulate routing, devices, policy routing
 tool_name: ip
+execution_location: automation-service
 version: '1.0'
 description: Show/manipulate routing, devices, policy routing
 platform: linux

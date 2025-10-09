@@ -1,5 +1,6 @@
 # asset-delete - Delete asset
 tool_name: asset-delete
+execution_location: asset-service
 version: '1.0'
 description: Delete asset
 platform: custom

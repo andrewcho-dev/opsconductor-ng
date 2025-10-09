@@ -1,5 +1,6 @@
 # tcpflow - TCP flow recorder and analyzer
 tool_name: tcpflow
+execution_location: network-service
 version: '1.0'
 description: TCP flow recorder and analyzer
 platform: network

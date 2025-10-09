@@ -1,5 +1,6 @@
 # smtp-analyzer - Analyze SMTP protocol traffic
 tool_name: smtp-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze SMTP protocol traffic
 platform: network

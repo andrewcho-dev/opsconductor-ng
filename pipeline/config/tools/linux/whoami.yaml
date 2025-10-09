@@ -1,5 +1,6 @@
 # whoami - Display current user
 tool_name: whoami
+execution_location: automation-service
 version: '1.0'
 description: Display current user
 platform: linux

@@ -54,6 +54,7 @@ capabilities:
       input: '{{metric_type: "cpu"}}'
       output: '{{metrics: {{usage: 45.2, cores: 8}}, timestamp: "2025-10-03T19:00:00Z"}}'
 tool_name: prometheus
+execution_location: automation-service
 version: '1.0'
 status: active
 enabled: true

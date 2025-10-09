@@ -1,5 +1,6 @@
 # service - Control SysV init services (legacy)
 tool_name: service
+execution_location: automation-service
 version: '1.0'
 description: Control SysV init services (legacy)
 platform: linux

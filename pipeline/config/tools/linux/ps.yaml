@@ -1,5 +1,6 @@
 # ps - Process status utility
 tool_name: "ps"
+execution_location: automation-service
 version: "1.0"
 description: "Report detailed process status, resource usage, and system information"
 platform: "linux"

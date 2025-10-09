@@ -1,5 +1,6 @@
 # Get-NetAdapter - Query network adapter information
 tool_name: Get-NetAdapter
+execution_location: automation-service
 version: '1.0'
 description: Query network adapter information
 platform: windows

@@ -1,5 +1,6 @@
 # tls-analyzer - Analyze TLS/SSL protocol traffic
 tool_name: tls-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze TLS/SSL protocol traffic
 platform: network

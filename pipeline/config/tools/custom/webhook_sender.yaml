@@ -1,5 +1,6 @@
 # webhook-sender - Send webhook notifications
 tool_name: webhook-sender
+execution_location: communication-service
 version: '1.0'
 description: Send webhook notifications
 platform: custom

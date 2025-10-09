@@ -1,5 +1,6 @@
 # Get-Acl - Query file/folder permissions
 tool_name: Get-Acl
+execution_location: automation-service
 version: '1.0'
 description: Query file/folder permissions
 platform: windows

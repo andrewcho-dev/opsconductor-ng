@@ -1,5 +1,6 @@
 # pyshark - Python wrapper for tshark
 tool_name: pyshark
+execution_location: network-service
 version: '1.0'
 description: Python wrapper for tshark
 platform: network

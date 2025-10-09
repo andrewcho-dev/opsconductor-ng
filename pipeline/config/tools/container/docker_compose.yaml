@@ -1,5 +1,6 @@
 # docker-compose - Multi-container Docker applications
 tool_name: docker-compose
+execution_location: automation-service
 version: '1.0'
 description: Multi-container Docker applications
 platform: container

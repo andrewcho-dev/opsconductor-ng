@@ -1,5 +1,6 @@
 # Get-WmiObject - Query WMI for system information
 tool_name: Get-WmiObject
+execution_location: automation-service
 version: '1.0'
 description: Query WMI for system information
 platform: windows

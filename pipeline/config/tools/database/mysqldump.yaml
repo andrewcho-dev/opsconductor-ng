@@ -1,5 +1,6 @@
 # mysqldump - MySQL database backup
 tool_name: mysqldump
+execution_location: automation-service
 version: '1.0'
 description: MySQL database backup
 platform: database

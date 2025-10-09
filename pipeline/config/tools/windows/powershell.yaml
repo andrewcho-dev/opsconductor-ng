@@ -1,5 +1,6 @@
 # PowerShell - Windows automation and scripting
 tool_name: "powershell"
+execution_location: automation-service
 version: "1.0"
 description: "Windows PowerShell command execution and automation"
 platform: "windows"

@@ -1,5 +1,6 @@
 # helm-install - Install Helm chart
 tool_name: helm-install
+execution_location: automation-service
 version: '1.0'
 description: Install Helm chart
 platform: kubernetes

@@ -1,5 +1,6 @@
 # schtasks - Schedule tasks on Windows
 tool_name: schtasks
+execution_location: automation-service
 version: '1.0'
 description: Schedule tasks on Windows
 platform: windows

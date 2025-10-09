@@ -1,5 +1,6 @@
 # pgrep - Search for processes by name
 tool_name: pgrep
+execution_location: automation-service
 version: '1.0'
 description: Search for processes by name
 platform: linux

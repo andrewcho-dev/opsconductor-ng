@@ -1,5 +1,6 @@
 # podman-ps - List Podman containers
 tool_name: podman-ps
+execution_location: automation-service
 version: '1.0'
 description: List Podman containers
 platform: container

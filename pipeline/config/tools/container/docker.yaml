@@ -1,5 +1,6 @@
 # docker - Docker container platform
 tool_name: docker
+execution_location: automation-service
 version: '1.0'
 description: Docker container platform
 platform: container

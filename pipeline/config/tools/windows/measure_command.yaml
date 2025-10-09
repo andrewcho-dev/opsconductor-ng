@@ -1,5 +1,6 @@
 # Measure-Command - Measure command execution time
 tool_name: Measure-Command
+execution_location: automation-service
 version: '1.0'
 description: Measure command execution time
 platform: windows

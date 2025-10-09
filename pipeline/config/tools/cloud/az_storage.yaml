@@ -1,5 +1,6 @@
 # az-storage - Azure Storage management
 tool_name: az-storage
+execution_location: automation-service
 version: '1.0'
 description: Azure Storage management
 platform: cloud

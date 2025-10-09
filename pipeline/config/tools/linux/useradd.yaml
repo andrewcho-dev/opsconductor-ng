@@ -1,5 +1,6 @@
 # useradd - Create new user account
 tool_name: useradd
+execution_location: automation-service
 version: '1.0'
 description: Create new user account
 platform: linux

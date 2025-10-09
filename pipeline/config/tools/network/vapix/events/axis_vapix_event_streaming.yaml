@@ -1,5 +1,6 @@
 # Axis VAPIX Event Streaming - Stream real-time events via VAPIX API
 tool_name: Axis-VAPIX-Event-Streaming
+execution_location: network-service
 version: '1.0'
 description: |
   Stream real-time events from Axis camera via VAPIX HTTP API.

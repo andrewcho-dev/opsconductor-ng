@@ -1,5 +1,6 @@
 # free - Display memory usage
 tool_name: free
+execution_location: automation-service
 version: '1.0'
 description: Display memory usage
 platform: linux

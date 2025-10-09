@@ -1,5 +1,6 @@
 # Get-Process - List and manage Windows processes
 tool_name: Get-Process
+execution_location: automation-service
 version: '1.0'
 description: List and manage Windows processes
 platform: windows

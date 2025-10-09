@@ -1,5 +1,6 @@
 # collectd - System statistics collection daemon
 tool_name: collectd
+execution_location: automation-service
 version: '1.0'
 description: System statistics collection daemon
 platform: monitoring

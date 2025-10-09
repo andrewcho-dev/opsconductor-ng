@@ -1,5 +1,6 @@
 # Axis VAPIX Event Services - Configure event triggers and action rules via VAPIX API
 tool_name: Axis-VAPIX-Event-Services
+execution_location: network-service
 version: '1.0'
 description: |
   Configure Axis camera event triggers and action rules via VAPIX API.

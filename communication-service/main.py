@@ -309,6 +309,7 @@ class CommunicationService(BaseService):
         """Set the database schema to communication"""
         os.environ["DB_SCHEMA"] = "communication"
         self._setup_routes()
+        self._setup_execution_routes()
     
     def _setup_routes(self):
         @self.app.get("/notifications", response_model=NotificationListResponse)
@@ -1769,6 +1770,467 @@ class CommunicationService(BaseService):
                         return {"success": False, "message": f"Webhook failed (HTTP {response.status}): {error_text}"}
         except Exception as e:
             return {"success": False, "message": f"Failed to send webhook request: {str(e)}"}
+    
+    def _setup_execution_routes(self):
+        """Setup execution routes for AI-pipeline integration"""
+        
+        @self.app.post("/execute-plan")
+        async def execute_plan_from_pipeline(request: Dict[str, Any]):
+            """
+            Execute a communication plan from AI-pipeline
+            
+            Handles communication-specific tools:
+            - sendmail: Send email messages
+            - slack_cli: Send Slack notifications
+            - teams_cli: Send Microsoft Teams messages
+            - webhook_sender: Send webhook notifications
+            
+            Args:
+                request: {
+                    "execution_id": str,
+                    "plan": dict,
+                    "tenant_id": str,
+                    "actor_id": int
+                }
+            
+            Returns:
+                Execution result with status, output, and timing
+            """
+            try:
+                self.logger.info(f"Received communication execution request from ai-pipeline: {request.get('execution_id')}")
+                
+                execution_id = request.get("execution_id")
+                plan = request.get("plan", {})
+                steps = plan.get("steps", [])
+                
+                if not steps:
+                    return {
+                        "execution_id": execution_id,
+                        "status": "failed",
+                        "result": {},
+                        "step_results": [],
+                        "completed_at": datetime.utcnow().isoformat(),
+                        "error_message": "No steps in plan"
+                    }
+                
+                # Execute each communication step
+                step_results = []
+                overall_success = True
+                
+                for idx, step in enumerate(steps):
+                    tool = step.get("tool", "unknown")
+                    inputs = step.get("inputs", {})
+                    
+                    self.logger.info(f"Executing communication step {idx + 1}/{len(steps)}: {tool}")
+                    
+                    try:
+                        # Route to appropriate communication handler
+                        if tool == "sendmail":
+                            result = await self._execute_sendmail_tool(inputs)
+                        elif tool == "slack_cli":
+                            result = await self._execute_slack_tool(inputs)
+                        elif tool == "teams_cli":
+                            result = await self._execute_teams_tool(inputs)
+                        elif tool == "webhook_sender":
+                            result = await self._execute_webhook_tool(inputs)
+                        else:
+                            result = {
+                                "success": False,
+                                "message": f"Unknown communication tool: {tool}"
+                            }
+                        
+                        step_results.append({
+                            "step_index": idx,
+                            "tool": tool,
+                            "status": "completed" if result.get("success") else "failed",
+                            "output": result,
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                        
+                        if not result.get("success"):
+                            overall_success = False
+                    
+                    except Exception as e:
+                        self.logger.error(f"Communication step {idx + 1} failed: {e}", exc_info=True)
+                        step_results.append({
+                            "step_index": idx,
+                            "tool": tool,
+                            "status": "failed",
+                            "error": str(e),
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                        overall_success = False
+                
+                # Return result to ai-pipeline
+                return {
+                    "execution_id": execution_id,
+                    "status": "completed" if overall_success else "failed",
+                    "result": {
+                        "total_steps": len(steps),
+                        "successful_steps": sum(1 for r in step_results if r.get("status") == "completed"),
+                        "failed_steps": sum(1 for r in step_results if r.get("status") == "failed")
+                    },
+                    "step_results": step_results,
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "error_message": None if overall_success else "One or more communication steps failed"
+                }
+            
+            except Exception as e:
+                self.logger.error(f"Communication plan execution failed: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
+    
+    async def _execute_sendmail_tool(self, inputs: dict) -> dict:
+        """Execute sendmail command - Send email via SMTP"""
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        try:
+            # Extract parameters
+            to_address = inputs.get("to") or inputs.get("recipient")
+            subject = inputs.get("subject", "Notification from OpsConductor")
+            body = inputs.get("body") or inputs.get("message", "")
+            from_address = inputs.get("from", os.getenv("SMTP_FROM", "noreply@opsconductor.local"))
+            
+            # Validate required fields
+            if not to_address:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'to' or 'recipient'",
+                    "error": "Missing recipient address"
+                }
+            
+            # Get SMTP configuration from environment
+            smtp_host = os.getenv("SMTP_HOST", "localhost")
+            smtp_port = int(os.getenv("SMTP_PORT", "25"))
+            smtp_user = os.getenv("SMTP_USER")
+            smtp_password = os.getenv("SMTP_PASSWORD")
+            smtp_use_tls = os.getenv("SMTP_USE_TLS", "false").lower() == "true"
+            
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = from_address
+            msg['To'] = to_address
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email
+            self.logger.info(f"Sending email to {to_address} via {smtp_host}:{smtp_port}")
+            
+            try:
+                if smtp_use_tls:
+                    server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+                    server.starttls()
+                else:
+                    server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+                
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                
+                server.send_message(msg)
+                server.quit()
+                
+                self.logger.info(f"Email sent successfully to {to_address}")
+                return {
+                    "success": True,
+                    "message": "Email sent successfully",
+                    "details": {
+                        "to": to_address,
+                        "subject": subject,
+                        "from": from_address,
+                        "smtp_host": smtp_host
+                    }
+                }
+            
+            except smtplib.SMTPException as e:
+                self.logger.error(f"SMTP error sending email: {e}")
+                return {
+                    "success": False,
+                    "message": f"SMTP error: {str(e)}",
+                    "error": str(e)
+                }
+            except Exception as e:
+                self.logger.error(f"Error sending email: {e}")
+                return {
+                    "success": False,
+                    "message": f"Failed to send email: {str(e)}",
+                    "error": str(e)
+                }
+        
+        except Exception as e:
+            self.logger.error(f"Error in sendmail tool: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error executing sendmail: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_slack_tool(self, inputs: dict) -> dict:
+        """Execute Slack notification via webhook"""
+        import httpx
+        
+        try:
+            # Extract parameters
+            webhook_url = inputs.get("webhook_url") or os.getenv("SLACK_WEBHOOK_URL")
+            message = inputs.get("message") or inputs.get("text", "")
+            channel = inputs.get("channel")
+            username = inputs.get("username", "OpsConductor")
+            icon_emoji = inputs.get("icon_emoji", ":robot_face:")
+            
+            # Validate required fields
+            if not webhook_url:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'webhook_url' or SLACK_WEBHOOK_URL env var",
+                    "error": "Missing webhook URL"
+                }
+            
+            if not message:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'message' or 'text'",
+                    "error": "Missing message content"
+                }
+            
+            # Build Slack message payload
+            payload = {
+                "text": message,
+                "username": username,
+                "icon_emoji": icon_emoji
+            }
+            
+            if channel:
+                payload["channel"] = channel
+            
+            # Add attachments if provided
+            if "attachments" in inputs:
+                payload["attachments"] = inputs["attachments"]
+            
+            # Add blocks if provided (for rich formatting)
+            if "blocks" in inputs:
+                payload["blocks"] = inputs["blocks"]
+            
+            # Send to Slack
+            self.logger.info(f"Sending Slack message to webhook: {webhook_url[:50]}...")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code == 200:
+                    self.logger.info("Slack message sent successfully")
+                    return {
+                        "success": True,
+                        "message": "Slack message sent successfully",
+                        "details": {
+                            "channel": channel,
+                            "username": username,
+                            "message_length": len(message)
+                        }
+                    }
+                else:
+                    self.logger.error(f"Slack API error: {response.status_code} - {response.text}")
+                    return {
+                        "success": False,
+                        "message": f"Slack API error: {response.status_code}",
+                        "error": response.text
+                    }
+        
+        except httpx.TimeoutException:
+            self.logger.error("Slack webhook request timed out")
+            return {
+                "success": False,
+                "message": "Slack webhook request timed out",
+                "error": "Request timeout"
+            }
+        except Exception as e:
+            self.logger.error(f"Error in Slack tool: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error executing Slack notification: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_teams_tool(self, inputs: dict) -> dict:
+        """Execute Microsoft Teams notification via webhook"""
+        import httpx
+        
+        try:
+            # Extract parameters
+            webhook_url = inputs.get("webhook_url") or os.getenv("TEAMS_WEBHOOK_URL")
+            title = inputs.get("title", "Notification from OpsConductor")
+            message = inputs.get("message") or inputs.get("text", "")
+            theme_color = inputs.get("theme_color", "0078D4")  # Microsoft blue
+            
+            # Validate required fields
+            if not webhook_url:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'webhook_url' or TEAMS_WEBHOOK_URL env var",
+                    "error": "Missing webhook URL"
+                }
+            
+            if not message:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'message' or 'text'",
+                    "error": "Missing message content"
+                }
+            
+            # Build Teams message card payload
+            payload = {
+                "@type": "MessageCard",
+                "@context": "https://schema.org/extensions",
+                "summary": title,
+                "themeColor": theme_color,
+                "title": title,
+                "text": message
+            }
+            
+            # Add sections if provided
+            if "sections" in inputs:
+                payload["sections"] = inputs["sections"]
+            
+            # Add potential actions if provided
+            if "actions" in inputs:
+                payload["potentialAction"] = inputs["actions"]
+            
+            # Send to Teams
+            self.logger.info(f"Sending Teams message to webhook: {webhook_url[:50]}...")
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                if response.status_code == 200:
+                    self.logger.info("Teams message sent successfully")
+                    return {
+                        "success": True,
+                        "message": "Teams message sent successfully",
+                        "details": {
+                            "title": title,
+                            "message_length": len(message)
+                        }
+                    }
+                else:
+                    self.logger.error(f"Teams API error: {response.status_code} - {response.text}")
+                    return {
+                        "success": False,
+                        "message": f"Teams API error: {response.status_code}",
+                        "error": response.text
+                    }
+        
+        except httpx.TimeoutException:
+            self.logger.error("Teams webhook request timed out")
+            return {
+                "success": False,
+                "message": "Teams webhook request timed out",
+                "error": "Request timeout"
+            }
+        except Exception as e:
+            self.logger.error(f"Error in Teams tool: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error executing Teams notification: {str(e)}",
+                "error": str(e)
+            }
+    
+    async def _execute_webhook_tool(self, inputs: dict) -> dict:
+        """Execute generic webhook - Send HTTP request to any URL"""
+        import httpx
+        
+        try:
+            # Extract parameters
+            url = inputs.get("url") or inputs.get("webhook_url")
+            method = inputs.get("method", "POST").upper()
+            headers = inputs.get("headers", {})
+            payload = inputs.get("payload") or inputs.get("data") or inputs.get("body")
+            timeout = inputs.get("timeout", 10.0)
+            
+            # Validate required fields
+            if not url:
+                return {
+                    "success": False,
+                    "message": "Missing required parameter: 'url' or 'webhook_url'",
+                    "error": "Missing URL"
+                }
+            
+            # Ensure Content-Type header is set
+            if "Content-Type" not in headers and "content-type" not in headers:
+                headers["Content-Type"] = "application/json"
+            
+            # Send webhook request
+            self.logger.info(f"Sending {method} webhook to: {url}")
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                if method == "GET":
+                    response = await client.get(url, headers=headers)
+                elif method == "POST":
+                    response = await client.post(url, json=payload, headers=headers)
+                elif method == "PUT":
+                    response = await client.put(url, json=payload, headers=headers)
+                elif method == "PATCH":
+                    response = await client.patch(url, json=payload, headers=headers)
+                elif method == "DELETE":
+                    response = await client.delete(url, headers=headers)
+                else:
+                    return {
+                        "success": False,
+                        "message": f"Unsupported HTTP method: {method}",
+                        "error": f"Method {method} not supported"
+                    }
+                
+                # Check response
+                success = 200 <= response.status_code < 300
+                
+                if success:
+                    self.logger.info(f"Webhook sent successfully: {response.status_code}")
+                    return {
+                        "success": True,
+                        "message": f"Webhook sent successfully",
+                        "details": {
+                            "url": url,
+                            "method": method,
+                            "status_code": response.status_code,
+                            "response": response.text[:500] if response.text else None
+                        }
+                    }
+                else:
+                    self.logger.warning(f"Webhook returned non-success status: {response.status_code}")
+                    return {
+                        "success": False,
+                        "message": f"Webhook returned status {response.status_code}",
+                        "error": response.text[:500] if response.text else f"HTTP {response.status_code}",
+                        "status_code": response.status_code
+                    }
+        
+        except httpx.TimeoutException:
+            self.logger.error(f"Webhook request timed out: {url}")
+            return {
+                "success": False,
+                "message": "Webhook request timed out",
+                "error": "Request timeout"
+            }
+        except httpx.RequestError as e:
+            self.logger.error(f"Webhook request error: {e}")
+            return {
+                "success": False,
+                "message": f"Webhook request error: {str(e)}",
+                "error": str(e)
+            }
+        except Exception as e:
+            self.logger.error(f"Error in webhook tool: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error executing webhook: {str(e)}",
+                "error": str(e)
+            }
 
 
 if __name__ == "__main__":

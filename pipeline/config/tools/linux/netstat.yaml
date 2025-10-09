@@ -1,5 +1,6 @@
 # netstat - Display network connections and statistics
 tool_name: netstat
+execution_location: automation-service
 version: '1.0'
 description: Display network connections and statistics
 platform: linux

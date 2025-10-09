@@ -1,5 +1,6 @@
 # ss - Display socket statistics (modern netstat)
 tool_name: ss
+execution_location: automation-service
 version: '1.0'
 description: Display socket statistics (modern netstat)
 platform: linux

@@ -1,5 +1,6 @@
 # Get-EventLog - Query Windows Event Logs
 tool_name: Get-EventLog
+execution_location: automation-service
 version: '1.0'
 description: Query Windows Event Logs
 platform: windows

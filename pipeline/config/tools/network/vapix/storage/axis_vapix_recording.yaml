@@ -1,5 +1,6 @@
 # Axis VAPIX Recording - Manage recorded video via VAPIX API
 tool_name: Axis-VAPIX-Recording
+execution_location: network-service
 version: '1.0'
 description: |
   Manage recorded video on Axis camera via VAPIX API.

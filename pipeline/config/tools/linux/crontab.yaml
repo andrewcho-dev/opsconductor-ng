@@ -1,5 +1,6 @@
 # crontab - Manage cron jobs
 tool_name: crontab
+execution_location: automation-service
 version: '1.0'
 description: Manage cron jobs
 platform: linux

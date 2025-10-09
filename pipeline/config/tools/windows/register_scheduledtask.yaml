@@ -1,5 +1,6 @@
 # Register-ScheduledTask - Create Windows scheduled tasks
 tool_name: Register-ScheduledTask
+execution_location: automation-service
 version: '1.0'
 description: Create Windows scheduled tasks
 platform: windows

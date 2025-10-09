@@ -1,5 +1,6 @@
 # Axis VAPIX Overlay - Add text/image overlays to video via VAPIX API
 tool_name: Axis-VAPIX-Overlay
+execution_location: network-service
 version: '1.0'
 description: |
   Add text and image overlays to Axis camera video via VAPIX API.

@@ -1,5 +1,6 @@
 # asset-create - Create new asset
 tool_name: asset-create
+execution_location: asset-service
 version: '1.0'
 description: Create new asset
 platform: custom

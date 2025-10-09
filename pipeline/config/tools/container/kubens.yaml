@@ -1,5 +1,6 @@
 # kubens - Switch between Kubernetes namespaces
 tool_name: kubens
+execution_location: automation-service
 version: '1.0'
 description: Switch between Kubernetes namespaces
 platform: kubernetes

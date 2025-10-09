@@ -1,5 +1,6 @@
 # dpkt - Python packet parsing library
 tool_name: dpkt
+execution_location: network-service
 version: '1.0'
 description: Python packet parsing library
 platform: network

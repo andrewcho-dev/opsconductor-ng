@@ -1,5 +1,6 @@
 # tcp-analyzer - Analyze TCP protocol traffic
 tool_name: tcp-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze TCP protocol traffic
 platform: network

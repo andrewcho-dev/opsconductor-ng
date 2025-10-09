@@ -1,5 +1,6 @@
 # chmod - Change file permissions
 tool_name: "chmod"
+execution_location: automation-service
 version: "1.0"
 description: "Change file access permissions using symbolic or numeric modes"
 platform: "linux"

@@ -1,5 +1,6 @@
 # Invoke-Command - Execute commands on remote Windows hosts
 tool_name: Invoke-Command
+execution_location: automation-service
 version: '1.0'
 description: Execute commands on remote Windows hosts
 platform: windows

@@ -1,5 +1,6 @@
 # netdiscover - Active/passive ARP reconnaissance tool
 tool_name: netdiscover
+execution_location: network-service
 version: '1.0'
 description: Active/passive ARP reconnaissance tool
 platform: network

@@ -1,5 +1,6 @@
 # aws-rds - AWS RDS database management
 tool_name: aws-rds
+execution_location: automation-service
 version: '1.0'
 description: AWS RDS database management
 platform: cloud

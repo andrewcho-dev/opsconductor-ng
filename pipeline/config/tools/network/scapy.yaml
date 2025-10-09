@@ -1,5 +1,6 @@
 # scapy - Python packet manipulation library
 tool_name: scapy
+execution_location: network-service
 version: '1.0'
 description: Python packet manipulation library
 platform: network

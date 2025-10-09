@@ -1,5 +1,6 @@
 # mongosh - MongoDB Shell
 tool_name: mongosh
+execution_location: automation-service
 version: '1.0'
 description: MongoDB Shell
 platform: database

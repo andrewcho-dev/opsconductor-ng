@@ -1,5 +1,6 @@
 # uniq - Remove duplicate lines
 tool_name: uniq
+execution_location: automation-service
 version: '1.0'
 description: Remove duplicate lines
 platform: linux

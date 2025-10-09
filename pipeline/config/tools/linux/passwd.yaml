@@ -1,5 +1,6 @@
 # passwd - Change user password
 tool_name: passwd
+execution_location: automation-service
 version: '1.0'
 description: Change user password
 platform: linux

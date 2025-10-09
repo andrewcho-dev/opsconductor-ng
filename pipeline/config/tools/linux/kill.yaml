@@ -1,5 +1,6 @@
 # kill - Send signals to processes
 tool_name: kill
+execution_location: automation-service
 version: '1.0'
 description: Send signals to processes
 platform: linux

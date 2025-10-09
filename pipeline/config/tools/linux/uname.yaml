@@ -1,5 +1,6 @@
 # uname - Display system information
 tool_name: uname
+execution_location: automation-service
 version: '1.0'
 description: Display system information
 platform: linux

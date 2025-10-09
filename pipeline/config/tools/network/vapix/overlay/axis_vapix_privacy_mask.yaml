@@ -1,5 +1,6 @@
 # Axis VAPIX Privacy Mask - Configure privacy masks via VAPIX API
 tool_name: Axis-VAPIX-Privacy-Mask
+execution_location: network-service
 version: '1.0'
 description: |
   Configure privacy masks on Axis camera via VAPIX API.

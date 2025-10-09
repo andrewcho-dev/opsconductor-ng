@@ -1,5 +1,6 @@
 # ping - Test network connectivity
 tool_name: "ping"
+execution_location: automation-service
 version: "1.0"
 description: "Test network connectivity and measure round-trip time using ICMP echo requests"
 platform: "linux"

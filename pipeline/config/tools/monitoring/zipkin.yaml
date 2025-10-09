@@ -1,5 +1,6 @@
 # zipkin - Distributed tracing system
 tool_name: zipkin
+execution_location: automation-service
 version: '1.0'
 description: Distributed tracing system
 platform: monitoring

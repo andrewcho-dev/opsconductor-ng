@@ -1,5 +1,6 @@
 # gcloud - Google Cloud SDK
 tool_name: gcloud
+execution_location: automation-service
 version: '1.0'
 description: Google Cloud SDK
 platform: cloud

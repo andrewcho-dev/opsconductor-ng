@@ -1,5 +1,6 @@
 # Get-Service - Query and manage Windows services
 tool_name: Get-Service
+execution_location: automation-service
 version: '1.0'
 description: Query and manage Windows services
 platform: windows

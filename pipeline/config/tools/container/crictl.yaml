@@ -1,5 +1,6 @@
 # crictl - CLI for CRI-compatible container runtimes
 tool_name: crictl
+execution_location: automation-service
 version: '1.0'
 description: CLI for CRI-compatible container runtimes
 platform: container

@@ -1,5 +1,6 @@
 # psql - PostgreSQL interactive terminal
 tool_name: psql
+execution_location: automation-service
 version: '1.0'
 description: PostgreSQL interactive terminal
 platform: database

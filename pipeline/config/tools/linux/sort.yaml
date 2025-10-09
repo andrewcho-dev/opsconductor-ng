@@ -1,5 +1,6 @@
 # sort - Sort lines of text
 tool_name: sort
+execution_location: automation-service
 version: '1.0'
 description: Sort lines of text
 platform: linux

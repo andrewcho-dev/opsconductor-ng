@@ -1,5 +1,6 @@
 # sed - Stream editor for text transformation
 tool_name: sed
+execution_location: automation-service
 version: '1.0'
 description: Stream editor for text transformation
 platform: linux

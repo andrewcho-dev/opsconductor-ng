@@ -1,5 +1,6 @@
 # grep - Text search utility
 tool_name: "grep"
+execution_location: automation-service
 version: "1.0"
 description: "Search text using patterns in files or streams with powerful regular expression support"
 platform: "linux"

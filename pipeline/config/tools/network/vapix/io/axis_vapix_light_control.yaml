@@ -1,5 +1,6 @@
 # Axis VAPIX Light Control - Control camera IR/white light via VAPIX API
 tool_name: Axis-VAPIX-Light-Control
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera IR illuminator and white light via VAPIX API.

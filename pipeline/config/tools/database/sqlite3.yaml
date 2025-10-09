@@ -1,5 +1,6 @@
 # sqlite3 - SQLite command-line interface
 tool_name: sqlite3
+execution_location: automation-service
 version: '1.0'
 description: SQLite command-line interface
 platform: database

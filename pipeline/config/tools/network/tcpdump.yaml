@@ -1,5 +1,6 @@
 # tcpdump - Command-line packet analyzer
 tool_name: tcpdump
+execution_location: network-service
 version: '1.0'
 description: Command-line packet analyzer
 platform: network

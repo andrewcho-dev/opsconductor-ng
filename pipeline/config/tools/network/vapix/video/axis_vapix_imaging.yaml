@@ -1,5 +1,6 @@
 # Axis VAPIX Imaging - Control camera image quality settings via VAPIX API
 tool_name: Axis-VAPIX-Imaging
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera image quality settings via VAPIX API.

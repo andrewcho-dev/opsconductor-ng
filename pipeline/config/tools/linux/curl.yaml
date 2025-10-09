@@ -1,5 +1,6 @@
 # curl - Transfer data with URLs
 tool_name: "curl"
+execution_location: automation-service
 version: "1.0"
 description: "Command-line tool for transferring data with URLs supporting HTTP, HTTPS, FTP, and many other protocols"
 platform: "linux"

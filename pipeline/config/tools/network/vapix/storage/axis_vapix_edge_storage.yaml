@@ -1,5 +1,6 @@
 # Axis VAPIX Edge Storage - Control SD card/NAS storage via VAPIX API
 tool_name: Axis-VAPIX-Edge-Storage
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera edge storage (SD card/NAS) via VAPIX API.

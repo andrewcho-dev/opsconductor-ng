@@ -1,5 +1,6 @@
 # find - Search for files and directories
 tool_name: "find"
+execution_location: automation-service
 version: "1.0"
 description: "Powerful file and directory search utility with extensive filtering and action capabilities"
 platform: "linux"

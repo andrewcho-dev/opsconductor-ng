@@ -1,5 +1,6 @@
 # df - Disk free space utility
 tool_name: "df"
+execution_location: automation-service
 version: "1.0"
 description: "Report file system disk space usage and availability across mounted filesystems"
 platform: "linux"

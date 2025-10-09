@@ -1,5 +1,6 @@
 # tshark - Terminal-based Wireshark
 tool_name: tshark
+execution_location: network-service
 version: '1.0'
 description: Terminal-based Wireshark
 platform: network

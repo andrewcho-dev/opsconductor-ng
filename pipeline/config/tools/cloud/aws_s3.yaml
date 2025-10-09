@@ -1,5 +1,6 @@
 # aws-s3 - AWS S3 storage management
 tool_name: aws-s3
+execution_location: automation-service
 version: '1.0'
 description: AWS S3 storage management
 platform: cloud

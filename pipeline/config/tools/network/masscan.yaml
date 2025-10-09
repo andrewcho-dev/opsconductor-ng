@@ -1,5 +1,6 @@
 # masscan - Fast TCP port scanner
 tool_name: masscan
+execution_location: network-service
 version: '1.0'
 description: Fast TCP port scanner
 platform: network

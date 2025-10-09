@@ -1,5 +1,6 @@
 # ifconfig - Configure network interfaces (legacy)
 tool_name: ifconfig
+execution_location: automation-service
 version: '1.0'
 description: Configure network interfaces (legacy)
 platform: linux

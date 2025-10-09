@@ -1,5 +1,6 @@
 # slack-cli - Slack command-line interface
 tool_name: slack-cli
+execution_location: communication-service
 version: '1.0'
 description: Slack command-line interface
 platform: custom

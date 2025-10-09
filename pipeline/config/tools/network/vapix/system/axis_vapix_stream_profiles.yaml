@@ -1,5 +1,6 @@
 # Axis VAPIX Stream Profiles - Manage video stream profiles via VAPIX API
 tool_name: Axis-VAPIX-Stream-Profiles
+execution_location: network-service
 version: '1.0'
 description: |
   Manage Axis camera video stream profiles via VAPIX API.

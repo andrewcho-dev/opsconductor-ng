@@ -1,5 +1,6 @@
 # chown - Change file ownership
 tool_name: "chown"
+execution_location: automation-service
 version: "1.0"
 description: "Change file owner and group ownership for files and directories"
 platform: "linux"

@@ -1,5 +1,6 @@
 # Axis VAPIX Video Streaming - Control video streaming via VAPIX API
 tool_name: Axis-VAPIX-Video-Streaming
+execution_location: network-service
 version: '1.0'
 description: |
   Control Axis camera video streaming via VAPIX HTTP/RTSP API.

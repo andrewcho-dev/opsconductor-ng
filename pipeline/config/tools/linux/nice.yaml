@@ -1,5 +1,6 @@
 # nice - Run command with modified priority
 tool_name: nice
+execution_location: automation-service
 version: '1.0'
 description: Run command with modified priority
 platform: linux

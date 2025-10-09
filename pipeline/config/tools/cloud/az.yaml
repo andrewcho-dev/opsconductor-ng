@@ -1,5 +1,6 @@
 # az - Azure Command-Line Interface
 tool_name: az
+execution_location: automation-service
 version: '1.0'
 description: Azure Command-Line Interface
 platform: cloud

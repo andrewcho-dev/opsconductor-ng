@@ -1,5 +1,6 @@
 # fluentd - Unified logging layer
 tool_name: fluentd
+execution_location: automation-service
 version: '1.0'
 description: Unified logging layer
 platform: monitoring

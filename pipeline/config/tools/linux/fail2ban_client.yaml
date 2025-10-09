@@ -1,5 +1,6 @@
 # fail2ban-client - Intrusion prevention framework
 tool_name: fail2ban-client
+execution_location: automation-service
 version: '1.0'
 description: Intrusion prevention framework
 platform: linux

@@ -1,5 +1,6 @@
 # kubectl-describe - Show detailed resource information
 tool_name: kubectl-describe
+execution_location: automation-service
 version: '1.0'
 description: Show detailed resource information
 platform: kubernetes

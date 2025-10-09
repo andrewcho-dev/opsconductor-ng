@@ -1,5 +1,6 @@
 # Get-Counter - Query Windows performance counters
 tool_name: Get-Counter
+execution_location: automation-service
 version: '1.0'
 description: Query Windows performance counters
 platform: windows

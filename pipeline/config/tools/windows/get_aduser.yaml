@@ -1,5 +1,6 @@
 # Get-ADUser - Query Active Directory users
 tool_name: Get-ADUser
+execution_location: automation-service
 version: '1.0'
 description: Query Active Directory users
 platform: windows

@@ -1,5 +1,6 @@
 # usermod - Modify user account
 tool_name: usermod
+execution_location: automation-service
 version: '1.0'
 description: Modify user account
 platform: linux

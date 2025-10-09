@@ -1,5 +1,6 @@
 # tail - Display last lines of file
 tool_name: tail
+execution_location: automation-service
 version: '1.0'
 description: Display last lines of file
 platform: linux

@@ -1,5 +1,6 @@
 # dns-analyzer - Analyze DNS protocol traffic
 tool_name: dns-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze DNS protocol traffic
 platform: network

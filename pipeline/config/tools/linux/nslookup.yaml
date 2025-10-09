@@ -1,5 +1,6 @@
 # nslookup - Query DNS records
 tool_name: nslookup
+execution_location: automation-service
 version: '1.0'
 description: Query DNS records
 platform: linux

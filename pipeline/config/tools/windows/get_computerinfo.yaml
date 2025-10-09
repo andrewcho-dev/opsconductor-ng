@@ -1,5 +1,6 @@
 # Get-ComputerInfo - Get comprehensive computer information
 tool_name: Get-ComputerInfo
+execution_location: automation-service
 version: '1.0'
 description: Get comprehensive computer information
 platform: windows

@@ -1,5 +1,6 @@
 # traceroute - Trace network path to destination
 tool_name: traceroute
+execution_location: automation-service
 version: '1.0'
 description: Trace network path to destination
 platform: linux

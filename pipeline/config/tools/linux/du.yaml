@@ -1,5 +1,6 @@
 # du - Display directory space usage
 tool_name: du
+execution_location: automation-service
 version: '1.0'
 description: Display directory space usage
 platform: linux

@@ -1,5 +1,6 @@
 # http-analyzer - Analyze HTTP protocol traffic
 tool_name: http-analyzer
+execution_location: network-service
 version: '1.0'
 description: Analyze HTTP protocol traffic
 platform: network

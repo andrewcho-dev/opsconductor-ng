@@ -1,5 +1,6 @@
 # Get-Volume - Query volume/partition information
 tool_name: Get-Volume
+execution_location: automation-service
 version: '1.0'
 description: Query volume/partition information
 platform: windows

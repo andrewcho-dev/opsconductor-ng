@@ -1,5 +1,6 @@
 # aws-ec2 - AWS EC2 management
 tool_name: aws-ec2
+execution_location: automation-service
 version: '1.0'
 description: AWS EC2 management
 platform: cloud
