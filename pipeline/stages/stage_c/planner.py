@@ -702,6 +702,74 @@ For each selected tool, create an execution step with:
      * port: SSH port (default: 22)
      * connection_type: "ssh" (to explicitly mark as SSH execution)
    
+   - For Windows commands using Impacket WMI:
+     
+     PARAMETERS: target_host, username, password, connection_type: "impacket", domain (optional), wait (see below)
+     
+     WAIT PARAMETER RULES:
+     * wait: false → GUI apps only (notepad.exe, calc.exe, mspaint.exe, explorer.exe)
+     * wait: true → ALL command-line commands that return output
+     
+     COMMON COMMANDS BY CATEGORY:
+     
+     1. PROCESSES (wait: true):
+        - List: "tasklist", "tasklist /FI \"IMAGENAME eq notepad.exe\"", "tasklist /V"
+        - Kill: "taskkill /F /IM process.exe", "taskkill /F /PID 1234", "taskkill /F /T /IM process.exe"
+     
+     2. FILES (wait: true):
+        - List: "dir C:\\path", "dir /S C:\\path", "tree C:\\path"
+        - Manipulate: "copy src dst", "move src dst", "del file", "ren old new", "type file"
+        - Directories: "mkdir dir", "rmdir dir", "rmdir /S /Q dir"
+        - Advanced: "xcopy src dst /E /I", "robocopy src dst /E", "attrib +R file"
+     
+     3. NETWORK (wait: true):
+        - Diagnostics: "ping host", "tracert host", "nslookup host", "pathping host"
+        - Config: "ipconfig", "ipconfig /all", "ipconfig /flushdns", "netstat -ano", "arp -a", "route print", "hostname", "getmac"
+        - Shares: "net share", "net use Z: \\\\server\\share"
+     
+     4. SERVICES (wait: true):
+        - "sc query", "sc query ServiceName", "sc start/stop ServiceName"
+        - "sc config ServiceName start= auto/disabled"
+        - "net start/stop ServiceName"
+     
+     5. USERS (wait: true):
+        - "net user", "net user username", "net user username password /ADD"
+        - "net user username /DELETE", "net user username /ACTIVE:YES/NO"
+        - "net localgroup Administrators", "whoami", "whoami /groups"
+     
+     6. SYSTEM INFO (wait: true):
+        - "systeminfo", "hostname", "ver"
+        - "wmic os get caption,version", "wmic cpu get name,numberofcores"
+        - "wmic memorychip get capacity", "wmic diskdrive get model,size"
+        - "wmic product get name,version", "wmic process list brief"
+     
+     7. REGISTRY (wait: true):
+        - "reg query HKLM\\path", "reg add HKLM\\path /v name /t REG_SZ /d value"
+        - "reg delete HKLM\\path /v name /f", "reg export/import file"
+     
+     8. SCHEDULED TASKS (wait: true):
+        - "schtasks /Query", "schtasks /Create /TN name /TR cmd /SC DAILY"
+        - "schtasks /Run /TN name", "schtasks /Delete /TN name /F"
+     
+     9. EVENT LOGS (wait: true):
+        - "wevtutil qe System /c:10 /f:text", "wevtutil cl System"
+     
+     10. SYSTEM MAINTENANCE (wait: true):
+         - "shutdown /s /r /a /l /t 0", "gpupdate /force", "sfc /scannow", "chkdsk C:"
+     
+     11. PERFORMANCE (wait: true):
+         - "wmic cpu get loadpercentage"
+         - "wmic path Win32_PerfFormattedData_PerfOS_Memory get AvailableMBytes"
+     
+     USER LANGUAGE TRANSLATION (CRITICAL):
+     - "shutdown/stop/close/kill notepad" → "taskkill /F /IM notepad.exe"
+     - "list processes" → "tasklist"
+     - "get IP" → "ipconfig"
+     - "check service" → "sc query ServiceName"
+     - "list files" → "dir C:\\path"
+     
+     NOTES: Use double backslashes in paths. Admin commands need admin credentials
+   
    - For API/HTTP requests (REST APIs, web services, device APIs like Axis cameras, etc.):
      * url: Full URL of the API endpoint OR
      * host: IP address or hostname (if building URL from parts)
@@ -783,6 +851,28 @@ For Linux/SSH commands:
   }
 ]
 
+Windows Impacket WMI Examples:
+[
+  {
+    "tool": "windows-impacket-executor",
+    "description": "Launch GUI app (wait: false) OR Execute command (wait: true)",
+    "inputs": {
+      "target_host": "192.168.50.211",
+      "username": "stationadmin",
+      "password": "password123",
+      "command": "notepad.exe" OR "taskkill /F /IM notepad.exe" OR "dir C:\\\\path" OR "ping host" OR "sc query ServiceName" OR "systeminfo" OR "tasklist",
+      "connection_type": "impacket",
+      "wait": false (GUI apps) OR true (CLI commands),
+      "interactive": true (GUI apps only),
+      "domain": ""
+    },
+    "preconditions": ["Windows machine is reachable", "Credentials are valid"],
+    "success_criteria": ["Command executed successfully"],
+    "failure_handling": "Log error and report failure",
+    "estimated_duration": 5
+  }
+]
+
 For API/HTTP requests (Axis cameras, REST APIs, etc.):
 [
   {
@@ -814,11 +904,10 @@ IMPORTANT:
 - Axis VAPIX params: PTZ home={"move":"home"}, autofocus={"autofocus":"on","camera":"1"}
 - Use GET method for Axis VAPIX commands
 
-CRITICAL: 
+CRITICAL NOTES:
 - Be intelligent about field selection for asset queries. Don't fetch all 50+ fields when only 5-10 are needed!
-- For WinRM commands, ALWAYS extract target_host, username, and password from the user's query!
-- For SSH commands, ALWAYS extract target_host, username, and password from the user's query!
-- For API requests, ALWAYS extract host/url, username, password, and API-specific parameters from the user's query!"""
+- ALWAYS extract target_host, username, and password from the user's query!
+- The user may use informal language - translate to correct commands (see USER LANGUAGE TRANSLATION above)!"""
 
     def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1, context: Optional[Dict[str, Any]] = None) -> str:
         """Build the user prompt with decision and selection context"""
@@ -877,9 +966,37 @@ Host: {ip}
 """
                 prompt += """
 CRITICAL: You MUST include BOTH username AND password in your execution plan!
+- For windows-impacket-executor tool: Set connection_type to "impacket", include username and password from above
 - For PowerShell/WinRM commands: Set connection_type to "powershell", include username and password from above
 - For SSH commands: Set connection_type to "ssh", include username and password from above
 - The password is available in the credentials above - you must include it in the plan parameters
+
+Example for windows-impacket-executor (launching GUI applications):
+{
+  "tool": "windows-impacket-executor",
+  "inputs": {
+    "target_host": "192.168.50.211",
+    "username": "stationadmin",
+    "password": "<use the actual password from credentials above>",
+    "command": "notepad.exe",
+    "connection_type": "impacket",
+    "wait": false,
+    "interactive": true
+  }
+}
+
+Example for windows-impacket-executor (killing/stopping processes):
+{
+  "tool": "windows-impacket-executor",
+  "inputs": {
+    "target_host": "192.168.50.211",
+    "username": "stationadmin",
+    "password": "<use the actual password from credentials above>",
+    "command": "taskkill /F /IM notepad.exe",
+    "connection_type": "impacket",
+    "wait": true
+  }
+}
 
 Example for PowerShell:
 {

@@ -213,7 +213,9 @@ class StageEExecutor:
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
         
         # Load tool definition to get execution_location
-        tools_dir = Path("/home/opsconductor/opsconductor-ng/pipeline/config/tools")
+        # Use relative path from current file location to work in both dev and container environments
+        current_file = Path(__file__)
+        tools_dir = current_file.parent.parent.parent / "config" / "tools"
         tool_file = None
         
         # Search for tool YAML file (try both hyphenated and underscored versions)

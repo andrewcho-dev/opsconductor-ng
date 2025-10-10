@@ -274,9 +274,14 @@ class WindowsImpacketExecutor:
                                 smb_conn = SMBConnection(target_host, target_host)
                                 smb_conn.login(username, password, domain)
                                 
-                                # Read the output file
-                                file_content = smb_conn.getFile("C$", output_file.replace("C:\\", ""))
-                                stdout = file_content.decode('utf-8', errors='ignore')
+                                # Read the output file using callback
+                                file_data = b""
+                                def file_callback(data):
+                                    nonlocal file_data
+                                    file_data += data
+                                
+                                smb_conn.getFile("C$", output_file.replace("C:\\", ""), file_callback)
+                                stdout = file_data.decode('utf-8', errors='ignore')
                                 
                                 # Delete the output file
                                 smb_conn.deleteFile("C$", output_file.replace("C:\\", ""))

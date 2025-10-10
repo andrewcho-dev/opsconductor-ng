@@ -208,7 +208,15 @@ class PipelineOrchestratorV2:
                 
                 logger.info(f"✅ [STAGE C] Complete in {stage_durations['stage_c']:.2f}ms")
                 if planning_result and hasattr(planning_result, 'plan'):
-                    plan_dict = planning_result.plan if isinstance(planning_result.plan, dict) else {}
+                    # Convert ExecutionPlan to dict if needed
+                    if isinstance(planning_result.plan, dict):
+                        plan_dict = planning_result.plan
+                    elif hasattr(planning_result.plan, 'dict'):
+                        plan_dict = planning_result.plan.dict()
+                    elif hasattr(planning_result.plan, 'model_dump'):
+                        plan_dict = planning_result.plan.model_dump()
+                    else:
+                        plan_dict = {}
                     steps = plan_dict.get('steps', [])
                     logger.info(f"   Created plan with {len(steps)} steps")
                 
