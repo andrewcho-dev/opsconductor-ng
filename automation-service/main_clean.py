@@ -3,6 +3,10 @@
 OpsConductor Automation Service - CLEAN ARCHITECTURE
 Simple execution API - No Celery, No Background Processing
 Handles direct command execution and task management
+
+UNIFIED EXECUTION FRAMEWORK:
+All tool executions follow the same procedural steps.
+The "flavor" is determined by tool metadata, not hardcoded logic.
 """
 
 import sys
@@ -21,6 +25,9 @@ import httpx
 sys.path.append('/app/shared')
 from base_service import BaseService
 from execution_context import create_execution_context
+
+# Import unified executor
+from unified_executor import UnifiedExecutor
 
 # ============================================================================
 # CLEAN EXECUTION STATUS
@@ -120,8 +127,12 @@ class CleanAutomationService(BaseService):
         self.connection_managers = {}
         self._initialize_connection_managers()
         
+        # Initialize unified executor
+        self.unified_executor = UnifiedExecutor(self.logger)
+        
         logger = logging.getLogger(__name__)
         logger.info("🧹 Clean Automation Service initialized - No Celery, Direct Execution Only")
+        logger.info("🎯 Unified Execution Framework enabled")
     
     def _initialize_connection_managers(self):
         """Initialize connection managers for different target types"""
@@ -357,6 +368,14 @@ class CleanAutomationService(BaseService):
         # Use PowerShell library to execute command
         ps_manager = self.connection_managers['powershell']
         
+        # Debug: Log what we're about to pass to execute_powershell
+        self.logger.info(
+            f"DEBUG: About to call execute_powershell with: "
+            f"target_host={request.target_host}, "
+            f"username={username}, "
+            f"password={'*' * len(password) if password else 'None'}"
+        )
+        
         # Execute PowerShell script via WinRM
         # Note: execute_powershell is synchronous, so we run it in a thread pool
         loop = asyncio.get_event_loop()
@@ -507,7 +526,14 @@ async def _execute_single_step(
     loop_total: int = 1
 ) -> Dict[str, Any]:
     """
-    Execute a single step (used for both regular and loop execution)
+    Execute a single step using UNIFIED EXECUTION FRAMEWORK
+    
+    All tool types follow the same procedural steps:
+    1. Parse tool metadata (or infer from tool name/platform)
+    2. Resolve parameters
+    3. Build command/request
+    4. Resolve credentials
+    5. Execute
     
     Args:
         service_instance: The automation service instance
@@ -526,54 +552,76 @@ async def _execute_single_step(
         service_instance.logger.info(f"🔧 Executing {tool_name} (iteration {loop_iteration}/{loop_total})")
         service_instance.logger.info(f"📦 Parameters: {json.dumps(parameters, indent=2)}")
         
-        # Build command based on tool
-        command = None
-        target_host = None
-        connection_type = "local"
+        # ====================================================================
+        # UNIFIED EXECUTION FRAMEWORK
+        # ====================================================================
         
-        if tool_name == "ping":
-            host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
-            count = parameters.get("count", 4)
-            if host:
-                command = f"ping -c {count} {host}"
+        # Create minimal tool definition for inference
+        # If the step includes full tool metadata, use it; otherwise infer
+        tool_definition = step.get("tool_definition", {
+            "tool_name": tool_name,
+            "platform": step.get("platform", ""),
+            "category": step.get("category", "")
+        })
         
-        elif tool_name == "check_connectivity":
-            host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
-            if host:
-                command = f"ping -c 4 {host}"
+        # Use unified executor to build command and resolve credentials
+        command, target_host, connection_type, credentials = await service_instance.unified_executor.execute_tool(
+            tool_definition=tool_definition,
+            parameters=parameters,
+            service_instance=service_instance
+        )
         
-        elif tool_name in ["windows-impacket-executor", "windows-psexec", "PSExec"]:
-            command = parameters.get("command", parameters.get("application", ""))
-            target_host = parameters.get("target_host")
-            connection_type = "impacket"
-            
-            env_vars = {}
-            if parameters.get("interactive", False):
-                env_vars["interactive"] = "true"
-            if parameters.get("session_id"):
-                env_vars["session_id"] = str(parameters.get("session_id"))
-            if "wait" in parameters:
-                env_vars["wait"] = "true" if parameters.get("wait") else "false"
-            if parameters.get("domain"):
-                env_vars["domain"] = parameters.get("domain")
-            
-            if env_vars:
-                parameters["environment_vars"] = env_vars
+        # ====================================================================
+        # SPECIAL HANDLERS (for tools that don't execute commands)
+        # ====================================================================
         
-        elif tool_name in ["Invoke-Command", "powershell"]:
-            command = parameters.get("command", parameters.get("script_block", ""))
-            target_host = parameters.get("target_host")
-            connection_type = "powershell"
+        # Handle special case: asset-query (calls asset-service API)
+        if tool_name in ["asset-query", "asset_query"]:
+            service_instance.logger.info(f"🔍 Special handler: asset-query")
+            try:
+                async with httpx.AsyncClient() as client:
+                    asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
+                    response = await client.post(
+                        f"{asset_service_url}/execute-plan",
+                        json={
+                            "execution_id": "asset-query",
+                            "plan": {"steps": [{"tool": "asset-query", "inputs": parameters}]},
+                            "tenant_id": "default",
+                            "actor_id": 1
+                        },
+                        timeout=30.0
+                    )
+                    response.raise_for_status()
+                    asset_result = response.json()
+                
+                asset_step_results = asset_result.get("step_results", [])
+                if asset_step_results:
+                    asset_step_result = asset_step_results[0]
+                    return {
+                        "step": step_index + 1,
+                        "loop_iteration": loop_iteration,
+                        "loop_total": loop_total,
+                        "tool": tool_name,
+                        "status": asset_step_result.get("status", "completed"),
+                        "output": asset_step_result.get("output", {}),
+                        "message": asset_step_result.get("message", "")
+                    }
+            except Exception as e:
+                service_instance.logger.error(f"❌ Asset query failed: {e}")
+                return {
+                    "step": step_index + 1,
+                    "loop_iteration": loop_iteration,
+                    "loop_total": loop_total,
+                    "tool": tool_name,
+                    "status": "failed",
+                    "error": str(e)
+                }
         
-        else:
-            # Generic command execution
-            command = parameters.get("command", "")
-            target_host = parameters.get("target_host")
-            connection_type = parameters.get("connection_type", "local")
-            
-            if connection_type == "winrm":
-                connection_type = "powershell"
+        # ====================================================================
+        # COMMAND EXECUTION (unified path for all command-based tools)
+        # ====================================================================
         
+        # Check if command was built
         if not command:
             return {
                 "step": step_index + 1,
@@ -584,54 +632,27 @@ async def _execute_single_step(
                 "message": "No command to execute"
             }
         
-        # Build credentials
-        credentials = None
+        # Handle special environment variables for impacket
+        if connection_type == "impacket":
+            env_vars = {}
+            if parameters.get("interactive", False):
+                env_vars["interactive"] = "true"
+            if parameters.get("session_id"):
+                env_vars["session_id"] = str(parameters.get("session_id"))
+            if "wait" in parameters:
+                env_vars["wait"] = "true" if parameters.get("wait") else "false"
+            if parameters.get("domain"):
+                env_vars["domain"] = parameters.get("domain")
+            if env_vars:
+                parameters["environment_vars"] = env_vars
         
-        # Debug logging
-        service_instance.logger.info(
-            f"Building credentials - use_asset_credentials: {parameters.get('use_asset_credentials')}, "
-            f"asset_id: {parameters.get('asset_id')}, "
-            f"parameters keys: {list(parameters.keys())}"
-        )
-        
-        # Check if we should use asset credentials
-        if parameters.get("use_asset_credentials") and parameters.get("asset_id"):
-            # Fetch credentials from asset service
-            asset_id = parameters.get("asset_id")
-            service_instance.logger.info(f"Fetching credentials for asset {asset_id}")
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"http://asset-service:3002/{asset_id}/credentials",
-                        timeout=10.0
-                    )
-                    if response.status_code == 200:
-                        cred_data = response.json()
-                        if cred_data.get("success"):
-                            asset_creds = cred_data.get("data", {})
-                            credentials = {
-                                "username": asset_creds.get("username"),
-                                "password": asset_creds.get("password")
-                            }
-                            # Add domain if available
-                            if asset_creds.get("domain"):
-                                credentials["domain"] = asset_creds.get("domain")
-                    else:
-                        service_instance.logger.error(
-                            f"Failed to fetch credentials for asset {asset_id}: "
-                            f"HTTP {response.status_code}"
-                        )
-            except Exception as e:
-                service_instance.logger.error(
-                    f"Error fetching credentials for asset {asset_id}: {e}"
-                )
-        
-        # Fallback to explicit username/password if provided
-        elif parameters.get("username") or parameters.get("password"):
-            credentials = {
-                "username": parameters.get("username"),
-                "password": parameters.get("password")
-            }
+        # Log execution details
+        service_instance.logger.info(f"🎯 Unified execution:")
+        service_instance.logger.info(f"   Command: {command}")
+        service_instance.logger.info(f"   Target: {target_host}")
+        service_instance.logger.info(f"   Connection: {connection_type}")
+        if credentials:
+            service_instance.logger.info(f"   Credentials: {credentials.get('username')}")
         
         # Execute command
         cmd_request = CommandRequest(
@@ -779,27 +800,8 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             else:
                 step_copy["parameters"] = resolved_parameters
             
-            # Build command based on tool
-            command = None
-            target_host = None
-            connection_type = "local"
-            
-            if tool_name == "ping":
-                # Ping command - check multiple possible parameter names
-                host = resolved_parameters.get("target_host", resolved_parameters.get("host", resolved_parameters.get("target", "")))
-                count = resolved_parameters.get("count", 4)
-                if host:
-                    command = f"ping -c {count} {host}"
-                    service.logger.info(f"🏓 Ping command: {command}")
-            
-            elif tool_name == "check_connectivity":
-                # Check connectivity (ping)
-                host = resolved_parameters.get("target_host", resolved_parameters.get("host", resolved_parameters.get("target", "")))
-                if host:
-                    command = f"ping -c 4 {host}"
-                    service.logger.info(f"🔌 Connectivity check: {command}")
-            
-            elif tool_name in ["asset-query", "asset_query"]:
+            # Handle special case: asset-query (calls asset-service API, not a command)
+            if tool_name in ["asset-query", "asset_query"]:
                 # Asset query - call asset-service
                 service.logger.info(f"🔍 Executing asset-query")
                 
@@ -865,60 +867,63 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                     context.store_step_result(i, step_result)
                     continue  # Skip to next step
             
-            elif tool_name == "windows-impacket-executor" or tool_name == "windows-psexec" or tool_name == "PSExec":
-                # Impacket WMI execution for GUI applications
-                command = resolved_parameters.get("command", resolved_parameters.get("application", ""))
-                target_host = resolved_parameters.get("target_host")
-                connection_type = "impacket"
+            # Use unified executor for ALL command-based tools
+            try:
+                # Create tool definition for unified executor
+                tool_definition = step.get("tool_definition", {
+                    "tool_name": tool_name,
+                    "platform": step.get("platform", ""),
+                    "category": step.get("category", "")
+                })
                 
-                # Build environment vars for Impacket options
-                env_vars = {}
-                if resolved_parameters.get("interactive", False):
-                    env_vars["interactive"] = "true"
-                if resolved_parameters.get("session_id"):
-                    env_vars["session_id"] = str(resolved_parameters.get("session_id"))
-                if "wait" in resolved_parameters:
-                    env_vars["wait"] = "true" if resolved_parameters.get("wait") else "false"
-                if resolved_parameters.get("domain"):
-                    env_vars["domain"] = resolved_parameters.get("domain")
+                # Execute tool using unified executor
+                service.logger.info(f"🔧 Using unified executor for tool: {tool_name}")
+                command, target_host, connection_type, credentials = await service.unified_executor.execute_tool(
+                    tool_definition=tool_definition,
+                    parameters=resolved_parameters,
+                    service_instance=service
+                )
                 
-                # Store env vars in request
-                if env_vars:
-                    resolved_parameters["environment_vars"] = env_vars
+                # Handle special environment variables for Impacket tools
+                if tool_name in ["windows-impacket-executor", "windows-psexec", "PSExec"]:
+                    env_vars = {}
+                    if resolved_parameters.get("interactive", False):
+                        env_vars["interactive"] = "true"
+                    if resolved_parameters.get("session_id"):
+                        env_vars["session_id"] = str(resolved_parameters.get("session_id"))
+                    if "wait" in resolved_parameters:
+                        env_vars["wait"] = "true" if resolved_parameters.get("wait") else "false"
+                    if resolved_parameters.get("domain"):
+                        env_vars["domain"] = resolved_parameters.get("domain")
+                    
+                    if env_vars:
+                        resolved_parameters["environment_vars"] = env_vars
+                        service.logger.info(f"🖥️  Impacket environment vars: {env_vars}")
                 
-                service.logger.info(f"🖥️  Impacket WMI command: {command} (interactive={env_vars.get('interactive', 'false')}, domain={env_vars.get('domain', '')})")
-            
-            else:
-                # Generic command execution
-                command = resolved_parameters.get("command", "")
-                target_host = resolved_parameters.get("target_host")
-                connection_type = resolved_parameters.get("connection_type", "local")
+                if not command:
+                    service.logger.warning(f"No command found for step {i+1}")
+                    step_result = {
+                        "step": i+1,
+                        "tool": tool_name,
+                        "status": "skipped",
+                        "message": "No command to execute"
+                    }
+                    step_results.append(step_result)
+                    context.store_step_result(i, step_result)
+                    continue
                 
-                # Normalize connection type: "winrm" -> "powershell" for backward compatibility
-                if connection_type == "winrm":
-                    connection_type = "powershell"
-                    service.logger.info(f"🔄 Normalized connection_type from 'winrm' to 'powershell'")
-            
-            if not command:
-                service.logger.warning(f"No command found for step {i+1}")
+            except Exception as e:
+                service.logger.error(f"❌ Unified executor failed for tool {tool_name}: {e}", exc_info=True)
                 step_result = {
                     "step": i+1,
                     "tool": tool_name,
-                    "status": "skipped",
-                    "message": "No command to execute"
+                    "status": "failed",
+                    "output": {},
+                    "message": f"Tool execution error: {str(e)}"
                 }
                 step_results.append(step_result)
                 context.store_step_result(i, step_result)
                 continue
-            
-            # Build credentials if username/password provided
-            credentials = None
-            if resolved_parameters.get("username") or resolved_parameters.get("password"):
-                credentials = {
-                    "username": resolved_parameters.get("username"),
-                    "password": resolved_parameters.get("password")
-                }
-                service.logger.info(f"🔐 Using credentials for user: {resolved_parameters.get('username')}")
             
             # Execute command
             cmd_request = CommandRequest(

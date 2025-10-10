@@ -952,8 +952,10 @@ YOU MUST USE THESE CREDENTIALS in your execution plan:
                     # Include password in prompt (it's needed for the LLM to create the plan)
                     # Note: This is internal communication between services, not exposed to users
                     password_value = creds.get('password', '[NOT SET]')
+                    asset_id = creds.get('asset_id', 'N/A')
                     prompt += f"""
 Host: {ip}
+  - Asset ID: {asset_id}
   - Hostname: {creds.get('hostname', 'N/A')}
   - OS Type: {creds.get('os_type', 'N/A')}
   - Service Type: {creds.get('service_type', 'N/A')}
@@ -965,19 +967,27 @@ Host: {ip}
 
 """
                 prompt += """
-CRITICAL: You MUST include BOTH username AND password in your execution plan!
-- For windows-impacket-executor tool: Set connection_type to "impacket", include username and password from above
-- For PowerShell/WinRM commands: Set connection_type to "powershell", include username and password from above
-- For SSH commands: Set connection_type to "ssh", include username and password from above
-- The password is available in the credentials above - you must include it in the plan parameters
+CRITICAL CREDENTIAL HANDLING:
+You have TWO options for handling credentials in your execution plan:
 
-Example for windows-impacket-executor (launching GUI applications):
+OPTION 1 (RECOMMENDED): Use automatic credential fetching
+- Set "use_asset_credentials": true
+- Set "asset_id": <asset_id from above>
+- DO NOT include username or password fields
+- The automation service will automatically fetch credentials from the asset database
+
+OPTION 2: Explicitly include credentials
+- Include "username": "<username from above>"
+- Include "password": "<password from above>"
+- DO NOT set use_asset_credentials
+
+Example for windows-impacket-executor with automatic credentials (RECOMMENDED):
 {
   "tool": "windows-impacket-executor",
   "inputs": {
     "target_host": "192.168.50.211",
-    "username": "stationadmin",
-    "password": "<use the actual password from credentials above>",
+    "use_asset_credentials": true,
+    "asset_id": 21,
     "command": "notepad.exe",
     "connection_type": "impacket",
     "wait": false,
@@ -985,28 +995,28 @@ Example for windows-impacket-executor (launching GUI applications):
   }
 }
 
-Example for windows-impacket-executor (killing/stopping processes):
+Example for PowerShell with automatic credentials (RECOMMENDED):
+{
+  "tool": "Invoke-Command",
+  "inputs": {
+    "target_host": "192.168.50.211",
+    "use_asset_credentials": true,
+    "asset_id": 21,
+    "command": "Get-ChildItem C:\\",
+    "connection_type": "powershell"
+  }
+}
+
+Example for windows-impacket-executor with explicit credentials (if needed):
 {
   "tool": "windows-impacket-executor",
   "inputs": {
     "target_host": "192.168.50.211",
     "username": "stationadmin",
-    "password": "<use the actual password from credentials above>",
+    "password": "Enabled123!",
     "command": "taskkill /F /IM notepad.exe",
     "connection_type": "impacket",
     "wait": true
-  }
-}
-
-Example for PowerShell:
-{
-  "tool": "Get-ChildItem",
-  "inputs": {
-    "target_host": "192.168.50.211",
-    "username": "Administrator",
-    "password": "<use the actual password from credentials above>",
-    "command": "Get-ChildItem C:\\Windows",
-    "connection_type": "powershell"
   }
 }
 """

@@ -90,11 +90,18 @@ class WindowsPowerShellLibrary:
             if port is None:
                 port = 5986 if use_ssl else 5985
             
+            # Strip any protocol prefix from target_host if present
+            clean_target_host = target_host
+            if isinstance(target_host, str):
+                clean_target_host = target_host.replace('http://', '').replace('https://', '').split(':')[0]
+            
             protocol = "https" if use_ssl else "http"
-            endpoint = f"{protocol}://{target_host}:{port}/wsman"
+            endpoint = f"{protocol}://{clean_target_host}:{port}/wsman"
             
             logger.info("Testing WinRM connection", 
-                       target_host=target_host, 
+                       target_host=target_host,
+                       clean_target_host=clean_target_host,
+                       endpoint=endpoint,
                        port=port, 
                        protocol=protocol,
                        username=username)
@@ -167,6 +174,14 @@ class WindowsPowerShellLibrary:
                           script: str, timeout: int = None, use_ssl: bool = True,
                           port: int = None) -> Dict[str, Any]:
         """Execute PowerShell script on Windows target via WinRM"""
+        # Debug: Log what was passed into this function
+        print(f"DEBUG execute_powershell() called with:")
+        print(f"  target_host: {target_host}")
+        print(f"  username: {username}")
+        print(f"  password: {'*' * len(password) if password else 'None'}")
+        print(f"  use_ssl: {use_ssl}")
+        print(f"  port: {port}")
+        
         # Check dependencies first
         if not self.dependencies_available["winrm"]:
             return {
@@ -206,16 +221,30 @@ class WindowsPowerShellLibrary:
                     if port is None:
                         port = 5986 if use_ssl else 5985
                     
+                    # Strip any protocol prefix from target_host if present
+                    clean_target_host = target_host
+                    if isinstance(target_host, str):
+                        clean_target_host = target_host.replace('http://', '').replace('https://', '').split(':')[0]
+                    
                     protocol = "https" if use_ssl else "http"
-                    endpoint = f"{protocol}://{target_host}:{port}/wsman"
+                    endpoint = f"{protocol}://{clean_target_host}:{port}/wsman"
                     
                     logger.info("Executing PowerShell script", 
-                               target_host=target_host, 
+                               target_host=target_host,
+                               clean_target_host=clean_target_host,
+                               endpoint=endpoint,
                                port=port, 
                                protocol=protocol,
                                username=username,
                                attempt=attempt + 1,
                                script_length=len(script))
+                    
+                    # Debug: Print actual values being passed
+                    print(f"DEBUG: Creating WinRM session with:")
+                    print(f"  endpoint: {endpoint}")
+                    print(f"  username: {username}")
+                    print(f"  password: {'*' * len(password) if password else 'None'}")
+                    print(f"  transport: {'ssl' if use_ssl else 'plaintext'}")
                     
                     # Create WinRM session
                     session = winrm.Session(
