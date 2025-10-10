@@ -128,10 +128,12 @@ class CleanAutomationService(BaseService):
             sys.path.append('/app/libraries')
             from libraries.linux_ssh import LinuxSSHLibrary
             from libraries.windows_powershell import WindowsPowerShellLibrary
+            from libraries.windows_psexec import WindowsPSExecLibrary
             
             self.connection_managers = {
                 'ssh': LinuxSSHLibrary(),
                 'powershell': WindowsPowerShellLibrary() if WindowsPowerShellLibrary else None,
+                'psexec': WindowsPSExecLibrary() if WindowsPSExecLibrary else None,
                 'local': None  # Direct subprocess execution
             }
             
@@ -175,6 +177,8 @@ class CleanAutomationService(BaseService):
                 exit_code, stdout, stderr = await self._execute_ssh_command(request)
             elif request.connection_type == "powershell":
                 exit_code, stdout, stderr = await self._execute_powershell_command(request)
+            elif request.connection_type == "psexec":
+                exit_code, stdout, stderr = await self._execute_psexec_command(request)
             else:
                 raise ValueError(f"Unsupported connection type: {request.connection_type}")
             
@@ -378,6 +382,71 @@ class CleanAutomationService(BaseService):
             stderr = error_msg if not stderr else f"{stderr}\n{error_msg}"
         
         return exit_code, stdout, stderr
+    
+    async def _execute_psexec_command(self, request: CommandRequest) -> tuple[int, str, str]:
+        """Execute command via PSExec"""
+        if 'psexec' not in self.connection_managers or not self.connection_managers['psexec']:
+            raise Exception("PSExec connection manager not available")
+        
+        if not request.target_host:
+            raise Exception("target_host is required for PSExec execution")
+        
+        if not request.credentials:
+            raise Exception("credentials (username/password) are required for PSExec execution")
+        
+        # Extract credentials
+        username = request.credentials.get("username")
+        password = request.credentials.get("password")
+        
+        if not username or not password:
+            raise Exception("Both username and password are required in credentials")
+        
+        # Extract PSExec-specific options from environment_vars if provided
+        interactive = False
+        session_id = None
+        wait = True
+        
+        if request.environment_vars:
+            interactive = request.environment_vars.get("interactive", "false").lower() == "true"
+            session_id_str = request.environment_vars.get("session_id")
+            if session_id_str:
+                try:
+                    session_id = int(session_id_str)
+                except ValueError:
+                    self.logger.warning(f"Invalid session_id: {session_id_str}, ignoring")
+            wait = request.environment_vars.get("wait", "true").lower() == "true"
+        
+        # Use PSExec library to execute command
+        psexec_manager = self.connection_managers['psexec']
+        
+        # Execute command via PSExec
+        # Note: execute_command is synchronous, so we run it in a thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            psexec_manager.execute_command,
+            request.target_host,
+            username,
+            password,
+            request.command,
+            interactive,
+            session_id,
+            request.timeout,
+            wait
+        )
+        
+        # Extract results
+        exit_code = result.get("exit_code", -1)
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        
+        if not result.get("success"):
+            error_msg = result.get("error", "Unknown PSExec execution error")
+            self.logger.error(f"PSExec execution failed: {error_msg}")
+            # Return error in stderr
+            stderr = error_msg if not stderr else f"{stderr}\n{error_msg}"
+        
+        return exit_code, stdout, stderr
 
 # ============================================================================
 # API ENDPOINTS
@@ -488,6 +557,27 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                     command = f"ping -c 4 {host}"
                     service.logger.info(f"🔌 Connectivity check: {command}")
             
+            elif tool_name == "windows-psexec" or tool_name == "PSExec":
+                # PSExec execution for GUI applications
+                command = parameters.get("command", parameters.get("application", ""))
+                target_host = parameters.get("target_host")
+                connection_type = "psexec"
+                
+                # Build environment vars for PSExec options
+                env_vars = {}
+                if parameters.get("interactive", False):
+                    env_vars["interactive"] = "true"
+                if parameters.get("session_id"):
+                    env_vars["session_id"] = str(parameters.get("session_id"))
+                if "wait" in parameters:
+                    env_vars["wait"] = "true" if parameters.get("wait") else "false"
+                
+                # Store env vars in request
+                if env_vars:
+                    parameters["environment_vars"] = env_vars
+                
+                service.logger.info(f"🖥️  PSExec command: {command} (interactive={env_vars.get('interactive', 'false')})")
+            
             else:
                 # Generic command execution
                 command = parameters.get("command", "")
@@ -524,7 +614,8 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 target_host=target_host,
                 connection_type=connection_type,
                 credentials=credentials,
-                timeout=parameters.get("timeout", 300)
+                timeout=parameters.get("timeout", 300),
+                environment_vars=parameters.get("environment_vars")
             )
             
             result = await service.execute_command(cmd_request)

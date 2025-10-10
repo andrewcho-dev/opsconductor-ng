@@ -825,6 +825,56 @@ def register_windows_tools(registry):
         ]
     )
     registry.register_tool(windows_printer_tool)
+    
+    # ============================================================================
+    # WINDOWS PSEXEC - INTERACTIVE GUI APPLICATION EXECUTION
+    # ============================================================================
+    
+    windows_psexec_tool = Tool(
+        name="windows-psexec",
+        description="Execute commands and GUI applications on remote Windows systems using PSExec with interactive desktop support",
+        capabilities=[
+            ToolCapability(
+                name="psexec_execute",
+                description="Execute commands remotely with PSExec, supporting GUI applications and interactive sessions",
+                required_inputs=["target_host", "command"],
+                optional_inputs=["username", "password", "interactive", "session_id", "wait"]
+            ),
+            ToolCapability(
+                name="psexec_gui_launch",
+                description="Launch GUI applications on remote desktop with interactive session support",
+                required_inputs=["target_host", "application"],
+                optional_inputs=["username", "password", "session_id", "arguments"]
+            ),
+            ToolCapability(
+                name="psexec_background",
+                description="Execute commands in background without waiting for completion",
+                required_inputs=["target_host", "command"],
+                optional_inputs=["username", "password", "interactive"]
+            )
+        ],
+        required_inputs=["target_host", "command"],
+        permissions=PermissionLevel.ADMIN,
+        production_safe=False,  # Remote execution with admin privileges is high-risk
+        max_execution_time=300,
+        dependencies=["psexec"],
+        examples=[
+            "Launch notepad interactively: psexec \\\\192.168.1.100 -i 1 notepad.exe",
+            "Run command as admin: psexec \\\\192.168.1.100 -u admin -p password cmd /c ipconfig",
+            "Launch GUI app in background: psexec \\\\192.168.1.100 -i 1 -d calc.exe",
+            "Execute on console session: psexec \\\\192.168.1.100 -i 0 taskmgr.exe"
+        ],
+        notes=[
+            "PSExec must be installed on the automation service host",
+            "Download from: https://docs.microsoft.com/en-us/sysinternals/downloads/psexec",
+            "Use -i flag with session ID for GUI applications (typically session 1 for first logged-in user)",
+            "Use -d flag to launch without waiting (for GUI apps that don't exit)",
+            "Session 0 is the console session, Session 1+ are user sessions",
+            "Use 'query user' on target to find active session IDs",
+            "GUI applications will appear on the remote computer's screen, not locally"
+        ]
+    )
+    registry.register_tool(windows_psexec_tool)
 
 
 def get_windows_tools_summary():
@@ -835,7 +885,7 @@ def get_windows_tools_summary():
         dict: Summary of Windows tools by category
     """
     return {
-        "total_tools": 20,
+        "total_tools": 21,
         "categories": {
             "Service Management": ["windows-service-manager"],
             "Process Management": ["windows-process-manager"],
@@ -854,7 +904,8 @@ def get_windows_tools_summary():
             "PowerShell": ["windows-powershell-executor"],
             "System Information": ["windows-system-info"],
             "Remote Desktop": ["windows-rdp-manager"],
-            "Printer Management": ["windows-printer-manager"]
+            "Printer Management": ["windows-printer-manager"],
+            "PSExec Remote Execution": ["windows-psexec"]
         },
         "capabilities": [
             "windows_automation",
@@ -875,6 +926,8 @@ def get_windows_tools_summary():
             "ad_management",
             "certificate_management",
             "rdp_management",
-            "printer_management"
+            "printer_management",
+            "psexec_execution",
+            "gui_application_launch"
         ]
     }
