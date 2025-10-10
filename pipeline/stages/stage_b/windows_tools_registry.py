@@ -832,46 +832,48 @@ def register_windows_tools(registry):
     
     windows_psexec_tool = Tool(
         name="windows-psexec",
-        description="Execute commands and GUI applications on remote Windows systems using PSExec with interactive desktop support",
+        description="Execute commands and GUI applications on remote Windows systems using Impacket WMI with support for non-blocking execution",
         capabilities=[
             ToolCapability(
                 name="psexec_execute",
-                description="Execute commands remotely with PSExec, supporting GUI applications and interactive sessions",
+                description="Execute commands remotely via WMI, supporting GUI applications and non-blocking execution",
                 required_inputs=["target_host", "command"],
-                optional_inputs=["username", "password", "interactive", "session_id", "wait"]
+                optional_inputs=["username", "password", "domain", "interactive", "session_id", "wait"]
             ),
             ToolCapability(
                 name="psexec_gui_launch",
-                description="Launch GUI applications on remote desktop with interactive session support",
+                description="Launch GUI applications on remote desktop without blocking (appears on remote screen)",
                 required_inputs=["target_host", "application"],
-                optional_inputs=["username", "password", "session_id", "arguments"]
+                optional_inputs=["username", "password", "domain", "session_id", "arguments"]
             ),
             ToolCapability(
                 name="psexec_background",
                 description="Execute commands in background without waiting for completion",
                 required_inputs=["target_host", "command"],
-                optional_inputs=["username", "password", "interactive"]
+                optional_inputs=["username", "password", "domain", "interactive"]
             )
         ],
         required_inputs=["target_host", "command"],
         permissions=PermissionLevel.ADMIN,
         production_safe=False,  # Remote execution with admin privileges is high-risk
         max_execution_time=300,
-        dependencies=["psexec"],
+        dependencies=["impacket"],
         examples=[
-            "Launch notepad interactively: psexec \\\\192.168.1.100 -i 1 notepad.exe",
-            "Run command as admin: psexec \\\\192.168.1.100 -u admin -p password cmd /c ipconfig",
-            "Launch GUI app in background: psexec \\\\192.168.1.100 -i 1 -d calc.exe",
-            "Execute on console session: psexec \\\\192.168.1.100 -i 0 taskmgr.exe"
+            "Launch notepad (non-blocking): target=192.168.1.100, command=notepad.exe, wait=false",
+            "Run command and get output: target=192.168.1.100, command='ipconfig /all', wait=true",
+            "Launch GUI app: target=192.168.1.100, command=calc.exe, wait=false",
+            "Execute with domain account: target=192.168.1.100, command=cmd.exe, domain=CORP, username=admin"
         ],
         notes=[
-            "PSExec must be installed on the automation service host",
-            "Download from: https://docs.microsoft.com/en-us/sysinternals/downloads/psexec",
-            "Use -i flag with session ID for GUI applications (typically session 1 for first logged-in user)",
-            "Use -d flag to launch without waiting (for GUI apps that don't exit)",
-            "Session 0 is the console session, Session 1+ are user sessions",
-            "Use 'query user' on target to find active session IDs",
-            "GUI applications will appear on the remote computer's screen, not locally"
+            "Uses Impacket library for WMI-based remote execution (works from Linux to Windows)",
+            "Requires: pip install impacket (already included in automation-service)",
+            "Requires administrative credentials on target Windows system",
+            "Requires SMB access (port 445) and DCOM/WMI access (port 135 + dynamic RPC ports)",
+            "For GUI applications, set wait=false to launch without blocking",
+            "GUI applications will appear on the remote computer's screen if a user is logged in",
+            "For domain accounts, specify domain parameter (use empty string for local accounts)",
+            "Non-blocking mode (wait=false) is ideal for GUI apps like notepad, calc, explorer, etc.",
+            "Blocking mode (wait=true) captures command output but may timeout for long-running processes"
         ]
     )
     registry.register_tool(windows_psexec_tool)

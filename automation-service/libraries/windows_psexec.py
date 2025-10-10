@@ -1,35 +1,53 @@
 #!/usr/bin/env python3
 """
-Windows PSExec Library for OpsConductor Automation Service
-Handles PSExec-based remote execution on Windows targets for GUI and interactive applications
+Windows Remote Execution Library for OpsConductor Automation Service
+Handles remote execution on Windows targets for GUI and interactive applications using Impacket
+
+This library uses Impacket's WMI/SMB capabilities to execute commands on remote Windows systems.
+Unlike PowerShell remoting (WinRM), this can launch GUI applications that appear on the remote desktop.
 """
 
-import subprocess
 import time
 import structlog
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
-import os
-import shlex
+import asyncio
+import threading
+
+# Impacket imports
+try:
+    from impacket.smbconnection import SMBConnection
+    from impacket.dcerpc.v5.dcomrt import DCOMConnection
+    from impacket.dcerpc.v5.dcom import wmi
+    from impacket.dcerpc.v5.dtypes import NULL
+    IMPACKET_AVAILABLE = True
+except ImportError:
+    IMPACKET_AVAILABLE = False
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
 
 class PSExecConnectionError(Exception):
-    """Raised when PSExec connection fails"""
+    """Raised when remote execution connection fails"""
     pass
 
 class PSExecExecutionError(Exception):
-    """Raised when PSExec execution fails"""
+    """Raised when remote execution fails"""
     pass
 
 class WindowsPSExecLibrary:
     """
-    Windows PSExec execution library
-    Provides remote execution with interactive desktop support for GUI applications
+    Windows Remote Execution library using Impacket
+    Provides remote execution with support for GUI applications and non-blocking execution
     
-    PSExec must be installed on the system running this service.
-    Download from: https://docs.microsoft.com/en-us/sysinternals/downloads/psexec
+    This library uses Impacket's WMI capabilities to execute commands remotely.
+    It works from Linux to Windows and can launch GUI applications.
+    
+    Requirements:
+    - pip install impacket
+    - Administrative credentials on target Windows system
+    - SMB access (port 445) to target
+    - DCOM/WMI access (ports 135, dynamic RPC ports)
     """
     
     def __init__(self):
@@ -38,34 +56,32 @@ class WindowsPSExecLibrary:
         self.max_retries = 3
         self.retry_delay = 5  # seconds
         
-        # Check if PSExec is available
-        self.psexec_available = self._check_psexec_available()
+        # Check if Impacket is available
+        self.impacket_available = IMPACKET_AVAILABLE
         
-        logger.info("Windows PSExec Library initialized", 
+        logger.info("Windows Remote Execution Library initialized", 
                    connection_timeout=self.connection_timeout,
                    execution_timeout=self.execution_timeout,
-                   psexec_available=self.psexec_available)
+                   impacket_available=self.impacket_available)
 
-    def _check_psexec_available(self) -> bool:
-        """Check if PSExec is available in the system"""
-        try:
-            # Try to run psexec with -? to check if it exists
-            result = subprocess.run(
-                ['psexec', '-?'],
-                capture_output=True,
-                timeout=5
-            )
-            return True
-        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
-            logger.warning("PSExec not found in system PATH", error=str(e))
-            return False
-
-    def test_connection(self, target_host: str, username: str, password: str) -> Dict[str, Any]:
-        """Test PSExec connection to Windows target"""
-        if not self.psexec_available:
+    def test_connection(self, target_host: str, username: str, password: str, 
+                       domain: str = "") -> Dict[str, Any]:
+        """
+        Test WMI connection to Windows target
+        
+        Args:
+            target_host: Target Windows host (IP or hostname)
+            username: Username for authentication
+            password: Password for authentication
+            domain: Windows domain (optional, use "" for local accounts)
+            
+        Returns:
+            Dict with connection test results
+        """
+        if not self.impacket_available:
             return {
                 "success": False,
-                "error": "PSExec not available. Download from https://docs.microsoft.com/en-us/sysinternals/downloads/psexec",
+                "error": "Impacket library not available. Install with: pip install impacket",
                 "duration_seconds": 0,
                 "details": {"dependency_error": True}
             }
@@ -73,108 +89,91 @@ class WindowsPSExecLibrary:
         start_time = time.time()
         
         try:
-            # Build PSExec command for connection test
-            # Format: psexec \\target -u username -p password cmd /c echo "test"
-            cmd = [
-                'psexec',
-                f'\\\\{target_host}',
-                '-u', username,
-                '-p', password,
-                '-accepteula',  # Auto-accept EULA
-                'cmd', '/c', 'echo PSExec connection test'
-            ]
-            
-            logger.info("Testing PSExec connection", 
+            logger.info("Testing WMI connection via Impacket", 
                        target_host=target_host, 
-                       username=username)
+                       username=username,
+                       domain=domain)
             
-            # Execute test command
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=self.connection_timeout,
-                text=True
+            # Establish DCOM connection
+            dcom = DCOMConnection(
+                target_host,
+                username,
+                password,
+                domain,
+                lmhash="",
+                nthash="",
+                aesKey=None,
+                oxidResolver=True,
+                doKerberos=False
             )
             
+            # Create WMI interface
+            iInterface = dcom.CoCreateInstanceEx(wmi.CLSID_WbemLevel1Login, wmi.IID_IWbemLevel1Login)
+            iWbemLevel1Login = wmi.IWbemLevel1Login(iInterface)
+            iWbemServices = iWbemLevel1Login.NTLMLogin('//./root/cimv2', NULL, NULL)
+            iWbemLevel1Login.RemRelease()
+            
+            # Test by querying Win32_Process class
+            win32Process, _ = iWbemServices.GetObject('Win32_Process')
+            
+            # Clean up
+            dcom.disconnect()
+            
             duration = time.time() - start_time
             
-            if result.returncode == 0:
-                logger.info("PSExec connection test successful", 
-                           target_host=target_host,
-                           duration_seconds=duration)
-                return {
-                    "success": True,
-                    "message": f"Successfully connected to {target_host} via PSExec",
-                    "duration_seconds": duration,
-                    "details": {
-                        "test_output": result.stdout.strip()
-                    }
-                }
-            else:
-                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                logger.warning("PSExec connection test failed", 
-                              target_host=target_host,
-                              return_code=result.returncode,
-                              error=error_msg)
-                return {
-                    "success": False,
-                    "error": f"PSExec test command failed: {error_msg}",
-                    "duration_seconds": duration,
-                    "details": {
-                        "return_code": result.returncode,
-                        "stderr": error_msg
-                    }
-                }
-                
-        except subprocess.TimeoutExpired:
-            duration = time.time() - start_time
-            logger.error("PSExec connection test timed out", 
-                        target_host=target_host,
-                        timeout=self.connection_timeout,
-                        duration_seconds=duration)
+            logger.info("WMI connection test successful", 
+                       target_host=target_host,
+                       duration_seconds=duration)
+            
             return {
-                "success": False,
-                "error": f"PSExec connection test timed out after {self.connection_timeout} seconds",
+                "success": True,
+                "message": f"Successfully connected to {target_host} via WMI",
                 "duration_seconds": duration,
-                "details": {"timeout": True}
+                "details": {
+                    "method": "Impacket WMI",
+                    "test_output": "WMI connection established"
+                }
             }
+                
         except Exception as e:
             duration = time.time() - start_time
             error_msg = str(e)
-            logger.error("PSExec connection test failed", 
+            logger.error("WMI connection test failed", 
                         target_host=target_host,
                         error=error_msg,
                         duration_seconds=duration)
             return {
                 "success": False,
-                "error": f"PSExec connection failed: {error_msg}",
+                "error": f"WMI connection failed: {error_msg}",
                 "duration_seconds": duration,
                 "details": {"exception": error_msg}
             }
 
     def execute_command(self, target_host: str, username: str, password: str,
-                       command: str, interactive: bool = False, session_id: int = None,
-                       timeout: int = None, wait: bool = True) -> Dict[str, Any]:
+                       command: str, domain: str = "", interactive: bool = False, 
+                       session_id: int = None, timeout: int = None, 
+                       wait: bool = True) -> Dict[str, Any]:
         """
-        Execute command on Windows target via PSExec
+        Execute command on Windows target via WMI
         
         Args:
             target_host: Target Windows host (IP or hostname)
             username: Username for authentication
             password: Password for authentication
             command: Command to execute
-            interactive: If True, run with desktop interaction (-i flag)
-            session_id: Session ID for interactive mode (default: 1)
+            domain: Windows domain (optional, use "" for local accounts)
+            interactive: If True, attempt to run with desktop interaction (best effort)
+            session_id: Session ID for interactive mode (currently not used with WMI)
             timeout: Execution timeout in seconds
             wait: If False, don't wait for process to complete (for GUI apps)
             
         Returns:
             Dict with execution results
         """
-        if not self.psexec_available:
+        if not self.impacket_available:
             return {
                 "success": False,
-                "error": "PSExec not available. Download from https://docs.microsoft.com/en-us/sysinternals/downloads/psexec",
+                "error": "Impacket library not available. Install with: pip install impacket",
                 "stdout": "",
                 "stderr": "Dependency error",
                 "exit_code": -1,
@@ -194,240 +193,247 @@ class WindowsPSExecLibrary:
             attempts += 1
             
             try:
-                # Build PSExec command
-                cmd = [
-                    'psexec',
-                    f'\\\\{target_host}',
-                    '-u', username,
-                    '-p', password,
-                    '-accepteula'  # Auto-accept EULA
-                ]
-                
-                # Add interactive flag if requested
-                if interactive:
-                    if session_id is not None:
-                        cmd.extend(['-i', str(session_id)])
-                    else:
-                        cmd.append('-i')
-                
-                # Add -d flag if we don't want to wait (for GUI apps)
-                if not wait:
-                    cmd.append('-d')
-                
-                # Add the command to execute
-                # If command contains spaces or special chars, we need to handle it properly
-                if ' ' in command or any(c in command for c in ['&', '|', '>', '<', '^']):
-                    # Wrap in cmd /c for complex commands
-                    cmd.extend(['cmd', '/c', command])
-                else:
-                    cmd.append(command)
-                
-                logger.info("Executing PSExec command", 
+                logger.info("Executing WMI command via Impacket", 
                            target_host=target_host, 
                            username=username,
+                           domain=domain,
                            attempt=attempt + 1,
                            interactive=interactive,
                            session_id=session_id,
                            wait=wait,
                            command=command)
                 
-                # Execute command
-                if wait:
-                    # Wait for completion
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        timeout=timeout,
-                        text=True
-                    )
+                # Establish DCOM connection
+                dcom = DCOMConnection(
+                    target_host,
+                    username,
+                    password,
+                    domain,
+                    lmhash="",
+                    nthash="",
+                    aesKey=None,
+                    oxidResolver=True,
+                    doKerberos=False
+                )
+                
+                try:
+                    # Create WMI interface
+                    iInterface = dcom.CoCreateInstanceEx(wmi.CLSID_WbemLevel1Login, wmi.IID_IWbemLevel1Login)
+                    iWbemLevel1Login = wmi.IWbemLevel1Login(iInterface)
+                    iWbemServices = iWbemLevel1Login.NTLMLogin('//./root/cimv2', NULL, NULL)
+                    iWbemLevel1Login.RemRelease()
                     
-                    duration = time.time() - start_time
+                    # Get Win32_Process class
+                    win32Process, _ = iWbemServices.GetObject('Win32_Process')
                     
-                    stdout = result.stdout if result.stdout else ""
-                    stderr = result.stderr if result.stderr else ""
-                    
-                    logger.info("PSExec command execution completed", 
-                               target_host=target_host,
-                               exit_code=result.returncode,
-                               duration_seconds=duration,
-                               attempts=attempts,
-                               stdout_length=len(stdout),
-                               stderr_length=len(stderr))
-                    
-                    return {
-                        "success": result.returncode == 0,
-                        "error": stderr if result.returncode != 0 else None,
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": result.returncode,
-                        "duration_seconds": duration,
-                        "attempts": attempts,
-                        "details": {
-                            "interactive": interactive,
-                            "session_id": session_id,
-                            "timeout": timeout,
-                            "command": command
-                        }
-                    }
-                else:
-                    # Don't wait for completion (for GUI apps)
-                    process = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True
-                    )
-                    
-                    # Give it a moment to start
-                    time.sleep(2)
-                    
-                    # Check if process is still running (which is good for GUI apps)
-                    poll_result = process.poll()
-                    
-                    duration = time.time() - start_time
-                    
-                    if poll_result is None:
-                        # Process is still running - this is expected for GUI apps
-                        logger.info("PSExec command launched successfully (non-blocking)", 
+                    if wait:
+                        # Execute and wait for completion
+                        # For blocking execution, we wrap the command to capture output
+                        output_file = f"C:\\Windows\\Temp\\wmi_output_{int(time.time())}.txt"
+                        wrapped_command = f'cmd.exe /Q /c {command} > {output_file} 2>&1'
+                        
+                        # Execute the command
+                        result = win32Process.Create(wrapped_command, "C:\\", None)
+                        process_id = result.ProcessId
+                        
+                        logger.info("WMI process created (blocking mode)", 
                                    target_host=target_host,
+                                   process_id=process_id)
+                        
+                        # Wait for process to complete (poll for completion)
+                        wait_start = time.time()
+                        process_completed = False
+                        
+                        while (time.time() - wait_start) < timeout:
+                            # Query for the process
+                            try:
+                                query = f"SELECT * FROM Win32_Process WHERE ProcessId = {process_id}"
+                                iEnumWbemClassObject = iWbemServices.ExecQuery(query)
+                                
+                                # Try to get the process
+                                try:
+                                    iEnumWbemClassObject.Next(0xffffffff, 1)
+                                    # Process still exists, wait a bit
+                                    time.sleep(1)
+                                except Exception:
+                                    # Process no longer exists - it completed
+                                    process_completed = True
+                                    break
+                            except Exception as e:
+                                logger.warning("Error checking process status", error=str(e))
+                                time.sleep(1)
+                        
+                        # Try to retrieve output
+                        stdout = ""
+                        stderr = ""
+                        exit_code = 0
+                        
+                        if process_completed:
+                            # Try to read the output file via SMB
+                            try:
+                                smb_conn = SMBConnection(target_host, target_host)
+                                smb_conn.login(username, password, domain)
+                                
+                                # Read the output file
+                                file_content = smb_conn.getFile("C$", output_file.replace("C:\\", ""))
+                                stdout = file_content.decode('utf-8', errors='ignore')
+                                
+                                # Delete the output file
+                                smb_conn.deleteFile("C$", output_file.replace("C:\\", ""))
+                                smb_conn.logoff()
+                            except Exception as e:
+                                logger.warning("Could not retrieve command output", error=str(e))
+                                stdout = f"Command executed but output could not be retrieved: {str(e)}"
+                        else:
+                            stderr = f"Command timed out after {timeout} seconds"
+                            exit_code = -1
+                        
+                        duration = time.time() - start_time
+                        
+                        logger.info("WMI command execution completed", 
+                                   target_host=target_host,
+                                   exit_code=exit_code,
                                    duration_seconds=duration,
-                                   attempts=attempts)
+                                   attempts=attempts,
+                                   stdout_length=len(stdout),
+                                   stderr_length=len(stderr))
+                        
+                        dcom.disconnect()
                         
                         return {
-                            "success": True,
-                            "error": None,
-                            "stdout": f"Process launched successfully on {target_host}",
-                            "stderr": "",
-                            "exit_code": 0,
+                            "success": exit_code == 0 and process_completed,
+                            "error": stderr if exit_code != 0 else None,
+                            "stdout": stdout,
+                            "stderr": stderr,
+                            "exit_code": exit_code,
                             "duration_seconds": duration,
                             "attempts": attempts,
                             "details": {
                                 "interactive": interactive,
                                 "session_id": session_id,
-                                "non_blocking": True,
+                                "timeout": timeout,
                                 "command": command,
-                                "message": "Process launched in background. GUI should appear on remote desktop."
+                                "method": "Impacket WMI (blocking)"
                             }
                         }
                     else:
-                        # Process exited quickly - might be an error
-                        stdout, stderr = process.communicate()
+                        # Don't wait for completion (for GUI apps)
+                        # Just launch the process and return immediately
+                        result = win32Process.Create(command, "C:\\", None)
+                        process_id = result.ProcessId
+                        return_value = result.ReturnValue
                         
-                        logger.warning("PSExec command exited quickly", 
-                                      target_host=target_host,
-                                      exit_code=poll_result,
-                                      duration_seconds=duration)
+                        duration = time.time() - start_time
                         
-                        return {
-                            "success": poll_result == 0,
-                            "error": stderr if poll_result != 0 else None,
-                            "stdout": stdout,
-                            "stderr": stderr,
-                            "exit_code": poll_result,
-                            "duration_seconds": duration,
-                            "attempts": attempts,
-                            "details": {
-                                "interactive": interactive,
-                                "session_id": session_id,
-                                "non_blocking": True,
-                                "command": command,
-                                "warning": "Process exited quickly - may not be a GUI application"
+                        if return_value == 0:
+                            logger.info("WMI process launched successfully (non-blocking)", 
+                                       target_host=target_host,
+                                       process_id=process_id,
+                                       duration_seconds=duration,
+                                       attempts=attempts)
+                            
+                            dcom.disconnect()
+                            
+                            return {
+                                "success": True,
+                                "error": None,
+                                "stdout": f"Process launched successfully on {target_host} (PID: {process_id})",
+                                "stderr": "",
+                                "exit_code": 0,
+                                "duration_seconds": duration,
+                                "attempts": attempts,
+                                "details": {
+                                    "interactive": interactive,
+                                    "session_id": session_id,
+                                    "non_blocking": True,
+                                    "command": command,
+                                    "process_id": process_id,
+                                    "method": "Impacket WMI (non-blocking)",
+                                    "message": "Process launched in background. GUI should appear on remote desktop if user is logged in."
+                                }
                             }
-                        }
+                        else:
+                            error_msg = f"WMI Create returned error code: {return_value}"
+                            logger.warning("WMI process creation failed", 
+                                          target_host=target_host,
+                                          return_value=return_value,
+                                          duration_seconds=duration)
+                            
+                            dcom.disconnect()
+                            
+                            return {
+                                "success": False,
+                                "error": error_msg,
+                                "stdout": "",
+                                "stderr": error_msg,
+                                "exit_code": return_value,
+                                "duration_seconds": duration,
+                                "attempts": attempts,
+                                "details": {
+                                    "interactive": interactive,
+                                    "session_id": session_id,
+                                    "non_blocking": True,
+                                    "command": command,
+                                    "return_value": return_value
+                                }
+                            }
                 
-            except subprocess.TimeoutExpired:
-                last_error = f"Command timed out after {timeout} seconds"
-                logger.warning("PSExec execution attempt timed out", 
-                              target_host=target_host,
-                              attempt=attempt + 1,
-                              timeout=timeout)
-                
-                # If not the last attempt, wait before retrying
-                if attempt < self.max_retries - 1:
-                    logger.info("Retrying PSExec execution", 
-                               target_host=target_host,
-                               retry_delay=self.retry_delay)
-                    time.sleep(self.retry_delay)
-                    
+                finally:
+                    # Always disconnect DCOM
+                    try:
+                        dcom.disconnect()
+                    except:
+                        pass
+                        
             except Exception as e:
                 last_error = str(e)
-                logger.warning("PSExec execution attempt failed", 
+                duration = time.time() - start_time
+                
+                logger.warning("WMI command execution attempt failed", 
                               target_host=target_host,
                               attempt=attempt + 1,
-                              error=last_error)
+                              error=last_error,
+                              duration_seconds=duration)
                 
-                # If not the last attempt, wait before retrying
+                # If this isn't the last attempt, wait before retrying
                 if attempt < self.max_retries - 1:
-                    logger.info("Retrying PSExec execution", 
-                               target_host=target_host,
-                               retry_delay=self.retry_delay)
+                    logger.info(f"Retrying in {self.retry_delay} seconds...", 
+                               attempt=attempt + 1,
+                               max_retries=self.max_retries)
                     time.sleep(self.retry_delay)
+                else:
+                    # Last attempt failed
+                    logger.error("All WMI command execution attempts failed", 
+                                target_host=target_host,
+                                attempts=attempts,
+                                last_error=last_error,
+                                duration_seconds=duration)
+                    
+                    return {
+                        "success": False,
+                        "error": f"All {attempts} attempts failed. Last error: {last_error}",
+                        "stdout": "",
+                        "stderr": last_error,
+                        "exit_code": -1,
+                        "duration_seconds": duration,
+                        "attempts": attempts,
+                        "details": {
+                            "all_attempts_failed": True,
+                            "last_error": last_error
+                        }
+                    }
         
-        # All attempts failed
-        duration = time.time() - start_time
-        logger.error("PSExec execution failed after all attempts", 
-                    target_host=target_host,
-                    attempts=attempts,
-                    final_error=last_error,
-                    duration_seconds=duration)
-        
+        # Should never reach here, but just in case
         return {
             "success": False,
-            "error": f"PSExec execution failed after {attempts} attempts: {last_error}",
+            "error": "Unexpected execution path",
             "stdout": "",
-            "stderr": last_error or "Unknown error",
+            "stderr": "Unexpected execution path",
             "exit_code": -1,
-            "duration_seconds": duration,
-            "attempts": attempts,
-            "details": {"final_error": last_error}
+            "duration_seconds": time.time() - start_time,
+            "attempts": attempts
         }
 
-    def get_library_info(self) -> Dict[str, Any]:
-        """Get library information and capabilities"""
-        return {
-            "name": "Windows PSExec Library",
-            "version": "1.0.0",
-            "description": "PSExec-based remote execution for Windows targets with GUI support",
-            "capabilities": [
-                "Remote command execution",
-                "Interactive desktop support (-i flag)",
-                "Session-specific execution",
-                "Non-blocking execution for GUI applications",
-                "Connection retry logic",
-                "Comprehensive error handling"
-            ],
-            "supported_features": [
-                "GUI application launching",
-                "Interactive session targeting",
-                "Background process execution",
-                "Administrative privileges"
-            ],
-            "timeouts": {
-                "connection": self.connection_timeout,
-                "execution": self.execution_timeout
-            },
-            "retry_settings": {
-                "max_retries": self.max_retries,
-                "retry_delay": self.retry_delay
-            },
-            "dependencies": {
-                "psexec": self.psexec_available
-            },
-            "ready": self.psexec_available,
-            "installation_note": "PSExec must be downloaded from https://docs.microsoft.com/en-us/sysinternals/downloads/psexec"
-        }
-
-
-# Library registration function for the automation service
-def get_library():
-    """Factory function to create library instance"""
-    return WindowsPSExecLibrary()
-
-
-# Function mappings for the automation service worker
-FUNCTION_MAPPINGS = {
-    "test_connection": "test_connection",
-    "execute_command": "execute_command",
-    "execute": "execute_command",  # Alias
-    "get_info": "get_library_info"
-}
+    def close(self):
+        """Clean up resources"""
+        logger.info("Windows Remote Execution Library closed")

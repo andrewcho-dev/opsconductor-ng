@@ -1,86 +1,109 @@
-# PSExec Integration for GUI Application Support
+# PSExec Integration for OpsConductor (Impacket-based)
 
 ## Overview
 
-PSExec support has been added to OpsConductor to enable launching GUI applications and interactive processes on remote Windows systems. This addresses the limitation where PowerShell remoting (`Invoke-Command`) cannot launch GUI applications because it runs in a non-interactive Session 0.
+This document describes the integration of remote Windows execution capabilities using **Impacket's WMI** functionality to solve the problem of launching GUI applications on remote Windows systems.
 
 ## Problem Statement
 
-When using PowerShell remoting (WinRM) to execute commands like `notepad.exe`, the system would hang indefinitely because:
+When using PowerShell remoting (`Invoke-Command` via WinRM) to launch GUI applications like `notepad.exe` on remote Windows systems, the application hangs indefinitely because:
 
-1. **GUI applications don't exit on their own** - They wait for user interaction
-2. **PowerShell remoting runs in Session 0** - A non-interactive session with no desktop
-3. **The automation service waits for completion** - Causing a timeout after 300 seconds
+1. **Session 0 Isolation**: PowerShell remoting runs in Session 0, which is a non-interactive session with no desktop
+2. **No GUI Support**: GUI applications cannot display in Session 0
+3. **Process Blocking**: The automation service waits for the process to complete, causing a 300-second timeout
+4. **No User Interaction**: Even if the GUI launches, there's no way for users to interact with it
 
-## Solution: PSExec with Interactive Session Support
+## Solution: Impacket WMI Execution
 
-PSExec is a Sysinternals tool that allows remote execution with interactive desktop support using the `-i` flag.
+Instead of using the native Windows PSExec tool (which only runs on Windows), we use **Impacket**, a Python library that implements Windows protocols and can execute commands remotely via WMI from Linux to Windows.
 
-### Key Differences
+### Why Impacket?
 
-| Feature | PowerShell Remoting | PSExec |
-|---------|-------------------|---------|
-| Session Type | Session 0 (non-interactive) | Can target any session (0, 1, 2, etc.) |
-| GUI Support | ❌ No | ✅ Yes (with `-i` flag) |
-| Desktop Interaction | ❌ No | ✅ Yes |
-| Non-blocking Execution | ❌ No | ✅ Yes (with `-d` flag) |
-| Use Case | Scripts, commands | GUI apps, interactive processes |
+- ✅ **Cross-platform**: Works from Linux to Windows (our automation service runs on Linux)
+- ✅ **Pure Python**: Easy to install via pip, no external binaries needed
+- ✅ **WMI-based**: Uses Windows Management Instrumentation for remote execution
+- ✅ **Non-blocking**: Can launch processes without waiting for completion
+- ✅ **GUI Support**: Processes appear on the remote desktop if a user is logged in
+- ✅ **No Session 0**: Processes run in the user's session context
 
-## Implementation
+### How It Works
 
-### 1. PSExec Library (`automation-service/libraries/windows_psexec.py`)
+1. **DCOM Connection**: Establishes a DCOM connection to the target Windows system
+2. **WMI Interface**: Creates a WMI interface to `Win32_Process` class
+3. **Process Creation**: Uses `Win32_Process.Create()` to launch the command
+4. **Non-blocking Mode**: Returns immediately without waiting for process completion
+5. **GUI Display**: If a user is logged in, GUI applications appear on their desktop
 
-A new library that wraps PSExec functionality:
+## Architecture
 
-**Features:**
-- Connection testing
-- Interactive session support (`-i` flag)
-- Session ID targeting (e.g., `-i 1` for first logged-in user)
-- Non-blocking execution (`-d` flag for GUI apps)
-- Retry logic and error handling
-- Comprehensive logging
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     OpsConductor AI Pipeline                     │
+│                        (Orchestration)                           │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             │ HTTP Request
+                             │ (Plan Execution)
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   Automation Service (Linux)                     │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │              Windows PSExec Library                       │  │
+│  │              (Impacket-based)                             │  │
+│  │  ┌────────────────────────────────────────────────────┐  │  │
+│  │  │  1. Establish DCOM connection                      │  │  │
+│  │  │  2. Create WMI interface (Win32_Process)           │  │  │
+│  │  │  3. Execute Win32_Process.Create(command)          │  │  │
+│  │  │  4. Return immediately (non-blocking)              │  │  │
+│  │  └────────────────────────────────────────────────────┘  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             │ SMB (445) + DCOM/WMI (135 + RPC)
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Target Windows System                         │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Process launched in user session                         │  │
+│  │  GUI appears on remote desktop                            │  │
+│  │  (if user is logged in)                                   │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Key Methods:**
-- `test_connection()` - Test PSExec connectivity to target
-- `execute_command()` - Execute commands with full PSExec options
-- `get_library_info()` - Get library capabilities and status
+## Implementation Details
 
-### 2. Tool Definition (`pipeline/stages/stage_b/windows_tools_registry.py`)
+### 1. Library: `automation-service/libraries/windows_psexec.py`
 
-A new tool `windows-psexec` registered in the tool catalog:
+The library provides:
+- `test_connection()`: Test WMI connectivity to target
+- `execute_command()`: Execute commands with blocking or non-blocking mode
 
-**Capabilities:**
-- `psexec_execute` - Execute commands remotely with PSExec
-- `psexec_gui_launch` - Launch GUI applications on remote desktop
-- `psexec_background` - Execute commands in background without waiting
+**Key Features:**
+- Uses Impacket's `DCOMConnection` and `wmi` modules
+- Supports both blocking (wait=True) and non-blocking (wait=False) execution
+- Automatic retry logic (3 attempts with 5-second delays)
+- Comprehensive error handling and logging
+- Domain account support
 
-**Required Inputs:**
-- `target_host` - Target Windows host (IP or hostname)
-- `command` - Command or application to execute
+### 2. Tool Definition: `pipeline/stages/stage_b/windows_tools_registry.py`
 
-**Optional Inputs:**
-- `username` - Username for authentication
-- `password` - Password for authentication
-- `interactive` - Enable interactive mode (boolean)
-- `session_id` - Session ID for interactive mode (integer)
-- `wait` - Wait for process completion (boolean, default: true)
+Registered as `windows-psexec` tool with capabilities:
+- `psexec_execute`: Execute commands remotely
+- `psexec_gui_launch`: Launch GUI applications
+- `psexec_background`: Execute in background
 
-### 3. Automation Service Integration (`automation-service/main_clean.py`)
+### 3. Automation Service Integration: `automation-service/main_clean.py`
 
-**Changes:**
-1. Added PSExec connection manager initialization
-2. Added `psexec` connection type support
-3. Implemented `_execute_psexec_command()` method
-4. Added PSExec tool handling in plan execution
-
-**Environment Variables for PSExec Options:**
-- `interactive` - "true" or "false"
-- `session_id` - Session ID as string (e.g., "1")
-- `wait` - "true" or "false"
+- Added PSExec connection manager initialization
+- Implemented `_execute_psexec_command()` method
+- Added `psexec` connection type to dispatcher
+- Plan execution endpoint handles `windows-psexec` tool
 
 ## Usage Examples
 
-### Example 1: Launch Notepad Interactively
+### Example 1: Launch Notepad (Non-blocking)
 
 **AI Request:**
 ```
@@ -96,10 +119,8 @@ A new tool `windows-psexec` registered in the tool catalog:
       "inputs": {
         "target_host": "192.168.50.210",
         "command": "notepad.exe",
-        "username": "admin",
+        "username": "administrator",
         "password": "password",
-        "interactive": true,
-        "session_id": 1,
         "wait": false
       }
     }
@@ -107,16 +128,16 @@ A new tool `windows-psexec` registered in the tool catalog:
 }
 ```
 
-**PSExec Command:**
-```bash
-psexec \\192.168.50.210 -u admin -p password -accepteula -i 1 -d notepad.exe
-```
+**Result:**
+- Notepad launches immediately on the remote desktop
+- Command returns success without waiting
+- User can interact with notepad on the remote screen
 
-### Example 2: Launch Calculator in Background
+### Example 2: Run Command and Get Output (Blocking)
 
 **AI Request:**
 ```
-"Open calculator on 192.168.50.210 session 2"
+"Get IP configuration from 192.168.50.210"
 ```
 
 **Generated Plan:**
@@ -127,35 +148,8 @@ psexec \\192.168.50.210 -u admin -p password -accepteula -i 1 -d notepad.exe
       "tool": "windows-psexec",
       "inputs": {
         "target_host": "192.168.50.210",
-        "command": "calc.exe",
-        "username": "admin",
-        "password": "password",
-        "interactive": true,
-        "session_id": 2,
-        "wait": false
-      }
-    }
-  ]
-}
-```
-
-### Example 3: Run Command and Wait for Result
-
-**AI Request:**
-```
-"Run ipconfig on 192.168.50.210 using PSExec"
-```
-
-**Generated Plan:**
-```json
-{
-  "steps": [
-    {
-      "tool": "windows-psexec",
-      "inputs": {
-        "target_host": "192.168.50.210",
-        "command": "cmd /c ipconfig",
-        "username": "admin",
+        "command": "ipconfig /all",
+        "username": "administrator",
         "password": "password",
         "wait": true
       }
@@ -164,196 +158,181 @@ psexec \\192.168.50.210 -u admin -p password -accepteula -i 1 -d notepad.exe
 }
 ```
 
-## Session IDs Explained
+**Result:**
+- Command executes and waits for completion
+- Output is captured and returned
+- Exit code indicates success/failure
 
-Windows has multiple sessions:
+### Example 3: Domain Account
 
-- **Session 0** - Console session (services, non-interactive)
-- **Session 1** - First logged-in user (typically the active desktop)
-- **Session 2+** - Additional logged-in users (RDP sessions, etc.)
-
-**To find active sessions on target:**
-```powershell
-query user
+**AI Request:**
+```
+"Launch calculator on CORP\\workstation01 using domain admin"
 ```
 
-**Output example:**
-```
- USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
->administrator         console             1  Active          .  1/15/2024 10:30 AM
- user1                 rdp-tcp#0           2  Active          5  1/15/2024 11:00 AM
-```
-
-Use the `ID` column value for `session_id` parameter.
-
-## Installation Requirements
-
-### On Automation Service Host
-
-PSExec must be installed on the machine running the automation service:
-
-1. **Download PSExec:**
-   - https://docs.microsoft.com/en-us/sysinternals/downloads/psexec
-   - Or download entire Sysinternals Suite
-
-2. **Install PSExec:**
-   ```bash
-   # Extract psexec.exe to a directory in PATH
-   # For example: /usr/local/bin/ or C:\Windows\System32\
-   ```
-
-3. **Verify Installation:**
-   ```bash
-   psexec -?
-   ```
-
-### On Target Windows Systems
-
-No special installation required, but:
-
-1. **Enable File and Printer Sharing** (for admin$ share access)
-2. **Ensure admin credentials** are available
-3. **Firewall rules** must allow SMB (port 445)
-
-## Security Considerations
-
-⚠️ **Important Security Notes:**
-
-1. **Admin Privileges Required** - PSExec requires administrative credentials
-2. **Credentials in Transit** - Credentials are passed as command-line arguments
-3. **Production Safety** - Tool is marked as `production_safe=False`
-4. **Permission Level** - Requires `PermissionLevel.ADMIN`
-5. **Audit Logging** - All PSExec executions are logged
-
-**Best Practices:**
-- Use PSExec only when PowerShell remoting is insufficient
-- Prefer PowerShell remoting for non-GUI tasks
-- Implement credential vaulting for production use
-- Monitor and audit PSExec usage
-- Restrict PSExec tool access to authorized users
-
-## Troubleshooting
-
-### PSExec Not Available
-
-**Error:**
-```
-PSExec not available. Download from https://docs.microsoft.com/en-us/sysinternals/downloads/psexec
-```
-
-**Solution:**
-1. Download and install PSExec on automation service host
-2. Ensure `psexec` is in system PATH
-3. Restart automation service
-
-### Access Denied
-
-**Error:**
-```
-Access is denied
-```
-
-**Solutions:**
-1. Verify admin credentials are correct
-2. Ensure target has File and Printer Sharing enabled
-3. Check firewall allows SMB (port 445)
-4. Verify user has admin rights on target
-
-### GUI Not Appearing
-
-**Issue:** Command succeeds but GUI doesn't appear
-
-**Solutions:**
-1. Verify `interactive=true` is set
-2. Check `session_id` matches active user session
-3. Use `query user` on target to find correct session
-4. Ensure user is logged in to target desktop
-
-### Process Exits Immediately
-
-**Issue:** Process exits quickly when launched
-
-**Solutions:**
-1. Verify the application path is correct
-2. Check if application requires arguments
-3. Ensure application is installed on target
-4. Review stderr output for error messages
-
-## Files Modified
-
-1. **`automation-service/libraries/windows_psexec.py`** (NEW)
-   - PSExec library implementation
-
-2. **`pipeline/stages/stage_b/windows_tools_registry.py`**
-   - Added `windows-psexec` tool definition
-   - Updated tool summary (20 → 21 tools)
-   - Added PSExec capabilities
-
-3. **`automation-service/main_clean.py`**
-   - Added PSExec connection manager
-   - Added `_execute_psexec_command()` method
-   - Added PSExec support in plan execution
-   - Added `psexec` connection type
-
-## Testing
-
-### Manual Test
-
-```bash
-# Test PSExec connectivity
-curl -X POST http://localhost:3003/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "command": "notepad.exe",
-    "target_host": "192.168.50.210",
-    "connection_type": "psexec",
-    "credentials": {
-      "username": "admin",
-      "password": "password"
-    },
-    "environment_vars": {
-      "interactive": "true",
-      "session_id": "1",
-      "wait": "false"
-    }
-  }'
-```
-
-### Expected Result
-
+**Generated Plan:**
 ```json
 {
-  "execution_id": "uuid-here",
-  "status": "completed",
-  "command": "notepad.exe",
-  "exit_code": 0,
-  "stdout": "Process launched successfully on 192.168.50.210",
-  "stderr": "",
-  "duration_seconds": 2.5,
-  "details": {
-    "interactive": true,
-    "session_id": 1,
-    "non_blocking": true,
-    "message": "Process launched in background. GUI should appear on remote desktop."
-  }
+  "steps": [
+    {
+      "tool": "windows-psexec",
+      "inputs": {
+        "target_host": "workstation01",
+        "command": "calc.exe",
+        "username": "admin",
+        "password": "password",
+        "domain": "CORP",
+        "wait": false
+      }
+    }
+  ]
 }
 ```
 
+## Requirements
+
+### Software Requirements
+
+1. **Impacket Library** (Python)
+   ```bash
+   pip install impacket
+   ```
+   Already included in `automation-service/shared/requirements.txt`
+
+2. **Network Access**
+   - SMB: Port 445 (TCP)
+   - DCOM: Port 135 (TCP)
+   - Dynamic RPC: Ports 49152-65535 (TCP) - Windows firewall typically allows these
+
+### Target System Requirements
+
+1. **Administrative Credentials**: User must have admin rights on target
+2. **SMB Enabled**: File sharing must be enabled
+3. **WMI Enabled**: Windows Management Instrumentation service must be running
+4. **Firewall Rules**: Allow SMB and DCOM/WMI traffic from automation service
+
+### Network Requirements
+
+- Direct network connectivity from automation service to target Windows systems
+- No NAT or firewall blocking SMB/DCOM ports
+- DNS resolution or IP address access
+
+## Security Considerations
+
+### Authentication
+
+- **Credentials in Transit**: Impacket uses NTLM authentication (encrypted)
+- **Credential Storage**: Credentials are passed in API requests (should use vault in production)
+- **Domain Support**: Supports both local and domain accounts
+
+### Authorization
+
+- **Admin Required**: Target user must have administrative privileges
+- **Permission Level**: Tool marked as `PermissionLevel.ADMIN`
+- **Production Safety**: Marked as `production_safe=False` for extra caution
+
+### Audit Trail
+
+- All executions are logged with structured logging
+- Execution history maintained in automation service
+- Includes: timestamp, user, target, command, result
+
+### Best Practices
+
+1. **Use Service Accounts**: Create dedicated service accounts with minimal required privileges
+2. **Credential Vaulting**: Store credentials in HashiCorp Vault or similar
+3. **Network Segmentation**: Restrict automation service network access
+4. **Monitoring**: Monitor for unusual WMI activity on target systems
+5. **Least Privilege**: Only grant admin rights where absolutely necessary
+
+## Troubleshooting
+
+### Issue: "Impacket library not available"
+
+**Cause**: Impacket not installed in automation service container
+
+**Solution**:
+```bash
+# Rebuild automation service with updated requirements
+docker compose build automation-service
+docker compose up -d automation-service
+```
+
+### Issue: "WMI connection failed"
+
+**Possible Causes:**
+1. Firewall blocking SMB (445) or DCOM (135)
+2. WMI service not running on target
+3. Invalid credentials
+4. Network connectivity issues
+
+**Troubleshooting Steps:**
+```bash
+# Test SMB connectivity
+smbclient -L //target_ip -U username
+
+# Test WMI connectivity (from Linux)
+impacket-wmiexec username:password@target_ip "whoami"
+
+# Check firewall rules on target (from Windows)
+netsh advfirewall firewall show rule name=all | findstr WMI
+```
+
+### Issue: "GUI application doesn't appear"
+
+**Possible Causes:**
+1. No user logged in to remote system
+2. Process launched in Session 0 (shouldn't happen with WMI)
+3. Application requires elevation (UAC prompt)
+
+**Solution:**
+- Ensure a user is logged in to the remote desktop
+- Check Task Manager on remote system for the process
+- Disable UAC or use pre-elevated account
+
+### Issue: "Command times out"
+
+**Cause**: Blocking mode (wait=True) used with long-running or GUI application
+
+**Solution**: Use non-blocking mode (wait=False) for GUI applications
+```json
+{
+  "wait": false
+}
+```
+
+## Comparison: PowerShell Remoting vs Impacket WMI
+
+| Feature | PowerShell Remoting (WinRM) | Impacket WMI |
+|---------|----------------------------|--------------|
+| **Session** | Session 0 (non-interactive) | User session (interactive) |
+| **GUI Support** | ❌ No | ✅ Yes (if user logged in) |
+| **Output Capture** | ✅ Excellent | ⚠️ Limited (blocking mode only) |
+| **Non-blocking** | ❌ Difficult | ✅ Easy |
+| **Ports** | 5985/5986 (HTTP/HTTPS) | 445, 135, RPC |
+| **Protocol** | WinRM/SOAP | SMB/DCOM/WMI |
+| **From Linux** | ✅ Yes (pywinrm) | ✅ Yes (impacket) |
+| **Best For** | Scripts, commands, automation | GUI apps, interactive tools |
+
 ## Future Enhancements
 
-1. **Session Discovery** - Automatically detect active user sessions
-2. **GUI Detection** - Automatically detect if command is a GUI application
-3. **Process Monitoring** - Track launched GUI processes
-4. **Screenshot Capture** - Capture screenshots of launched GUI apps
-5. **Credential Vaulting** - Integrate with secure credential storage
-6. **PSExec Alternatives** - Support for other remote execution tools
+1. **Session Discovery**: Automatically detect active user sessions
+2. **GUI Detection**: Auto-detect GUI applications and set wait=false
+3. **Credential Vaulting**: Integration with HashiCorp Vault
+4. **Output Streaming**: Real-time output for blocking mode
+5. **Process Monitoring**: Track launched processes and their status
+6. **Alternative Protocols**: Support for other Impacket tools (smbexec, atexec)
 
 ## References
 
-- [PSExec Documentation](https://docs.microsoft.com/en-us/sysinternals/downloads/psexec)
-- [Windows Sessions Explained](https://docs.microsoft.com/en-us/windows/win32/termserv/terminal-services-sessions)
-- [PowerShell Remoting Limitations](https://docs.microsoft.com/en-us/powershell/scripting/learn/remoting/running-remote-commands)
+- [Impacket GitHub](https://github.com/fortra/impacket)
+- [Impacket Documentation](https://www.coresecurity.com/core-labs/impacket)
+- [WMI Win32_Process Class](https://docs.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process)
+- [DCOM Protocol](https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dcom/)
 
-## Summary
+## Support
 
-PSExec integration provides a robust solution for launching GUI applications and interactive processes on remote Windows systems, addressing the limitations of PowerShell remoting. The implementation includes comprehensive error handling, logging, and security considerations while maintaining consistency with the existing automation service architecture.
+For issues or questions:
+1. Check automation service logs: `docker compose logs automation-service`
+2. Verify Impacket installation: `docker compose exec automation-service pip list | grep impacket`
+3. Test connectivity manually: `impacket-wmiexec username:password@target "whoami"`

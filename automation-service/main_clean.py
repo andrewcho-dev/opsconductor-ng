@@ -384,7 +384,7 @@ class CleanAutomationService(BaseService):
         return exit_code, stdout, stderr
     
     async def _execute_psexec_command(self, request: CommandRequest) -> tuple[int, str, str]:
-        """Execute command via PSExec"""
+        """Execute command via PSExec (Impacket WMI)"""
         if 'psexec' not in self.connection_managers or not self.connection_managers['psexec']:
             raise Exception("PSExec connection manager not available")
         
@@ -397,6 +397,7 @@ class CleanAutomationService(BaseService):
         # Extract credentials
         username = request.credentials.get("username")
         password = request.credentials.get("password")
+        domain = request.credentials.get("domain", "")  # Empty string for local accounts
         
         if not username or not password:
             raise Exception("Both username and password are required in credentials")
@@ -415,11 +416,14 @@ class CleanAutomationService(BaseService):
                 except ValueError:
                     self.logger.warning(f"Invalid session_id: {session_id_str}, ignoring")
             wait = request.environment_vars.get("wait", "true").lower() == "true"
+            # Also check for domain in environment_vars
+            if "domain" in request.environment_vars:
+                domain = request.environment_vars.get("domain", "")
         
         # Use PSExec library to execute command
         psexec_manager = self.connection_managers['psexec']
         
-        # Execute command via PSExec
+        # Execute command via PSExec (Impacket WMI)
         # Note: execute_command is synchronous, so we run it in a thread pool
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -429,6 +433,7 @@ class CleanAutomationService(BaseService):
             username,
             password,
             request.command,
+            domain,
             interactive,
             session_id,
             request.timeout,
@@ -571,12 +576,14 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                     env_vars["session_id"] = str(parameters.get("session_id"))
                 if "wait" in parameters:
                     env_vars["wait"] = "true" if parameters.get("wait") else "false"
+                if parameters.get("domain"):
+                    env_vars["domain"] = parameters.get("domain")
                 
                 # Store env vars in request
                 if env_vars:
                     parameters["environment_vars"] = env_vars
                 
-                service.logger.info(f"🖥️  PSExec command: {command} (interactive={env_vars.get('interactive', 'false')})")
+                service.logger.info(f"🖥️  PSExec command: {command} (interactive={env_vars.get('interactive', 'false')}, domain={env_vars.get('domain', '')})")
             
             else:
                 # Generic command execution
