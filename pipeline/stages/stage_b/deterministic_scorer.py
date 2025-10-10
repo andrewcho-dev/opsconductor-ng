@@ -102,7 +102,7 @@ class DeterministicScorer:
     Usage:
         scorer = DeterministicScorer()
         candidates = [
-            {'tool_name': 'asset-service-query', 'pattern': 'count', 
+            {'tool_name': 'asset-query', 'pattern': 'count', 
              'features': {'time_ms': 500, 'cost': 0.05, 'complexity': 0.3, 
                          'accuracy': 0.9, 'completeness': 0.95}},
             {'tool_name': 'asset-direct-poll', 'pattern': 'parallel',

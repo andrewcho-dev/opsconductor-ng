@@ -40,7 +40,7 @@ class StepGenerator:
             "docker": self._generate_docker_step,
             "config_manager": self._generate_config_manager_step,
             "info_display": self._generate_info_display_step,
-            "asset-service-query": self._generate_asset_query_step,
+            "asset-query": self._generate_asset_query_step,
             "asset-credentials-read": self._generate_asset_credentials_step
         }
         
@@ -54,7 +54,7 @@ class StepGenerator:
             "docker": 30,
             "config_manager": 25,
             "info_display": 5,
-            "asset-service-query": 8,
+            "asset-query": 8,
             "asset-credentials-read": 5
         }
     
@@ -664,7 +664,7 @@ class StepGenerator:
         decision: DecisionV1,
         selection: SelectionV1
     ) -> ExecutionStep:
-        """Generate step for asset-service-query tool"""
+        """Generate step for asset-query tool"""
         
         # Extract query parameters from entities and request
         query_params = self._extract_asset_query_params(decision, selected_tool)
@@ -714,12 +714,12 @@ class StepGenerator:
         return ExecutionStep(
             id=self._generate_step_id("asset_query", query_type),
             description=description,
-            tool="asset-service-query",
+            tool="asset-query",
             inputs=inputs,
             preconditions=preconditions,
             success_criteria=success_criteria,
             failure_handling=failure_handling,
-            estimated_duration=self.default_durations["asset-service-query"],
+            estimated_duration=self.default_durations["asset-query"],
             depends_on=self._extract_dependencies(selected_tool)
         )
     

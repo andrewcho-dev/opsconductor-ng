@@ -22,7 +22,7 @@
 version: "1.1"
 
 tools:
-  asset-service-query:
+  asset-query:
     description: "Query infrastructure asset metadata from centralized database"
     
     defaults:

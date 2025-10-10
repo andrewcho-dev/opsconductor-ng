@@ -794,7 +794,7 @@ Return your response as a JSON array of execution steps with this structure:
 For asset queries:
 [
   {
-    "tool": "asset-service-query",
+    "tool": "asset-query",
     "description": "Brief description of what this step does",
     "inputs": {
       "query_type": "list_all" | "filter" | "search" | "get_by_id",

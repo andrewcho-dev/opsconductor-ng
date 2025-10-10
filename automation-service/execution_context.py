@@ -118,6 +118,7 @@ class ExecutionContext:
         
         Supports:
         - Simple variables: {{hostname}}
+        - Dot notation: {{item.hostname}}
         - Array access: {{hostnames[0]}}
         - Nested access: {{assets[0].hostname}}
         """
@@ -125,6 +126,22 @@ class ExecutionContext:
             # Check if it's a simple variable
             if var_name in self.variables:
                 return self.variables[var_name]
+            
+            # Check for dot notation: variable.field (e.g., item.ip_address)
+            if '.' in var_name and '[' not in var_name:
+                parts = var_name.split('.')
+                var_base = parts[0]
+                
+                if var_base in self.variables:
+                    value = self.variables[var_base]
+                    # Navigate through the dot notation
+                    for part in parts[1:]:
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        else:
+                            logger.warning(f"[{self.execution_id}] Field '{part}' not found in '{var_base}'")
+                            return None
+                    return value
             
             # Check for array access: variable[index]
             array_match = re.match(r'(\w+)\[(\d+)\]', var_name)
@@ -278,13 +295,14 @@ class ExecutionContext:
                 # Create a temporary context for this iteration
                 temp_context = ExecutionContext(f"{self.execution_id}_loop_{index}")
                 
-                # If item is a dict (like an asset), add all its fields as variables
+                # Always set 'item' variable for consistency
+                temp_context.set_variable("item", item)
+                
+                # If item is a dict (like an asset), also add all its fields as variables
+                # This allows both {{item.field}} and {{field}} syntax
                 if isinstance(item, dict):
                     for key, value in item.items():
                         temp_context.set_variable(key, value)
-                else:
-                    # If item is a simple value, use it as the default variable
-                    temp_context.set_variable("item", item)
                 
                 # Resolve templates in the step parameters
                 parameters = expanded_step.get("inputs", expanded_step.get("parameters", {}))
@@ -297,6 +315,27 @@ class ExecutionContext:
                         # Use the first resolved value as the target_host
                         resolved_params["target_host"] = target_hosts[0]
                         del resolved_params["target_hosts"]
+                
+                # AUTOMATIC ASSET CREDENTIAL DETECTION
+                # If we're looping over assets (item has 'id' field) and no explicit credentials provided,
+                # automatically use asset credentials
+                if isinstance(item, dict) and "id" in item:
+                    # Check if explicit credentials are provided
+                    has_explicit_creds = (
+                        resolved_params.get("username") or 
+                        resolved_params.get("password") or
+                        resolved_params.get("private_key")
+                    )
+                    
+                    # If no explicit credentials, use asset credentials
+                    if not has_explicit_creds:
+                        resolved_params["use_asset_credentials"] = True
+                        resolved_params["asset_id"] = item["id"]
+                        logger.info(f"[{self.execution_id}] Auto-enabling asset credentials for asset {item['id']}")
+                    
+                    # If use_asset_credentials is explicitly set, ensure asset_id is set
+                    elif resolved_params.get("use_asset_credentials"):
+                        resolved_params["asset_id"] = item["id"]
                 
                 # Update the step with resolved parameters
                 if "inputs" in expanded_step:

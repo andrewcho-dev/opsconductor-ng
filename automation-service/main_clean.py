@@ -586,7 +586,48 @@ async def _execute_single_step(
         
         # Build credentials
         credentials = None
-        if parameters.get("username") or parameters.get("password"):
+        
+        # Debug logging
+        service_instance.logger.info(
+            f"Building credentials - use_asset_credentials: {parameters.get('use_asset_credentials')}, "
+            f"asset_id: {parameters.get('asset_id')}, "
+            f"parameters keys: {list(parameters.keys())}"
+        )
+        
+        # Check if we should use asset credentials
+        if parameters.get("use_asset_credentials") and parameters.get("asset_id"):
+            # Fetch credentials from asset service
+            asset_id = parameters.get("asset_id")
+            service_instance.logger.info(f"Fetching credentials for asset {asset_id}")
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"http://asset-service:3002/{asset_id}/credentials",
+                        timeout=10.0
+                    )
+                    if response.status_code == 200:
+                        cred_data = response.json()
+                        if cred_data.get("success"):
+                            asset_creds = cred_data.get("data", {})
+                            credentials = {
+                                "username": asset_creds.get("username"),
+                                "password": asset_creds.get("password")
+                            }
+                            # Add domain if available
+                            if asset_creds.get("domain"):
+                                credentials["domain"] = asset_creds.get("domain")
+                    else:
+                        service_instance.logger.error(
+                            f"Failed to fetch credentials for asset {asset_id}: "
+                            f"HTTP {response.status_code}"
+                        )
+            except Exception as e:
+                service_instance.logger.error(
+                    f"Error fetching credentials for asset {asset_id}: {e}"
+                )
+        
+        # Fallback to explicit username/password if provided
+        elif parameters.get("username") or parameters.get("password"):
             credentials = {
                 "username": parameters.get("username"),
                 "password": parameters.get("password")
@@ -658,6 +699,15 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
         
         # Create execution context for template variables and dependencies
         context = create_execution_context(request.execution_id)
+        
+        # Load previous results into context (for multi-step orchestration)
+        previous_results = request.plan.get("previous_results", [])
+        if previous_results:
+            service.logger.info(f"📥 Loading {len(previous_results)} previous step results into context")
+            for prev_result in previous_results:
+                step_index = prev_result.get("step_index", 0)
+                context.store_step_result(step_index, prev_result)
+                context.extract_variables_from_step_result(step_index, prev_result)
         
         # Extract steps from plan
         steps = request.plan.get("steps", [])

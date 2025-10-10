@@ -575,7 +575,7 @@ def selection_score(
     3. Information intent (20% weight)
     
     Decision thresholds:
-    - S ≥ 0.6: SELECT asset-service-query tool
+    - S ≥ 0.6: SELECT asset-query tool
     - 0.4 ≤ S < 0.6: ASK clarifying question
     - S < 0.4: DO NOT SELECT
     

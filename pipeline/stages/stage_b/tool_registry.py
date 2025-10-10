@@ -387,7 +387,7 @@ class ToolRegistry:
         
         # Asset Service Tools (Infrastructure Metadata)
         asset_query_tool = Tool(
-            name="asset-service-query",
+            name="asset-query",
             description="Query infrastructure asset metadata (servers, IPs, tags, environments)",
             capabilities=[
                 ToolCapability(

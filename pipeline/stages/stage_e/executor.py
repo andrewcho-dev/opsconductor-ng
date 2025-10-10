@@ -186,13 +186,13 @@ class StageEExecutor:
             logger.info(f"Routing to background execution: {execution.execution_id}")
             await self._enqueue_execution(execution)
     
-    def _get_execution_service_url(self, execution: ExecutionModel) -> str:
+    def _get_service_url_for_tool(self, tool_name: str) -> str:
         """
-        Determine which execution service should handle this execution
+        Determine which execution service should handle a specific tool
         based on tool's execution_location metadata.
         
         Args:
-            execution: Execution model with plan_snapshot
+            tool_name: Name of the tool to execute
             
         Returns:
             Service URL (e.g., "http://automation-service:3003")
@@ -200,16 +200,8 @@ class StageEExecutor:
         import yaml
         from pathlib import Path
         
-        # Get first step's tool name to determine routing
-        plan_steps = execution.plan_snapshot.get("steps", [])
-        if not plan_steps:
-            # No steps, default to automation-service
-            logger.warning(f"No steps in plan {execution.execution_id}, defaulting to automation-service")
-            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
-        
-        first_tool = plan_steps[0].get("tool")
-        if not first_tool:
-            logger.warning(f"No tool specified in first step, defaulting to automation-service")
+        if not tool_name:
+            logger.warning(f"No tool specified, defaulting to automation-service")
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
         
         # Load tool definition to get execution_location
@@ -219,19 +211,19 @@ class StageEExecutor:
         tool_file = None
         
         # Search for tool YAML file (try both hyphenated and underscored versions)
-        for yaml_file in tools_dir.rglob(f"{first_tool}.yaml"):
+        for yaml_file in tools_dir.rglob(f"{tool_name}.yaml"):
             tool_file = yaml_file
             break
         
         # If not found with hyphens, try with underscores
         if not tool_file:
-            tool_name_underscored = first_tool.replace("-", "_")
+            tool_name_underscored = tool_name.replace("-", "_")
             for yaml_file in tools_dir.rglob(f"{tool_name_underscored}.yaml"):
                 tool_file = yaml_file
                 break
         
         if not tool_file or not tool_file.exists():
-            logger.warning(f"Tool definition not found for '{first_tool}', defaulting to automation-service")
+            logger.warning(f"Tool definition not found for '{tool_name}', defaulting to automation-service")
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
         
         # Load tool definition
@@ -245,28 +237,51 @@ class StageEExecutor:
             service_urls = {
                 "automation-service": os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003"),
                 "communication-service": os.getenv("COMMUNICATION_SERVICE_URL", "http://communication-service:3004"),
-                "asset-service": os.getenv("ASSET_SERVICE_URL", "http://asset-service:3005"),
+                "asset-service": os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002"),
                 "network-service": os.getenv("NETWORK_SERVICE_URL", "http://network-analyzer-service:3006"),
             }
             
             service_url = service_urls.get(execution_location)
             if not service_url:
                 logger.warning(
-                    f"Unknown execution_location '{execution_location}' for tool '{first_tool}', "
+                    f"Unknown execution_location '{execution_location}' for tool '{tool_name}', "
                     f"defaulting to automation-service"
                 )
                 return service_urls["automation-service"]
             
-            logger.info(f"Routing execution {execution.execution_id} to {execution_location} (tool: {first_tool})")
+            logger.info(f"Routing tool '{tool_name}' to {execution_location}")
             return service_url
             
         except Exception as e:
-            logger.error(f"Error loading tool definition for '{first_tool}': {e}", exc_info=True)
+            logger.error(f"Error loading tool definition for '{tool_name}': {e}", exc_info=True)
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+    
+    def _get_execution_service_url(self, execution: ExecutionModel) -> str:
+        """
+        DEPRECATED: Use _get_service_url_for_tool instead
+        
+        Determine which execution service should handle this execution
+        based on tool's execution_location metadata.
+        
+        Args:
+            execution: Execution model with plan_snapshot
+            
+        Returns:
+            Service URL (e.g., "http://automation-service:3003")
+        """
+        # Get first step's tool name to determine routing
+        plan_steps = execution.plan_snapshot.get("steps", [])
+        if not plan_steps:
+            # No steps, default to automation-service
+            logger.warning(f"No steps in plan {execution.execution_id}, defaulting to automation-service")
+            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+        
+        first_tool = plan_steps[0].get("tool")
+        return self._get_service_url_for_tool(first_tool)
     
     async def _execute_immediate(self, execution: ExecutionModel) -> None:
         """
-        Execute immediately by delegating to appropriate execution service
+        Execute immediately by orchestrating steps across appropriate services
         
         AI-PIPELINE DOES NOT EXECUTE - IT ONLY ORCHESTRATES
         All actual execution happens in execution service containers:
@@ -274,6 +289,11 @@ class StageEExecutor:
         - communication-service: notifications (email, Slack, Teams, SMS)
         - asset-service: asset operations (query, create, update, delete)
         - network-service: network analysis (tcpdump, tshark, nmap, etc.)
+        
+        This method orchestrates multi-step plans by:
+        1. Executing each step individually
+        2. Routing each step to the correct service
+        3. Passing results between steps for variable resolution
         
         Args:
             execution: Execution model
@@ -288,46 +308,106 @@ class StageEExecutor:
                 previous_status=execution.status
             )
             
-            # DETERMINE EXECUTION SERVICE BASED ON TOOL METADATA
-            service_url = self._get_execution_service_url(execution)
+            # Get steps from plan
+            steps = execution.plan_snapshot.get("steps", [])
+            if not steps:
+                raise ValueError("No steps found in execution plan")
             
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.post(
-                    f"{service_url}/execute-plan",
-                    json={
-                        "execution_id": str(execution.execution_id),
-                        "plan": execution.plan_snapshot,
-                        "tenant_id": execution.tenant_id,
-                        "actor_id": execution.actor_id
-                    }
-                )
-                response.raise_for_status()
-                result_data = response.json()
+            logger.info(f"Orchestrating {len(steps)} steps for execution {execution.execution_id}")
             
-            # Update execution with result from execution service
-            result_status = ExecutionStatus(result_data.get("status", "failed"))
+            # Execute steps sequentially, routing each to the appropriate service
+            all_step_results = []
+            overall_success = True
+            
+            for step_index, step in enumerate(steps):
+                tool_name = step.get("tool", "unknown")
+                logger.info(f"Executing step {step_index + 1}/{len(steps)}: {tool_name}")
+                
+                # Determine which service should handle this step
+                service_url = self._get_service_url_for_tool(tool_name)
+                
+                # Create a single-step plan for this service
+                single_step_plan = {
+                    "steps": [step]
+                }
+                
+                # If this is not the first step, include previous results for variable resolution
+                if all_step_results:
+                    single_step_plan["previous_results"] = all_step_results
+                
+                try:
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        response = await client.post(
+                            f"{service_url}/execute-plan",
+                            json={
+                                "execution_id": str(execution.execution_id),
+                                "plan": single_step_plan,
+                                "tenant_id": execution.tenant_id,
+                                "actor_id": execution.actor_id
+                            }
+                        )
+                        response.raise_for_status()
+                        result_data = response.json()
+                    
+                    # Extract step results
+                    step_results = result_data.get("step_results", [])
+                    if step_results:
+                        all_step_results.extend(step_results)
+                        
+                        # Check if any step failed
+                        for step_result in step_results:
+                            if step_result.get("status") != "completed":
+                                overall_success = False
+                    else:
+                        overall_success = False
+                        all_step_results.append({
+                            "step_index": step_index,
+                            "tool": tool_name,
+                            "status": "failed",
+                            "error": "No results returned from service",
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                    
+                    logger.info(f"Step {step_index + 1} completed via {service_url}")
+                    
+                except Exception as e:
+                    logger.error(f"Step {step_index + 1} failed: {e}", exc_info=True)
+                    overall_success = False
+                    all_step_results.append({
+                        "step_index": step_index,
+                        "tool": tool_name,
+                        "status": "failed",
+                        "error": str(e),
+                        "completed_at": datetime.utcnow().isoformat()
+                    })
+            
+            # Update execution with final results
+            result_status = ExecutionStatus.COMPLETED if overall_success else ExecutionStatus.FAILED
             self.repository.update_execution_status(
                 execution.execution_id,
                 result_status,
                 previous_status=ExecutionStatus.RUNNING,
-                error_message=result_data.get("error_message"),
-                error_details=result_data.get("error_details")
+                error_message=None if overall_success else "One or more steps failed"
             )
             
-            # Update execution result - include step_results for detailed output
-            result_with_steps = result_data.get("result", {})
-            if "step_results" in result_data:
-                result_with_steps["step_results"] = result_data["step_results"]
+            # Build final result
+            final_result = {
+                "total_steps": len(steps),
+                "successful_steps": sum(1 for r in all_step_results if r.get("status") == "completed"),
+                "failed_steps": sum(1 for r in all_step_results if r.get("status") == "failed"),
+                "step_results": all_step_results
+            }
             
             self.repository.update_execution_result(
                 execution.execution_id,
-                result_with_steps,
-                datetime.fromisoformat(result_data["completed_at"]) if result_data.get("completed_at") else None
+                final_result,
+                datetime.utcnow()
             )
             
             logger.info(
-                f"Immediate execution completed via {service_url}: {execution.execution_id}, "
-                f"status={result_status}"
+                f"Orchestrated execution completed: {execution.execution_id}, "
+                f"status={result_status}, steps={len(steps)}, "
+                f"successful={final_result['successful_steps']}, failed={final_result['failed_steps']}"
             )
         
         except Exception as e:

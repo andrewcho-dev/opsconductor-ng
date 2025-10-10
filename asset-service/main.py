@@ -2353,6 +2353,12 @@ class ConsolidatedAssetService(BaseService):
                 plan = request.get("plan", {})
                 steps = plan.get("steps", [])
                 
+                # DEBUG: Log the full plan to see what we're receiving
+                self.logger.info(f"🔥 PLAN RECEIVED: {plan}")
+                self.logger.info(f"📋 STEPS COUNT: {len(steps)}")
+                for idx, step in enumerate(steps):
+                    self.logger.info(f"  Step {idx}: tool={step.get('tool')}, inputs={step.get('inputs')}")
+                
                 if not steps:
                     return {
                         "execution_id": execution_id,
