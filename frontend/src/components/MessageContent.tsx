@@ -15,11 +15,39 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
 
   const copyToClipboard = async (code: string) => {
     try {
-      await navigator.clipboard.writeText(code);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode(null), 2000);
+      console.log('Copying to clipboard:', code.substring(0, 100) + '...'); // Debug log
+      
+      // Try modern Clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(code);
+        setCopiedCode(code);
+        setTimeout(() => setCopiedCode(null), 2000);
+        console.log('Copy successful (Clipboard API)!'); // Debug log
+      } else {
+        // Fallback to older method
+        const textArea = document.createElement('textarea');
+        textArea.value = code;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          setCopiedCode(code);
+          setTimeout(() => setCopiedCode(null), 2000);
+          console.log('Copy successful (execCommand fallback)!'); // Debug log
+        } else {
+          throw new Error('execCommand copy failed');
+        }
+      }
     } catch (err) {
       console.error('Failed to copy:', err);
+      alert('Failed to copy to clipboard. Please select and copy manually.');
     }
   };
 

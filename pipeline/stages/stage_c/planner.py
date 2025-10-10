@@ -9,6 +9,8 @@ import os
 import time
 import threading
 import logging
+import httpx
+import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -69,6 +71,9 @@ class StageCPlanner:
         # Initialize tool catalog service for fetching tool details
         from ...services.tool_catalog_service import ToolCatalogService
         self.tool_catalog = ToolCatalogService()
+        
+        # Initialize asset service URL for credential lookup
+        self.asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://localhost:8003")
         
         # Planning statistics (thread-safe)
         self._stats_lock = threading.Lock()
@@ -275,6 +280,14 @@ class StageCPlanner:
         
         self._increment_stat("llm_calls_made")
         
+        # Look up credentials for any IP addresses in the request
+        credentials_map = await self._lookup_credentials_from_context(decision, context)
+        
+        # Add credentials to context for prompt building
+        if context is None:
+            context = {}
+        context["credentials_map"] = credentials_map
+        
         # Build the system prompt with schema knowledge
         system_prompt = self._build_planning_system_prompt()
         
@@ -328,6 +341,137 @@ class StageCPlanner:
         
         return fixed_steps
     
+    def _extract_ip_addresses(self, text: str) -> List[str]:
+        """
+        Extract IP addresses from text using regex.
+        
+        Args:
+            text: Text to search for IP addresses
+            
+        Returns:
+            List of IP addresses found
+        """
+        # IPv4 pattern
+        ipv4_pattern = r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b'
+        return re.findall(ipv4_pattern, text)
+    
+    async def _lookup_credentials_for_host(self, ip_address: str) -> Optional[Dict[str, Any]]:
+        """
+        Query the asset service to find credentials for a given IP address.
+        
+        Args:
+            ip_address: IP address to look up
+            
+        Returns:
+            Dictionary with credential information if found, None otherwise
+        """
+        try:
+            logger.info(f"🔍 Looking up credentials for host: {ip_address}")
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # Query asset service with search parameter (searches name, hostname, description)
+                # We'll use the IP as search term
+                response = await client.get(
+                    f"{self.asset_service_url}/",
+                    params={"search": ip_address, "limit": 10}
+                )
+                
+                if response.status_code != 200:
+                    logger.warning(f"Asset service returned status {response.status_code}")
+                    return None
+                
+                data = response.json()
+                # Asset service returns: {"success": true, "data": {"assets": [...], "total": ...}}
+                assets = data.get("data", {}).get("assets", [])
+                
+                # Find exact match by IP address
+                matching_asset = None
+                for asset in assets:
+                    if asset.get("ip_address") == ip_address:
+                        matching_asset = asset
+                        break
+                
+                if not matching_asset:
+                    logger.info(f"No asset found for IP: {ip_address}")
+                    return None
+                
+                # Check if asset has credentials
+                if not matching_asset.get("has_credentials"):
+                    logger.info(f"Asset found for {ip_address} but has no credentials")
+                    return None
+                
+                # Get full asset credentials (including decrypted password)
+                asset_id = matching_asset.get("id")
+                creds_response = await client.get(f"{self.asset_service_url}/{asset_id}/credentials")
+                
+                if creds_response.status_code != 200:
+                    logger.warning(f"Failed to get asset credentials for ID {asset_id}")
+                    return None
+                
+                creds_data = creds_response.json()
+                credentials = creds_data.get("data", {})
+                
+                # Note: We don't log the actual password for security
+                logger.info(f"✅ Found credentials for {ip_address}: username={credentials.get('username')}, os_type={credentials.get('os_type')}")
+                
+                return credentials
+                
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout querying asset service for {ip_address}")
+            return None
+        except Exception as e:
+            logger.error(f"Error looking up credentials for {ip_address}: {str(e)}")
+            return None
+    
+    async def _lookup_credentials_from_context(
+        self, 
+        decision: DecisionV1, 
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Look up credentials for all IP addresses mentioned in the user query and entities.
+        
+        Args:
+            decision: Decision from Stage A
+            context: Optional context including conversation history
+            
+        Returns:
+            Dictionary mapping IP addresses to their credentials
+        """
+        credentials_map = {}
+        
+        # Extract IP addresses from user query
+        ip_addresses = self._extract_ip_addresses(decision.original_request)
+        
+        # Extract IP addresses from entities
+        for entity in decision.entities:
+            entity_dict = entity.dict() if hasattr(entity, 'dict') else entity
+            entity_value = entity_dict.get('value', '')
+            if entity_value:
+                ip_addresses.extend(self._extract_ip_addresses(str(entity_value)))
+        
+        # Extract IP addresses from conversation history
+        if context and "conversation_history" in context:
+            conversation_history = context["conversation_history"]
+            if conversation_history:
+                ip_addresses.extend(self._extract_ip_addresses(conversation_history))
+        
+        # Remove duplicates
+        ip_addresses = list(set(ip_addresses))
+        
+        if not ip_addresses:
+            logger.info("No IP addresses found in request")
+            return credentials_map
+        
+        logger.info(f"Found {len(ip_addresses)} IP address(es) in request: {ip_addresses}")
+        
+        # Look up credentials for each IP
+        for ip in ip_addresses:
+            creds = await self._lookup_credentials_for_host(ip)
+            if creds:
+                credentials_map[ip] = creds
+        
+        return credentials_map
 
     def _update_stats(self, processing_time_ms: int, success: bool) -> None:
         """Update planning statistics (thread-safe)"""
@@ -548,7 +692,7 @@ For each selected tool, create an execution step with:
      * command or script: The PowerShell command/script to execute
      * use_ssl: true/false (default: false for HTTP WinRM on port 5985)
      * port: WinRM port (default: 5985 for HTTP, 5986 for HTTPS)
-     * connection_type: "winrm" (to explicitly mark as WinRM execution)
+     * connection_type: "powershell" (to explicitly mark as PowerShell/WinRM execution)
    
    - For Linux/SSH commands (ls, cat, ps, systemctl, etc.):
      * target_host: IP address or hostname of the Linux machine
@@ -608,7 +752,7 @@ For Windows/PowerShell/WinRM commands:
       "username": "administrator",
       "password": "password123",
       "command": "Get-ChildItem C:\\",
-      "connection_type": "winrm",
+      "connection_type": "powershell",
       "use_ssl": false,
       "port": 5985
     },
@@ -703,6 +847,51 @@ CRITICAL:
 
 IMPORTANT: Extract IP addresses, hostnames, credentials, and other parameters from the conversation history above!
 If the current request refers to a device/camera mentioned earlier, use those details.
+"""
+        
+        # Add credentials from asset database if available
+        if context and "credentials_map" in context:
+            credentials_map = context["credentials_map"]
+            if credentials_map:
+                prompt += f"""
+**🔐 CREDENTIALS FROM ASSET DATABASE:**
+The following credentials were automatically retrieved from the asset database for the hosts mentioned in your request.
+YOU MUST USE THESE CREDENTIALS in your execution plan:
+
+"""
+                for ip, creds in credentials_map.items():
+                    # Include password in prompt (it's needed for the LLM to create the plan)
+                    # Note: This is internal communication between services, not exposed to users
+                    password_value = creds.get('password', '[NOT SET]')
+                    prompt += f"""
+Host: {ip}
+  - Hostname: {creds.get('hostname', 'N/A')}
+  - OS Type: {creds.get('os_type', 'N/A')}
+  - Service Type: {creds.get('service_type', 'N/A')}
+  - Port: {creds.get('port', 'N/A')}
+  - Username: {creds.get('username', 'N/A')}
+  - Password: {password_value}
+  - Domain: {creds.get('domain', 'N/A')}
+  - Credential Type: {creds.get('credential_type', 'N/A')}
+
+"""
+                prompt += """
+CRITICAL: You MUST include BOTH username AND password in your execution plan!
+- For PowerShell/WinRM commands: Set connection_type to "powershell", include username and password from above
+- For SSH commands: Set connection_type to "ssh", include username and password from above
+- The password is available in the credentials above - you must include it in the plan parameters
+
+Example for PowerShell:
+{
+  "tool": "Get-ChildItem",
+  "inputs": {
+    "target_host": "192.168.50.211",
+    "username": "Administrator",
+    "password": "<use the actual password from credentials above>",
+    "command": "Get-ChildItem C:\\Windows",
+    "connection_type": "powershell"
+  }
+}
 """
         
         prompt += f"""

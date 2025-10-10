@@ -459,16 +459,18 @@ class PipelineOrchestratorV2:
                     # Show output for successful commands
                     if step_status == 'completed' and step_result.get('stdout'):
                         stdout = step_result['stdout'].strip()
-                        # Limit output to first 500 chars to avoid overwhelming the user
-                        if len(stdout) > 500:
-                            stdout = stdout[:500] + "...(truncated)"
-                        execution_summary += f"```\n{stdout}\n```\n"
+                        # Limit output to first 100000 chars to avoid overwhelming the user
+                        if len(stdout) > 100000:
+                            stdout = stdout[:100000] + "...(truncated)"
+                        # Use 'text' language to enable copy/download buttons in UI
+                        execution_summary += f"```text\n{stdout}\n```\n"
                     
-                    # Show errors if any
+                    # Show errors if any (but filter out PowerShell CLIXML progress messages)
                     if step_result.get('stderr'):
                         stderr = step_result['stderr'].strip()
-                        if stderr:
-                            execution_summary += f"⚠️ Warnings/Errors:\n```\n{stderr}\n```\n"
+                        # Filter out PowerShell progress CLIXML (not real errors)
+                        if stderr and not (stderr.startswith('#< CLIXML') and 'progress' in stderr.lower()):
+                            execution_summary += f"⚠️ Warnings/Errors:\n```text\n{stderr}\n```\n"
                     
                     execution_summary += "\n"
             

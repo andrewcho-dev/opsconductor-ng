@@ -1313,6 +1313,83 @@ class ConsolidatedAssetService(BaseService):
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to test asset connection"
                 )
+        
+        @self.app.get("/{asset_id}/credentials")
+        async def get_asset_credentials(asset_id: int):
+            """
+            Get decrypted credentials for an asset (internal service-to-service use only)
+            
+            This endpoint returns decrypted credentials for use by other services
+            (e.g., automation-service, ai-pipeline) that need to execute commands
+            on the asset.
+            
+            WARNING: This endpoint should only be accessible to internal services,
+            not exposed to external users.
+            """
+            try:
+                async with self.db.pool.acquire() as conn:
+                    asset = await conn.fetchrow("""
+                        SELECT id, name, hostname, ip_address, os_type, service_type, port,
+                               credential_type, username, domain,
+                               password_encrypted, private_key_encrypted, api_key_encrypted,
+                               bearer_token_encrypted, certificate_encrypted, passphrase_encrypted
+                        FROM assets.assets
+                        WHERE id = $1
+                    """, asset_id)
+                    
+                    if not asset:
+                        raise HTTPException(status_code=404, detail="Asset not found")
+                    
+                    # Decrypt credentials
+                    credentials = {
+                        "asset_id": asset['id'],
+                        "name": asset['name'],
+                        "hostname": asset['hostname'],
+                        "ip_address": asset['ip_address'],
+                        "os_type": asset['os_type'],
+                        "service_type": asset['service_type'],
+                        "port": asset['port'],
+                        "credential_type": asset['credential_type'],
+                        "username": asset['username'],
+                        "domain": asset['domain'],
+                    }
+                    
+                    # Decrypt password if available
+                    if asset['password_encrypted']:
+                        credentials['password'] = self._decrypt_field(asset['password_encrypted'])
+                    
+                    # Decrypt private key if available
+                    if asset['private_key_encrypted']:
+                        credentials['private_key'] = self._decrypt_field(asset['private_key_encrypted'])
+                    
+                    # Decrypt API key if available
+                    if asset['api_key_encrypted']:
+                        credentials['api_key'] = self._decrypt_field(asset['api_key_encrypted'])
+                    
+                    # Decrypt bearer token if available
+                    if asset['bearer_token_encrypted']:
+                        credentials['bearer_token'] = self._decrypt_field(asset['bearer_token_encrypted'])
+                    
+                    # Decrypt certificate if available
+                    if asset['certificate_encrypted']:
+                        credentials['certificate'] = self._decrypt_field(asset['certificate_encrypted'])
+                    
+                    # Decrypt passphrase if available
+                    if asset['passphrase_encrypted']:
+                        credentials['passphrase'] = self._decrypt_field(asset['passphrase_encrypted'])
+                    
+                    return {
+                        "success": True,
+                        "data": credentials
+                    }
+            except HTTPException:
+                raise
+            except Exception as e:
+                self.logger.error("Failed to get asset credentials", error=str(e))
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to get asset credentials"
+                )
 
 
 

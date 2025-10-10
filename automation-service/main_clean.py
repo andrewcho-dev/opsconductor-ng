@@ -331,16 +331,53 @@ class CleanAutomationService(BaseService):
         return 0, "SSH execution not yet implemented", ""
     
     async def _execute_powershell_command(self, request: CommandRequest) -> tuple[int, str, str]:
-        """Execute command via PowerShell"""
+        """Execute command via PowerShell/WinRM"""
         if 'powershell' not in self.connection_managers or not self.connection_managers['powershell']:
             raise Exception("PowerShell connection manager not available")
+        
+        if not request.target_host:
+            raise Exception("target_host is required for PowerShell execution")
+        
+        if not request.credentials:
+            raise Exception("credentials (username/password) are required for PowerShell execution")
+        
+        # Extract credentials
+        username = request.credentials.get("username")
+        password = request.credentials.get("password")
+        
+        if not username or not password:
+            raise Exception("Both username and password are required in credentials")
         
         # Use PowerShell library to execute command
         ps_manager = self.connection_managers['powershell']
         
-        # This would need to be implemented based on your PowerShell library
-        # For now, return a placeholder
-        return 0, "PowerShell execution not yet implemented", ""
+        # Execute PowerShell script via WinRM
+        # Note: execute_powershell is synchronous, so we run it in a thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            ps_manager.execute_powershell,
+            request.target_host,
+            username,
+            password,
+            request.command,
+            request.timeout,
+            False,  # use_ssl - default to False for HTTP WinRM
+            None    # port - will use default 5985
+        )
+        
+        # Extract results
+        exit_code = result.get("exit_code", -1)
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        
+        if not result.get("success"):
+            error_msg = result.get("error", "Unknown PowerShell execution error")
+            self.logger.error(f"PowerShell execution failed: {error_msg}")
+            # Return error in stderr
+            stderr = error_msg if not stderr else f"{stderr}\n{error_msg}"
+        
+        return exit_code, stdout, stderr
 
 # ============================================================================
 # API ENDPOINTS
@@ -456,6 +493,11 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 command = parameters.get("command", "")
                 target_host = parameters.get("target_host")
                 connection_type = parameters.get("connection_type", "local")
+                
+                # Normalize connection type: "winrm" -> "powershell" for backward compatibility
+                if connection_type == "winrm":
+                    connection_type = "powershell"
+                    service.logger.info(f"🔄 Normalized connection_type from 'winrm' to 'powershell'")
             
             if not command:
                 service.logger.warning(f"No command found for step {i+1}")
@@ -467,11 +509,21 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 })
                 continue
             
+            # Build credentials if username/password provided
+            credentials = None
+            if parameters.get("username") or parameters.get("password"):
+                credentials = {
+                    "username": parameters.get("username"),
+                    "password": parameters.get("password")
+                }
+                service.logger.info(f"🔐 Using credentials for user: {parameters.get('username')}")
+            
             # Execute command
             cmd_request = CommandRequest(
                 command=command,
                 target_host=target_host,
                 connection_type=connection_type,
+                credentials=credentials,
                 timeout=parameters.get("timeout", 300)
             )
             
