@@ -52,7 +52,7 @@ def execute_plan(plan_name, steps, description=""):
             "steps": steps
         },
         "tenant_id": "demo-tenant",
-        "actor_id": "demo-user"
+        "actor_id": 1  # Must be int, not string
     }
     
     print(f"\n📤 Sending request to automation service...")
