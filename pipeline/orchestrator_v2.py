@@ -445,15 +445,37 @@ class PipelineOrchestratorV2:
             
             # Add step results if available
             if hasattr(execution_result, 'step_results') and execution_result.step_results:
-                execution_summary += f"**Steps executed:** {len(execution_result.step_results)}\n"
+                execution_summary += f"**Steps executed:** {len(execution_result.step_results)}\n\n"
                 for i, step_result in enumerate(execution_result.step_results, 1):
                     step_status = step_result.get('status', 'unknown')
-                    step_tool = step_result.get('tool_name', 'Unknown')
-                    execution_summary += f"{i}. {step_tool}: {step_status}\n"
+                    step_tool = step_result.get('tool', step_result.get('tool_name', 'Unknown'))
+                    step_command = step_result.get('command', '')
+                    
+                    execution_summary += f"**Step {i}: {step_tool}**\n"
+                    if step_command:
+                        execution_summary += f"Command: `{step_command}`\n"
+                    execution_summary += f"Status: {step_status}\n"
+                    
+                    # Show output for successful commands
+                    if step_status == 'completed' and step_result.get('stdout'):
+                        stdout = step_result['stdout'].strip()
+                        # Limit output to first 500 chars to avoid overwhelming the user
+                        if len(stdout) > 500:
+                            stdout = stdout[:500] + "...(truncated)"
+                        execution_summary += f"```\n{stdout}\n```\n"
+                    
+                    # Show errors if any
+                    if step_result.get('stderr'):
+                        stderr = step_result['stderr'].strip()
+                        if stderr:
+                            execution_summary += f"⚠️ Warnings/Errors:\n```\n{stderr}\n```\n"
+                    
+                    execution_summary += "\n"
             
             # Add duration
-            if hasattr(execution_result, 'duration_seconds'):
-                execution_summary += f"\n**Duration:** {execution_result.duration_seconds:.2f}s"
+            if hasattr(execution_result, 'completed_at') and hasattr(execution_result, 'created_at'):
+                duration = (execution_result.completed_at - execution_result.created_at).total_seconds()
+                execution_summary += f"**Total Duration:** {duration:.2f}s\n"
             
             # Append to existing message
             response.message = f"{response.message}\n\n{execution_summary}"

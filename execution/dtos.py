@@ -102,6 +102,7 @@ class ExecutionResponse(BaseModel):
     
     # Results
     result: Optional[Dict[str, Any]] = None
+    step_results: Optional[List[Dict[str, Any]]] = None  # Detailed step-by-step results
     error_message: Optional[str] = None
     
     # Observability

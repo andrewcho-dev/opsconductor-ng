@@ -72,12 +72,46 @@ class ToolCatalogService:
         return self._pool
     
     def _get_connection(self):
-        """Get a connection from the pool"""
-        return self.pool.getconn()
+        """Get a connection from the pool with health check"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                conn = self.pool.getconn()
+                # Test connection health
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                return conn
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                logger.warning(f"Connection health check failed (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    # Close the bad connection and recreate pool
+                    try:
+                        if conn:
+                            conn.close()
+                    except:
+                        pass
+                    # Recreate pool on last retry
+                    if attempt == max_retries - 2:
+                        logger.info("Recreating connection pool...")
+                        try:
+                            self._pool.closeall()
+                        except:
+                            pass
+                        self._pool = None  # Force recreation
+                else:
+                    raise
+        raise Exception("Failed to get healthy database connection after retries")
     
     def _return_connection(self, conn):
         """Return a connection to the pool"""
-        self.pool.putconn(conn)
+        try:
+            self.pool.putconn(conn)
+        except Exception as e:
+            logger.warning(f"Error returning connection to pool: {e}")
+            try:
+                conn.close()
+            except:
+                pass
     
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cache entry is still valid"""

@@ -25,16 +25,16 @@ from base_service import BaseService
 # ============================================================================
 
 class ExecutionStatus:
-    """Simple execution status constants"""
+    """Simple execution status constants - matches execution.models.ExecutionStatus"""
     PENDING = "pending"
     RUNNING = "running"
-    SUCCESS = "success"
+    COMPLETED = "completed"  # Changed from SUCCESS to match execution.models
     FAILED = "failed"
     
     @classmethod
     def is_terminal(cls, status: str) -> bool:
         """Check if status indicates execution has finished"""
-        return status in [cls.SUCCESS, cls.FAILED]
+        return status in [cls.COMPLETED, cls.FAILED]
 
 # ============================================================================
 # CLEAN DATA MODELS
@@ -182,7 +182,7 @@ class CleanAutomationService(BaseService):
             completed_at = datetime.utcnow()
             duration = (completed_at - started_at).total_seconds()
             
-            result.status = ExecutionStatus.SUCCESS if exit_code == 0 else ExecutionStatus.FAILED
+            result.status = ExecutionStatus.COMPLETED if exit_code == 0 else ExecutionStatus.FAILED
             result.exit_code = exit_code
             result.stdout = stdout
             result.stderr = stderr
@@ -378,8 +378,15 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     recent_history = service.execution_history[-limit:] if service.execution_history else []
     return {"executions": recent_history, "total": len(service.execution_history)}
 
+class PlanExecutionRequest(BaseModel):
+    """Plan execution request from AI pipeline"""
+    execution_id: str
+    plan: Dict[str, Any]
+    tenant_id: str
+    actor_id: int
+
 @service.app.post("/execute-plan")
-async def execute_plan_from_pipeline(request: Dict[str, Any]):
+async def execute_plan_from_pipeline(request: PlanExecutionRequest):
     """
     Execute a plan from AI-pipeline
     
@@ -387,55 +394,134 @@ async def execute_plan_from_pipeline(request: Dict[str, Any]):
     AI-pipeline orchestrates, automation-service executes
     
     Args:
-        request: {
-            "execution_id": str,
-            "plan": dict,
-            "tenant_id": str,
-            "actor_id": int
-        }
+        request: Plan execution request with execution_id, plan, tenant_id, actor_id
     
     Returns:
         Execution result with status, output, and timing
     """
+    started_at = datetime.utcnow()
+    step_results = []
+    
     try:
-        service.logger.info(f"Received execution request from ai-pipeline: {request.get('execution_id')}")
+        service.logger.info(f"🚀 Received execution request from ai-pipeline: {request.execution_id}")
+        service.logger.info(f"📋 Plan: {json.dumps(request.plan, indent=2)}")
         
-        # Import execution engine (only available in automation-service)
-        sys.path.insert(0, '/app')
-        from execution.execution_engine import ExecutionEngine
-        from execution.models import ExecutionModel, ExecutionStatus as ExecStatus
+        # Extract steps from plan
+        steps = request.plan.get("steps", [])
+        if not steps:
+            service.logger.warning("No steps found in plan")
+            return {
+                "execution_id": request.execution_id,
+                "status": "failed",
+                "result": {},
+                "step_results": [],
+                "completed_at": datetime.utcnow().isoformat(),
+                "error_message": "No steps found in execution plan"
+            }
         
-        # Create execution model from plan
-        execution = ExecutionModel(
-            execution_id=uuid.UUID(request["execution_id"]),
-            tenant_id=request["tenant_id"],
-            actor_id=request["actor_id"],
-            plan_snapshot=request["plan"],
-            status=ExecStatus.RUNNING,
-            created_at=datetime.utcnow()
-        )
+        service.logger.info(f"📝 Executing {len(steps)} steps")
         
-        # Execute using execution engine
-        engine = ExecutionEngine(
-            db_connection_string=os.getenv("DATABASE_URL"),
-            redis_url=os.getenv("REDIS_URL")
-        )
-        result = await engine.execute(execution)
+        # Execute each step
+        for i, step in enumerate(steps):
+            # Extract step details - handle both "tool" and "tool_name" keys
+            tool_name = step.get("tool", step.get("tool_name", "unknown"))
+            service.logger.info(f"⚙️  Step {i+1}/{len(steps)}: {tool_name}")
+            
+            # Extract parameters - handle both "inputs" and "parameters" keys
+            parameters = step.get("inputs", step.get("parameters", {}))
+            service.logger.info(f"📦 Parameters: {json.dumps(parameters, indent=2)}")
+            
+            # Build command based on tool
+            command = None
+            target_host = None
+            connection_type = "local"
+            
+            if tool_name == "ping":
+                # Ping command - check multiple possible parameter names
+                host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
+                count = parameters.get("count", 4)
+                if host:
+                    command = f"ping -c {count} {host}"
+                    service.logger.info(f"🏓 Ping command: {command}")
+            
+            elif tool_name == "check_connectivity":
+                # Check connectivity (ping)
+                host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
+                if host:
+                    command = f"ping -c 4 {host}"
+                    service.logger.info(f"🔌 Connectivity check: {command}")
+            
+            else:
+                # Generic command execution
+                command = parameters.get("command", "")
+                target_host = parameters.get("target_host")
+                connection_type = parameters.get("connection_type", "local")
+            
+            if not command:
+                service.logger.warning(f"No command found for step {i+1}")
+                step_results.append({
+                    "step": i+1,
+                    "tool": tool_name,
+                    "status": "skipped",
+                    "message": "No command to execute"
+                })
+                continue
+            
+            # Execute command
+            cmd_request = CommandRequest(
+                command=command,
+                target_host=target_host,
+                connection_type=connection_type,
+                timeout=parameters.get("timeout", 300)
+            )
+            
+            result = await service.execute_command(cmd_request)
+            
+            step_results.append({
+                "step": i+1,
+                "tool": tool_name,
+                "command": command,
+                "status": result.status,
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "duration_seconds": result.duration_seconds
+            })
+            
+            service.logger.info(f"✅ Step {i+1} completed: {result.status}")
         
-        # Return result to ai-pipeline
+        # Determine overall status
+        failed_steps = [s for s in step_results if s.get("status") == "failed"]
+        overall_status = "failed" if failed_steps else "completed"
+        
+        completed_at = datetime.utcnow()
+        
+        service.logger.info(f"🎉 Plan execution completed: {overall_status}")
+        
         return {
-            "execution_id": str(execution.execution_id),
-            "status": result.status.value if hasattr(result.status, 'value') else str(result.status),
-            "result": result.result or {},
-            "step_results": result.step_results,
-            "completed_at": result.completed_at.isoformat() if result.completed_at else None,
-            "error_message": result.error_message if hasattr(result, 'error_message') else None,
-            "error_details": result.error_details if hasattr(result, 'error_details') else None
+            "execution_id": request.execution_id,
+            "status": overall_status,
+            "result": {
+                "steps_completed": len(step_results),
+                "steps_failed": len(failed_steps),
+                "steps_succeeded": len([s for s in step_results if s.get("status") == "success"])
+            },
+            "step_results": step_results,
+            "completed_at": completed_at.isoformat(),
+            "duration_seconds": (completed_at - started_at).total_seconds()
         }
         
     except Exception as e:
-        service.logger.error(f"Plan execution failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        service.logger.error(f"❌ Plan execution failed: {e}", exc_info=True)
+        return {
+            "execution_id": request.execution_id,
+            "status": "failed",
+            "result": {},
+            "step_results": step_results,
+            "completed_at": datetime.utcnow().isoformat(),
+            "error_message": str(e),
+            "error_details": {"exception_type": type(e).__name__}
+        }
 
 @service.app.get("/status")
 async def get_service_status():

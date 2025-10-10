@@ -312,10 +312,14 @@ class StageEExecutor:
                 error_details=result_data.get("error_details")
             )
             
-            # Update execution result
+            # Update execution result - include step_results for detailed output
+            result_with_steps = result_data.get("result", {})
+            if "step_results" in result_data:
+                result_with_steps["step_results"] = result_data["step_results"]
+            
             self.repository.update_execution_result(
                 execution.execution_id,
-                result_data.get("result", {}),
+                result_with_steps,
                 datetime.fromisoformat(result_data["completed_at"]) if result_data.get("completed_at") else None
             )
             
@@ -523,6 +527,11 @@ class StageEExecutor:
             (completed_steps / total_steps * 100) if total_steps > 0 else 0
         )
         
+        # Extract step_results from result if available
+        step_results = None
+        if execution.result and "step_results" in execution.result:
+            step_results = execution.result["step_results"]
+        
         return ExecutionResponse(
             execution_id=execution.execution_id,
             status=execution.status,
@@ -538,6 +547,7 @@ class StageEExecutor:
             failed_steps=failed_steps,
             progress_percentage=progress_percentage,
             result=execution.result,
+            step_results=step_results,
             error_message=execution.error_message,
             trace_id=execution.trace_id,
             tags=execution.tags,
