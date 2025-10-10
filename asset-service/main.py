@@ -2437,7 +2437,7 @@ class ConsolidatedAssetService(BaseService):
             # Extract query parameters
             asset_id = inputs.get("asset_id") or inputs.get("id")
             hostname = inputs.get("hostname")
-            asset_type = inputs.get("type") or inputs.get("asset_type")
+            os_type = inputs.get("os_type")
             status = inputs.get("status")
             environment = inputs.get("environment")
             tags = inputs.get("tags")
@@ -2448,73 +2448,129 @@ class ConsolidatedAssetService(BaseService):
             if asset_id:
                 try:
                     asset_id_int = int(asset_id)
-                    query = "SELECT * FROM assets WHERE id = %s"
-                    result = self.db.execute_query(query, (asset_id_int,))
-                    
-                    if result:
-                        return {
-                            "success": True,
-                            "message": f"Found asset with ID {asset_id}",
-                            "asset": result[0],
-                            "count": 1
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "message": f"Asset with ID {asset_id} not found",
-                            "count": 0
-                        }
+                    async with self.db.pool.acquire() as conn:
+                        query = "SELECT * FROM assets.assets WHERE id = $1"
+                        result = await conn.fetchrow(query, asset_id_int)
+                        
+                        if result:
+                            asset_dict = dict(result)
+                            # Parse tags if they're JSON
+                            if asset_dict.get('tags'):
+                                if isinstance(asset_dict['tags'], str):
+                                    asset_dict['tags'] = json.loads(asset_dict['tags'])
+                            
+                            return {
+                                "success": True,
+                                "message": f"Found asset with ID {asset_id}",
+                                "assets": [asset_dict],
+                                "count": 1
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "message": f"Asset with ID {asset_id} not found",
+                                "assets": [],
+                                "count": 0
+                            }
                 except ValueError:
                     return {
                         "success": False,
                         "message": f"Invalid asset ID: {asset_id}",
-                        "error": "Asset ID must be an integer"
+                        "error": "Asset ID must be an integer",
+                        "assets": [],
+                        "count": 0
                     }
             
             # Build dynamic query based on filters
-            query = "SELECT * FROM assets WHERE 1=1"
+            where_conditions = []
             params = []
+            param_count = 0
             
             if hostname:
-                query += " AND hostname ILIKE %s"
+                param_count += 1
+                where_conditions.append(f"hostname ILIKE ${param_count}")
                 params.append(f"%{hostname}%")
             
-            if asset_type:
-                query += " AND type = %s"
-                params.append(asset_type)
+            if os_type:
+                param_count += 1
+                where_conditions.append(f"os_type = ${param_count}")
+                params.append(os_type)
             
             if status:
-                query += " AND status = %s"
+                param_count += 1
+                where_conditions.append(f"status = ${param_count}")
                 params.append(status)
             
             if environment:
-                query += " AND environment = %s"
+                param_count += 1
+                where_conditions.append(f"environment = ${param_count}")
                 params.append(environment)
             
             if tags:
-                # Tags stored as JSONB, search within
-                query += " AND tags @> %s::jsonb"
-                params.append(json.dumps(tags) if isinstance(tags, dict) else tags)
+                # Tags stored as JSONB array, search for specific tag
+                # Support both string tag and list of tags
+                if isinstance(tags, str):
+                    # Single tag - check if it exists in the array
+                    param_count += 1
+                    where_conditions.append(f"tags @> ${param_count}::jsonb")
+                    params.append(json.dumps([tags]))
+                elif isinstance(tags, list):
+                    # Multiple tags - check if all exist
+                    param_count += 1
+                    where_conditions.append(f"tags @> ${param_count}::jsonb")
+                    params.append(json.dumps(tags))
             
-            query += " ORDER BY id LIMIT 100"  # Limit results
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+            
+            query = f"""
+                SELECT id, name, hostname, ip_address, description, tags,
+                       os_type, os_version, service_type, port, is_secure,
+                       credential_type, username, domain,
+                       status, environment, criticality, owner,
+                       created_at, updated_at
+                FROM assets.assets
+                {where_clause}
+                ORDER BY id
+                LIMIT 100
+            """
             
             # Execute query
-            assets = self.db.execute_query(query, tuple(params) if params else None)
-            
-            return {
-                "success": True,
-                "message": f"Found {len(assets)} asset(s)",
-                "assets": assets,
-                "count": len(assets),
-                "filters": inputs
-            }
+            async with self.db.pool.acquire() as conn:
+                assets_rows = await conn.fetch(query, *params)
+                
+                # Convert to list of dicts and parse JSON fields
+                assets = []
+                for row in assets_rows:
+                    asset_dict = dict(row)
+                    # Parse tags if they're JSON strings
+                    if asset_dict.get('tags'):
+                        if isinstance(asset_dict['tags'], str):
+                            asset_dict['tags'] = json.loads(asset_dict['tags'])
+                    # Convert datetime to ISO format
+                    if asset_dict.get('created_at'):
+                        asset_dict['created_at'] = asset_dict['created_at'].isoformat()
+                    if asset_dict.get('updated_at'):
+                        asset_dict['updated_at'] = asset_dict['updated_at'].isoformat()
+                    assets.append(asset_dict)
+                
+                self.logger.info(f"Found {len(assets)} assets matching filters")
+                
+                return {
+                    "success": True,
+                    "message": f"Found {len(assets)} asset(s)",
+                    "assets": assets,
+                    "count": len(assets),
+                    "filters": inputs
+                }
         
         except Exception as e:
             self.logger.error(f"Error querying assets: {e}", exc_info=True)
             return {
                 "success": False,
                 "message": f"Error querying assets: {str(e)}",
-                "error": str(e)
+                "error": str(e),
+                "assets": [],
+                "count": 0
             }
     
     async def _execute_asset_create_tool(self, inputs: dict) -> dict:

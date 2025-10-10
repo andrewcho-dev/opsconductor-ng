@@ -19,6 +19,7 @@ import logging
 
 sys.path.append('/app/shared')
 from base_service import BaseService
+from execution_context import create_execution_context
 
 # ============================================================================
 # CLEAN EXECUTION STATUS
@@ -496,6 +497,138 @@ class PlanExecutionRequest(BaseModel):
     tenant_id: str
     actor_id: int
 
+
+async def _execute_single_step(
+    service_instance, 
+    step: Dict[str, Any], 
+    step_index: int,
+    loop_iteration: int = 1,
+    loop_total: int = 1
+) -> Dict[str, Any]:
+    """
+    Execute a single step (used for both regular and loop execution)
+    
+    Args:
+        service_instance: The automation service instance
+        step: Step definition with resolved parameters
+        step_index: Index of the step in the plan
+        loop_iteration: Current loop iteration (1-based)
+        loop_total: Total number of loop iterations
+        
+    Returns:
+        Step result dictionary
+    """
+    try:
+        tool_name = step.get("tool", step.get("tool_name", "unknown"))
+        parameters = step.get("inputs", step.get("parameters", {}))
+        
+        service_instance.logger.info(f"🔧 Executing {tool_name} (iteration {loop_iteration}/{loop_total})")
+        service_instance.logger.info(f"📦 Parameters: {json.dumps(parameters, indent=2)}")
+        
+        # Build command based on tool
+        command = None
+        target_host = None
+        connection_type = "local"
+        
+        if tool_name == "ping":
+            host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
+            count = parameters.get("count", 4)
+            if host:
+                command = f"ping -c {count} {host}"
+        
+        elif tool_name == "check_connectivity":
+            host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
+            if host:
+                command = f"ping -c 4 {host}"
+        
+        elif tool_name in ["windows-impacket-executor", "windows-psexec", "PSExec"]:
+            command = parameters.get("command", parameters.get("application", ""))
+            target_host = parameters.get("target_host")
+            connection_type = "impacket"
+            
+            env_vars = {}
+            if parameters.get("interactive", False):
+                env_vars["interactive"] = "true"
+            if parameters.get("session_id"):
+                env_vars["session_id"] = str(parameters.get("session_id"))
+            if "wait" in parameters:
+                env_vars["wait"] = "true" if parameters.get("wait") else "false"
+            if parameters.get("domain"):
+                env_vars["domain"] = parameters.get("domain")
+            
+            if env_vars:
+                parameters["environment_vars"] = env_vars
+        
+        elif tool_name in ["Invoke-Command", "powershell"]:
+            command = parameters.get("command", parameters.get("script_block", ""))
+            target_host = parameters.get("target_host")
+            connection_type = "powershell"
+        
+        else:
+            # Generic command execution
+            command = parameters.get("command", "")
+            target_host = parameters.get("target_host")
+            connection_type = parameters.get("connection_type", "local")
+            
+            if connection_type == "winrm":
+                connection_type = "powershell"
+        
+        if not command:
+            return {
+                "step": step_index + 1,
+                "loop_iteration": loop_iteration,
+                "loop_total": loop_total,
+                "tool": tool_name,
+                "status": "skipped",
+                "message": "No command to execute"
+            }
+        
+        # Build credentials
+        credentials = None
+        if parameters.get("username") or parameters.get("password"):
+            credentials = {
+                "username": parameters.get("username"),
+                "password": parameters.get("password")
+            }
+        
+        # Execute command
+        cmd_request = CommandRequest(
+            command=command,
+            target_host=target_host,
+            connection_type=connection_type,
+            credentials=credentials,
+            timeout=parameters.get("timeout", 300),
+            environment_vars=parameters.get("environment_vars")
+        )
+        
+        result = await service_instance.execute_command(cmd_request)
+        
+        return {
+            "step": step_index + 1,
+            "loop_iteration": loop_iteration,
+            "loop_total": loop_total,
+            "tool": tool_name,
+            "command": command,
+            "target_host": target_host,
+            "status": result.status,
+            "exit_code": result.exit_code,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "duration_seconds": result.duration_seconds
+        }
+        
+    except Exception as e:
+        service_instance.logger.error(f"Error executing step: {e}", exc_info=True)
+        return {
+            "step": step_index + 1,
+            "loop_iteration": loop_iteration,
+            "loop_total": loop_total,
+            "tool": step.get("tool", "unknown"),
+            "status": "failed",
+            "error": str(e)
+        }
+
+
 @service.app.post("/execute-plan")
 async def execute_plan_from_pipeline(request: PlanExecutionRequest):
     """
@@ -503,6 +636,11 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
     
     THIS IS THE ONLY CONTAINER THAT EXECUTES COMMANDS
     AI-pipeline orchestrates, automation-service executes
+    
+    Features:
+    - Template variable resolution ({{variable}})
+    - Step dependency resolution
+    - Loop execution for multiple targets
     
     Args:
         request: Plan execution request with execution_id, plan, tenant_id, actor_id
@@ -516,6 +654,9 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
     try:
         service.logger.info(f"🚀 Received execution request from ai-pipeline: {request.execution_id}")
         service.logger.info(f"📋 Plan: {json.dumps(request.plan, indent=2)}")
+        
+        # Create execution context for template variables and dependencies
+        context = create_execution_context(request.execution_id)
         
         # Extract steps from plan
         steps = request.plan.get("steps", [])
@@ -540,7 +681,52 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             # Extract parameters - handle both "inputs" and "parameters" keys
             parameters = step.get("inputs", step.get("parameters", {}))
-            service.logger.info(f"📦 Parameters: {json.dumps(parameters, indent=2)}")
+            service.logger.info(f"📦 Original Parameters: {json.dumps(parameters, indent=2)}")
+            
+            # Check if this step should be executed in a loop
+            is_loop, loop_var, loop_items = context.detect_loop_execution(step)
+            
+            if is_loop and loop_items:
+                service.logger.info(f"🔁 Loop detected: Executing step {i+1} for {len(loop_items)} items")
+                
+                # Expand the step into multiple executions
+                expanded_steps = context.expand_step_for_loop(step, loop_items)
+                
+                # Execute each expanded step
+                for loop_index, expanded_step in enumerate(expanded_steps):
+                    service.logger.info(f"🔁 Loop iteration {loop_index + 1}/{len(expanded_steps)}")
+                    
+                    # Execute the expanded step
+                    loop_result = await _execute_single_step(
+                        service, 
+                        expanded_step, 
+                        i, 
+                        loop_index + 1, 
+                        len(expanded_steps)
+                    )
+                    
+                    # Store the result
+                    step_results.append(loop_result)
+                    
+                    # Store in context for potential use by later steps
+                    context.store_step_result(i, loop_result)
+                
+                # After loop completes, extract variables from the last result
+                if step_results:
+                    context.extract_variables_from_step_result(i, step_results[-1])
+                
+                continue  # Move to next step
+            
+            # Not a loop - resolve template variables in parameters
+            resolved_parameters = context.resolve_template_in_dict(parameters)
+            service.logger.info(f"📦 Resolved Parameters: {json.dumps(resolved_parameters, indent=2)}")
+            
+            # Update step with resolved parameters
+            step_copy = step.copy()
+            if "inputs" in step_copy:
+                step_copy["inputs"] = resolved_parameters
+            else:
+                step_copy["parameters"] = resolved_parameters
             
             # Build command based on tool
             command = None
@@ -549,47 +735,47 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             if tool_name == "ping":
                 # Ping command - check multiple possible parameter names
-                host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
-                count = parameters.get("count", 4)
+                host = resolved_parameters.get("target_host", resolved_parameters.get("host", resolved_parameters.get("target", "")))
+                count = resolved_parameters.get("count", 4)
                 if host:
                     command = f"ping -c {count} {host}"
                     service.logger.info(f"🏓 Ping command: {command}")
             
             elif tool_name == "check_connectivity":
                 # Check connectivity (ping)
-                host = parameters.get("target_host", parameters.get("host", parameters.get("target", "")))
+                host = resolved_parameters.get("target_host", resolved_parameters.get("host", resolved_parameters.get("target", "")))
                 if host:
                     command = f"ping -c 4 {host}"
                     service.logger.info(f"🔌 Connectivity check: {command}")
             
             elif tool_name == "windows-impacket-executor" or tool_name == "windows-psexec" or tool_name == "PSExec":
                 # Impacket WMI execution for GUI applications
-                command = parameters.get("command", parameters.get("application", ""))
-                target_host = parameters.get("target_host")
+                command = resolved_parameters.get("command", resolved_parameters.get("application", ""))
+                target_host = resolved_parameters.get("target_host")
                 connection_type = "impacket"
                 
                 # Build environment vars for Impacket options
                 env_vars = {}
-                if parameters.get("interactive", False):
+                if resolved_parameters.get("interactive", False):
                     env_vars["interactive"] = "true"
-                if parameters.get("session_id"):
-                    env_vars["session_id"] = str(parameters.get("session_id"))
-                if "wait" in parameters:
-                    env_vars["wait"] = "true" if parameters.get("wait") else "false"
-                if parameters.get("domain"):
-                    env_vars["domain"] = parameters.get("domain")
+                if resolved_parameters.get("session_id"):
+                    env_vars["session_id"] = str(resolved_parameters.get("session_id"))
+                if "wait" in resolved_parameters:
+                    env_vars["wait"] = "true" if resolved_parameters.get("wait") else "false"
+                if resolved_parameters.get("domain"):
+                    env_vars["domain"] = resolved_parameters.get("domain")
                 
                 # Store env vars in request
                 if env_vars:
-                    parameters["environment_vars"] = env_vars
+                    resolved_parameters["environment_vars"] = env_vars
                 
                 service.logger.info(f"🖥️  Impacket WMI command: {command} (interactive={env_vars.get('interactive', 'false')}, domain={env_vars.get('domain', '')})")
             
             else:
                 # Generic command execution
-                command = parameters.get("command", "")
-                target_host = parameters.get("target_host")
-                connection_type = parameters.get("connection_type", "local")
+                command = resolved_parameters.get("command", "")
+                target_host = resolved_parameters.get("target_host")
+                connection_type = resolved_parameters.get("connection_type", "local")
                 
                 # Normalize connection type: "winrm" -> "powershell" for backward compatibility
                 if connection_type == "winrm":
@@ -598,22 +784,24 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             if not command:
                 service.logger.warning(f"No command found for step {i+1}")
-                step_results.append({
+                step_result = {
                     "step": i+1,
                     "tool": tool_name,
                     "status": "skipped",
                     "message": "No command to execute"
-                })
+                }
+                step_results.append(step_result)
+                context.store_step_result(i, step_result)
                 continue
             
             # Build credentials if username/password provided
             credentials = None
-            if parameters.get("username") or parameters.get("password"):
+            if resolved_parameters.get("username") or resolved_parameters.get("password"):
                 credentials = {
-                    "username": parameters.get("username"),
-                    "password": parameters.get("password")
+                    "username": resolved_parameters.get("username"),
+                    "password": resolved_parameters.get("password")
                 }
-                service.logger.info(f"🔐 Using credentials for user: {parameters.get('username')}")
+                service.logger.info(f"🔐 Using credentials for user: {resolved_parameters.get('username')}")
             
             # Execute command
             cmd_request = CommandRequest(
@@ -621,13 +809,13 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 target_host=target_host,
                 connection_type=connection_type,
                 credentials=credentials,
-                timeout=parameters.get("timeout", 300),
-                environment_vars=parameters.get("environment_vars")
+                timeout=resolved_parameters.get("timeout", 300),
+                environment_vars=resolved_parameters.get("environment_vars")
             )
             
             result = await service.execute_command(cmd_request)
             
-            step_results.append({
+            step_result = {
                 "step": i+1,
                 "tool": tool_name,
                 "command": command,
@@ -636,7 +824,12 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 "stdout": result.stdout,
                 "stderr": result.stderr,
                 "duration_seconds": result.duration_seconds
-            })
+            }
+            step_results.append(step_result)
+            
+            # Store result in context for dependency resolution
+            context.store_step_result(i, step_result)
+            context.extract_variables_from_step_result(i, step_result)
             
             service.logger.info(f"✅ Step {i+1} completed: {result.status}")
         
