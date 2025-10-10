@@ -128,12 +128,12 @@ class CleanAutomationService(BaseService):
             sys.path.append('/app/libraries')
             from libraries.linux_ssh import LinuxSSHLibrary
             from libraries.windows_powershell import WindowsPowerShellLibrary
-            from libraries.windows_psexec import WindowsPSExecLibrary
+            from libraries.windows_impacket_executor import WindowsImpacketExecutor
             
             self.connection_managers = {
                 'ssh': LinuxSSHLibrary(),
                 'powershell': WindowsPowerShellLibrary() if WindowsPowerShellLibrary else None,
-                'psexec': WindowsPSExecLibrary() if WindowsPSExecLibrary else None,
+                'impacket': WindowsImpacketExecutor() if WindowsImpacketExecutor else None,
                 'local': None  # Direct subprocess execution
             }
             
@@ -177,8 +177,8 @@ class CleanAutomationService(BaseService):
                 exit_code, stdout, stderr = await self._execute_ssh_command(request)
             elif request.connection_type == "powershell":
                 exit_code, stdout, stderr = await self._execute_powershell_command(request)
-            elif request.connection_type == "psexec":
-                exit_code, stdout, stderr = await self._execute_psexec_command(request)
+            elif request.connection_type == "impacket":
+                exit_code, stdout, stderr = await self._execute_impacket_command(request)
             else:
                 raise ValueError(f"Unsupported connection type: {request.connection_type}")
             
@@ -383,16 +383,16 @@ class CleanAutomationService(BaseService):
         
         return exit_code, stdout, stderr
     
-    async def _execute_psexec_command(self, request: CommandRequest) -> tuple[int, str, str]:
-        """Execute command via PSExec (Impacket WMI)"""
-        if 'psexec' not in self.connection_managers or not self.connection_managers['psexec']:
-            raise Exception("PSExec connection manager not available")
+    async def _execute_impacket_command(self, request: CommandRequest) -> tuple[int, str, str]:
+        """Execute command via Impacket WMI"""
+        if 'impacket' not in self.connection_managers or not self.connection_managers['impacket']:
+            raise Exception("Impacket connection manager not available")
         
         if not request.target_host:
-            raise Exception("target_host is required for PSExec execution")
+            raise Exception("target_host is required for Impacket execution")
         
         if not request.credentials:
-            raise Exception("credentials (username/password) are required for PSExec execution")
+            raise Exception("credentials (username/password) are required for Impacket execution")
         
         # Extract credentials
         username = request.credentials.get("username")
@@ -402,7 +402,7 @@ class CleanAutomationService(BaseService):
         if not username or not password:
             raise Exception("Both username and password are required in credentials")
         
-        # Extract PSExec-specific options from environment_vars if provided
+        # Extract Impacket-specific options from environment_vars if provided
         interactive = False
         session_id = None
         wait = True
@@ -420,15 +420,15 @@ class CleanAutomationService(BaseService):
             if "domain" in request.environment_vars:
                 domain = request.environment_vars.get("domain", "")
         
-        # Use PSExec library to execute command
-        psexec_manager = self.connection_managers['psexec']
+        # Use Impacket library to execute command
+        impacket_manager = self.connection_managers['impacket']
         
-        # Execute command via PSExec (Impacket WMI)
+        # Execute command via Impacket WMI
         # Note: execute_command is synchronous, so we run it in a thread pool
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            psexec_manager.execute_command,
+            impacket_manager.execute_command,
             request.target_host,
             username,
             password,
@@ -446,8 +446,8 @@ class CleanAutomationService(BaseService):
         stderr = result.get("stderr", "")
         
         if not result.get("success"):
-            error_msg = result.get("error", "Unknown PSExec execution error")
-            self.logger.error(f"PSExec execution failed: {error_msg}")
+            error_msg = result.get("error", "Unknown Impacket execution error")
+            self.logger.error(f"Impacket execution failed: {error_msg}")
             # Return error in stderr
             stderr = error_msg if not stderr else f"{stderr}\n{error_msg}"
         
@@ -562,13 +562,13 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                     command = f"ping -c 4 {host}"
                     service.logger.info(f"🔌 Connectivity check: {command}")
             
-            elif tool_name == "windows-psexec" or tool_name == "PSExec":
-                # PSExec execution for GUI applications
+            elif tool_name == "windows-impacket-executor" or tool_name == "windows-psexec" or tool_name == "PSExec":
+                # Impacket WMI execution for GUI applications
                 command = parameters.get("command", parameters.get("application", ""))
                 target_host = parameters.get("target_host")
-                connection_type = "psexec"
+                connection_type = "impacket"
                 
-                # Build environment vars for PSExec options
+                # Build environment vars for Impacket options
                 env_vars = {}
                 if parameters.get("interactive", False):
                     env_vars["interactive"] = "true"
@@ -583,7 +583,7 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 if env_vars:
                     parameters["environment_vars"] = env_vars
                 
-                service.logger.info(f"🖥️  PSExec command: {command} (interactive={env_vars.get('interactive', 'false')}, domain={env_vars.get('domain', '')})")
+                service.logger.info(f"🖥️  Impacket WMI command: {command} (interactive={env_vars.get('interactive', 'false')}, domain={env_vars.get('domain', '')})")
             
             else:
                 # Generic command execution

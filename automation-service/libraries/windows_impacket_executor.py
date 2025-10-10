@@ -27,15 +27,15 @@ except ImportError:
 # Configure structured logging
 logger = structlog.get_logger(__name__)
 
-class PSExecConnectionError(Exception):
+class ImpacketConnectionError(Exception):
     """Raised when remote execution connection fails"""
     pass
 
-class PSExecExecutionError(Exception):
+class ImpacketExecutionError(Exception):
     """Raised when remote execution fails"""
     pass
 
-class WindowsPSExecLibrary:
+class WindowsImpacketExecutor:
     """
     Windows Remote Execution library using Impacket
     Provides remote execution with support for GUI applications and non-blocking execution

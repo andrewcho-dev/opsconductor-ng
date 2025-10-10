@@ -827,27 +827,27 @@ def register_windows_tools(registry):
     registry.register_tool(windows_printer_tool)
     
     # ============================================================================
-    # WINDOWS PSEXEC - INTERACTIVE GUI APPLICATION EXECUTION
+    # WINDOWS IMPACKET EXECUTOR - INTERACTIVE GUI APPLICATION EXECUTION
     # ============================================================================
     
-    windows_psexec_tool = Tool(
-        name="windows-psexec",
+    windows_impacket_executor_tool = Tool(
+        name="windows-impacket-executor",
         description="Execute commands and GUI applications on remote Windows systems using Impacket WMI with support for non-blocking execution",
         capabilities=[
             ToolCapability(
-                name="psexec_execute",
+                name="impacket_execute",
                 description="Execute commands remotely via WMI, supporting GUI applications and non-blocking execution",
                 required_inputs=["target_host", "command"],
                 optional_inputs=["username", "password", "domain", "interactive", "session_id", "wait"]
             ),
             ToolCapability(
-                name="psexec_gui_launch",
+                name="impacket_gui_launch",
                 description="Launch GUI applications on remote desktop without blocking (appears on remote screen)",
                 required_inputs=["target_host", "application"],
                 optional_inputs=["username", "password", "domain", "session_id", "arguments"]
             ),
             ToolCapability(
-                name="psexec_background",
+                name="impacket_background",
                 description="Execute commands in background without waiting for completion",
                 required_inputs=["target_host", "command"],
                 optional_inputs=["username", "password", "domain", "interactive"]
@@ -876,7 +876,7 @@ def register_windows_tools(registry):
             "Blocking mode (wait=true) captures command output but may timeout for long-running processes"
         ]
     )
-    registry.register_tool(windows_psexec_tool)
+    registry.register_tool(windows_impacket_executor_tool)
 
 
 def get_windows_tools_summary():
@@ -907,7 +907,7 @@ def get_windows_tools_summary():
             "System Information": ["windows-system-info"],
             "Remote Desktop": ["windows-rdp-manager"],
             "Printer Management": ["windows-printer-manager"],
-            "PSExec Remote Execution": ["windows-psexec"]
+            "Impacket WMI Remote Execution": ["windows-impacket-executor"]
         },
         "capabilities": [
             "windows_automation",
@@ -929,7 +929,7 @@ def get_windows_tools_summary():
             "certificate_management",
             "rdp_management",
             "printer_management",
-            "psexec_execution",
+            "impacket_wmi_execution",
             "gui_application_launch"
         ]
     }
