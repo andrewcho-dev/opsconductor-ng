@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 import logging
+import httpx
 
 sys.path.append('/app/shared')
 from base_service import BaseService
@@ -747,6 +748,72 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 if host:
                     command = f"ping -c 4 {host}"
                     service.logger.info(f"🔌 Connectivity check: {command}")
+            
+            elif tool_name in ["asset-query", "asset_query"]:
+                # Asset query - call asset-service
+                service.logger.info(f"🔍 Executing asset-query")
+                
+                try:
+                    # Call asset-service
+                    async with httpx.AsyncClient() as client:
+                        asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
+                        response = await client.post(
+                            f"{asset_service_url}/execute-plan",
+                            json={
+                                "execution_id": request.execution_id,
+                                "plan": {
+                                    "steps": [{
+                                        "tool": "asset-query",
+                                        "inputs": resolved_parameters
+                                    }]
+                                },
+                                "tenant_id": request.tenant_id,
+                                "actor_id": request.actor_id
+                            },
+                            timeout=30.0
+                        )
+                        response.raise_for_status()
+                        asset_result = response.json()
+                    
+                    # Extract the step result from asset-service response
+                    asset_step_results = asset_result.get("step_results", [])
+                    if asset_step_results:
+                        asset_step_result = asset_step_results[0]
+                        step_result = {
+                            "step": i+1,
+                            "tool": tool_name,
+                            "status": asset_step_result.get("status", "success"),
+                            "output": asset_step_result.get("output", {}),
+                            "message": asset_step_result.get("message", "")
+                        }
+                    else:
+                        step_result = {
+                            "step": i+1,
+                            "tool": tool_name,
+                            "status": "failed",
+                            "output": {},
+                            "message": "No results from asset-service"
+                        }
+                    
+                    step_results.append(step_result)
+                    context.store_step_result(i, step_result)
+                    context.extract_variables_from_step_result(i, step_result)
+                    
+                    service.logger.info(f"✅ Asset query completed: {step_result.get('status')}")
+                    continue  # Skip to next step
+                    
+                except Exception as e:
+                    service.logger.error(f"❌ Asset query failed: {e}", exc_info=True)
+                    step_result = {
+                        "step": i+1,
+                        "tool": tool_name,
+                        "status": "failed",
+                        "output": {},
+                        "message": f"Asset query error: {str(e)}"
+                    }
+                    step_results.append(step_result)
+                    context.store_step_result(i, step_result)
+                    continue  # Skip to next step
             
             elif tool_name == "windows-impacket-executor" or tool_name == "windows-psexec" or tool_name == "PSExec":
                 # Impacket WMI execution for GUI applications
