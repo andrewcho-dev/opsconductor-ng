@@ -2434,15 +2434,24 @@ class ConsolidatedAssetService(BaseService):
     async def _execute_asset_query_tool(self, inputs: dict) -> dict:
         """Execute asset query - Search/filter assets from inventory"""
         try:
-            # Extract query parameters
-            asset_id = inputs.get("asset_id") or inputs.get("id")
-            hostname = inputs.get("hostname")
-            os_type = inputs.get("os_type")
-            status = inputs.get("status")
-            environment = inputs.get("environment")
-            tags = inputs.get("tags")
+            # Handle both direct filters and nested filters format
+            # Support: {"tags": ["win10"]} and {"filters": {"tags": ["win10"]}}
+            if "filters" in inputs and isinstance(inputs["filters"], dict):
+                # Nested format - extract filters
+                filters = inputs["filters"]
+            else:
+                # Direct format - use inputs as filters
+                filters = inputs
             
-            self.logger.info(f"Querying assets with filters: {inputs}")
+            # Extract query parameters
+            asset_id = filters.get("asset_id") or filters.get("id")
+            hostname = filters.get("hostname")
+            os_type = filters.get("os_type")
+            status = filters.get("status")
+            environment = filters.get("environment")
+            tags = filters.get("tags")
+            
+            self.logger.info(f"Querying assets with filters: {filters}")
             
             # If specific asset ID provided, get that asset
             if asset_id:
