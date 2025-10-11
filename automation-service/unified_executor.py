@@ -615,3 +615,11 @@ class UnifiedExecutor:
             config.connection_type.value,
             credentials
         )
+# --- Stage A selector integration (non-invasive) -----------------------------
+async def selector_candidate_preview(intent: str, k: int = 5, trace_id: str = ""):
+    """
+    Thin wrapper so the executor can fetch Stage A candidates.
+    Returns a list of dicts: {key,name,short_desc}
+    """
+    from pipeline.selector_adapter import get_selector_candidates  # local import avoids cycles
+    return await get_selector_candidates(intent, k=k, trace_id=trace_id)

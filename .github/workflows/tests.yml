@@ -1,0 +1,46 @@
+name: Python tests
+
+on:
+  push:
+    branches: [ main, "**" ]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio asyncpg
+
+      # Force both repo root and automation-service into sys.path for *every* Python proc
+      - name: Ensure import path (sitecustomize)
+        run: |
+          cat > sitecustomize.py <<'PY'
+          import sys, os
+          root = os.getcwd()
+          extras = [root, os.path.join(root, 'automation-service')]
+          for p in reversed(extras):
+              if p not in sys.path:
+                  sys.path.insert(0, p)
+          PY
+          python - <<'PY'
+          import sys, importlib.util as u
+          print('sys.path head:', sys.path[:5])
+          print('stage_a found:', bool(u.find_spec('stage_a')))
+          PY
+
+      - name: Run pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ALWAYS_INCLUDE_TOOLS: asset-query,service-status,network-ping
+        run: |
+          pytest -q db selector automation-service/tests

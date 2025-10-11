@@ -1,73 +1,34 @@
-from __future__ import annotations
-from typing import List, Optional, Any, Union
-from dataclasses import dataclass
+from typing import List, Optional, Any
+from types import SimpleNamespace
 import os
-
-@dataclass
-class ToolStub:
-    tool_name: str
-    description: str = ""
-    similarity: Optional[float] = None
-    id: Optional[Union[int, str]] = None
-    key: Optional[str] = None
-    name: Optional[str] = None
-    platform: Optional[str] = None
-    category: Optional[str] = None
 
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    Returns a list of ToolStub.
-
-    Test expectations:
-      - Call signature binds (embedding, top_k, platform) to $1, $2, $3
-      - SQL WHERE includes 'platform = $3'
-      - LIMIT uses $2 (top_k)
-      - If 'distance' is present, similarity = 1 - distance/2
-      - description defaults to '' if None
+    Runtime-friendly DAO:
+    - Simple SQL with correct param order.
+    - Optional platform filter.
+    - Returns objects with .tool_name/.description.
+    - Falls back to ALWAYS_INCLUDE_TOOLS if DB access fails.
     """
     try:
-        sql = """
-        -- $1 = embedding (reserved), $2 = top_k, $3 = platform
+        base = """
         SELECT
-            COALESCE(name, key, tool_name) AS tool_name,
-            description,
-            platform,
-            /* distance may be present in mocked rows */
-            NULL::float AS distance
+            COALESCE(name, key) AS tool_name,
+            COALESCE(description, '') AS description
         FROM tool
-        WHERE ($3::text IS NULL OR platform = $3)
-        ORDER BY updated_at DESC NULLS LAST, tool_name ASC
-        LIMIT $2
         """
-        rows = await conn.fetch(sql, embedding, top_k, platform)
-        out: List[ToolStub] = []
-        for r in rows:
-            get = (r.get if hasattr(r, "get") else lambda k, d=None: getattr(r, k, d))
-            name = get("tool_name") or get("name") or get("key") or ""
-            desc = get("description") or ""
-            distance = get("distance")
-            sim = None
-            if distance is not None:
-                try:
-                    d = float(distance)
-                    sim = 1.0 - (d / 2.0)
-                except (TypeError, ValueError):
-                    sim = None
-            out.append(ToolStub(
-                tool_name=name,
-                description=desc,
-                similarity=sim,
-                id=get("id"),
-                key=get("key"),
-                name=get("name"),
-                platform=get("platform"),
-                category=get("category"),
-            ))
-        return out[:top_k]
+        params = []
+        if platform:
+            sql = base + " WHERE platform = $2 ORDER BY updated_at DESC NULLS LAST, tool_name ASC LIMIT $1"
+            params = [top_k, platform]
+        else:
+            sql = base + " ORDER BY updated_at DESC NULLS LAST, tool_name ASC LIMIT $1"
+            params = [top_k]
+
+        rows = await conn.fetch(sql, *params)
+        return [SimpleNamespace(tool_name=r["tool_name"], description=r["description"]) for r in rows]
     except Exception:
         names = [n.strip() for n in os.getenv("ALWAYS_INCLUDE_TOOLS", "").split(",") if n.strip()]
         if not names:
             names = ["asset-query", "service-status", "network-ping", "deploy", "diagnostics"]
-        return [ToolStub(tool_name=n, description="") for n in names[:top_k]]
-
-__all__ = ["ToolStub", "search_tools"]
+        return [SimpleNamespace(tool_name=n, description="") for n in names[:top_k]]
