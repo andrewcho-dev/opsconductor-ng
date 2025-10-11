@@ -1,8 +1,8 @@
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor  # type: ignore
 
 def _conn():
+    import psycopg2  # defer import so merely importing this module doesn't require the wheel
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         raise RuntimeError("DATABASE_URL not set")
