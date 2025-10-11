@@ -16,8 +16,8 @@ class ToolStub:
 
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    Test-friendly DAO:
-      - Bind args as (embedding, top_k, platform) to match tests
+    Test-friendly DAO for CI/local tests:
+      - Bind order: (embedding, top_k, platform)
       - WHERE uses 'platform = $3'
       - LIMIT uses $2 (top_k)
       - similarity = 1 - distance/2 when 'distance' present
@@ -29,7 +29,9 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         SELECT
             COALESCE(name, key, tool_name) AS tool_name,
             description,
-            platform
+            platform,
+            /* distance may be present in mocks; pass-through if so */
+            NULL::float AS distance
         FROM tool
         WHERE ($3::text IS NULL OR platform = $3)
         ORDER BY updated_at DESC NULLS LAST, tool_name ASC
@@ -38,11 +40,12 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         rows = await conn.fetch(sql, embedding, top_k, platform)
         out: List[ToolStub] = []
         for r in rows:
-            get = (r.get if hasattr(r, "get") else lambda k, d=None: getattr(r, k, d))
-            name = get("tool_name") or get("name") or get("key") or ""
-            desc = get("description") or ""
-            distance = get("distance")
-            sim = None
+            # dict-like or object-like rows
+            getter = (r.get if hasattr(r, "get") else lambda k, d=None: getattr(r, k, d))
+            name = getter("tool_name") or getter("name") or getter("key") or ""
+            desc = getter("description") or ""
+            distance = getter("distance")
+            sim: Optional[float] = None
             if distance is not None:
                 try:
                     sim = 1.0 - (float(distance) / 2.0)
@@ -52,11 +55,11 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
                 tool_name=name,
                 description=desc,
                 similarity=sim,
-                id=get("id"),
-                key=get("key"),
-                name=get("name"),
-                platform=get("platform"),
-                category=get("category"),
+                id=getter("id"),
+                key=getter("key"),
+                name=getter("name"),
+                platform=getter("platform"),
+                category=getter("category"),
             ))
         return out[:top_k]
     except Exception:
