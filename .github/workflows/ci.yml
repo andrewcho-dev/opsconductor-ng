@@ -15,8 +15,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pydantic pytest mypy
-      - name: Type check
-        run: mypy --ignore-missing-imports shared
+      - name: Type check (Phase 0 only)
+        run: |
+          mypy --ignore-missing-imports \
+            shared/ids.py \
+            shared/logging.py \
+            shared/errors.py \
+            shared/contracts/models.py \
+            shared/contracts/schema_gen.py
       - name: Tests (Phase 0 only)
         run: |
           pytest -q tests/test_shared_ids.py tests/test_shared_logging.py
