@@ -451,10 +451,16 @@ class PipelineOrchestratorV2:
         if status == ExecutionStatus.COMPLETED:
             execution_summary = "✅ **Execution completed successfully!**\n\n"
             
-            # Add step results if available
+            # Add step results if available - check both .step_results attribute and .result['step_results']
+            step_results = None
             if hasattr(execution_result, 'step_results') and execution_result.step_results:
-                execution_summary += f"**Steps executed:** {len(execution_result.step_results)}\n\n"
-                for i, step_result in enumerate(execution_result.step_results, 1):
+                step_results = execution_result.step_results
+            elif hasattr(execution_result, 'result') and isinstance(execution_result.result, dict):
+                step_results = execution_result.result.get('step_results')
+            
+            if step_results:
+                execution_summary += f"**Steps executed:** {len(step_results)}\n\n"
+                for i, step_result in enumerate(step_results, 1):
                     step_status = step_result.get('status', 'unknown')
                     step_tool = step_result.get('tool', step_result.get('tool_name', 'Unknown'))
                     step_command = step_result.get('command', '')
@@ -464,14 +470,49 @@ class PipelineOrchestratorV2:
                         execution_summary += f"Command: `{step_command}`\n"
                     execution_summary += f"Status: {step_status}\n"
                     
-                    # Show output for successful commands
-                    if step_status == 'completed' and step_result.get('stdout'):
-                        stdout = step_result['stdout'].strip()
-                        # Limit output to first 100000 chars to avoid overwhelming the user
-                        if len(stdout) > 100000:
-                            stdout = stdout[:100000] + "...(truncated)"
-                        # Use 'text' language to enable copy/download buttons in UI
-                        execution_summary += f"```text\n{stdout}\n```\n"
+                    # Show output for successful commands (stdout for commands, output for API tools)
+                    if step_status == 'completed' or step_status == 'success':
+                        # Check for stdout (command-based tools)
+                        if step_result.get('stdout'):
+                            stdout = step_result['stdout'].strip()
+                            # Limit output to first 100000 chars to avoid overwhelming the user
+                            if len(stdout) > 100000:
+                                stdout = stdout[:100000] + "...(truncated)"
+                            # Use 'text' language to enable copy/download buttons in UI
+                            execution_summary += f"```text\n{stdout}\n```\n"
+                        
+                        # Check for output (API-based tools like asset-query)
+                        elif step_result.get('output'):
+                            import json
+                            output_data = step_result['output']
+                            
+                            # Handle asset-query results
+                            if isinstance(output_data, dict):
+                                if 'assets' in output_data and 'count' in output_data:
+                                    # Asset query result - provide count and CSV format
+                                    count = output_data.get('count', 0)
+                                    assets = output_data.get('assets', [])
+                                    execution_summary += f"**Found {count} asset(s)**\n\n"
+                                    
+                                    # Provide results in downloadable CSV format
+                                    if assets:
+                                        csv_lines = ["Hostname,IP Address,OS Type,OS Version,Status,Tags"]
+                                        for asset in assets:
+                                            hostname = asset.get('hostname', 'Unknown')
+                                            ip = asset.get('ip_address', 'N/A')
+                                            os_type = asset.get('os_type', '')
+                                            os_version = asset.get('os_version', '')
+                                            status = asset.get('status', '')
+                                            tags = '|'.join(asset.get('tags', []))
+                                            csv_lines.append(f'"{hostname}","{ip}","{os_type}","{os_version}","{status}","{tags}"')
+                                        csv_output = '\n'.join(csv_lines)
+                                        execution_summary += f"```csv\n{csv_output}\n```\n"
+                                else:
+                                    # Generic JSON output
+                                    output_json = json.dumps(output_data, indent=2)
+                                    if len(output_json) > 10000:
+                                        output_json = output_json[:10000] + "...(truncated)"
+                                    execution_summary += f"```json\n{output_json}\n```\n"
                     
                     # Show errors if any (but filter out PowerShell CLIXML progress messages)
                     if step_result.get('stderr'):

@@ -133,6 +133,7 @@ class CleanAutomationService(BaseService):
         logger = logging.getLogger(__name__)
         logger.info("🧹 Clean Automation Service initialized - No Celery, Direct Execution Only")
         logger.info("🎯 Unified Execution Framework enabled")
+        logger.info("📋 Tool metadata will be provided by planner (no local registry needed)")
     
     def _initialize_connection_managers(self):
         """Initialize connection managers for different target types"""
@@ -556,13 +557,20 @@ async def _execute_single_step(
         # UNIFIED EXECUTION FRAMEWORK
         # ====================================================================
         
-        # Create minimal tool definition for inference
-        # If the step includes full tool metadata, use it; otherwise infer
-        tool_definition = step.get("tool_definition", {
+        # Create tool definition from step metadata
+        # The planner enriches steps with tool metadata from the registry,
+        # so we should use that information instead of inferring
+        tool_definition = {
             "tool_name": tool_name,
             "platform": step.get("platform", ""),
-            "category": step.get("category", "")
-        })
+            "category": step.get("category", ""),
+            # Use metadata from the plan if available (enriched by planner)
+            "requires_credentials": step.get("requires_credentials", False),
+            "execution_location": step.get("execution_location", "automation-service"),
+            "tool_metadata": step.get("tool_metadata", {})
+        }
+        
+        service_instance.logger.info(f"🔍 Tool definition: requires_credentials={tool_definition['requires_credentials']}")
         
         # Use unified executor to build command and resolve credentials
         command, target_host, connection_type, credentials = await service_instance.unified_executor.execute_tool(
@@ -623,7 +631,7 @@ async def _execute_single_step(
         
         # Check if command was built
         if not command:
-            return {
+            skip_result = {
                 "step": step_index + 1,
                 "loop_iteration": loop_iteration,
                 "loop_total": loop_total,
@@ -631,6 +639,24 @@ async def _execute_single_step(
                 "status": "skipped",
                 "message": "No command to execute"
             }
+            
+            # Add asset information if available
+            loop_item = step.get("_loop_item")
+            if loop_item and isinstance(loop_item, dict):
+                asset_info = {}
+                if "name" in loop_item:
+                    asset_info["asset_name"] = loop_item["name"]
+                if "hostname" in loop_item:
+                    asset_info["hostname"] = loop_item["hostname"]
+                if "id" in loop_item:
+                    asset_info["asset_id"] = loop_item["id"]
+                if "ip_address" in loop_item:
+                    asset_info["ip_address"] = loop_item["ip_address"]
+                
+                if asset_info:
+                    skip_result["asset"] = asset_info
+            
+            return skip_result
         
         # Handle special environment variables for impacket
         if connection_type == "impacket":
@@ -666,7 +692,8 @@ async def _execute_single_step(
         
         result = await service_instance.execute_command(cmd_request)
         
-        return {
+        # Build result dictionary
+        result_dict = {
             "step": step_index + 1,
             "loop_iteration": loop_iteration,
             "loop_total": loop_total,
@@ -680,9 +707,28 @@ async def _execute_single_step(
             "duration_seconds": result.duration_seconds
         }
         
+        # Add asset information if available from loop item
+        loop_item = step.get("_loop_item")
+        if loop_item and isinstance(loop_item, dict):
+            # Add identifying information about the asset
+            asset_info = {}
+            if "name" in loop_item:
+                asset_info["asset_name"] = loop_item["name"]
+            if "hostname" in loop_item:
+                asset_info["hostname"] = loop_item["hostname"]
+            if "id" in loop_item:
+                asset_info["asset_id"] = loop_item["id"]
+            if "ip_address" in loop_item:
+                asset_info["ip_address"] = loop_item["ip_address"]
+            
+            if asset_info:
+                result_dict["asset"] = asset_info
+        
+        return result_dict
+        
     except Exception as e:
         service_instance.logger.error(f"Error executing step: {e}", exc_info=True)
-        return {
+        error_result = {
             "step": step_index + 1,
             "loop_iteration": loop_iteration,
             "loop_total": loop_total,
@@ -690,6 +736,24 @@ async def _execute_single_step(
             "status": "failed",
             "error": str(e)
         }
+        
+        # Add asset information if available from loop item
+        loop_item = step.get("_loop_item")
+        if loop_item and isinstance(loop_item, dict):
+            asset_info = {}
+            if "name" in loop_item:
+                asset_info["asset_name"] = loop_item["name"]
+            if "hostname" in loop_item:
+                asset_info["hostname"] = loop_item["hostname"]
+            if "id" in loop_item:
+                asset_info["asset_id"] = loop_item["id"]
+            if "ip_address" in loop_item:
+                asset_info["ip_address"] = loop_item["ip_address"]
+            
+            if asset_info:
+                error_result["asset"] = asset_info
+        
+        return error_result
 
 
 @service.app.post("/execute-plan")
@@ -743,12 +807,14 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
                 "error_message": "No steps found in execution plan"
             }
         
+        print(f"📝 DEBUG: Executing {len(steps)} steps", flush=True)
         service.logger.info(f"📝 Executing {len(steps)} steps")
         
         # Execute each step
         for i, step in enumerate(steps):
             # Extract step details - handle both "tool" and "tool_name" keys
             tool_name = step.get("tool", step.get("tool_name", "unknown"))
+            print(f"⚙️  DEBUG: Step {i+1}/{len(steps)}: {tool_name}", flush=True)
             service.logger.info(f"⚙️  Step {i+1}/{len(steps)}: {tool_name}")
             
             # Extract parameters - handle both "inputs" and "parameters" keys
@@ -757,16 +823,26 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             # Check if this step should be executed in a loop
             is_loop, loop_var, loop_items = context.detect_loop_execution(step)
+            print(f"🔍 DEBUG: Loop detection: is_loop={is_loop}, loop_var={loop_var}, items_count={len(loop_items) if loop_items else 0}", flush=True)
+            service.logger.info(f"🔍 Loop detection: is_loop={is_loop}, loop_var={loop_var}, items_count={len(loop_items) if loop_items else 0}")
             
             if is_loop and loop_items:
+                print(f"🔁 DEBUG: Loop detected! Executing step {i+1} for {len(loop_items)} items", flush=True)
+                print(f"🔁 DEBUG: Loop items: {json.dumps(loop_items, indent=2)}", flush=True)
                 service.logger.info(f"🔁 Loop detected: Executing step {i+1} for {len(loop_items)} items")
+                service.logger.info(f"🔁 Loop items: {json.dumps(loop_items, indent=2)}")
                 
                 # Expand the step into multiple executions
                 expanded_steps = context.expand_step_for_loop(step, loop_items)
+                service.logger.info(f"🔁 Expanded into {len(expanded_steps)} steps")
                 
                 # Execute each expanded step
                 for loop_index, expanded_step in enumerate(expanded_steps):
+                    print(f"🔁 DEBUG: Loop iteration {loop_index + 1}/{len(expanded_steps)}", flush=True)
                     service.logger.info(f"🔁 Loop iteration {loop_index + 1}/{len(expanded_steps)}")
+                    expanded_params = expanded_step.get("inputs", expanded_step.get("parameters", {}))
+                    print(f"🔁 DEBUG: Expanded step parameters: {json.dumps(expanded_params, indent=2)}", flush=True)
+                    service.logger.info(f"🔁 Expanded step parameters: {json.dumps(expanded_params, indent=2)}")
                     
                     # Execute the expanded step
                     loop_result = await _execute_single_step(
@@ -869,12 +945,28 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             # Use unified executor for ALL command-based tools
             try:
-                # Create tool definition for unified executor
-                tool_definition = step.get("tool_definition", {
-                    "tool_name": tool_name,
-                    "platform": step.get("platform", ""),
-                    "category": step.get("category", "")
-                })
+                # Look up tool definition from registry, or create minimal one
+                tool_definition = step.get("tool_definition")
+                if not tool_definition and service.tool_registry:
+                    # Try to get from registry
+                    tool_obj = service.tool_registry.get_tool(tool_name)
+                    if tool_obj:
+                        print(f"🔧 DEBUG: Found tool in registry: {tool_name}", flush=True)
+                        tool_definition = {
+                            "tool_name": tool_obj.name,
+                            "description": tool_obj.description,
+                            "execution": tool_obj.execution
+                        }
+                    else:
+                        print(f"⚠️  DEBUG: Tool not found in registry: {tool_name}", flush=True)
+                
+                # Fallback to minimal definition
+                if not tool_definition:
+                    tool_definition = {
+                        "tool_name": tool_name,
+                        "platform": step.get("platform", ""),
+                        "category": step.get("category", "")
+                    }
                 
                 # Execute tool using unified executor
                 service.logger.info(f"🔧 Using unified executor for tool: {tool_name}")

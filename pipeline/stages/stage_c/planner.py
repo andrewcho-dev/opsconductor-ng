@@ -904,10 +904,105 @@ IMPORTANT:
 - Axis VAPIX params: PTZ home={"move":"home"}, autofocus={"autofocus":"on","camera":"1"}
 - Use GET method for Axis VAPIX commands
 
+# MULTI-MACHINE EXECUTION WITH TEMPLATE VARIABLES
+
+When the user asks to perform an action on MULTIPLE machines (e.g., "all Windows 10 machines", "machines with tag X", "all servers in production"), you MUST use template variables to enable loop execution:
+
+**STEP 1: Query assets**
+Create an asset-query step to find the target machines:
+{
+  "tool": "asset-query",
+  "description": "Find all Windows 10 machines with win10 tag",
+  "inputs": {
+    "query_type": "filter",
+    "filters": {"tags": "win10"},
+    "fields": ["hostname", "ip_address", "id"]
+  }
+}
+
+**STEP 2: Execute command on each machine using template variables**
+Use template variables to reference the asset-query results. The system will automatically loop over all assets:
+{
+  "tool": "windows-filesystem-manager",
+  "description": "Get C drive directory for each machine",
+  "inputs": {
+    "target_hosts": ["{{ip_address}}"],  // CRITICAL: Use template variable, NOT hardcoded IPs!
+    "use_asset_credentials": true,
+    "command": "Get-ChildItem C:\\\\",
+    "connection_type": "powershell"
+  }
+}
+
+**Available template variables from asset-query results:**
+- {{hostname}} - Asset hostname
+- {{ip_address}} - Asset IP address
+- {{id}} - Asset ID (use this for automatic credential fetching)
+- {{os_type}} - OS type
+- {{os_version}} - OS version
+- {{tags}} - Asset tags
+
+**CRITICAL RULES FOR MULTI-MACHINE EXECUTION:**
+1. When user says "all machines", "multiple machines", "machines with tag X", etc. → Use asset-query + template variables
+2. ALWAYS use target_hosts: ["{{ip_address}}"] for multi-machine commands (NOT hardcoded IP list!)
+3. For automatic credentials, the system will use the asset ID from each loop iteration
+4. DO NOT hardcode asset_ids or target_hosts arrays when using asset-query results
+5. The automation service will automatically detect template variables and execute the command once per asset
+
+**Example: Multi-machine execution**
+User: "get the directory of the c drive for all machines with the win10 tag"
+
+CORRECT PLAN:
+[
+  {
+    "tool": "asset-query",
+    "description": "Find all Windows 10 machines with win10 tag",
+    "inputs": {
+      "query_type": "filter",
+      "filters": {"tags": "win10"},
+      "fields": ["hostname", "ip_address", "id"]
+    }
+  },
+  {
+    "tool": "windows-filesystem-manager",
+    "description": "Get C drive directory for each Windows 10 machine",
+    "inputs": {
+      "target_hosts": ["{{ip_address}}"],  // Template variable - will loop over all assets
+      "use_asset_credentials": true,
+      "command": "Get-ChildItem C:\\\\",
+      "connection_type": "powershell"
+    }
+  }
+]
+
+WRONG PLAN (DO NOT DO THIS):
+[
+  {
+    "tool": "asset-query",
+    "description": "Find all Windows 10 machines with win10 tag",
+    "inputs": {
+      "query_type": "filter",
+      "filters": {"tags": "win10"},
+      "fields": ["hostname", "ip_address", "id"]
+    }
+  },
+  {
+    "tool": "windows-filesystem-manager",
+    "description": "Get C drive directory for each Windows 10 machine",
+    "inputs": {
+      "target_hosts": ["192.168.50.211", "192.168.50.212", "192.168.50.213"],  // WRONG! Hardcoded IPs
+      "asset_ids": [21, 22, 23],  // WRONG! Hardcoded asset IDs
+      "use_asset_credentials": true,
+      "command": "Get-ChildItem C:\\\\",
+      "connection_type": "powershell"
+    }
+  }
+]
+
 CRITICAL NOTES:
 - Be intelligent about field selection for asset queries. Don't fetch all 50+ fields when only 5-10 are needed!
 - ALWAYS extract target_host, username, and password from the user's query!
-- The user may use informal language - translate to correct commands (see USER LANGUAGE TRANSLATION above)!"""
+- The user may use informal language - translate to correct commands (see USER LANGUAGE TRANSLATION above)!
+- For multi-machine operations, ALWAYS use template variables like {{ip_address}}, NOT hardcoded values!"""
 
     def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1, context: Optional[Dict[str, Any]] = None) -> str:
         """Build the user prompt with decision and selection context"""
@@ -1087,6 +1182,78 @@ Example for windows-impacket-executor with explicit credentials (if needed):
         
         return prompt
     
+    def _enrich_step_with_tool_metadata(self, step, selection: SelectionV1):
+        """
+        Enrich execution step with tool metadata from the tool registry.
+        This ensures the automation service has all the information it needs
+        without having to infer or guess.
+        
+        Args:
+            step: ExecutionStep to enrich
+            selection: SelectionV1 with tool information
+        """
+        try:
+            logger.info(f"🔍 Enriching step '{step.id}' (tool: {step.tool})...")
+            
+            # Import the tool registry
+            from ..stage_b.tool_registry import ToolRegistry
+            
+            # Create a registry instance and load tools
+            registry = ToolRegistry()
+            logger.debug(f"   Registry has {registry.get_tool_count()} tools")
+            
+            # Look up the tool in the registry
+            tool_def = registry.get_tool(step.tool)
+            logger.debug(f"   Tool lookup result: {tool_def is not None}")
+            
+            if tool_def:
+                logger.debug(f"   Tool has execution attr: {hasattr(tool_def, 'execution')}")
+                if hasattr(tool_def, 'execution'):
+                    logger.debug(f"   Execution value: {tool_def.execution}")
+            
+            if tool_def and hasattr(tool_def, 'execution') and tool_def.execution:
+                # Extract execution metadata from the tool definition
+                execution_meta = tool_def.execution
+                
+                # Handle nested connection metadata
+                if isinstance(execution_meta, dict):
+                    connection_meta = execution_meta.get("connection", {})
+                    step.requires_credentials = connection_meta.get("requires_credentials", False)
+                    step.execution_location = execution_meta.get("execution_location", "automation-service")
+                    step.tool_metadata = execution_meta
+                    
+                    logger.info(f"✅ Enriched step '{step.id}' (tool: {step.tool})")
+                    logger.info(f"   requires_credentials: {step.requires_credentials}")
+                    logger.info(f"   execution_location: {step.execution_location}")
+                    logger.info(f"   tool_metadata keys: {list(execution_meta.keys())}")
+                else:
+                    # Fallback if execution is not a dict
+                    logger.warning(f"⚠️  Tool '{step.tool}' execution metadata is not a dict: {type(execution_meta)}")
+                    step.requires_credentials = False
+                    step.execution_location = "automation-service"
+                    step.tool_metadata = {}
+            else:
+                # Tool not in registry or no execution metadata - use defaults
+                logger.warning(f"⚠️  Tool '{step.tool}' not found in registry or has no execution metadata, using defaults")
+                step.requires_credentials = False
+                step.execution_location = "automation-service"
+                step.tool_metadata = {}
+                
+        except ImportError as e:
+            # Registry not available - this is OK, we'll use defaults
+            logger.warning(f"Tool registry not available: {e}")
+            step.requires_credentials = False
+            step.execution_location = "automation-service"
+            step.tool_metadata = {}
+        except Exception as e:
+            # Any other error - log but don't fail
+            logger.warning(f"Failed to enrich step with tool metadata: {e}")
+            import traceback
+            logger.warning(traceback.format_exc())
+            step.requires_credentials = False
+            step.execution_location = "automation-service"
+            step.tool_metadata = {}
+    
     def _parse_llm_planning_response(self, response_content: str, selection: SelectionV1) -> List:
         """Parse LLM response into execution steps"""
         from ...schemas.plan_v1 import ExecutionStep
@@ -1112,6 +1279,9 @@ Example for windows-impacket-executor with explicit credentials (if needed):
             # Parse JSON
             steps_data = json.loads(content)
             
+            # DEBUG: Log the parsed plan JSON
+            logger.info(f"📋 LLM generated execution plan JSON: {json.dumps(steps_data, indent=2)}")
+            
             # Convert to ExecutionStep objects
             steps = []
             for idx, step_data in enumerate(steps_data):
@@ -1127,6 +1297,10 @@ Example for windows-impacket-executor with explicit credentials (if needed):
                     depends_on=[],
                     execution_order=idx + 1
                 )
+                
+                # Enrich step with tool metadata from registry
+                self._enrich_step_with_tool_metadata(step, selection)
+                
                 steps.append(step)
             
             return steps

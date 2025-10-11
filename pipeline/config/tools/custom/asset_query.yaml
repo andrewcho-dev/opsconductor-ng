@@ -1,8 +1,8 @@
 # asset-query - Query asset inventory
 tool_name: asset-query
 execution_location: asset-service
-version: '1.0'
-description: Query asset inventory
+version: '1.1'
+description: Query and filter asset inventory by various criteria
 platform: custom
 category: asset
 defaults:
@@ -11,17 +11,18 @@ defaults:
   data_source: direct
 capabilities:
   asset_management:
-    description: Query and manage asset inventory
+    description: Query and filter asset inventory
     patterns:
       execute:
-        description: Execute asset-query command
+        description: Query assets with optional filters
         typical_use_cases:
-        - use asset-query
-        - asset-query command
         - query asset inventory
         - count assets
         - list assets
-        - get asset information
+        - filter assets by OS
+        - find Windows 10 machines
+        - search for specific hostname
+        - get assets by tag
         time_estimate_ms: '500'
         cost_estimate: '1'
         complexity_score: 0.2
@@ -38,11 +39,28 @@ capabilities:
           cost: 0.9
           complexity: 0.8
           completeness: 0.9
-        required_inputs:
-        - name: host
+        optional_inputs:
+        - name: asset_id
+          type: integer
+          description: Specific asset ID to retrieve
+        - name: hostname
           type: string
-          description: Target host
-          validation: .*
+          description: Filter by hostname (partial match supported)
+        - name: os_type
+          type: string
+          description: Filter by OS type (exact match - e.g., "windows", "linux")
+        - name: os_version
+          type: string
+          description: Filter by OS version (partial match - e.g., "10", "Ubuntu 22.04")
+        - name: status
+          type: string
+          description: Filter by status (e.g., "active", "inactive")
+        - name: environment
+          type: string
+          description: Filter by environment (e.g., "production", "staging")
+        - name: tags
+          type: array
+          description: Filter by tags (can be string or array of strings)
 metadata:
   author: OpsConductor Team
   created: '2025-10-03'
@@ -55,9 +73,38 @@ metadata:
 
 # === EXAMPLES ===
 examples:
-  - name: "Execute"
-    description: "Execute asset-query command"
+  - name: "Query all assets"
+    description: "Get all assets in inventory"
+    inputs: {}
+    expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Find Windows 10 machines"
+    description: "Query assets with Windows 10 OS"
     inputs:
-      host: "192.168.1.100"
+      os_type: "windows"
+      os_version: "10"
+    expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Find by hostname"
+    description: "Search for assets by hostname"
+    inputs:
+      hostname: "web-server"
+    expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Find by tags"
+    description: "Query assets with specific tags"
+    inputs:
+      tags: ["production", "critical"]
+    expected_time_ms: 500
+    expected_cost: 1
+  
+  - name: "Find active Linux servers"
+    description: "Query active Linux assets"
+    inputs:
+      os_type: "linux"
+      status: "active"
     expected_time_ms: 500
     expected_cost: 1

@@ -117,33 +117,74 @@ class UnifiedExecutor:
     def parse_execution_config(self, tool_definition: Dict[str, Any]) -> ExecutionConfig:
         """
         Parse execution configuration from tool metadata.
-        Falls back to intelligent defaults based on platform/category.
+        
+        Priority order:
+        1. Check for simplified metadata from plan (requires_credentials, tool_metadata)
+        2. Check for full execution metadata structure
+        3. Fall back to inference from platform/category/name
         """
+        # PRIORITY 1: Check for simplified metadata from plan (enriched by planner)
+        # This is the NEW way - the planner enriches steps with tool metadata
+        if "requires_credentials" in tool_definition or "tool_metadata" in tool_definition:
+            self.logger.info("✅ Using tool metadata from plan (enriched by planner)")
+            tool_metadata = tool_definition.get("tool_metadata", {})
+            
+            # If we have full tool_metadata, use it
+            if tool_metadata:
+                connection_meta = tool_metadata.get("connection", {})
+                builder_meta = tool_metadata.get("command_builder", {})
+                cred_meta = tool_metadata.get("credentials", {})
+                param_meta = tool_metadata.get("parameters", {})
+                
+                return ExecutionConfig(
+                    execution_type=ExecutionType(tool_metadata.get("type", "command")),
+                    connection_type=ConnectionType(connection_meta.get("type", "local")),
+                    requires_credentials=connection_meta.get("requires_credentials", False),
+                    requires_target_host=connection_meta.get("requires_target_host", False),
+                    command_strategy=CommandStrategy(builder_meta.get("strategy", "cli")),
+                    parameter_format=ParameterFormat(builder_meta.get("parameter_format", "posix")),
+                    command_template=builder_meta.get("template"),
+                    auto_fetch_credentials=cred_meta.get("auto_fetch", True),
+                    required_credential_fields=cred_meta.get("required_fields", ["username", "password"]),
+                    optional_credential_fields=cred_meta.get("optional_fields", []),
+                    target_host_aliases=param_meta.get("target_host_aliases", None),
+                    exclude_from_command=param_meta.get("exclude_from_command", None)
+                )
+            else:
+                # We only have requires_credentials flag - infer the rest
+                self.logger.info(f"⚠️  Only requires_credentials flag available, inferring rest")
+                config = self._infer_execution_config(tool_definition)
+                # Override requires_credentials with the value from the plan
+                config.requires_credentials = tool_definition.get("requires_credentials", False)
+                return config
+        
+        # PRIORITY 2: Check for full execution metadata structure (OLD way)
         execution_meta = tool_definition.get("execution", {})
+        if execution_meta:
+            self.logger.info("Using full execution metadata structure")
+            connection_meta = execution_meta.get("connection", {})
+            builder_meta = execution_meta.get("command_builder", {})
+            cred_meta = execution_meta.get("credentials", {})
+            param_meta = execution_meta.get("parameters", {})
+            
+            return ExecutionConfig(
+                execution_type=ExecutionType(execution_meta.get("type", "command")),
+                connection_type=ConnectionType(connection_meta.get("type", "local")),
+                requires_credentials=connection_meta.get("requires_credentials", False),
+                requires_target_host=connection_meta.get("requires_target_host", False),
+                command_strategy=CommandStrategy(builder_meta.get("strategy", "cli")),
+                parameter_format=ParameterFormat(builder_meta.get("parameter_format", "posix")),
+                command_template=builder_meta.get("template"),
+                auto_fetch_credentials=cred_meta.get("auto_fetch", True),
+                required_credential_fields=cred_meta.get("required_fields", ["username", "password"]),
+                optional_credential_fields=cred_meta.get("optional_fields", []),
+                target_host_aliases=param_meta.get("target_host_aliases", None),
+                exclude_from_command=param_meta.get("exclude_from_command", None)
+            )
         
-        # If no execution metadata, infer from platform
-        if not execution_meta:
-            return self._infer_execution_config(tool_definition)
-        
-        connection_meta = execution_meta.get("connection", {})
-        builder_meta = execution_meta.get("command_builder", {})
-        cred_meta = execution_meta.get("credentials", {})
-        param_meta = execution_meta.get("parameters", {})
-        
-        return ExecutionConfig(
-            execution_type=ExecutionType(execution_meta.get("type", "command")),
-            connection_type=ConnectionType(connection_meta.get("type", "local")),
-            requires_credentials=connection_meta.get("requires_credentials", False),
-            requires_target_host=connection_meta.get("requires_target_host", False),
-            command_strategy=CommandStrategy(builder_meta.get("strategy", "cli")),
-            parameter_format=ParameterFormat(builder_meta.get("parameter_format", "posix")),
-            command_template=builder_meta.get("template"),
-            auto_fetch_credentials=cred_meta.get("auto_fetch", True),
-            required_credential_fields=cred_meta.get("required_fields", ["username", "password"]),
-            optional_credential_fields=cred_meta.get("optional_fields", []),
-            target_host_aliases=param_meta.get("target_host_aliases", None),
-            exclude_from_command=param_meta.get("exclude_from_command", None)
-        )
+        # PRIORITY 3: Fall back to inference (LAST RESORT)
+        self.logger.info("⚠️  No metadata available, inferring from tool name/platform")
+        return self._infer_execution_config(tool_definition)
     
     def _infer_execution_config(self, tool_definition: Dict[str, Any]) -> ExecutionConfig:
         """
@@ -165,8 +206,9 @@ class UnifiedExecutor:
                 parameter_format=ParameterFormat.WINDOWS
             )
         
-        # Windows PowerShell Cmdlets
+        # Windows PowerShell Cmdlets and Windows tools
         elif (platform == "windows" or 
+            "windows" in tool_name.lower() or
             tool_name.startswith(("Get-", "Set-", "Start-", "Stop-", "Restart-", 
                                  "Test-", "Measure-", "Register-", "Invoke-"))):
             return ExecutionConfig(
@@ -303,6 +345,10 @@ class UnifiedExecutor:
         config: ExecutionConfig
     ) -> str:
         """Build PowerShell cmdlet command: Get-Service -Name Spooler"""
+        # Check if there's an explicit command parameter
+        if "command" in parameters:
+            return parameters["command"]
+        
         command_parts = [tool_name]
         
         for param_name, param_value in parameters.items():
@@ -438,10 +484,17 @@ class UnifiedExecutor:
         3. Explicit username/password
         """
         if not config.requires_credentials:
+            print(f"🔑 DEBUG: Credentials not required by config", flush=True)
+            self.logger.info("🔑 Credentials not required by config")
             return None
+        
+        print(f"🔑 DEBUG: Resolving credentials: use_asset_credentials={parameters.get('use_asset_credentials')}, asset_id={parameters.get('asset_id')}, username={parameters.get('username')}", flush=True)
+        self.logger.info(f"🔑 Resolving credentials: use_asset_credentials={parameters.get('use_asset_credentials')}, asset_id={parameters.get('asset_id')}, username={parameters.get('username')}")
         
         # 1. Explicit asset_id
         if parameters.get("use_asset_credentials") and parameters.get("asset_id"):
+            print(f"🔑 DEBUG: Fetching credentials for asset_id={parameters['asset_id']}", flush=True)
+            self.logger.info(f"🔑 Fetching credentials for asset_id={parameters['asset_id']}")
             return await self._fetch_credentials_by_asset_id(parameters["asset_id"])
         
         # 2. Auto-fetch by target_host

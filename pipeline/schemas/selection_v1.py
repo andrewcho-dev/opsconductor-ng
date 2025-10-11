@@ -41,6 +41,7 @@ class Tool(BaseModel):
     max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
     dependencies: List[str] = Field(default=[], description="Tool dependencies")
     examples: List[str] = Field(default=[], description="Usage examples for the tool")
+    execution: Optional[Dict[str, Any]] = Field(default=None, description="Execution metadata (connection type, credentials, etc.)")
 
 class SelectedTool(BaseModel):
     """Selected tool with justification and requirements"""

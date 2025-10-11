@@ -222,7 +222,24 @@ def register_windows_tools(registry):
             "Copy file: Copy-Item -Path 'C:\\source\\file.txt' -Destination 'C:\\dest\\file.txt'",
             "Set file permissions: $acl = Get-Acl 'C:\\file.txt'; $acl.SetAccessRule($rule); Set-Acl 'C:\\file.txt' $acl",
             "Search for files: Get-ChildItem -Path 'C:\\' -Filter '*.log' -Recurse -ErrorAction SilentlyContinue"
-        ]
+        ],
+        execution={
+            "type": "command",
+            "connection": {
+                "type": "powershell",
+                "requires_credentials": True,
+                "requires_target_host": True
+            },
+            "command_builder": {
+                "strategy": "cmdlet",
+                "parameter_format": "powershell"
+            },
+            "credentials": {
+                "auto_fetch": True,
+                "required_fields": ["username", "password"],
+                "optional_fields": ["domain"]
+            }
+        }
     )
     registry.register_tool(windows_filesystem_tool)
     

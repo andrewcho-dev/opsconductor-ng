@@ -1,14 +1,22 @@
 """
-Stage AB - Combined Understanding & Selection
+Stage AB - Combined Understanding & Selection (Semantic Retrieval)
 Merges Stage A (intent classification) and Stage B (tool selection) into a single, more reliable stage.
 
-This eliminates the fragile handoff between stages and allows the LLM to see the full context
-when making tool selection decisions.
+NEW ARCHITECTURE (pgvector + minimal index):
+1. Use semantic retrieval (pgvector) to build candidate shortlist
+2. Send MINIMAL index (id, name, desc, tags, platform, cost) to LLM
+3. LLM selects tool IDs only
+4. Stage AC loads full specs for selected IDs
+
+This eliminates token limit issues and scales to 500+ tools.
+
+Confidence: 0.93 | Doubt: Token estimates ±10-15%; keep 10% safety margin
 """
 
 import time
 import uuid
 import logging
+import json
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
@@ -17,6 +25,8 @@ from pipeline.schemas.selection_v1 import SelectionV1, SelectedTool, ExecutionPo
 from llm.client import LLMClient, LLMRequest
 from llm.response_parser import ResponseParser
 from pipeline.services.tool_catalog_service import ToolCatalogService
+from pipeline.services.tool_index_service import ToolIndexService
+from pipeline.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,22 +49,34 @@ class CombinedSelector:
     def __init__(self, llm_client: LLMClient, tool_catalog: Optional[ToolCatalogService] = None):
         self.llm_client = llm_client
         self.response_parser = ResponseParser()
-        self.version = "2.0.0"
+        self.version = "3.0.0"  # Semantic retrieval version
         
-        # Initialize tool catalog service (database-backed)
+        # Initialize services
         self.tool_catalog = tool_catalog or ToolCatalogService()
+        self.tool_index = ToolIndexService()
+        self.embedding_service = get_embedding_service()
         
         # Configuration
         self.config = {
             "max_tools_per_selection": 5,
             "min_selection_confidence": 0.3,
             "temperature": 0.1,  # Low temperature for consistent decisions
-            "max_tokens": 1000
+            "max_tokens": 1000,
+            "use_semantic_retrieval": True,  # Enable semantic retrieval
+            "fallback_to_keyword": True  # Fallback if embeddings fail
         }
     
     async def process(self, user_request: str, context: Optional[Dict[str, Any]] = None) -> SelectionV1:
         """
-        Main processing method - combines understanding and selection
+        Main processing method - NEW SEMANTIC RETRIEVAL ARCHITECTURE
+        
+        Pipeline:
+        1. Generate query embedding
+        2. Retrieve candidates from tool_index (semantic + keyword)
+        3. Apply token budget
+        4. Send MINIMAL index to LLM (id, name, desc, tags, platform, cost)
+        5. LLM selects tool IDs only
+        6. Log telemetry
         
         Args:
             user_request: Original user request string
@@ -64,19 +86,49 @@ class CombinedSelector:
             SelectionV1 with selected tools and execution policy
         """
         start_time = time.time()
+        request_id = self._generate_selection_id()
         
         try:
-            logger.info(f"🧠 Stage AB: Processing request: {user_request[:100]}...")
+            logger.info(f"🧠 Stage AB (v3.0): Processing request: {user_request[:100]}...")
             
-            # Step 1: Get available tools from database
-            # We need to know what tools exist before we can select them
-            all_tools = await self._get_available_tools()
-            logger.info(f"📚 Stage AB: Loaded {len(all_tools)} tools from database")
+            # Step 1: Generate query embedding (if semantic retrieval enabled)
+            retrieval_start = time.time()
+            query_embedding = None
             
-            # Step 2: Create combined prompt that does EVERYTHING in one pass
-            prompt = self._create_combined_prompt(user_request, all_tools, context)
+            if self.config["use_semantic_retrieval"]:
+                try:
+                    query_embedding = self.embedding_service.embed_text(user_request)
+                    logger.info(f"✅ Generated query embedding ({len(query_embedding)}d)")
+                except Exception as e:
+                    logger.warning(f"⚠️  Embedding generation failed: {str(e)}, falling back to keyword search")
+                    if not self.config["fallback_to_keyword"]:
+                        raise
             
-            # Step 3: Single LLM call for understanding + selection
+            # Step 2: Calculate token budget
+            budget_tokens, max_rows = self.tool_index.calculate_token_budget()
+            logger.info(f"📊 Token budget: {budget_tokens} tokens, max_rows={max_rows}")
+            
+            # Step 3: Retrieve candidates from tool_index
+            # Extract platform filter from context if available
+            platform_filter = context.get("platform") if context else None
+            
+            candidates = self.tool_index.retrieve_candidates(
+                query_text=user_request,
+                query_embedding=query_embedding,
+                platform_filter=platform_filter,
+                max_rows=max_rows
+            )
+            
+            retrieval_time_ms = int((time.time() - retrieval_start) * 1000)
+            candidates_before_budget = len(candidates)  # Already budgeted in retrieve_candidates
+            
+            logger.info(f"🔍 Retrieved {len(candidates)} candidates in {retrieval_time_ms}ms")
+            
+            # Step 4: Create minimal index prompt
+            prompt = self._create_minimal_index_prompt(user_request, candidates, context)
+            
+            # Step 5: Single LLM call for tool selection (IDs only)
+            llm_start = time.time()
             llm_request = LLMRequest(
                 prompt=prompt["user"],
                 system_prompt=prompt["system"],
@@ -84,25 +136,26 @@ class CombinedSelector:
                 max_tokens=self.config["max_tokens"]
             )
             
-            logger.info("🤖 Stage AB: Calling LLM for combined understanding + selection...")
+            logger.info("🤖 Stage AB: Calling LLM for tool selection...")
             response = await self.llm_client.generate(llm_request)
+            llm_time_ms = int((time.time() - llm_start) * 1000)
             
-            # Step 4: Parse the combined response
-            parsed = self._parse_combined_response(response.content)
+            # Step 6: Parse the response (IDs + intent)
+            parsed = self._parse_minimal_response(response.content)
             logger.info(f"✅ Stage AB: Parsed response - intent={parsed['intent']['category']}/{parsed['intent']['action']}, tools={len(parsed['selected_tools'])}")
             
             # Log detailed tool selection
             if parsed['selected_tools']:
                 logger.info("🔧 TOOLS SELECTED BY LLM:")
                 for i, tool in enumerate(parsed['selected_tools'], 1):
-                    tool_name = tool.get('tool_name', 'unknown')
-                    confidence = tool.get('confidence', 0.0)
-                    logger.info(f"   {i}. {tool_name} (confidence: {confidence:.2f})")
+                    tool_id = tool.get('id', 'unknown')
+                    why = tool.get('why', 'no reason')
+                    logger.info(f"   {i}. {tool_id} - {why}")
             else:
                 logger.info("ℹ️  No tools selected - information-only request")
             
-            # Step 5: Validate selected tools exist in database
-            validated_tools = await self._validate_and_enrich_tools(parsed['selected_tools'], all_tools)
+            # Step 7: Validate selected tool IDs exist in tool_index
+            validated_tools = await self._validate_tool_ids(parsed['selected_tools'])
             
             # Log validated tools
             if validated_tools:
@@ -112,7 +165,7 @@ class CombinedSelector:
             else:
                 logger.info("⚠️  No tools validated")
             
-            # Step 6: Build execution policy
+            # Step 8: Build execution policy
             execution_policy = self._build_execution_policy(
                 parsed['risk_level'],
                 parsed['intent'],
@@ -120,20 +173,42 @@ class CombinedSelector:
                 context
             )
             
-            # Step 7: Determine additional inputs needed
+            # Step 9: Determine additional inputs needed
             additional_inputs = self._calculate_additional_inputs(
                 parsed['entities'],
                 validated_tools
             )
             
-            # Step 8: Determine environment requirements
+            # Step 10: Determine environment requirements
             env_requirements = self._determine_environment_requirements(validated_tools)
             
-            # Step 9: Determine next stage
+            # Step 11: Determine next stage
             next_stage = self._determine_next_stage(validated_tools, execution_policy)
             
-            # Step 10: Build SelectionV1 response
-            processing_time = int((time.time() - start_time) * 1000)
+            # Step 12: Calculate telemetry
+            total_time_ms = int((time.time() - start_time) * 1000)
+            rows_sent = len(candidates)
+            budget_used = rows_sent * self.tool_index.TOKENS_PER_ROW_EST
+            headroom_left = int(((self.tool_index.CTX - budget_used - self.tool_index.BASE_TOKENS) / self.tool_index.CTX) * 100)
+            
+            # Step 13: Log telemetry
+            selected_tool_ids = [t.tool_name for t in validated_tools]
+            self.tool_index.log_telemetry(
+                request_id=request_id,
+                user_intent=user_request,
+                catalog_size=candidates_before_budget,  # Approximate
+                candidates_before_budget=candidates_before_budget,
+                rows_sent=rows_sent,
+                budget_used=budget_used,
+                headroom_left=headroom_left,
+                selected_tool_ids=selected_tool_ids,
+                retrieval_time_ms=retrieval_time_ms,
+                llm_time_ms=llm_time_ms,
+                total_time_ms=total_time_ms
+            )
+            
+            # Step 14: Build SelectionV1 response
+            processing_time = total_time_ms
             
             selection = SelectionV1(
                 selection_id=self._generate_selection_id(),
@@ -157,194 +232,89 @@ class CombinedSelector:
             logger.error(f"❌ Stage AB: Failed to process request: {str(e)}")
             raise RuntimeError(f"Combined understanding + selection failed: {str(e)}") from e
     
-    async def _get_available_tools(self) -> List[Dict[str, Any]]:
+    def _create_minimal_index_prompt(self, user_request: str, candidates: List[Dict[str, Any]], 
+                                     context: Optional[Dict[str, Any]]) -> Dict[str, str]:
         """
-        Get all available tools from database
+        Create prompt with MINIMAL tool index (NEW ARCHITECTURE).
         
+        Sends only: id, name, desc, tags, platform, cost
+        LLM returns: tool IDs only
+        
+        Args:
+            user_request: User's request
+            candidates: Candidate tools from tool_index (already token-budgeted)
+            context: Optional context
+            
         Returns:
-            List of tool dictionaries with metadata
+            Dict with 'system' and 'user' prompts
         """
-        try:
-            # Get all tools with full structure (capabilities + patterns) from database
-            tools = self.tool_catalog.get_all_tools_with_structure()
-            
-            # Format for LLM consumption (simplified view)
-            formatted_tools = []
-            for tool in tools:
-                # Extract typical use cases from patterns (they're stored at pattern level)
-                typical_use_cases = []
-                capabilities = tool.get("capabilities", {})
-                if isinstance(capabilities, dict):
-                    for cap_name, cap_data in capabilities.items():
-                        if isinstance(cap_data, dict) and 'patterns' in cap_data:
-                            for pattern in cap_data['patterns']:
-                                if pattern.get('typical_use_cases'):
-                                    typical_use_cases.extend(pattern['typical_use_cases'])
-                
-                # Remove duplicates while preserving order
-                seen = set()
-                unique_use_cases = []
-                for uc in typical_use_cases:
-                    if uc not in seen:
-                        seen.add(uc)
-                        unique_use_cases.append(uc)
-                
-                formatted_tools.append({
-                    "tool_name": tool["tool_name"],
-                    "description": tool["description"],
-                    "capabilities": tool.get("capabilities", {}),
-                    "typical_use_cases": unique_use_cases,
-                    "platform": tool.get("platform", "any"),
-                    "category": tool.get("category", "custom"),
-                    "production_safe": tool.get("production_safe", False),
-                    "requires_sudo": tool.get("requires_sudo", False)
-                })
-            
-            return formatted_tools
-            
-        except Exception as e:
-            logger.error(f"Failed to load tools from database: {str(e)}")
-            # Return empty list - LLM will handle information-only requests
-            return []
-    
-    def _create_combined_prompt(self, user_request: str, available_tools: List[Dict[str, Any]], 
-                                context: Optional[Dict[str, Any]]) -> Dict[str, str]:
-        """
-        Create a combined prompt that does understanding + selection in one pass
+        # Format minimal index for prompt
+        tools_json = json.dumps(candidates, indent=2)
         
-        This is the key innovation: instead of two separate LLM calls (Stage A → Stage B),
-        we do ONE call that sees the full context.
-        """
-        
-        # Format tools for the prompt (compact representation)
-        tools_summary = self._format_tools_for_prompt(available_tools)
-        
-        system_prompt = f"""You are OpsConductor's AI brain. Analyze the user's request and select the appropriate tool(s) to fulfill it.
+        system_prompt = """You are OpsConductor's tool selector. Your job is to select the minimal set of tools needed to fulfill the user's request.
 
-**YOUR TASK:**
-1. Understand the user's intent (what they want to do)
-2. Extract any technical entities (hostnames, services, etc.)
-3. Identify required capabilities
-4. Select the best tool(s) from the available tools
-5. Assess confidence and risk
+**RULES:**
+1. Choose the FEWEST tools that provide the required capabilities
+2. Prefer tools with broader coverage over multiple narrow tools
+3. If no tools apply, return an empty selection
+4. Return tool IDs only (not full specs)
 
-**AVAILABLE TOOLS:**
-{tools_summary}
-
-**RESPONSE FORMAT (JSON):**
-{{
-  "intent": {{
-    "category": "automation|monitoring|troubleshooting|configuration|information|asset_management",
-    "action": "specific_action_name",
-    "capabilities": ["capability1", "capability2"]
-  }},
+**OUTPUT FORMAT:**
+Return JSON with this exact structure:
+{
+  "intent": {
+    "category": "system|network|automation|monitoring|security|information",
+    "action": "query|execute|configure|monitor|analyze"
+  },
   "entities": [
-    {{"type": "hostname|service|command|file_path|port|environment|application|database", "value": "actual_value", "confidence": 0.0-1.0}}
+    {"type": "hostname|service|path|etc", "value": "extracted_value"}
   ],
-  "selected_tools": [
-    {{
-      "tool_name": "exact_tool_name_from_available_tools",
-      "justification": "why this tool is appropriate",
-      "inputs_needed": ["input1", "input2"],
-      "execution_order": 1
-    }}
+  "select": [
+    {"id": "tool-id", "why": "brief reason"}
   ],
   "confidence": 0.0-1.0,
   "risk_level": "low|medium|high|critical",
-  "reasoning": "brief explanation of your decision"
-}}
+  "reasoning": "brief explanation"
+}"""
+        
+        user_prompt = f"""**USER REQUEST:**
+{user_request}
 
-**CRITICAL RULES:**
-1. **Data Questions REQUIRE Tools**: If the user asks about real data (how many assets, what's the status, show me logs), you MUST select a tool. NEVER make up data.
-2. **Asset Questions → asset-query tool**: Questions about assets, servers, hosts, inventory ALWAYS use the "asset-query" tool.
-3. **Information-Only Requests**: Only return empty selected_tools[] for conceptual questions (what is X?, how does Y work?, explain Z).
-4. **Tool Names Must Match**: Only use tool_name values that exist in the AVAILABLE TOOLS list above.
-5. **Capabilities Must Match**: The capabilities you list must match what the selected tool provides.
+**AVAILABLE TOOLS:**
+{tools_json}
 
-**RISK LEVELS:**
-- low: Read-only operations, status checks, information queries
-- medium: Service restarts, configuration changes, non-destructive operations
-- high: Database operations, system-wide changes, production modifications
-- critical: Data deletion, irreversible operations, production-wide impact
-
-**EXAMPLES:**
-
-User: "How many assets do we have?"
-→ Select "asset-query" tool (this is a DATA question, not conceptual)
-
-User: "What is the status of nginx?"
-→ Select appropriate monitoring tool (DATA question)
-
-User: "What is Kubernetes?"
-→ No tools needed (CONCEPTUAL question)
-
-User: "Restart the web server"
-→ Select appropriate service management tool (ACTION)"""
-
-        user_prompt = f"""Analyze this request and select appropriate tool(s):
-
-**USER REQUEST:** {user_request}
-
-**CONTEXT:** {context or {}}
-
-Return your analysis in the JSON format specified above."""
-
+**YOUR TASK:**
+Analyze the request and select the appropriate tool IDs. Return JSON only."""
+        
         return {
             "system": system_prompt,
             "user": user_prompt
         }
     
-    def _format_tools_for_prompt(self, tools: List[Dict[str, Any]]) -> str:
+    def _parse_minimal_response(self, response_content: str) -> Dict[str, Any]:
         """
-        Format tools into a compact, LLM-friendly representation
+        Parse LLM response with minimal tool selection (IDs only).
         
-        IMPORTANT: List TOOL NAMES first (not capabilities) to avoid LLM confusion
-        """
-        if not tools:
-            return "No tools available (information-only mode)"
+        Expected format:
+        {
+          "intent": {...},
+          "entities": [...],
+          "select": [{"id": "tool-id", "why": "reason"}],
+          "confidence": 0.9,
+          "risk_level": "low",
+          "reasoning": "..."
+        }
         
-        # Format as simple list: TOOL_NAME first, then capabilities
-        lines = []
-        for tool in sorted(tools, key=lambda t: t.get("tool_name", "")):
-            tool_name = tool.get("tool_name", "unknown")
-            description = tool.get("description", "")[:100]
+        Args:
+            response_content: LLM response text
             
-            # Extract capability names
-            capabilities = tool.get("capabilities", {})
-            if isinstance(capabilities, dict):
-                cap_names = list(capabilities.keys())
-            elif isinstance(capabilities, list):
-                cap_names = capabilities
-            else:
-                cap_names = []
-            
-            # Get use cases
-            use_cases = tool.get("typical_use_cases", [])[:2]
-            use_cases_str = ", ".join(use_cases) if use_cases else "general use"
-            
-            # Format: TOOL_NAME (capabilities) - description [use cases]
-            caps_str = ", ".join(cap_names) if cap_names else "no capabilities"
-            lines.append(f"- **{tool_name}** (capabilities: {caps_str})")
-            lines.append(f"  Description: {description}")
-            if use_cases:
-                lines.append(f"  Use cases: {use_cases_str}")
-            lines.append("")  # Blank line between tools
-        
-        return "\n".join(lines)
-    
-    def _parse_combined_response(self, response_content: str) -> Dict[str, Any]:
-        """
-        Parse the combined LLM response
-        
         Returns:
-            Dictionary with intent, entities, selected_tools, confidence, risk_level, reasoning
+            Parsed dictionary
         """
-        import json
         import re
         
         try:
             # Try to extract JSON from response
-            # LLM might wrap it in markdown code blocks
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
@@ -359,7 +329,7 @@ Return your analysis in the JSON format specified above."""
             parsed = json.loads(json_str)
             
             # Validate required fields
-            required_fields = ["intent", "selected_tools", "confidence", "risk_level"]
+            required_fields = ["intent", "select", "confidence", "risk_level"]
             for field in required_fields:
                 if field not in parsed:
                     raise ValueError(f"Missing required field: {field}")
@@ -370,48 +340,54 @@ Return your analysis in the JSON format specified above."""
             if "reasoning" not in parsed:
                 parsed["reasoning"] = "No reasoning provided"
             
+            # Convert "select" to "selected_tools" for compatibility
+            parsed["selected_tools"] = parsed.pop("select", [])
+            
             return parsed
             
         except Exception as e:
             logger.error(f"Failed to parse LLM response: {str(e)}\nResponse: {response_content}")
             raise ValueError(f"Failed to parse LLM response: {str(e)}")
     
-    async def _validate_and_enrich_tools(self, selected_tools: List[Dict[str, Any]], 
-                                        all_tools: List[Dict[str, Any]]) -> List[SelectedTool]:
+    async def _validate_tool_ids(self, selected_tools: List[Dict[str, Any]]) -> List[SelectedTool]:
         """
-        Validate that selected tools exist and enrich with database metadata
+        Validate that selected tool IDs exist in tool_catalog.
         
         Args:
-            selected_tools: Tools selected by LLM
-            all_tools: All available tools from database
+            selected_tools: List of {"id": "tool-id", "why": "reason"}
             
         Returns:
             List of validated SelectedTool objects
         """
         validated = []
-        tool_lookup = {t["tool_name"]: t for t in all_tools}
         
         for idx, selected in enumerate(selected_tools):
-            tool_name = selected.get("tool_name")
+            tool_id = selected.get("id")
+            why = selected.get("why", "No reason provided")
             
-            # Check if tool exists
-            if tool_name not in tool_lookup:
-                logger.warning(f"LLM selected non-existent tool: {tool_name}, skipping")
+            # Check if tool exists in catalog
+            try:
+                tool_meta = self.tool_catalog.get_tool_by_name(tool_id)
+                if not tool_meta:
+                    logger.warning(f"LLM selected non-existent tool: {tool_id}, skipping")
+                    continue
+                
+                # Create SelectedTool object
+                validated.append(SelectedTool(
+                    tool_name=tool_id,
+                    justification=why,
+                    inputs_needed=[],  # Will be determined by Stage C
+                    execution_order=idx + 1,
+                    depends_on=[]  # Will be determined by Stage C
+                ))
+                
+            except Exception as e:
+                logger.warning(f"Failed to validate tool {tool_id}: {str(e)}")
                 continue
-            
-            # Get full tool metadata from database
-            tool_meta = tool_lookup[tool_name]
-            
-            # Create SelectedTool object
-            validated.append(SelectedTool(
-                tool_name=tool_name,
-                justification=selected.get("justification", f"Selected for {tool_name}"),
-                inputs_needed=selected.get("inputs_needed", []),
-                execution_order=selected.get("execution_order", idx + 1),
-                depends_on=selected.get("depends_on", [])
-            ))
         
         return validated
+    
+
     
     def _build_execution_policy(self, risk_level: str, intent: Dict[str, Any], 
                                selected_tools: List[SelectedTool],

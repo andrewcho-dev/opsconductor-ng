@@ -2453,6 +2453,7 @@ class ConsolidatedAssetService(BaseService):
             asset_id = filters.get("asset_id") or filters.get("id")
             hostname = filters.get("hostname")
             os_type = filters.get("os_type")
+            os_version = filters.get("os_version")
             status = filters.get("status")
             environment = filters.get("environment")
             tags = filters.get("tags")
@@ -2510,6 +2511,11 @@ class ConsolidatedAssetService(BaseService):
                 param_count += 1
                 where_conditions.append(f"os_type = ${param_count}")
                 params.append(os_type)
+            
+            if os_version:
+                param_count += 1
+                where_conditions.append(f"os_version ILIKE ${param_count}")
+                params.append(f"%{os_version}%")
             
             if status:
                 param_count += 1
