@@ -25,4 +25,7 @@ def candidate_tools_from_intent(intent: str, k: int = 10):
     with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(sql, (intent, k))
         rows = cur.fetchall()
-    return [{"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]} for r in rows]
+    return [
+        {"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]}
+        for r in rows
+    ]
