@@ -5,9 +5,9 @@ import os
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
     Runtime-friendly DAO:
-    - Uses simple SQL and parameter order that matches what's actually referenced.
-    - If platform is provided, it filters; otherwise returns all.
-    - Returns objects with .tool_name and .description so selector can consume them.
+    - Simple SQL with correct param order.
+    - Optional platform filter.
+    - Returns objects with .tool_name/.description.
     - Falls back to ALWAYS_INCLUDE_TOOLS if DB access fails.
     """
     try:
