@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional, Any, Union
 from dataclasses import dataclass
-import os
+import os, json
 
 @dataclass
 class ToolStub:
@@ -16,26 +16,26 @@ class ToolStub:
 
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    Test-friendly + runtime-safe DAO:
-      - Bind order: (embedding, top_k, platform)
-      - WHERE uses 'platform = $3'
-      - LIMIT uses $2 (top_k)
-      - similarity = 1 - distance/2 when 'distance' present (mocks)
+    Test-friendly + runtime-safe:
+      - fetch(sql, json.dumps(embedding), top_k, platform)
+      - SQL references $1 (embedding as ::text), $2 (LIMIT), $3 (platform)
+      - similarity = 1 - distance/2 if 'distance' is present (mocks)
       - description defaults to ''
     """
     try:
         sql = """
-        -- $1 = embedding (reserved), $2 = top_k, $3 = platform
+        -- $1 = embedding (stringified), $2 = top_k, $3 = platform
         SELECT
-            COALESCE(name, key, tool_name) AS tool_name,
+            COALESCE(name, key) AS tool_name,
             COALESCE(description, '') AS description,
             platform
         FROM tool
         WHERE ($3::text IS NULL OR platform = $3)
+          AND ($1::text IS NOT NULL OR TRUE)
         ORDER BY updated_at DESC NULLS LAST, tool_name ASC
         LIMIT $2
         """
-        rows = await conn.fetch(sql, embedding, top_k, platform)
+        rows = await conn.fetch(sql, json.dumps(embedding), top_k, platform)
         out: List[ToolStub] = []
         for r in rows:
             getter = (r.get if hasattr(r, "get") else lambda k, d=None: getattr(r, k, d))
@@ -64,5 +64,3 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         if not names:
             names = ["asset-query", "service-status", "network-ping", "deploy", "diagnostics"]
         return [ToolStub(tool_name=n, description="") for n in names[:top_k]]
-
-__all__ = ["ToolStub", "search_tools"]

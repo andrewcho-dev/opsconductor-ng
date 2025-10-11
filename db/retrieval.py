@@ -18,8 +18,8 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
     """
     Test-friendly + runtime-safe:
       - fetch(sql, json.dumps(embedding), top_k, platform)
-      - SQL references $1 (as ::text no-op), $2 (LIMIT), $3 (platform)
-      - similarity = 1 - distance/2 if mocks provide 'distance'
+      - SQL references $1 (embedding as ::text), $2 (LIMIT), $3 (platform)
+      - similarity = 1 - distance/2 if 'distance' is present (mocks)
       - description defaults to ''
     """
     try:
