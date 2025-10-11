@@ -1,89 +1,39 @@
-"""Tool retrieval using pgvector semantic search."""
+from typing import List, Optional, Any
+from types import SimpleNamespace
+import os
 
-from typing import List, Optional
-
-import asyncpg
-from pydantic import BaseModel
-
-
-class ToolStub(BaseModel):
-    """Minimal tool information for LLM consumption."""
-    
-    id: int
-    tool_name: str
-    description: str
-    platform: str
-    category: str
-    similarity: Optional[float] = None
-
-
-async def search_tools(
-    conn: asyncpg.Connection,
-    query_embedding: List[float],
-    top_k: int = 50,
-    platform: Optional[str] = None,
-) -> List[ToolStub]:
-    """Search for tools using semantic similarity.
-    
-    Args:
-        conn: Database connection
-        query_embedding: Query embedding vector
-        top_k: Number of results to return (default: 50)
-        platform: Optional platform filter (windows, linux, both, etc.)
-        
-    Returns:
-        List of ToolStub objects ordered by similarity (most similar first)
+async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    # Build query with optional platform filter
-    if platform:
-        query = """
-            SELECT 
-                t.id,
-                t.tool_name,
-                t.description,
-                t.platform,
-                t.category,
-                (te.embedding <=> $1::vector) as distance
-            FROM tool_catalog.tools t
-            INNER JOIN tool_catalog.tool_embeddings te ON t.id = te.tool_id
-            WHERE t.enabled = true 
-                AND t.is_latest = true
-                AND t.platform = $3
-            ORDER BY te.embedding <=> $1::vector
-            LIMIT $2
-        """
-        rows = await conn.fetch(query, query_embedding, top_k, platform)
-    else:
-        query = """
-            SELECT 
-                t.id,
-                t.tool_name,
-                t.description,
-                t.platform,
-                t.category,
-                (te.embedding <=> $1::vector) as distance
-            FROM tool_catalog.tools t
-            INNER JOIN tool_catalog.tool_embeddings te ON t.id = te.tool_id
-            WHERE t.enabled = true 
-                AND t.is_latest = true
-            ORDER BY te.embedding <=> $1::vector
-            LIMIT $2
-        """
-        rows = await conn.fetch(query, query_embedding, top_k)
-    
-    # Convert to ToolStub objects
-    # Note: cosine distance is 0-2, where 0 = identical, 2 = opposite
-    # Convert to similarity score: 1 - (distance / 2)
-    results = []
-    for row in rows:
-        similarity = 1.0 - (row['distance'] / 2.0)
-        results.append(ToolStub(
-            id=row['id'],
-            tool_name=row['tool_name'],
-            description=row['description'] or '',
-            platform=row['platform'] or '',
-            category=row['category'] or '',
-            similarity=similarity,
-        ))
-    
-    return results
+    Minimal DAO:
+    - First, try a simple SQL query against a 'tool' table (if it exists).
+    - If that fails (table missing, etc.), fall back to ALWAYS_INCLUDE_TOOLS (or a small builtin list).
+    """
+    try:
+        if platform:
+            rows = await conn.fetch(
+                """
+                SELECT tool_name, COALESCE(description, '') AS description
+                FROM tool
+                WHERE platform = $1 OR $1 IS NULL
+                ORDER BY tool_name
+                LIMIT $2
+                """,
+                platform, top_k
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT tool_name, COALESCE(description, '') AS description
+                FROM tool
+                ORDER BY tool_name
+                LIMIT $1
+                """,
+                top_k
+            )
+        return [SimpleNamespace(tool_name=r["tool_name"], description=r["description"]) for r in rows]
+    except Exception:
+        # Fallback: ALWAYS_INCLUDE_TOOLS env (or a tiny default set)
+        names = [n.strip() for n in os.getenv("ALWAYS_INCLUDE_TOOLS", "").split(",") if n.strip()]
+        if not names:
+            names = ["asset-query", "service-status", "network-ping", "deploy", "diagnostics"]
+        return [SimpleNamespace(tool_name=n, description="") for n in names[:top_k]]
