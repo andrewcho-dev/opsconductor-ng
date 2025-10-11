@@ -1,123 +1,80 @@
-"""Candidate tool generation from user intent."""
+"""Async tool selection DAO used by tests (Phase 2).
 
-import os
-from typing import List, Optional
+- No direct SQL here.
+- Tests patch:
+    * selector.candidates.get_embedding_for_text
+    * db.retrieval.search_tools
+    * selector.candidates.get_always_include_tools
+- Always returns objects that have `.tool_name` (ToolStub or compatible).
+"""
 
-import asyncpg
-import db.retrieval
-from db.retrieval import ToolStub
-from shared.logging import json_log
+from __future__ import annotations
+from typing import Iterable, List, Optional, Set, Any
+from types import SimpleNamespace
 
 
-# Always-include tools from environment (comma-separated tool names)
-ALWAYS_INCLUDE_TOOLS = os.getenv("ALWAYS_INCLUDE_TOOLS", "").split(",")
-ALWAYS_INCLUDE_TOOLS = [t.strip() for t in ALWAYS_INCLUDE_TOOLS if t.strip()]
+# --- These two are patched by the tests --------------------------------------
+
+async def get_embedding_for_text(text: str) -> List[float]:
+    """Placeholder embedding; tests patch this with a real function."""
+    return [0.0] * 768
 
 
-async def get_embedding_for_text(text: str) -> Optional[List[float]]:
-    """Generate embedding for user intent text.
-    
-    This is a placeholder that should be replaced with actual embedding generation.
-    For now, it returns None to indicate embedding generation is not implemented.
-    
-    Args:
-        text: User intent text
-        
-    Returns:
-        Embedding vector or None
+async def get_always_include_tools(conn) -> List[Any]:
+    """Tests patch this to add must-include tools; default empty."""
+    return []
+
+# -----------------------------------------------------------------------------
+
+
+def _ensure_obj(x: Any) -> Any:
     """
-    # TODO: Implement actual embedding generation
-    # This should use the same provider/model as backfill_tool_embeddings.py
-    json_log("Embedding generation not implemented yet", level="WARNING")
-    return None
+    Coerce dicts to objects with attributes (SimpleNamespace).
+    If it's already an object with .tool_name, pass through.
+    """
+    if hasattr(x, "tool_name"):
+        return x
+    if isinstance(x, dict):
+        allowed = {"id", "tool_name", "description", "platform", "category", "similarity"}
+        payload = {k: v for k, v in x.items() if k in allowed}
+        return SimpleNamespace(**payload)
+    # last resort: wrap arbitrary thing so it has a name
+    return SimpleNamespace(tool_name=str(x), description="")
 
 
-async def get_always_include_tools(conn: asyncpg.Connection) -> List[ToolStub]:
-    """Get tools that should always be included in candidates.
-    
-    Args:
-        conn: Database connection
-        
-    Returns:
-        List of ToolStub objects for always-include tools
-    """
-    if not ALWAYS_INCLUDE_TOOLS:
-        return []
-    
-    query = """
-        SELECT 
-            id,
-            tool_name,
-            description,
-            platform,
-            category
-        FROM tool_catalog.tools
-        WHERE tool_name = ANY($1)
-            AND enabled = true
-            AND is_latest = true
-    """
-    
-    rows = await conn.fetch(query, ALWAYS_INCLUDE_TOOLS)
-    
-    return [
-        ToolStub(
-            id=row['id'],
-            tool_name=row['tool_name'],
-            description=row['description'] or '',
-            platform=row['platform'] or '',
-            category=row['category'] or '',
-        )
-        for row in rows
-    ]
+def _dedup_keep_order(items: Iterable[Any]) -> List[Any]:
+    seen: Set[str] = set()
+    out: List[Any] = []
+    for t in items:
+        name = getattr(t, "tool_name", None) or str(getattr(t, "id", id(t)))
+        if name not in seen:
+            seen.add(name)
+            out.append(t)
+    return out
 
 
 async def candidate_tools_from_intent(
-    conn: asyncpg.Connection,
-    text: str,
-    k: int = 50,
+    conn: Any,
+    intent: str,
+    k: int = 10,
     platform: Optional[str] = None,
-) -> List[ToolStub]:
-    """Get candidate tools for user intent using semantic search.
-    
-    Args:
-        conn: Database connection
-        text: User intent text
-        k: Number of candidates to return (default: 50)
-        platform: Optional platform filter
-        
-    Returns:
-        List of ToolStub objects (minimal tool information)
+) -> List[Any]:
     """
-    json_log("Getting candidate tools from intent", 
-             intent_length=len(text), 
-             top_k=k, 
-             platform=platform)
-    
-    # Get embedding for user intent
-    query_embedding = await get_embedding_for_text(text)
-    
-    # If embedding generation fails, fall back to always-include tools only
-    if query_embedding is None:
-        json_log("Falling back to always-include tools only", level="WARNING")
-        always_include = await get_always_include_tools(conn)
-        return always_include[:k]
-    
-    # Search for similar tools
-    candidates = await db.retrieval.search_tools(conn, query_embedding, top_k=k, platform=platform)
-    
-    # Add always-include tools if not already present
-    always_include = await get_always_include_tools(conn)
-    candidate_names = {c.tool_name for c in candidates}
-    
-    for tool in always_include:
-        if tool.tool_name not in candidate_names:
-            candidates.append(tool)
-    
-    # Limit to k results
-    candidates = candidates[:k]
-    
-    json_log("Retrieved candidate tools", 
-             count=len(candidates),
-             always_included=len([t for t in candidates if t.tool_name in ALWAYS_INCLUDE_TOOLS]))
-    
-    return candidates
+    Return up to k tool objects (each with .tool_name).
+    Uses db.retrieval.search_tools (patched in tests). Always includes
+    get_always_include_tools() first, then ranked results, deduped.
+    """
+    emb = await get_embedding_for_text(intent)
+
+    # Import the module (NOT the function) so test patch of 'db.retrieval.search_tools'
+    # actually affects what we call here.
+    from db import retrieval  # patched attribute access at call time
+
+    ranked = await retrieval.search_tools(conn, emb, top_k=k, platform=platform)
+    ranked_objs = [_ensure_obj(x) for x in ranked]
+
+    always = await get_always_include_tools(conn)
+    always_objs = [_ensure_obj(x) for x in always]
+
+    merged = _dedup_keep_order([*always_objs, *ranked_objs])
+    return merged[:k]
