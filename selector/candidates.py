@@ -1,7 +1,7 @@
 """Candidate tool generation from user intent (DB-backed or fallback)."""
 
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 def get_always_include_tools() -> List[str]:
@@ -11,13 +11,21 @@ def get_always_include_tools() -> List[str]:
     return [v for v in vals if v]
 
 
+def get_embedding_for_text(text: str) -> Optional[List[float]]:
+    """
+    Placeholder required by tests (they monkey-patch this).
+    Default returns None so no model calls happen in CI.
+    """
+    return None
+
+
 # Feature flag: only hit Postgres when explicitly enabled
 USE_SELECTOR_DB = os.environ.get("USE_SELECTOR_DB") == "1"
 
 
 def _conn():
     """
-    Lazy import psycopg2 so this module can be imported without the package.
+    Lazy import psycopg2 so the module imports fine without it.
     Only called if USE_SELECTOR_DB=1.
     """
     import psycopg2  # type: ignore
