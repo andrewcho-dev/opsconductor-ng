@@ -1,0 +1,22 @@
+name: PR lint: require issue closers
+on:
+  pull_request:
+    types: [opened, edited, synchronize, ready_for_review]
+
+jobs:
+  check:
+    # Don't block draft PRs
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure PR has issue closers
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body  = (context.payload.pull_request.body  || '');
+            const title = (context.payload.pull_request.title || '');
+            const text = `${title}\n\n${body}`.toLowerCase();
+            const ok = /(closes|fixes|resolves)\s+#\d+/.test(text);
+            if (!ok) {
+              core.setFailed('Please add `Closes #<issue-id>` (or Fixes/Resolves) to the PR title or description so issues auto-close on merge.');
+            }
