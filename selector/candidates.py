@@ -1,12 +1,12 @@
 import os
-from psycopg2.extras import RealDictCursor  # type: ignore
 
 def _conn():
-    import psycopg2  # defer import so merely importing this module doesn't require the wheel
+    import psycopg2  # deferred so merely importing this module won't crash
+    from psycopg2.extras import RealDictCursor
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         raise RuntimeError("DATABASE_URL not set")
-    return psycopg2.connect(dsn)
+    return psycopg2.connect(dsn), RealDictCursor
 
 def candidate_tools_from_intent(intent: str, k: int = 10):
     """
@@ -22,7 +22,11 @@ def candidate_tools_from_intent(intent: str, k: int = 10):
     ORDER BY te.embedding <=> public.hashed_embed(%s)
     LIMIT %s
     """
-    with _conn() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute(sql, (intent, k))
-        rows = cur.fetchall()
-    return [{"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]} for r in rows]
+    conn, RealDictCursor = _conn()
+    try:
+        with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, (intent, k))
+            rows = cur.fetchall()
+        return [{"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]} for r in rows]
+    finally:
+        conn.close()

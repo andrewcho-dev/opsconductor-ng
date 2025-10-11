@@ -36,6 +36,10 @@ jobs:
             tests/test_shared_logging.py \
             tests/test_shared_telemetry.py
       - name: Tests (Phase 2 - unit only, no DB required)
+        env:
+          # Force stub mode so tests don't require a database
+          USE_SELECTOR_DB: "0"
+          ALWAYS_INCLUDE_TOOLS: "asset-query,service-status,network-ping"
         run: |
           pytest -q \
             db/test_retrieval_order.py \
