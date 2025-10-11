@@ -27,7 +27,7 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         sql = """
         -- $1 = embedding (reserved), $2 = top_k, $3 = platform
         SELECT
-            COALESCE(name, key, tool_name) AS tool_name,
+            COALESCE(name, key) AS tool_name,
             description,
             platform,
             /* distance may be present in mocks; pass-through if so */
