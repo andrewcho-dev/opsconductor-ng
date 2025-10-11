@@ -1,28 +1,43 @@
-import os
-import logging
-from typing import List, Dict, Optional
-
+import os, time, json, logging
+from typing import List, Dict
 from stage_a.selector_bridge import select_candidates_for_prompt
 
-LOGGER = logging.getLogger("pipeline.selector_adapter")
+LOG = logging.getLogger("pipeline.selector_adapter")
+logging.basicConfig(level=logging.INFO)
 
-def _default_k(k: Optional[int]) -> int:
-    if k is None:
-        return int(os.getenv("SELECTOR_K_DEFAULT", "20"))
-    try:
-        return int(k)
-    except Exception:
-        return 20
+def _always_include(k: int) -> List[Dict[str, str]]:
+    names = [n.strip() for n in os.getenv("ALWAYS_INCLUDE_TOOLS", "").split(",") if n.strip()]
+    if not names:
+        names = ["asset-query", "service-status", "network-ping"]
+    return [{"key": n, "name": n, "short_desc": ""} for n in names[:k]]
 
-async def get_selector_candidates(intent: str, k: Optional[int] = None, trace_id: str = "") -> List[Dict[str, str]]:
-    """
-    Thin wrapper around Stage A bridge.
-    Returns a list of dicts: {key,name,short_desc}
-    Falls back to ALWAYS_INCLUDE_TOOLS if the bridge errors.
-    """
+async def get_selector_candidates(intent: str, k: int = 10, trace_id: str = "") -> List[Dict[str, str]]:
+    enabled = os.getenv("SELECTOR_BRIDGE_ENABLED", "1").lower() not in ("0", "false", "no")
+    t0 = time.perf_counter()
+    status = "ok"
+    res: List[Dict[str, str]] = []
     try:
-        return await select_candidates_for_prompt(intent, k=_default_k(k), trace_id=trace_id)
+        if enabled:
+            res = await select_candidates_for_prompt(intent, k=k, trace_id=trace_id or "ADAPTER")
+        else:
+            res = _always_include(k)
+        return res
     except Exception as e:
-        LOGGER.warning("selector bridge failed, using ALWAYS_INCLUDE_TOOLS fallback: %s", e)
-        names = [n.strip() for n in os.getenv("ALWAYS_INCLUDE_TOOLS", "").split(",") if n.strip()]
-        return [{"key": n, "name": n, "short_desc": ""} for n in names]
+        status = "error"
+        LOG.exception("selector bridge failed: %s", e)
+        res = _always_include(k)
+        return res
+    finally:
+        duration_ms = int((time.perf_counter() - t0) * 1000)
+        try:
+            LOG.info(json.dumps({
+                "event": "selector_bridge_call",
+                "trace_id": trace_id,
+                "enabled": enabled,
+                "status": status,
+                "k_requested": k,
+                "k_returned": len(res),
+                "duration_ms": duration_ms
+            }))
+        except Exception:
+            pass
