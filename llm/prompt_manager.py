@@ -34,6 +34,9 @@ Capabilities: api_query|asset_management|asset_query|credential_access|disk_mana
 Key distinctions:
 - monitoring: LIVE/REAL-TIME checks (is X up?, current CPU)
 - asset_management: INVENTORY queries (list servers, show IPs)
+- windows_automation: Windows-specific operations (list files, run PowerShell, manage services on Windows machines)
+- disk_management: File/directory operations (list files, create directories, check disk space)
+- asset_query: Query asset database for machine information (NOT for executing commands on machines)
 - GATED (credential_access, secret_retrieval): explicit credential requests only""",
                 
                 "user": "Classify: {user_request}"

@@ -169,6 +169,7 @@ class CapabilityMatcher:
             "configuration_set_permissions": ["permission_management", "security"],
             "configuration_configure_network": ["network_configuration", "system_config"],
             "configuration_manage_services": ["service_management", "system_config"],
+            "configuration_list_files_on_c_drive": ["windows_automation", "disk_management", "resource_listing"],
             
             "information_get_help": ["documentation", "help_system"],
             "information_show_status": ["status_display", "information", "service_status"],
