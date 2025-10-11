@@ -1,7 +1,7 @@
 import os
 
 def _conn():
-    import psycopg2  # deferred so merely importing this module won't crash
+    import psycopg2  # deferred import so importing this module doesn't fail in CI
     from psycopg2.extras import RealDictCursor
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:

@@ -8,7 +8,6 @@ import os
 
 def _fallback(intent: str, k: int = 10):
     always = [s.strip() for s in os.environ.get("ALWAYS_INCLUDE_TOOLS", "").split(",") if s.strip()]
-    # Provide a sensible default if env isn't set
     if not always:
         always = ["asset-query", "service-status", "network-ping"]
     return [{"key": key, "name": key, "short_desc": ""} for key in always][:k]
@@ -21,7 +20,6 @@ if USE_DB:
         def candidate_tools_from_intent(intent: str, k: int = 10):
             return _real(intent, k)
     except Exception:
-        # If import/connection fails, silently fall back in CI
         def candidate_tools_from_intent(intent: str, k: int = 10):
             return _fallback(intent, k)
 else:
