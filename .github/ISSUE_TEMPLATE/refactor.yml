@@ -1,0 +1,24 @@
+name: Refactor task
+description: Track a refactor task tied to the new A/B/C architecture
+labels: ["type:refactor"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this change matters
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Uses shared/contracts models
+        - label: No Stage A full-spec leakage
+        - label: Tests updated (contract/snapshot/unit)
+        - label: Token budget respected (A/B)
+        - label: Logs include trace_id
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: What proves this is complete?
