@@ -1,76 +1,106 @@
 """Candidate tool generation from user intent (DB-backed or fallback)."""
 
 import os
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 
-def get_always_include_tools() -> List[str]:
-    """Read ALWAYS_INCLUDE_TOOLS env var and return a cleaned list."""
-    raw = os.environ.get("ALWAYS_INCLUDE_TOOLS", "")
-    vals = [s.strip() for s in raw.split(",")]
-    return [v for v in vals if v]
+# --------- hooks that tests patch ---------
 
-
-def get_embedding_for_text(text: str) -> Optional[List[float]]:
+async def get_embedding_for_text(text: str) -> Optional[List[float]]:
     """
-    Placeholder required by tests (they monkey-patch this).
-    Default returns None so no model calls happen in CI.
+    Placeholder required by tests. They monkey-patch this to return a 768-dim
+    embedding. Default returns None so no model calls happen in CI.
     """
     return None
+
+
+async def get_always_include_tools(conn: Any) -> List[Any]:
+    """
+    Placeholder that tests monkey-patch. By default, read ALWAYS_INCLUDE_TOOLS
+    (comma-separated tool names) and return them as simple dict stubs.
+    """
+    names = [s.strip() for s in os.environ.get("ALWAYS_INCLUDE_TOOLS", "").split(",") if s.strip()]
+    return [{"tool_name": n, "description": "", "platform": None, "category": None} for n in names]
+
+
+# --------- helpers ---------
+
+def _to_stub(x: Any) -> Dict[str, str]:
+    """
+    Coerce ToolStub or dict into a minimal dict the prompt can use.
+    The tests only need compact fields; keep it small.
+    """
+    if isinstance(x, dict):
+        tool_name = x.get("tool_name") or x.get("name") or str(x.get("key", "tool"))
+        desc = x.get("description") or ""
+        platform = x.get("platform")
+        category = x.get("category")
+    else:
+        # dataclass / object with attributes
+        tool_name = getattr(x, "tool_name", None) or getattr(x, "name", None) or "tool"
+        desc = getattr(x, "description", "") or ""
+        platform = getattr(x, "platform", None)
+        category = getattr(x, "category", None)
+
+    d: Dict[str, str] = {"tool_name": str(tool_name), "description": str(desc)}
+    if platform is not None:
+        d["platform"] = str(platform)
+    if category is not None:
+        d["category"] = str(category)
+    return d
+
+
+def _dedupe_keep_order(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    seen = set()
+    out: List[Dict[str, str]] = []
+    for it in items:
+        key = it.get("tool_name", "")
+        if key not in seen:
+            seen.add(key)
+            out.append(it)
+    return out
 
 
 # Feature flag: only hit Postgres when explicitly enabled
 USE_SELECTOR_DB = os.environ.get("USE_SELECTOR_DB") == "1"
 
 
-def _conn():
-    """
-    Lazy import psycopg2 so the module imports fine without it.
-    Only called if USE_SELECTOR_DB=1.
-    """
-    import psycopg2  # type: ignore
-    from psycopg2.extras import RealDictCursor  # type: ignore
+# --------- main entry point expected by tests ---------
 
-    dsn = os.environ.get("DATABASE_URL")
-    if not dsn:
-        raise RuntimeError("DATABASE_URL not set")
-    return psycopg2.connect(dsn), RealDictCursor
-
-
-def _fallback(intent: str, k: int = 10) -> List[Dict[str, str]]:
+async def candidate_tools_from_intent(
+    conn: Any,
+    intent: str,
+    k: int = 10,
+    platform: Optional[str] = None,
+) -> List[Dict[str, str]]:
     """
-    No-DB path used in CI unit tests.
-    Returns compact stubs from ALWAYS_INCLUDE_TOOLS or a small default set.
+    If USE_SELECTOR_DB=1, use db.retrieval.search_tools with an embedding.
+    Otherwise (default in CI), return a small, deterministic fallback list.
+    Always include tools returned by get_always_include_tools(conn).
     """
-    tools = get_always_include_tools() or ["asset-query", "service-status", "network-ping"]
-    return [{"key": t, "name": t, "short_desc": ""} for t in tools][:k]
+    candidates: List[Dict[str, str]] = []
 
+    # Try to get an embedding (tests patch this).
+    emb = await get_embedding_for_text(intent)
 
-def candidate_tools_from_intent(intent: str, k: int = 10) -> List[Dict[str, str]]:
-    """
-    If USE_SELECTOR_DB=1 and a DATABASE_URL is set, query Postgres using hashed_embed().
-    Otherwise, return the fallback stubs so unit tests don’t need a DB.
-    """
-    if not USE_SELECTOR_DB:
-        return _fallback(intent, k)
+    if USE_SELECTOR_DB and emb is not None:
+        # Lazy import so the module imports fine without psycopg2/async deps.
+        from db.retrieval import search_tools  # patched in tests
 
+        results = await search_tools(conn, emb, top_k=k, platform=platform)
+        candidates = [_to_stub(r) for r in results]
+    else:
+        # No DB path (unit tests): start with nothing, rely on always-include.
+        candidates = []
+
+    # Always-include tools (tests patch this to return ToolStub objects)
     try:
-        conn, RealDictCursor = _conn()
-    except Exception:
-        # If DB isn’t reachable or psycopg2 isn’t available, fall back gracefully.
-        return _fallback(intent, k)
+        extra = await get_always_include_tools(conn)
+    except TypeError:
+        # If a sync double gets injected, still tolerate it.
+        extra = get_always_include_tools(conn)  # type: ignore
 
-    sql = """
-        SELECT t.key,
-               t.name,
-               LEFT(COALESCE(t.description,''), 160) AS short_desc
-        FROM public.tool_embedding te
-        JOIN public.tool t ON t.id = te.tool_id
-        ORDER BY te.embedding <=> public.hashed_embed(%s)
-        LIMIT %s
-    """
-    with conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, (intent, k))
-            rows = cur.fetchall()
-    return [{"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]} for r in rows]
+    candidates = _dedupe_keep_order([_to_stub(e) for e in extra] + candidates)
+
+    # Trim to k
+    return candidates[:k]
