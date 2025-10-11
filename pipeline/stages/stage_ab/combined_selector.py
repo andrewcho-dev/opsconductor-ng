@@ -716,6 +716,9 @@ Return JSON only."""
                 return None, None, False
         
         # Query asset-service for each identifier
+        found_assets = []
+        platforms = set()
+        
         for identifier in asset_identifiers:
             try:
                 # Search for asset by hostname or IP
@@ -729,11 +732,13 @@ Return JSON only."""
                         # Exact match found
                         asset = assets[0]
                         platform = self._normalize_platform(asset.get("os_type"))
+                        found_assets.append(asset)
+                        if platform:
+                            platforms.add(platform)
                         logger.info(f"✅ Found asset: {asset.get('name')} (os={asset.get('os_type')})")
-                        return asset, platform, False
                     
                     elif len(assets) > 1:
-                        # Multiple matches - ambiguous
+                        # Multiple matches for this specific identifier - ambiguous
                         logger.warning(f"⚠️  Multiple assets match '{search_query}': {[a.get('name') for a in assets]}")
                         return None, None, True  # Ambiguous target
                     
@@ -743,9 +748,41 @@ Return JSON only."""
             except Exception as e:
                 logger.error(f"❌ Asset lookup failed for '{identifier['value']}': {str(e)}")
         
-        # No assets found for any identifier
-        logger.info("ℹ️  No matching assets found in asset-service")
-        return None, None, False
+        # Process results
+        if not found_assets:
+            # No assets found for any identifier
+            logger.info("ℹ️  No matching assets found in asset-service")
+            return None, None, False
+        
+        elif len(found_assets) == 1:
+            # Single asset found
+            asset = found_assets[0]
+            platform = self._normalize_platform(asset.get("os_type"))
+            return asset, platform, False
+        
+        else:
+            # Multiple assets found - multi-asset query
+            logger.info(f"✅ Found {len(found_assets)} assets for multi-asset query")
+            
+            # Determine platform filter strategy
+            if len(platforms) == 1:
+                # All assets are same platform
+                platform = list(platforms)[0]
+                logger.info(f"   All assets are {platform} - using platform filter")
+            else:
+                # Mixed platforms or unknown
+                platform = None
+                logger.info(f"   Mixed platforms detected: {platforms} - no platform filter")
+            
+            # Store all assets in a multi-asset structure
+            multi_asset_metadata = {
+                "type": "multi_asset",
+                "assets": found_assets,
+                "count": len(found_assets),
+                "platforms": list(platforms)
+            }
+            
+            return multi_asset_metadata, platform, False
     
     def _normalize_platform(self, os_type: Optional[str]) -> Optional[str]:
         """
