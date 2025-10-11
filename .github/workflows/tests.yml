@@ -21,6 +21,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-asyncio asyncpg
 
+      # Force both repo root and automation-service into sys.path for *every* Python proc
+      - name: Ensure import path (sitecustomize)
+        run: |
+          cat > sitecustomize.py <<'PY'
+          import sys, os
+          root = os.getcwd()
+          extras = [root, os.path.join(root, 'automation-service')]
+          for p in reversed(extras):
+              if p not in sys.path:
+                  sys.path.insert(0, p)
+          PY
+          python - <<'PY'
+          import sys, importlib.util as u
+          print('sys.path head:', sys.path[:5])
+          print('stage_a found:', bool(u.find_spec('stage_a')))
+          PY
+
       - name: Run pytest
         env:
           PYTHONPATH: ${{ github.workspace }}
