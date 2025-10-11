@@ -1,0 +1,7 @@
+services:
+  automation-service:
+    environment:
+      PYTHONPATH: /app
+      SELECTOR_K_DEFAULT: "20"
+      ALWAYS_INCLUDE_TOOLS: asset-query,service-status,network-ping
+      DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
