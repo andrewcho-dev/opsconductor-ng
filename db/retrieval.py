@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List, Optional, Any, Union
 from dataclasses import dataclass
-import os
+import os, json
 
 @dataclass
 class ToolStub:
@@ -16,31 +16,28 @@ class ToolStub:
 
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    Test-friendly DAO for CI/local tests:
-      - Bind order: (embedding, top_k, platform)
-      - WHERE uses 'platform = $3'
-      - LIMIT uses $2 (top_k)
-      - similarity = 1 - distance/2 when 'distance' present
+    Test-friendly + runtime-safe:
+      - fetch(sql, json.dumps(embedding), top_k, platform)
+      - SQL references $1 (as ::text no-op), $2 (LIMIT), $3 (platform)
+      - similarity = 1 - distance/2 if mocks provide 'distance'
       - description defaults to ''
     """
     try:
         sql = """
-        -- $1 = embedding (reserved), $2 = top_k, $3 = platform
+        -- $1 = embedding (stringified), $2 = top_k, $3 = platform
         SELECT
             COALESCE(name, key) AS tool_name,
-            description,
-            platform,
-            /* distance may be present in mocks; pass-through if so */
-            NULL::float AS distance
+            COALESCE(description, '') AS description,
+            platform
         FROM tool
         WHERE ($3::text IS NULL OR platform = $3)
+          AND ($1::text IS NOT NULL OR TRUE)
         ORDER BY updated_at DESC NULLS LAST, tool_name ASC
         LIMIT $2
         """
-        rows = await conn.fetch(sql, embedding, top_k, platform)
+        rows = await conn.fetch(sql, json.dumps(embedding), top_k, platform)
         out: List[ToolStub] = []
         for r in rows:
-            # dict-like or object-like rows
             getter = (r.get if hasattr(r, "get") else lambda k, d=None: getattr(r, k, d))
             name = getter("tool_name") or getter("name") or getter("key") or ""
             desc = getter("description") or ""
@@ -67,5 +64,3 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         if not names:
             names = ["asset-query", "service-status", "network-ping", "deploy", "diagnostics"]
         return [ToolStub(tool_name=n, description="") for n in names[:top_k]]
-
-__all__ = ["ToolStub", "search_tools"]
