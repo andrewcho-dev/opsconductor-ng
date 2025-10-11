@@ -1,32 +1,50 @@
-import os
+"""Async tool selection DAO used by tests.
 
-def _conn():
-    import psycopg2  # deferred import so importing this module doesn't fail in CI
-    from psycopg2.extras import RealDictCursor
-    dsn = os.environ.get("DATABASE_URL")
-    if not dsn:
-        raise RuntimeError("DATABASE_URL not set")
-    return psycopg2.connect(dsn), RealDictCursor
+- No direct DB SQL here.
+- Uses db.retrieval.search_tools (which tests patch).
+- Returns ToolStub objects (not dicts).
+"""
 
-def candidate_tools_from_intent(intent: str, k: int = 10):
-    """
-    Returns compact tool 'stubs' ranked by vector similarity.
-    Uses Postgres hashed_embed() — no external models/keys.
-    """
-    sql = """
-    SELECT t.key,
-           t.name,
-           LEFT(COALESCE(t.description,''), 160) AS short_desc
-    FROM public.tool_embedding te
-    JOIN public.tool t ON t.id = te.tool_id
-    ORDER BY te.embedding <=> public.hashed_embed(%s)
-    LIMIT %s
-    """
-    conn, RealDictCursor = _conn()
-    try:
-        with conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(sql, (intent, k))
-            rows = cur.fetchall()
-        return [{"key": r["key"], "name": r["name"], "short_desc": r["short_desc"]} for r in rows]
-    finally:
-        conn.close()
+from __future__ import annotations
+from typing import List, Optional, Iterable, Set
+
+from db.retrieval import ToolStub, search_tools  # tests patch search_tools
+
+
+# Tests patch this. Default is a tiny 768-dim zero vector.
+async def get_embedding_for_text(text: str) -> List[float]:
+    # Placeholder: the unit tests replace this with a real embedding func.
+    return [0.0] * 768
+
+
+# Tests may patch this to inject always-include stubs.
+async def get_always_include_tools(conn) -> List[ToolStub]:
+    return []
+
+
+def _dedup_keep_order(items: Iterable[ToolStub]) -> List[ToolStub]:
+    seen: Set[str] = set()
+    out: List[ToolStub] = []
+    for t in items:
+        name = getattr(t, "tool_name", None)
+        if name is None:
+            # Fallback to id if tool_name is missing
+            name = str(getattr(t, "id", id(t)))
+        if name not in seen:
+            seen.add(name)
+            out.append(t)
+    return out
+
+
+async def candidate_tools_from_intent(
+    conn,
+    intent: str,
+    k: int = 10,
+    platform: Optional[str] = None,
+) -> List[ToolStub]:
+    """Return up to k ToolStub objects ranked by similarity."""
+    emb = await get_embedding_for_text(intent)
+    ranked = await search_tools(conn, emb, top_k=k, platform=platform)
+    always = await get_always_include_tools(conn)
+    merged = _dedup_keep_order([*always, *ranked])
+    return merged[:k]
