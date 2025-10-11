@@ -14,8 +14,8 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pydantic pytest mypy
-      - name: Type check (Phase 0 only)
+          pip install pydantic pytest mypy pytest-asyncio asyncpg
+      - name: Type check (Phase 0)
         run: |
           mypy --ignore-missing-imports \
             shared/ids.py \
@@ -24,9 +24,19 @@ jobs:
             shared/contracts/models.py \
             shared/contracts/schema_gen.py \
             shared/telemetry.py
-      - name: Tests (Phase 0 only)
+      - name: Type check (Phase 2)
+        run: |
+          mypy --ignore-missing-imports \
+            db/retrieval.py \
+            selector/candidates.py
+      - name: Tests (Phase 0)
         run: |
           pytest -q \
             tests/test_shared_ids.py \
             tests/test_shared_logging.py \
             tests/test_shared_telemetry.py
+      - name: Tests (Phase 2 - unit only, no DB required)
+        run: |
+          pytest -q \
+            db/test_retrieval_order.py \
+            selector/test_candidates_snapshot.py
