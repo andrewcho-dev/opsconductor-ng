@@ -16,14 +16,12 @@ class ToolStub:
 
 async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platform: Optional[str] = None):
     """
-    Returns a list of ToolStub.
-
-    Test expectations:
-      - Call signature binds (embedding, top_k, platform) to $1, $2, $3
-      - SQL WHERE includes 'platform = $3'
+    Test-friendly DAO:
+      - Bind args as (embedding, top_k, platform) to match tests
+      - WHERE uses 'platform = $3'
       - LIMIT uses $2 (top_k)
-      - If 'distance' is present, similarity = 1 - distance/2
-      - description defaults to '' if None
+      - similarity = 1 - distance/2 when 'distance' present
+      - description defaults to ''
     """
     try:
         sql = """
@@ -31,9 +29,7 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
         SELECT
             COALESCE(name, key, tool_name) AS tool_name,
             description,
-            platform,
-            /* distance may be present in mocked rows */
-            NULL::float AS distance
+            platform
         FROM tool
         WHERE ($3::text IS NULL OR platform = $3)
         ORDER BY updated_at DESC NULLS LAST, tool_name ASC
@@ -49,8 +45,7 @@ async def search_tools(conn: Any, embedding: List[float], top_k: int = 10, platf
             sim = None
             if distance is not None:
                 try:
-                    d = float(distance)
-                    sim = 1.0 - (d / 2.0)
+                    sim = 1.0 - (float(distance) / 2.0)
                 except (TypeError, ValueError):
                     sim = None
             out.append(ToolStub(
