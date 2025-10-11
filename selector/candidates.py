@@ -1,71 +1,85 @@
-"""Async tool selection DAO used by tests (Phase 2).
-
-- No direct DB access here.
-- Tests patch:
-    * selector.candidates.get_embedding_for_text
-    * db.retrieval.search_tools
-    * selector.candidates.get_always_include_tools
-- Always returns a list of ToolStub objects.
-"""
-
 from __future__ import annotations
-from typing import Iterable, List, Optional, Set
+import os
+from typing import Iterable, List, Optional, Set, Any
+from types import SimpleNamespace
 
-from db.retrieval import ToolStub, search_tools  # search_tools is patched in tests
-
-
-# --- These two are patched by the tests --------------------------------------
-
+# --- hooks that tests (or runtime) may patch ---------------------------------
 async def get_embedding_for_text(text: str) -> List[float]:
-    """Placeholder embedding; tests patch this with a real function."""
+    # default: trivial embedding; replace/patch in tests if needed
     return [0.0] * 768
 
-
-async def get_always_include_tools(conn) -> List[ToolStub]:
-    """Tests patch this to add must-include tools; default empty."""
-    return []
-
+async def get_always_include_tools(conn: Any) -> List[Any]:
+    # Env-driven always-include; becomes first in the merged list
+    names = [s.strip() for s in os.environ.get("ALWAYS_INCLUDE_TOOLS", "").split(",") if s.strip()]
+    return [SimpleNamespace(tool_name=n, description="", platform=None, category=None) for n in names]
 # -----------------------------------------------------------------------------
 
-
-def _ensure_stub(x) -> ToolStub:
-    """Coerce a possibly-dict item to ToolStub so tests always get objects."""
-    if isinstance(x, ToolStub):
+def _ensure_obj(x: Any) -> Any:
+    if hasattr(x, "tool_name"):
         return x
     if isinstance(x, dict):
-        # Only take fields ToolStub accepts; ignore extras.
-        allowed = {
-            "id", "tool_name", "description", "platform", "category", "similarity"
-        }
-        payload = {k: v for k, v in x.items() if k in allowed}
-        return ToolStub(**payload)  # type: ignore[arg-type]
-    raise TypeError(f"Cannot coerce {type(x)!r} to ToolStub")
+        return SimpleNamespace(**x)
+    return SimpleNamespace(tool_name=str(x), description="")
 
-
-def _dedup_keep_order(items: Iterable[ToolStub]) -> List[ToolStub]:
+def _dedup_keep_order(items: Iterable[Any]) -> List[Any]:
     seen: Set[str] = set()
-    out: List[ToolStub] = []
+    out: List[Any] = []
     for t in items:
-        name = getattr(t, "tool_name", None)
-        if name is None:
-            name = str(getattr(t, "id", id(t)))
+        name = getattr(t, "tool_name", None) or str(getattr(t, "id", id(t)))
         if name not in seen:
             seen.add(name)
             out.append(t)
     return out
 
+async def _db_ranked(conn, intent: str, k: int, platform: Optional[str]):
+    """
+    Try db.retrieval.search_tools first (if your runtime provides it),
+    otherwise fall back to a direct SQL query using asyncpg connection.
+    Returns a list of objects with .tool_name, .description, .platform, .similarity.
+    """
+    try:
+        from db import retrieval
+        emb = await get_embedding_for_text(intent)
+        rows = await retrieval.search_tools(conn, emb, top_k=k, platform=platform)
+        return [_ensure_obj(r) for r in rows]
+    except Exception:
+        # direct SQL fallback using hashed_embed()
+        rows = await conn.fetch(
+            """
+            SELECT
+              t.key AS tool_name,
+              COALESCE(t.description,'') AS description,
+              t.platform AS platform,
+              (1 - (te.embedding <=> public.hashed_embed($1)))::float AS similarity
+            FROM public.tool_embedding te
+            JOIN public.tool t ON t.id = te.tool_id
+            ORDER BY te.embedding <=> public.hashed_embed($1)
+            LIMIT $2
+            """,
+            intent, k
+        )
+        return [
+            SimpleNamespace(
+                tool_name=r["tool_name"],
+                description=r["description"],
+                platform=r.get("platform", None),
+                category=None,
+                similarity=r.get("similarity", None),
+            )
+            for r in rows
+        ]
 
 async def candidate_tools_from_intent(
-    conn,
+    conn: Any,
     intent: str,
     k: int = 10,
     platform: Optional[str] = None,
-) -> List[ToolStub]:
-    """Return up to k ToolStub objects ranked by vector similarity."""
-    emb = await get_embedding_for_text(intent)
-    ranked = await search_tools(conn, emb, top_k=k, platform=platform)
-    # Normalize to ToolStub objects in case a patch returns dicts
-    ranked_objs = [_ensure_stub(x) for x in ranked]
-    always = [_ensure_stub(x) for x in (await get_always_include_tools(conn))]
-    merged = _dedup_keep_order([*always, *ranked_objs])
+) -> List[Any]:
+    """
+    Async selector. Returns up to k tool objects (each has .tool_name).
+    Always includes get_always_include_tools() first, then ranked DB results, de-duped.
+    """
+    always = [_ensure_obj(x) for x in (await get_always_include_tools(conn))]
+    ranked = await _db_ranked(conn, intent, k, platform)
+    merged = _dedup_keep_order([*always, *ranked])
     return merged[:k]

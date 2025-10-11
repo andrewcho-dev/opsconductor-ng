@@ -1,0 +1,12 @@
+services:
+  automation-service:
+    environment:
+      USE_SELECTOR_DB: "1"
+      DATABASE_URL: "postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor"
+      ALWAYS_INCLUDE_TOOLS: "asset-query,service-status,network-ping"
+      PYTHONPATH: "/app"
+    volumes:
+      - ./selector:/app/selector:ro
+      - ./stage_a:/app/stage_a:ro
+    depends_on:
+      - postgres
