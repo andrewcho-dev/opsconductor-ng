@@ -1,14 +1,21 @@
 """
-Stage AB - Combined Understanding & Selection (Semantic Retrieval)
+Stage AB - Combined Understanding & Selection (Asset-Enriched Semantic Retrieval)
 Merges Stage A (intent classification) and Stage B (tool selection) into a single, more reliable stage.
 
-NEW ARCHITECTURE (pgvector + minimal index):
-1. Use semantic retrieval (pgvector) to build candidate shortlist
-2. Send MINIMAL index (id, name, desc, tags, platform, cost) to LLM
-3. LLM selects tool IDs only
-4. Stage AC loads full specs for selected IDs
+NEW ARCHITECTURE v3.1 (Asset Enrichment + pgvector + minimal index):
+1. Extract entities early (hostnames, IPs, services)
+2. Query asset-service for metadata (OS, credentials, tags)
+3. Determine platform filter from asset OS type
+4. Use semantic retrieval (pgvector) to build candidate shortlist with platform filter
+5. Send MINIMAL index (id, name, desc, tags, platform, cost) to LLM
+6. LLM selects tool IDs only
+7. Stage AC loads full specs for selected IDs
 
-This eliminates token limit issues and scales to 500+ tools.
+This architecture:
+- Eliminates token limit issues (scales to 500+ tools)
+- Intelligently filters tools by platform (Windows vs Linux)
+- Detects missing target information and prompts for clarification
+- Enriches context with asset metadata for downstream stages
 
 Confidence: 0.93 | Doubt: Token estimates ±10-15%; keep 10% safety margin
 """
@@ -27,6 +34,7 @@ from llm.response_parser import ResponseParser
 from pipeline.services.tool_catalog_service import ToolCatalogService
 from pipeline.services.tool_index_service import ToolIndexService
 from pipeline.services.embedding_service import get_embedding_service
+from pipeline.integration.asset_service_integration import AssetServiceClient
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +57,13 @@ class CombinedSelector:
     def __init__(self, llm_client: LLMClient, tool_catalog: Optional[ToolCatalogService] = None):
         self.llm_client = llm_client
         self.response_parser = ResponseParser()
-        self.version = "3.0.0"  # Semantic retrieval version
+        self.version = "3.1.0"  # Asset enrichment + semantic retrieval version
         
         # Initialize services
         self.tool_catalog = tool_catalog or ToolCatalogService()
         self.tool_index = ToolIndexService()
         self.embedding_service = get_embedding_service()
+        self.asset_client = AssetServiceClient()
         
         # Configuration
         self.config = {
@@ -63,24 +72,29 @@ class CombinedSelector:
             "temperature": 0.1,  # Low temperature for consistent decisions
             "max_tokens": 1000,
             "use_semantic_retrieval": True,  # Enable semantic retrieval
-            "fallback_to_keyword": True  # Fallback if embeddings fail
+            "fallback_to_keyword": True,  # Fallback if embeddings fail
+            "enable_asset_enrichment": True  # Enable asset metadata enrichment
         }
     
     async def process(self, user_request: str, context: Optional[Dict[str, Any]] = None) -> SelectionV1:
         """
-        Main processing method - NEW SEMANTIC RETRIEVAL ARCHITECTURE
+        Main processing method - ASSET-ENRICHED SEMANTIC RETRIEVAL ARCHITECTURE
         
         Pipeline:
-        1. Generate query embedding
-        2. Retrieve candidates from tool_index (semantic + keyword)
-        3. Apply token budget
-        4. Send MINIMAL index to LLM (id, name, desc, tags, platform, cost)
-        5. LLM selects tool IDs only
-        6. Log telemetry
+        1. Early entity extraction (hostnames, IPs, services)
+        2. Asset enrichment (query asset-service for metadata)
+        3. Platform detection (from asset OS type)
+        4. Generate query embedding
+        5. Retrieve candidates from tool_index (semantic + platform filter)
+        6. Apply token budget
+        7. Send MINIMAL index to LLM (id, name, desc, tags, platform, cost)
+        8. LLM selects tool IDs only
+        9. Validate and build execution policy
+        10. Log telemetry
         
         Args:
             user_request: Original user request string
-            context: Optional context information
+            context: Optional context information (may contain current_asset, platform, entities)
             
         Returns:
             SelectionV1 with selected tools and execution policy
@@ -89,9 +103,45 @@ class CombinedSelector:
         request_id = self._generate_selection_id()
         
         try:
-            logger.info(f"🧠 Stage AB (v3.0): Processing request: {user_request[:100]}...")
+            logger.info(f"🧠 Stage AB (v3.1): Processing request: {user_request[:100]}...")
             
-            # Step 1: Generate query embedding (if semantic retrieval enabled)
+            # Initialize context if not provided
+            if context is None:
+                context = {}
+            
+            # Step 1: Early entity extraction for asset enrichment
+            enrichment_start = time.time()
+            asset_metadata = None
+            platform_filter = None
+            missing_target_info = False
+            
+            if self.config["enable_asset_enrichment"]:
+                # Extract entities early (quick LLM call for entity extraction only)
+                entities = await self._extract_entities_early(user_request, context)
+                
+                # Enrich with asset metadata
+                asset_metadata, platform_filter, missing_target_info = await self._enrich_with_asset_metadata(
+                    entities, context
+                )
+                
+                enrichment_time_ms = int((time.time() - enrichment_start) * 1000)
+                
+                if asset_metadata:
+                    logger.info(f"✅ Asset enrichment complete in {enrichment_time_ms}ms - platform={platform_filter}")
+                    # Store asset metadata in context for downstream stages
+                    context["asset_metadata"] = asset_metadata
+                elif missing_target_info:
+                    logger.warning(f"⚠️  Asset target ambiguous - may need clarification")
+                    context["missing_target_info"] = True
+                else:
+                    logger.info(f"ℹ️  No asset entities found - proceeding without platform filter")
+            
+            # Fallback: Use platform from context if not determined by asset enrichment
+            if platform_filter is None and context.get("platform"):
+                platform_filter = context.get("platform")
+                logger.info(f"ℹ️  Using platform from context: {platform_filter}")
+            
+            # Step 2: Generate query embedding (if semantic retrieval enabled)
             retrieval_start = time.time()
             query_embedding = None
             
@@ -104,14 +154,11 @@ class CombinedSelector:
                     if not self.config["fallback_to_keyword"]:
                         raise
             
-            # Step 2: Calculate token budget
+            # Step 3: Calculate token budget
             budget_tokens, max_rows = self.tool_index.calculate_token_budget()
             logger.info(f"📊 Token budget: {budget_tokens} tokens, max_rows={max_rows}")
             
-            # Step 3: Retrieve candidates from tool_index
-            # Extract platform filter from context if available
-            platform_filter = context.get("platform") if context else None
-            
+            # Step 4: Retrieve candidates from tool_index (with platform filter if available)
             candidates = self.tool_index.retrieve_candidates(
                 query_text=user_request,
                 query_embedding=query_embedding,
@@ -124,10 +171,10 @@ class CombinedSelector:
             
             logger.info(f"🔍 Retrieved {len(candidates)} candidates in {retrieval_time_ms}ms")
             
-            # Step 4: Create minimal index prompt
+            # Step 5: Create minimal index prompt
             prompt = self._create_minimal_index_prompt(user_request, candidates, context)
             
-            # Step 5: Single LLM call for tool selection (IDs only)
+            # Step 6: Single LLM call for tool selection (IDs only)
             llm_start = time.time()
             llm_request = LLMRequest(
                 prompt=prompt["user"],
@@ -140,7 +187,7 @@ class CombinedSelector:
             response = await self.llm_client.generate(llm_request)
             llm_time_ms = int((time.time() - llm_start) * 1000)
             
-            # Step 6: Parse the response (IDs + intent)
+            # Step 7: Parse the response (IDs + intent)
             parsed = self._parse_minimal_response(response.content)
             logger.info(f"✅ Stage AB: Parsed response - intent={parsed['intent']['category']}/{parsed['intent']['action']}, tools={len(parsed['selected_tools'])}")
             
@@ -154,7 +201,7 @@ class CombinedSelector:
             else:
                 logger.info("ℹ️  No tools selected - information-only request")
             
-            # Step 7: Validate selected tool IDs exist in tool_index
+            # Step 8: Validate selected tool IDs exist in tool_index
             validated_tools = await self._validate_tool_ids(parsed['selected_tools'])
             
             # Log validated tools
@@ -165,7 +212,7 @@ class CombinedSelector:
             else:
                 logger.info("⚠️  No tools validated")
             
-            # Step 8: Build execution policy
+            # Step 9: Build execution policy
             execution_policy = self._build_execution_policy(
                 parsed['risk_level'],
                 parsed['intent'],
@@ -173,25 +220,26 @@ class CombinedSelector:
                 context
             )
             
-            # Step 9: Determine additional inputs needed
+            # Step 10: Determine additional inputs needed (including missing target info)
             additional_inputs = self._calculate_additional_inputs(
                 parsed['entities'],
-                validated_tools
+                validated_tools,
+                missing_target_info
             )
             
-            # Step 10: Determine environment requirements
+            # Step 11: Determine environment requirements
             env_requirements = self._determine_environment_requirements(validated_tools)
             
-            # Step 11: Determine next stage
+            # Step 12: Determine next stage
             next_stage = self._determine_next_stage(validated_tools, execution_policy)
             
-            # Step 12: Calculate telemetry
+            # Step 13: Calculate telemetry
             total_time_ms = int((time.time() - start_time) * 1000)
             rows_sent = len(candidates)
             budget_used = rows_sent * self.tool_index.TOKENS_PER_ROW_EST
             headroom_left = int(((self.tool_index.CTX - budget_used - self.tool_index.BASE_TOKENS) / self.tool_index.CTX) * 100)
             
-            # Step 13: Log telemetry
+            # Step 14: Log telemetry
             selected_tool_ids = [t.tool_name for t in validated_tools]
             self.tool_index.log_telemetry(
                 request_id=request_id,
@@ -207,7 +255,7 @@ class CombinedSelector:
                 total_time_ms=total_time_ms
             )
             
-            # Step 14: Build SelectionV1 response
+            # Step 15: Build SelectionV1 response
             processing_time = total_time_ms
             
             selection = SelectionV1(
@@ -430,9 +478,18 @@ Analyze the request and select the appropriate tool IDs. Return JSON only."""
         )
     
     def _calculate_additional_inputs(self, entities: List[Dict[str, Any]], 
-                                    selected_tools: List[SelectedTool]) -> List[str]:
+                                    selected_tools: List[SelectedTool],
+                                    missing_target_info: bool = False) -> List[str]:
         """
         Calculate additional inputs needed beyond what's already extracted
+        
+        Args:
+            entities: Extracted entities from user request
+            selected_tools: Tools selected for execution
+            missing_target_info: Whether target asset information is ambiguous
+        
+        Returns:
+            List of missing input names
         """
         # Collect all inputs needed by tools
         needed_inputs = set()
@@ -458,6 +515,11 @@ Analyze the request and select the appropriate tool IDs. Return JSON only."""
         
         # Return missing inputs
         missing = list(needed_inputs - available_inputs)
+        
+        # Add target clarification if needed
+        if missing_target_info:
+            missing.append("target_asset")
+        
         return missing
     
     def _determine_environment_requirements(self, selected_tools: List[SelectedTool]) -> Dict[str, Any]:
@@ -521,6 +583,200 @@ Analyze the request and select the appropriate tool IDs. Return JSON only."""
                     return False
         
         return True
+    
+    async def _extract_entities_early(self, user_request: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Early entity extraction for asset enrichment (before tool selection).
+        
+        This is a lightweight LLM call focused ONLY on extracting entities
+        (hostnames, IPs, service names, etc.) from the user request.
+        
+        Args:
+            user_request: User's request
+            context: Current context (may contain previous entities)
+            
+        Returns:
+            List of extracted entities
+        """
+        # Check if context already has entities from previous conversation
+        if context.get("entities"):
+            logger.info(f"ℹ️  Using {len(context['entities'])} entities from context")
+            return context["entities"]
+        
+        # Quick entity extraction prompt
+        system_prompt = """You are an entity extractor. Extract ONLY the following entity types from the user request:
+- hostname (server names, hostnames)
+- ip_address (IP addresses)
+- service (service names like nginx, apache, mysql)
+- file_path (file or directory paths)
+- port (port numbers)
+
+Return JSON array of entities:
+[
+  {"type": "hostname", "value": "server-01"},
+  {"type": "ip_address", "value": "192.168.1.10"}
+]
+
+If no entities found, return empty array: []"""
+        
+        user_prompt = f"""Extract entities from this request:
+
+{user_request}
+
+Return JSON only."""
+        
+        try:
+            llm_request = LLMRequest(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.0,  # Deterministic extraction
+                max_tokens=300
+            )
+            
+            response = await self.llm_client.generate(llm_request)
+            
+            # Parse JSON response
+            import re
+            json_match = re.search(r'\[.*\]', response.content, re.DOTALL)
+            if json_match:
+                entities = json.loads(json_match.group(0))
+                logger.info(f"✅ Extracted {len(entities)} entities: {[e.get('type') for e in entities]}")
+                return entities
+            else:
+                logger.warning("⚠️  No entities found in response")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ Entity extraction failed: {str(e)}")
+            return []
+    
+    async def _enrich_with_asset_metadata(
+        self, 
+        entities: List[Dict[str, Any]], 
+        context: Dict[str, Any]
+    ) -> tuple[Optional[Dict[str, Any]], Optional[str], bool]:
+        """
+        Enrich entities with asset metadata from asset-service.
+        
+        This method:
+        1. Identifies asset entities (hostname, IP)
+        2. Queries asset-service for metadata
+        3. Extracts platform/OS information
+        4. Determines if target is ambiguous
+        
+        Args:
+            entities: Extracted entities
+            context: Current context (may have current_asset)
+            
+        Returns:
+            Tuple of (asset_metadata, platform_filter, missing_target_info)
+            - asset_metadata: Full asset metadata dict (or None)
+            - platform_filter: Platform string like "windows", "linux" (or None)
+            - missing_target_info: True if target is ambiguous and needs clarification
+        """
+        # Check if context already has current asset
+        if context.get("current_asset"):
+            asset_id = context["current_asset"].get("id")
+            if asset_id:
+                logger.info(f"ℹ️  Using current asset from context: {asset_id}")
+                try:
+                    result = await self.asset_client.get_asset_by_id(asset_id)
+                    if result.get("success"):
+                        asset = result.get("asset", {})
+                        platform = self._normalize_platform(asset.get("os_type"))
+                        return asset, platform, False
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to fetch current asset: {str(e)}")
+        
+        # Extract asset identifiers from entities
+        asset_identifiers = []
+        for entity in entities:
+            entity_type = entity.get("type", "")
+            entity_value = entity.get("value", "")
+            
+            if entity_type in ["hostname", "ip_address"] and entity_value:
+                asset_identifiers.append({
+                    "type": entity_type,
+                    "value": entity_value
+                })
+        
+        # No asset entities found
+        if not asset_identifiers:
+            # Check if the request implies a target but doesn't specify it
+            ambiguous_keywords = ["current", "this", "the server", "the machine", "here"]
+            request_lower = context.get("original_request", "").lower()
+            
+            is_ambiguous = any(keyword in request_lower for keyword in ambiguous_keywords)
+            
+            if is_ambiguous:
+                logger.warning("⚠️  Request implies a target but doesn't specify it")
+                return None, None, True  # Missing target info
+            else:
+                logger.info("ℹ️  No asset entities found - request may not target specific asset")
+                return None, None, False
+        
+        # Query asset-service for each identifier
+        for identifier in asset_identifiers:
+            try:
+                # Search for asset by hostname or IP
+                search_query = identifier["value"]
+                result = await self.asset_client.search_assets(search_query, limit=5)
+                
+                if result.get("success") and result.get("assets"):
+                    assets = result["assets"]
+                    
+                    if len(assets) == 1:
+                        # Exact match found
+                        asset = assets[0]
+                        platform = self._normalize_platform(asset.get("os_type"))
+                        logger.info(f"✅ Found asset: {asset.get('name')} (os={asset.get('os_type')})")
+                        return asset, platform, False
+                    
+                    elif len(assets) > 1:
+                        # Multiple matches - ambiguous
+                        logger.warning(f"⚠️  Multiple assets match '{search_query}': {[a.get('name') for a in assets]}")
+                        return None, None, True  # Ambiguous target
+                    
+                else:
+                    logger.info(f"ℹ️  No asset found for '{search_query}'")
+                    
+            except Exception as e:
+                logger.error(f"❌ Asset lookup failed for '{identifier['value']}': {str(e)}")
+        
+        # No assets found for any identifier
+        logger.info("ℹ️  No matching assets found in asset-service")
+        return None, None, False
+    
+    def _normalize_platform(self, os_type: Optional[str]) -> Optional[str]:
+        """
+        Normalize OS type to platform filter value.
+        
+        Args:
+            os_type: OS type from asset metadata (e.g., "windows", "linux", "ubuntu", "centos")
+            
+        Returns:
+            Normalized platform string ("windows", "linux", "macos") or None
+        """
+        if not os_type:
+            return None
+        
+        os_lower = os_type.lower()
+        
+        # Windows variants
+        if any(w in os_lower for w in ["windows", "win"]):
+            return "windows"
+        
+        # Linux variants
+        if any(l in os_lower for l in ["linux", "ubuntu", "debian", "centos", "rhel", "fedora", "alpine", "arch"]):
+            return "linux"
+        
+        # macOS variants
+        if any(m in os_lower for m in ["macos", "darwin", "osx"]):
+            return "macos"
+        
+        # Default to the original value if no match
+        logger.warning(f"⚠️  Unknown OS type '{os_type}', using as-is")
+        return os_lower
     
     def _generate_selection_id(self) -> str:
         """Generate unique selection ID"""
