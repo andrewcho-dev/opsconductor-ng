@@ -22,7 +22,11 @@ jobs:
             shared/logging.py \
             shared/errors.py \
             shared/contracts/models.py \
-            shared/contracts/schema_gen.py
+            shared/contracts/schema_gen.py \
+            shared/telemetry.py
       - name: Tests (Phase 0 only)
         run: |
-          pytest -q tests/test_shared_ids.py tests/test_shared_logging.py
+          pytest -q \
+            tests/test_shared_ids.py \
+            tests/test_shared_logging.py \
+            tests/test_shared_telemetry.py
