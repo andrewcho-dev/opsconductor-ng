@@ -16,6 +16,7 @@ Environment:
 import argparse
 import asyncio
 import glob
+import json
 import os
 import sys
 from pathlib import Path
@@ -52,17 +53,36 @@ async def load_yaml_tool(filepath: str) -> Optional[dict[str, Any]]:
         required = ['key', 'name', 'short_desc']
         missing = [field for field in required if field not in data]
         if missing:
-            print(f"⚠️  Missing required fields {missing} in {filepath}")
+            print(f"❌ Validation error in {filepath}: Missing required fields {missing}")
             return None
         
-        # Ensure optional fields have defaults
+        # Validate field types and values
+        if not isinstance(data['key'], str) or not data['key'].strip():
+            print(f"❌ Validation error in {filepath}: 'key' must be a non-empty string")
+            return None
+        if not isinstance(data['name'], str) or not data['name'].strip():
+            print(f"❌ Validation error in {filepath}: 'name' must be a non-empty string")
+            return None
+        if not isinstance(data['short_desc'], str) or not data['short_desc'].strip():
+            print(f"❌ Validation error in {filepath}: 'short_desc' must be a non-empty string")
+            return None
+        
+        # Ensure proper types and defaults
+        short_desc = data['short_desc'][:160]  # Truncate to 160 chars
+        platform = data.get('platform', [])
+        platform = platform if isinstance(platform, list) else []
+        tags = data.get('tags', [])
+        tags = tags if isinstance(tags, list) else []
+        meta = data.get('meta', {})
+        meta = meta if isinstance(meta, dict) else {}
+        
         tool = {
             'key': data['key'],
             'name': data['name'],
-            'short_desc': data['short_desc'][:160],  # Truncate to 160 chars
-            'platform': data.get('platform', []),
-            'tags': data.get('tags', []),
-            'meta': data.get('meta', {}),
+            'short_desc': short_desc,
+            'platform': platform,
+            'tags': tags,
+            'meta': meta,
         }
         
         return tool
@@ -73,6 +93,11 @@ async def load_yaml_tool(filepath: str) -> Optional[dict[str, Any]]:
     except Exception as e:
         print(f"⚠️  Error loading {filepath}: {e}")
         return None
+
+
+def to_vec_literal(vec: list[float]) -> str:
+    """Convert a vector to PostgreSQL vector literal format with 6 decimal places."""
+    return "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
 
 
 async def upsert_tool(
@@ -94,54 +119,61 @@ async def upsert_tool(
         True if successful, False otherwise
     """
     try:
+        # Extract and validate fields
+        key = tool['key']
+        name = tool['name']
+        short_desc = tool['short_desc'][:160]
+        platform = tool['platform'] if isinstance(tool['platform'], list) else []
+        tags = tool['tags'] if isinstance(tool['tags'], list) else []
+        meta = tool['meta'] if isinstance(tool['meta'], dict) else {}
+        
+        # Serialize meta to JSON string
+        meta_json = json.dumps(meta, separators=(",", ":"))
+        
         # Generate embedding from key + " :: " + short_desc
-        embed_text = f"{tool['key']} :: {tool['short_desc']}"
+        embed_text = f"{key} :: {short_desc}"
         embedding = await provider.embed(embed_text)
         
+        # Ensure embedding is 128-dimensional
+        if len(embedding) != 128:
+            print(f"  ❌ Error: Expected 128-dimensional embedding, got {len(embedding)} for {key}")
+            return False
+        
         # Convert embedding to PostgreSQL vector literal
-        vec_literal = '[' + ','.join(str(x) for x in embedding) + ']'
+        vec_lit = to_vec_literal(embedding)
         
         if dry_run:
-            print(f"  📝 Would upsert: {tool['key']}")
-            print(f"     name: {tool['name']}")
-            print(f"     short_desc: {tool['short_desc']}")
-            print(f"     platform: {tool['platform']}")
-            print(f"     tags: {tool['tags']}")
-            print(f"     meta: {tool['meta']}")
+            print(f"  📝 Would upsert: {key}")
+            print(f"     name: {name}")
+            print(f"     short_desc: {short_desc}")
+            print(f"     platform: {platform}")
+            print(f"     tags: {tags}")
+            print(f"     meta: {meta}")
             print(f"     embedding: [{embedding[0]:.4f}, {embedding[1]:.4f}, ... {len(embedding)} dims]")
             return True
         
-        # Execute UPSERT
-        query = """
+        # Execute UPSERT with explicit casts
+        await conn.execute(
+            """
             INSERT INTO tool (key, name, short_desc, platform, tags, meta, embedding, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, CAST($7 AS vector(128)), now())
+            VALUES ($1, $2, $3, $4::text[], $5::text[], $6::jsonb, CAST($7 AS vector(128)), now())
             ON CONFLICT (key) DO UPDATE
-            SET 
-                name = EXCLUDED.name,
+            SET name = EXCLUDED.name,
                 short_desc = EXCLUDED.short_desc,
                 platform = EXCLUDED.platform,
                 tags = EXCLUDED.tags,
                 meta = EXCLUDED.meta,
                 embedding = EXCLUDED.embedding,
-                updated_at = now()
-        """
-        
-        await conn.execute(
-            query,
-            tool['key'],
-            tool['name'],
-            tool['short_desc'],
-            tool['platform'],
-            tool['tags'],
-            tool['meta'],
-            vec_literal
+                updated_at = now();
+            """,
+            key, name, short_desc, platform, tags, meta_json, vec_lit
         )
         
-        print(f"  ✅ Upserted: {tool['key']}")
+        print(f"  ✅ Upserted: {key}")
         return True
         
     except Exception as e:
-        print(f"  ❌ Error upserting {tool['key']}: {e}")
+        print(f"  ❌ Error upserting {tool.get('key', 'unknown')}: {e}")
         return False
 
 
