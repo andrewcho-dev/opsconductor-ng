@@ -512,31 +512,6 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     return {"executions": recent_history, "total": len(service.execution_history)}
 
 # ============================================================================
-# MOUNT ROUTERS
-# ============================================================================
-
-from shared.selector_router import router as selector_router
-
-def _include_selector_router(_obj):
-    if not _obj: 
-        return False
-    _app = getattr(_obj, "app", None) if hasattr(_obj, "app") else _obj
-    if hasattr(_app, "include_router"):
-        # Store service instance on app.state for router access to DB pool
-        if hasattr(_app, "state") and "service" in globals():
-            _app.state.service = globals()["service"]
-        _app.include_router(selector_router)
-        print("[selector] router mounted on", getattr(_app, "title", "app"))
-        return True
-    return False
-
-_mounted = False
-for _name in ("service", "app", "application", "api"):
-    _mounted |= _include_selector_router(globals().get(_name))
-if not _mounted:
-    print("[selector] WARNING: router not mounted; check app variable names")
-
-# ============================================================================
 # PLAN EXECUTION MODELS
 # ============================================================================
 
@@ -1129,6 +1104,108 @@ async def get_service_status():
         "active_executions": len(service.active_executions),
         "total_executions": len(service.execution_history)
     }
+
+# --- SELECTOR ENDPOINT HOTFIX ---
+from typing import Optional, List
+from fastapi import APIRouter, Request, Query
+from time import perf_counter
+
+# metrics (process-local)
+_METRICS = {
+    "selector_requests_total": 0,
+    "selector_failures_total": 0,
+    "selector_cache_hits": 0,
+}
+
+try:
+    from selector.dao import select_topk
+except Exception as e:
+    select_topk = None
+    print("[selector] import error:", e)
+
+_selector_router = APIRouter()
+
+@_selector_router.get("/api/selector/search")
+async def _selector_search(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    k: int = Query(5, ge=1, le=20),
+    platform: Optional[str] = None,
+):
+    start = perf_counter()
+    _METRICS["selector_requests_total"] += 1
+    try:
+        if select_topk is None:
+            return {"error": "selector.dao not available"}, 500
+
+        k = max(1, min(20, k))
+        plats: List[str] = [p.strip() for p in platform.split(",")] if platform else []
+
+        app = request.app
+        service = getattr(app.state, "service", None)
+        if service is None:
+            return {"error": "Service instance not found on app.state"}, 500
+        
+        # Get the pool from service.db.pool (DatabasePool wrapper)
+        pool = None
+        if hasattr(service, 'db') and hasattr(service.db, 'pool'):
+            pool = service.db.pool
+        
+        if pool is None:
+            return {"error": "Database pool not initialized"}, 500
+
+        async with pool.acquire() as conn:
+            rows = await select_topk(conn, query, plats, k)
+
+        payload = {
+            "query": query,
+            "k": k,
+            "platform": plats,
+            "results": rows,
+            "from_cache": False,
+        }
+        # if later you add LKG cache and set from_cache=True, this will count it:
+        if payload.get("from_cache"):
+            _METRICS["selector_cache_hits"] += 1
+
+        return payload
+    except Exception:
+        _METRICS["selector_failures_total"] += 1
+        raise
+    finally:
+        dur_ms = (perf_counter() - start) * 1000.0
+        try:
+            print(
+                f"event=selector.search query_len={len(query)} k={k} "
+                f"platform_count={len(plats) if platform else 0} duration_ms={dur_ms:.1f}"
+            )
+        except Exception:
+            pass
+
+@_selector_router.get("/metrics-lite")
+async def _metrics_lite():
+    # simple snapshot of counters (no locks needed for this use)
+    return dict(_METRICS)
+
+def _mount_selector(candidate):
+    if candidate is None:
+        return False
+    app_obj = getattr(candidate, "app", None) if hasattr(candidate, "app") else candidate
+    if hasattr(app_obj, "include_router"):
+        # Store service instance on app.state for DB pool access
+        if hasattr(app_obj, "state") and "service" in globals():
+            app_obj.state.service = globals()["service"]
+        app_obj.include_router(_selector_router)
+        print("[selector] route(s) mounted on", getattr(app_obj, "title", "app"))
+        return True
+    return False
+
+_mounted = False
+for _name in ("service", "app", "application", "api"):
+    _mounted |= _mount_selector(globals().get(_name))
+if not _mounted:
+    print("[selector] WARNING: failed to mount; ensure this block is at file end after app creation")
+# --- END SELECTOR ENDPOINT HOTFIX ---
 
 # ============================================================================
 # STARTUP
