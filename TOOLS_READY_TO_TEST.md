@@ -301,6 +301,57 @@ These tools have been verified to have all required metadata and should work wit
 
 ---
 
+## 🔍 TOOL SEARCH API
+
+The automation service now provides a vector similarity search endpoint for finding tools:
+
+### Endpoint
+```
+GET /api/selector/search
+```
+
+### Parameters
+- `query` (required): Search query text (e.g., "network scan", "list processes")
+- `k` (optional): Number of results to return (default: 5, range: 1-20)
+- `platform` (optional): Comma-separated platform filters (e.g., "linux", "windows", "linux,windows")
+
+### Examples
+
+**Search for network tools on Linux:**
+```bash
+curl "http://localhost:3003/api/selector/search?query=network&platform=linux&k=3"
+```
+
+**Search for process management tools:**
+```bash
+curl "http://localhost:3003/api/selector/search?query=list%20processes&k=5"
+```
+
+**Search for Windows service tools:**
+```bash
+curl "http://localhost:3003/api/selector/search?query=windows%20services&platform=windows&k=5"
+```
+
+### Response Format
+```json
+{
+  "query": "network",
+  "k": 3,
+  "platform": ["linux"],
+  "results": [
+    {
+      "key": "nmap",
+      "name": "Nmap Network Scanner",
+      "short_desc": "Scan network for open ports and services",
+      "platform": ["linux", "windows"],
+      "tags": ["network", "security", "scanning"]
+    }
+  ]
+}
+```
+
+---
+
 ## 🚨 IMPORTANT NOTES
 
 ### 1. Credential Resolution

@@ -511,6 +511,62 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     recent_history = service.execution_history[-limit:] if service.execution_history else []
     return {"executions": recent_history, "total": len(service.execution_history)}
 
+@service.app.get("/api/selector/search")
+async def selector_search(
+    query: str = Query(..., description="Search query text"),
+    k: int = Query(5, ge=1, le=20, description="Number of results to return"),
+    platform: Optional[str] = Query(None, description="Comma-separated platform filters (e.g., 'linux,windows')")
+):
+    """
+    Search for tools using vector similarity.
+    
+    Returns top-k tools most similar to the query text, optionally filtered by platform.
+    
+    Example:
+        GET /api/selector/search?query=network&platform=linux&k=3
+    """
+    from fastapi.responses import JSONResponse
+    import sys
+    sys.path.insert(0, '/app')
+    from selector import dao
+    
+    # Validate query
+    if not query or not query.strip():
+        return JSONResponse(
+            {"error": "query required"},
+            status_code=400
+        )
+    
+    # Clamp k to valid range
+    k = max(1, min(20, k))
+    
+    # Parse platform filter
+    plats = [p.strip() for p in platform.split(",")] if platform else []
+    
+    try:
+        # Get database connection from pool
+        if not service.db.pool:
+            return JSONResponse(
+                {"error": "Database not available"},
+                status_code=503
+            )
+        
+        async with service.db.pool.acquire() as conn:
+            results = await dao.select_topk(conn, query, plats, k)
+        
+        return {
+            "query": query,
+            "k": k,
+            "platform": plats,
+            "results": results
+        }
+    except Exception as e:
+        service.logger.error(f"Selector search failed: {e}")
+        return JSONResponse(
+            {"error": f"Search failed: {str(e)}"},
+            status_code=500
+        )
+
 class PlanExecutionRequest(BaseModel):
     """Plan execution request from AI pipeline"""
     execution_id: str

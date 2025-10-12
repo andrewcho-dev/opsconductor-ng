@@ -28,7 +28,7 @@ import yaml
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from selector.embeddings import EmbeddingProvider
+from shared.embeddings import embed_128, to_vec_literal
 
 
 async def load_yaml_tool(filepath: str) -> Optional[dict[str, Any]]:
@@ -95,15 +95,9 @@ async def load_yaml_tool(filepath: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def to_vec_literal(vec: list[float]) -> str:
-    """Convert a vector to PostgreSQL vector literal format with 6 decimal places."""
-    return "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
-
-
 async def upsert_tool(
     conn: asyncpg.Connection,
     tool: dict[str, Any],
-    provider: EmbeddingProvider,
     dry_run: bool = False
 ) -> bool:
     """
@@ -112,7 +106,6 @@ async def upsert_tool(
     Args:
         conn: Database connection
         tool: Tool dictionary with key, name, short_desc, platform, tags, meta
-        provider: Embedding provider for generating embeddings
         dry_run: If True, only print what would be done
         
     Returns:
@@ -130,9 +123,9 @@ async def upsert_tool(
         # Serialize meta to JSON string
         meta_json = json.dumps(meta, separators=(",", ":"))
         
-        # Generate embedding from key + " :: " + short_desc
+        # Generate embedding from key + " :: " + short_desc using shared function
         embed_text = f"{key} :: {short_desc}"
-        embedding = await provider.embed(embed_text)
+        embedding = embed_128(embed_text)
         
         # Ensure embedding is 128-dimensional
         if len(embedding) != 128:
@@ -226,9 +219,6 @@ async def main():
     
     print(f"✅ Loaded {len(tools)} valid tool definition(s)")
     
-    # Initialize embedding provider
-    provider = EmbeddingProvider()
-    
     # Connect to database (skip if dry-run)
     conn = None
     if not args.dry_run:
@@ -246,7 +236,7 @@ async def main():
     success_count = 0
     for filepath, tool in tools:
         print(f"\n📄 {filepath}")
-        if await upsert_tool(conn, tool, provider, dry_run=args.dry_run):
+        if await upsert_tool(conn, tool, dry_run=args.dry_run):
             success_count += 1
     
     # Cleanup

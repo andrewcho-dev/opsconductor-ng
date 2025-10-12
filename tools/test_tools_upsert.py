@@ -104,8 +104,6 @@ short_desc: Minimal tool definition.
 async def test_upsert_tool_dry_run():
     """Test upsert in dry-run mode."""
     mock_conn = MagicMock()
-    mock_provider = MagicMock()
-    mock_provider.embed = AsyncMock(return_value=[0.1] * 128)
     
     tool = {
         'key': 'test.tool',
@@ -116,12 +114,10 @@ async def test_upsert_tool_dry_run():
         'meta': {'cmd': 'echo test'}
     }
     
-    result = await upsert_tool(mock_conn, tool, mock_provider, dry_run=True)
+    result = await upsert_tool(mock_conn, tool, dry_run=True)
     
     assert result is True
-    # Verify embedding was generated
-    mock_provider.embed.assert_called_once_with('test.tool :: Test description')
-    # Verify no database call was made
+    # Verify no database call was made in dry-run mode
     mock_conn.execute.assert_not_called()
 
 
@@ -131,9 +127,6 @@ async def test_upsert_tool_actual():
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     
-    mock_provider = MagicMock()
-    mock_provider.embed = AsyncMock(return_value=[0.1, 0.2, 0.3] + [0.0] * 125)
-    
     tool = {
         'key': 'test.tool',
         'name': 'Test Tool',
@@ -143,11 +136,9 @@ async def test_upsert_tool_actual():
         'meta': {'cmd': 'echo test'}
     }
     
-    result = await upsert_tool(mock_conn, tool, mock_provider, dry_run=False)
+    result = await upsert_tool(mock_conn, tool, dry_run=False)
     
     assert result is True
-    # Verify embedding was generated
-    mock_provider.embed.assert_called_once_with('test.tool :: Test description')
     # Verify database call was made
     mock_conn.execute.assert_called_once()
     
@@ -165,9 +156,10 @@ async def test_upsert_tool_actual():
     assert params[2] == 'Test description'
     assert params[3] == ['linux']
     assert params[4] == ['test']
-    assert params[5] == {'cmd': 'echo test'}
-    # Vector literal should be a string
-    assert params[6].startswith('[0.1,0.2,0.3')
+    # meta should be JSON string
+    assert '"cmd":"echo test"' in params[5]
+    # Vector literal should be a string starting with '['
+    assert params[6].startswith('[')
 
 
 @pytest.mark.asyncio
@@ -175,9 +167,6 @@ async def test_upsert_tool_handles_error():
     """Test that upsert handles database errors gracefully."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock(side_effect=Exception("Database error"))
-    
-    mock_provider = MagicMock()
-    mock_provider.embed = AsyncMock(return_value=[0.1] * 128)
     
     tool = {
         'key': 'test.tool',
@@ -188,7 +177,7 @@ async def test_upsert_tool_handles_error():
         'meta': {}
     }
     
-    result = await upsert_tool(mock_conn, tool, mock_provider, dry_run=False)
+    result = await upsert_tool(mock_conn, tool, dry_run=False)
     
     assert result is False
 

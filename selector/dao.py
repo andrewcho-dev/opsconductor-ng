@@ -1,105 +1,78 @@
 """
-Database access layer for tool selection using pgvector semantic search.
+Selector Data Access Object (DAO).
 
-This module provides low-level asyncpg-based queries for retrieving tools
-from the database using vector similarity search with optional platform filtering.
+Provides database operations for tool selection using vector similarity search.
+Uses shared embedding functions to ensure compatibility with tool indexing.
+
+Usage:
+    import asyncpg
+    from selector.dao import select_topk
+    
+    conn = await asyncpg.connect(dsn="postgresql://...")
+    results = await select_topk(conn, "scan network", platform=["linux"], k=5)
+    for tool in results:
+        print(f"{tool['key']}: {tool['name']}")
 """
 
-from typing import Optional
+from typing import Sequence, Optional, Dict, Any, List
 import asyncpg
-
-from selector.embeddings import EmbeddingProvider, embed_intent
-
-
-def _vec_literal(vec: list[float]) -> str:
-    """
-    Convert a Python list of floats to a PostgreSQL vector literal string.
-    
-    Args:
-        vec: List of float values representing an embedding vector
-        
-    Returns:
-        String in format '[0.123, 0.456, ...]' suitable for CAST to vector type
-        
-    Example:
-        >>> _vec_literal([0.1, 0.2, 0.3])
-        '[0.1,0.2,0.3]'
-    """
-    return "[" + ",".join(str(x) for x in vec) + "]"
+from shared.embeddings import embed_128, to_vec_literal
 
 
 async def select_topk(
     conn: asyncpg.Connection,
-    intent: str,
-    platform: Optional[list[str]] = None,
-    k: int = 8,
-    provider: Optional[EmbeddingProvider] = None,
-) -> list[dict]:
+    query_text: str,
+    platform: Optional[Sequence[str]] = None,
+    k: int = 8
+) -> List[Dict[str, Any]]:
     """
-    Select top-k tools using vector similarity search with optional platform filtering.
+    Select top-k tools most similar to query text using vector similarity.
     
-    This function:
-    1. Embeds the user intent using the provided or default EmbeddingProvider
-    2. Queries the tool table using pgvector cosine distance (<=> operator)
-    3. Applies platform filtering if specified (array overlap with &&)
-    4. Handles NULL embeddings (sorts them last via NULLS LAST)
-    5. Uses tie-breakers: usage_count DESC, updated_at DESC
+    Uses cosine distance (<=> operator) to find tools with embeddings closest
+    to the query embedding. Results are ordered by:
+    1. Vector similarity (primary)
+    2. Usage count (secondary, for ties)
+    3. Updated timestamp (tertiary, for freshness)
     
     Args:
         conn: Active asyncpg database connection
-        intent: User intent text to embed and search for
-        platform: Optional list of platform names to filter by (e.g., ['linux', 'docker'])
-                 If None or empty list, no platform filtering is applied
-        k: Maximum number of results to return (default: 8)
-        provider: Optional EmbeddingProvider instance. If None, creates default provider
+        query_text: User query or intent text
+        platform: Optional list of platform filters (e.g., ["linux", "windows"])
+                 If empty or None, returns tools for all platforms
+        k: Number of results to return (default: 8)
         
     Returns:
-        List of dictionaries with keys: key, name, short_desc, platform, tags
-        Sorted by vector similarity (closest first), then usage_count, then updated_at
+        List of tool dictionaries with keys: key, name, short_desc, platform, tags
         
     Example:
-        >>> conn = await asyncpg.connect(dsn=DATABASE_URL)
-        >>> results = await select_topk(conn, "scan network for vulnerabilities", platform=["linux"], k=5)
-        >>> for tool in results:
-        ...     print(f"{tool['key']}: {tool['short_desc']}")
+        >>> # Find top 3 network tools for Linux
+        >>> results = await select_topk(conn, "scan network", ["linux"], k=3)
+        >>> len(results) <= 3
+        True
+        >>> all('key' in r and 'name' in r for r in results)
+        True
     """
-    # Step 1: Embed the intent
-    if provider is None:
-        provider = EmbeddingProvider()
+    # Generate embedding for query
+    vec = embed_128(query_text)
+    vec_lit = to_vec_literal(vec)
     
-    vec = await embed_intent(provider, intent)
-    vec_str = _vec_literal(vec)
+    # Convert platform to list (empty list means no filter)
+    plat = list(platform) if platform else []
     
-    # Step 2: Prepare platform filter parameter
-    # PostgreSQL array literal: empty array if no filter, otherwise the platform list
-    platform_param = platform if platform else []
-    
-    # Step 3: Execute query with pgvector similarity search
-    sql = """
+    # Execute vector similarity search
+    # Note: $2::text[] = '{}'::text[] checks if platform filter is empty
+    #       platform && $2::text[] checks if tool's platform overlaps with filter
+    rows = await conn.fetch(
+        """
         WITH q AS (SELECT CAST($1 AS vector(128)) AS v)
-        SELECT 
-            key,
-            name,
-            LEFT(short_desc, 160) AS short_desc,
-            platform,
-            tags
+        SELECT key, name, LEFT(short_desc,160) AS short_desc, platform, tags
         FROM tool, q
         WHERE ($2::text[] = '{}'::text[] OR platform && $2::text[])
         ORDER BY embedding <=> q.v NULLS LAST, usage_count DESC, updated_at DESC
-        LIMIT $3
-    """
+        LIMIT $3;
+        """,
+        vec_lit, plat, k
+    )
     
-    rows = await conn.fetch(sql, vec_str, platform_param, k)
-    
-    # Step 4: Convert asyncpg.Record objects to dictionaries
-    results = []
-    for row in rows:
-        results.append({
-            "key": row["key"],
-            "name": row["name"],
-            "short_desc": row["short_desc"],
-            "platform": row["platform"],
-            "tags": row["tags"],
-        })
-    
-    return results
+    # Convert asyncpg.Record objects to dicts
+    return [dict(r) for r in rows]
