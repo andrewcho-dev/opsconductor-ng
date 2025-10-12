@@ -515,67 +515,26 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
 # MOUNT ROUTERS
 # ============================================================================
 
-# Import and mount selector router with safe retry logic
-try:
-    from shared.selector_router import router as selector_router
-except Exception as _e:
-    print("[selector] import error:", _e)
-    selector_router = None
+from shared.selector_router import router as selector_router
 
-def _include_router_on(obj):
-    if not obj or not selector_router:
+def _include_selector_router(_obj):
+    if not _obj: 
         return False
-    app_obj = getattr(obj, "app", None) if hasattr(obj, "app") else obj
-    if hasattr(app_obj, "include_router"):
-        try:
-            # Store service instance for router access to db pool
-            if hasattr(app_obj, "state") and "service" in globals():
-                app_obj.state.service = globals()["service"]
-            app_obj.include_router(selector_router)
-            print("[selector] route mounted on", getattr(app_obj, "title", "app"))
-            return True
-        except Exception as ee:
-            print("[selector] include_router failed:", ee)
+    _app = getattr(_obj, "app", None) if hasattr(_obj, "app") else _obj
+    if hasattr(_app, "include_router"):
+        # Store service instance on app.state for router access to DB pool
+        if hasattr(_app, "state") and "service" in globals():
+            _app.state.service = globals()["service"]
+        _app.include_router(selector_router)
+        print("[selector] router mounted on", getattr(_app, "title", "app"))
+        return True
     return False
 
-# Try immediate mount on all likely names
 _mounted = False
 for _name in ("service", "app", "application", "api"):
-    _mounted |= _include_router_on(globals().get(_name))
-
-# If not yet mounted, schedule a short retry after startup
+    _mounted |= _include_selector_router(globals().get(_name))
 if not _mounted:
-    try:
-        import asyncio
-        async def _retry_mount():
-            await asyncio.sleep(0.1)
-            ok = False
-            for _name in ("service", "app", "application", "api"):
-                ok |= _include_router_on(globals().get(_name))
-            if not ok:
-                print("[selector] WARNING: router not mounted; check app variable names")
-        # Attach to whichever app exists to ensure loop context; fall back to bare create_task
-        _app = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
-        try:
-            @_app.on_event("startup")
-            async def _mount_selector_on_startup():
-                await _retry_mount()
-        except Exception:
-            asyncio.get_event_loop().create_task(_retry_mount())
-    except Exception as e:
-        print("[selector] scheduling retry failed:", e)
-
-# Optional: list route once if mounted
-try:
-    _app2 = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
-    if _app2:
-        for r in _app2.routes:
-            p = getattr(r, "path", None) or getattr(r, "path_format", None)
-            if p == "/api/selector/search":
-                print("[selector] confirmed:", p, getattr(r, "methods", []))
-                break
-except Exception:
-    pass
+    print("[selector] WARNING: router not mounted; check app variable names")
 
 # ============================================================================
 # PLAN EXECUTION MODELS
