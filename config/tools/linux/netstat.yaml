@@ -1,0 +1,12 @@
+key: linux.netstat
+name: Linux Netstat
+short_desc: Display network connections, routing tables, and interface statistics on Linux systems.
+platform:
+  - linux
+tags:
+  - network
+  - diagnostics
+  - monitoring
+meta:
+  cmd: "netstat -tuln"
+  requires_root: false

@@ -1,0 +1,12 @@
+key: windows.netsh
+name: Windows Netsh
+short_desc: Network shell utility for configuring and displaying network settings on Windows systems.
+platform:
+  - windows
+tags:
+  - network
+  - diagnostics
+  - configuration
+meta:
+  cmd: "netsh interface ip show config"
+  requires_admin: true

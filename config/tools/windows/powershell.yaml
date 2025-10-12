@@ -1,0 +1,10 @@
+key: windows.powershell
+name: Windows PowerShell
+short_desc: Execute PowerShell commands for diagnostics and automation.
+platform:
+  - windows
+tags:
+  - windows
+  - automation
+meta:
+  cmd: "powershell -NoProfile -Command {{script}}"
