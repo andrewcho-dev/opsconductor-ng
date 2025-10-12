@@ -37,6 +37,10 @@ BEGIN
   END IF;
 END $$;
 
+-- Ensure defaults on array columns
+ALTER TABLE tool ALTER COLUMN tags SET DEFAULT '{}'::text[];
+ALTER TABLE tool ALTER COLUMN platform SET DEFAULT '{}'::text[];
+
 -- Ensure other required columns exist
 ALTER TABLE tool ADD COLUMN IF NOT EXISTS meta         jsonb        DEFAULT '{}'::jsonb;
 ALTER TABLE tool ADD COLUMN IF NOT EXISTS usage_count  integer      DEFAULT 0;
