@@ -511,61 +511,75 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     recent_history = service.execution_history[-limit:] if service.execution_history else []
     return {"executions": recent_history, "total": len(service.execution_history)}
 
-@service.app.get("/api/selector/search")
-async def selector_search(
-    query: str = Query(..., description="Search query text"),
-    k: int = Query(5, ge=1, le=20, description="Number of results to return"),
-    platform: Optional[str] = Query(None, description="Comma-separated platform filters (e.g., 'linux,windows')")
-):
-    """
-    Search for tools using vector similarity.
-    
-    Returns top-k tools most similar to the query text, optionally filtered by platform.
-    
-    Example:
-        GET /api/selector/search?query=network&platform=linux&k=3
-    """
-    from fastapi.responses import JSONResponse
-    import sys
-    sys.path.insert(0, '/app')
-    from selector import dao
-    
-    # Validate query
-    if not query or not query.strip():
-        return JSONResponse(
-            {"error": "query required"},
-            status_code=400
-        )
-    
-    # Clamp k to valid range
-    k = max(1, min(20, k))
-    
-    # Parse platform filter
-    plats = [p.strip() for p in platform.split(",")] if platform else []
-    
+# ============================================================================
+# MOUNT ROUTERS
+# ============================================================================
+
+# Import and mount selector router with safe retry logic
+try:
+    from shared.selector_router import router as selector_router
+except Exception as _e:
+    print("[selector] import error:", _e)
+    selector_router = None
+
+def _include_router_on(obj):
+    if not obj or not selector_router:
+        return False
+    app_obj = getattr(obj, "app", None) if hasattr(obj, "app") else obj
+    if hasattr(app_obj, "include_router"):
+        try:
+            # Store service instance for router access to db pool
+            if hasattr(app_obj, "state") and "service" in globals():
+                app_obj.state.service = globals()["service"]
+            app_obj.include_router(selector_router)
+            print("[selector] route mounted on", getattr(app_obj, "title", "app"))
+            return True
+        except Exception as ee:
+            print("[selector] include_router failed:", ee)
+    return False
+
+# Try immediate mount on all likely names
+_mounted = False
+for _name in ("service", "app", "application", "api"):
+    _mounted |= _include_router_on(globals().get(_name))
+
+# If not yet mounted, schedule a short retry after startup
+if not _mounted:
     try:
-        # Get database connection from pool
-        if not service.db.pool:
-            return JSONResponse(
-                {"error": "Database not available"},
-                status_code=503
-            )
-        
-        async with service.db.pool.acquire() as conn:
-            results = await dao.select_topk(conn, query, plats, k)
-        
-        return {
-            "query": query,
-            "k": k,
-            "platform": plats,
-            "results": results
-        }
+        import asyncio
+        async def _retry_mount():
+            await asyncio.sleep(0.1)
+            ok = False
+            for _name in ("service", "app", "application", "api"):
+                ok |= _include_router_on(globals().get(_name))
+            if not ok:
+                print("[selector] WARNING: router not mounted; check app variable names")
+        # Attach to whichever app exists to ensure loop context; fall back to bare create_task
+        _app = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
+        try:
+            @_app.on_event("startup")
+            async def _mount_selector_on_startup():
+                await _retry_mount()
+        except Exception:
+            asyncio.get_event_loop().create_task(_retry_mount())
     except Exception as e:
-        service.logger.error(f"Selector search failed: {e}")
-        return JSONResponse(
-            {"error": f"Search failed: {str(e)}"},
-            status_code=500
-        )
+        print("[selector] scheduling retry failed:", e)
+
+# Optional: list route once if mounted
+try:
+    _app2 = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
+    if _app2:
+        for r in _app2.routes:
+            p = getattr(r, "path", None) or getattr(r, "path_format", None)
+            if p == "/api/selector/search":
+                print("[selector] confirmed:", p, getattr(r, "methods", []))
+                break
+except Exception:
+    pass
+
+# ============================================================================
+# PLAN EXECUTION MODELS
+# ============================================================================
 
 class PlanExecutionRequest(BaseModel):
     """Plan execution request from AI pipeline"""
@@ -1175,3 +1189,51 @@ if __name__ == "__main__":
         reload=False,
         log_level="info"
     )
+# --- SELECTOR ENDPOINT HOTFIX ---
+from typing import Optional, List
+from fastapi import APIRouter, Request, Query
+
+try:
+    from selector.dao import select_topk
+except Exception as e:
+    select_topk = None
+    print("[selector] import error:", e)
+
+_selector_router = APIRouter()
+
+@_selector_router.get("/api/selector/search")
+async def _selector_search(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    k: int = Query(5, ge=1, le=20),
+    platform: Optional[str] = None,
+):
+    if select_topk is None:
+        return {"error": "selector.dao not available"}
+    plats: List[str] = [p.strip() for p in platform.split(",")] if platform else []
+    app = request.app
+    pool = getattr(getattr(app, "state", app), "db", None) or \
+           getattr(getattr(app, "state", app), "db_pool", None) or \
+           getattr(app, "db_pool", None)
+    if pool is None:
+        return {"error": "DB pool not found on app.state"}
+    async with pool.acquire() as conn:
+        rows = await select_topk(conn, query, plats, k)
+    return {"query": query, "k": k, "platform": plats, "results": rows}
+
+def _mount_selector(candidate):
+    if candidate is None:
+        return False
+    app_obj = getattr(candidate, "app", None) if hasattr(candidate, "app") else candidate
+    if hasattr(app_obj, "include_router"):
+        app_obj.include_router(_selector_router)
+        print("[selector] route mounted on", getattr(app_obj, "title", "app"))
+        return True
+    return False
+
+_mounted = False
+for _name in ("service", "app", "application", "api"):
+    _mounted |= _mount_selector(globals().get(_name))
+if not _mounted:
+    print("[selector] WARNING: failed to mount; ensure this block is at file end after app creation")
+# --- END SELECTOR ENDPOINT HOTFIX ---
