@@ -1,0 +1,20 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: automation-selector
+    url: http://automation-service:3003
+    routes:
+      - name: automation-selector-route
+        paths: ["/api/selector/search"]
+        strip_path: false
+        methods: ["GET"]
+
+plugins:
+  - name: key-auth
+    service: automation-selector
+
+consumers:
+  - username: opsconductor
+    keyauth_credentials:
+      - key: OC_SELECTOR_KEY_1

@@ -2,22 +2,34 @@ name: selector-smoke
 on:
   push: { branches: [ "main" ] }
   pull_request: { branches: [ "main" ] }
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Start deps and service
-        run: docker compose up -d postgres redis automation-service
-      - name: Wait for health
+      - name: Start stack
+        run: docker compose up -d postgres redis kong automation-service
+      - name: Wait for automation-service
         run: |
           for i in {1..40}; do
-            curl -fsS http://localhost:8010/health && exit 0
+            curl -fsS http://localhost:8010/health && exit 0 || true
             sleep 2
           done
-          echo "automation-service not healthy"; docker compose logs automation-service; exit 1
-      - name: Seed / Index / Smoke
+          docker compose logs automation-service; exit 1
+      - name: Seed / Index / Smoke (direct DB + service)
         run: make -f selector.mk all
-      - name: Tail logs (debug)
+      - name: Wait for Kong
+        run: |
+          for i in {1..40}; do
+            curl -fsS http://localhost:8000/ || exit 0
+            sleep 2
+          done
+      - name: Gateway smoke (Kong)
+        run: |
+          curl -fsS -H 'apikey: OC_SELECTOR_KEY_1' \
+            "http://localhost:8000/api/selector/search?query=network&platform=linux&k=3" \
+            | grep -q '"results"' || (echo "Kong route failed"; exit 1)
+      - name: Tail logs
         if: always()
-        run: docker compose logs --tail=200 automation-service
+        run: docker compose logs --tail=200 automation-service kong
