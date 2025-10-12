@@ -37,16 +37,16 @@ BEGIN
   END IF;
 END $$;
 
--- Ensure defaults on array columns
+-- Ensure defaults
 ALTER TABLE tool ALTER COLUMN tags SET DEFAULT '{}'::text[];
 ALTER TABLE tool ALTER COLUMN platform SET DEFAULT '{}'::text[];
 
--- Ensure other required columns exist
+-- Other required columns (add if missing)
 ALTER TABLE tool ADD COLUMN IF NOT EXISTS meta         jsonb        DEFAULT '{}'::jsonb;
 ALTER TABLE tool ADD COLUMN IF NOT EXISTS usage_count  integer      DEFAULT 0;
 ALTER TABLE tool ADD COLUMN IF NOT EXISTS updated_at   timestamptz  DEFAULT now();
 
--- Ensure embedding column exists (vector(128))
+-- Embedding column (vector(128))
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -57,7 +57,7 @@ BEGIN
   END IF;
 END $$;
 
--- Create missing indexes (no-ops if present)
+-- Indexes (no-ops if already exist)
 CREATE INDEX IF NOT EXISTS tool_key_idx         ON tool(key);
 CREATE INDEX IF NOT EXISTS tool_tags_gin        ON tool USING gin (tags);
 CREATE INDEX IF NOT EXISTS tool_platform_gin    ON tool USING gin (platform);
