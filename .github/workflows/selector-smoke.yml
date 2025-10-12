@@ -1,0 +1,23 @@
+name: selector-smoke
+on:
+  push: { branches: [ "main" ] }
+  pull_request: { branches: [ "main" ] }
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start deps and service
+        run: docker compose up -d postgres redis automation-service
+      - name: Wait for health
+        run: |
+          for i in {1..40}; do
+            curl -fsS http://localhost:8010/health && exit 0
+            sleep 2
+          done
+          echo "automation-service not healthy"; docker compose logs automation-service; exit 1
+      - name: Seed / Index / Smoke
+        run: make -f selector.mk all
+      - name: Tail logs (debug)
+        if: always()
+        run: docker compose logs --tail=200 automation-service
