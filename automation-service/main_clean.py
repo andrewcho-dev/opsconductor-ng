@@ -1374,3 +1374,46 @@ try:
 except Exception as e:
     print("[db] failed to install ensure-pool middleware:", e)
 # --- END DB POOL RELIABILITY v3 ---
+
+# --- PGVECTOR GUARANTEE PATCH v1 ---
+from fastapi import Response
+
+def _get_pool():
+    # Fast but resilient to attribute names
+    st = getattr(_app, "state", None) if "_app" in globals() else None
+    if st:
+        for a in ("db", "db_pool"):
+            if hasattr(st, a):
+                return getattr(st, a)
+    if "service" in globals() and hasattr(service, "app") and hasattr(service.app, "state"):
+        st = service.app.state
+        for a in ("db", "db_pool"):
+            if hasattr(st, a):
+                return getattr(st, a)
+    return None
+
+@_app.get("/ready")
+async def _ready():
+    try:
+        pool = _get_pool()
+        if not pool:
+            return Response(status_code=503)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT 1 FROM pg_extension WHERE extname='vector'")
+            return Response(status_code=200 if row else 503)
+    except Exception:
+        return Response(status_code=503)
+
+@_app.on_event("startup")
+async def _ensure_pgvector_extension():
+    try:
+        pool = _get_pool()
+        if not pool:
+            print("[db] pool not available at startup; will rely on middleware to create it before first query")
+            return
+        async with pool.acquire() as conn:
+            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            print("[db] pgvector extension ensured")
+    except Exception as e:
+        print("[db] could not ensure pgvector:", e)
+# --- END PGVECTOR GUARANTEE PATCH v1 ---
