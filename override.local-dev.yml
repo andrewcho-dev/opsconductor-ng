@@ -1,0 +1,12 @@
+# Docker Compose Override for Local Development
+# Usage: docker compose -f docker-compose.yml -f override.local-dev.yml up -d
+#
+# This override exposes automation-service on both 8010 and 3003 for local testing
+
+version: '3.8'
+
+services:
+  automation-service:
+    ports:
+      - "8010:3003"  # Primary port (same as base)
+      - "3003:3003"  # Optional direct port for legacy scripts

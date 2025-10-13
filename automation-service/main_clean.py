@@ -1104,19 +1104,18 @@ async def get_service_status():
 
 # --- SELECTOR HOTFIX v2 (single-source) ---
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from time import perf_counter
 import asyncio, time, logging
+from selector.metrics import get_metrics
 
 selector_router = APIRouter()
 log = logging.getLogger("selector")
 
-_METRICS = {
-    "selector_requests_total": 0,
-    "selector_failures_total": 0,
-    "selector_cache_hits": 0,
-    "selector_hotfix_version": "v2",
-}
+# Use the metrics module
+_metrics = get_metrics()
+_metrics.cache_ttl_seconds = 600  # 10 minutes
+
 _LKG_TTL_SEC = 600
 _LKG: dict[tuple, tuple[float, dict]] = {}
 _LKG_LOCK = asyncio.Lock()
@@ -1142,9 +1141,14 @@ async def _lkg_put(key, payload):
     async with _LKG_LOCK:
         _LKG[key] = (time.time() + _LKG_TTL_SEC, dict(payload))
 
-@selector_router.get("/metrics-lite")
-async def _metrics():
-    return JSONResponse({**_METRICS, "selector_cache_ttl_sec": _LKG_TTL_SEC})
+@selector_router.get("/metrics", response_class=PlainTextResponse)
+async def metrics_endpoint():
+    """
+    Prometheus metrics endpoint.
+    
+    Exposes selector metrics in Prometheus text format (version 0.0.4).
+    """
+    return _metrics.to_prometheus_text()
 
 @selector_router.get("/api/selector/search")
 async def _selector_search(
@@ -1154,14 +1158,16 @@ async def _selector_search(
     k: int = Query(3, ge=1, le=20),
 ):
     t0 = perf_counter()
-    _METRICS["selector_requests_total"] += 1
     plats = platform or []
     key = _cache_key(query, k, plats)
 
     # Cache fast-path (DB independent)
     cached = await _lkg_get(key)
     if cached:
-        _METRICS["selector_cache_hits"] += 1
+        duration_sec = perf_counter() - t0
+        _metrics.inc_request("ok", "cache")
+        _metrics.observe_duration(duration_sec)
+        _metrics.cache_entries = len(_LKG)
         out = dict(cached)
         out["from_cache"] = True
         return JSONResponse(out)
@@ -1169,7 +1175,10 @@ async def _selector_search(
     # Resolve DB pool
     pool = getattr(getattr(request.app, "state", request.app), "db_pool", None)
     if pool is None:
-        _METRICS["selector_failures_total"] += 1
+        duration_sec = perf_counter() - t0
+        _metrics.inc_request("error", "fresh")
+        _metrics.observe_duration(duration_sec)
+        _metrics.db_errors_total += 1
         return JSONResponse({"error": "service_unavailable", "message": "db_pool not ready"}, status_code=503)
 
     # Query live; store LKG on success; gracefully degrade on failure
@@ -1177,24 +1186,34 @@ async def _selector_search(
         async with pool.acquire() as conn:
             from selector.dao import select_topk
             rows = await select_topk(conn, query, plats, k)
+            duration_sec = perf_counter() - t0
+            _metrics.inc_request("ok", "fresh")
+            _metrics.observe_duration(duration_sec)
+            _metrics.cache_entries = len(_LKG)
             payload = {
                 "query": query,
                 "k": k,
                 "platform": _norm_plats(plats),
                 "results": [dict(r) if not isinstance(r, dict) else r for r in rows],
                 "from_cache": False,
-                "duration_ms": round((perf_counter() - t0) * 1000, 1),
+                "duration_ms": round(duration_sec * 1000, 1),
             }
             await _lkg_put(key, payload)
             return JSONResponse(payload)
     except Exception as e:
-        _METRICS["selector_failures_total"] += 1
+        duration_sec = perf_counter() - t0
+        _metrics.db_errors_total += 1
         cached = await _lkg_get(key)
         if cached:
+            _metrics.inc_request("ok", "degraded")
+            _metrics.observe_duration(duration_sec)
+            _metrics.cache_entries = len(_LKG)
             out = dict(cached)
             out["from_cache"] = True
             out["degraded"] = True
             return JSONResponse(out)
+        _metrics.inc_request("error", "fresh")
+        _metrics.observe_duration(duration_sec)
         log.error("selector failure: %s", e, extra={"service": "automation-service", "event": "selector.error"})
         return JSONResponse({"error": "internal_server_error", "message": "selector failed"}, status_code=500)
 
