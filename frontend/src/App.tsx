@@ -8,6 +8,7 @@ import AIChatPage from './pages/AIChat';
 import Assets from './pages/Assets';
 import Settings from './pages/Settings';
 import SchedulesPage from './pages/SchedulesPage';
+import SelectorPage from './pages/Selector';
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -47,6 +48,9 @@ const App: React.FC = () => {
                     <Route path="/assets" element={<Assets />} />
                     <Route path="/assets/:action" element={<Assets />} />
                     <Route path="/assets/:action/:id" element={<Assets />} />
+
+                    {/* Selector Route */}
+                    <Route path="/selector" element={<SelectorPage />} />
 
                     {/* Settings */}
                     <Route path="/settings" element={<Settings />} />

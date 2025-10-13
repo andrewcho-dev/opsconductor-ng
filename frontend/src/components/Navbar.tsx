@@ -10,7 +10,8 @@ import {
   Menu,
   ChevronRight,
   Calendar,
-  Settings
+  Settings,
+  Search
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
@@ -99,6 +100,15 @@ const Navbar: React.FC = () => {
               >
                 <span className="nav-icon"><Calendar size={16} /></span>
                 Schedules
+              </Link>
+
+              <Link 
+                to="/selector" 
+                className={`nav-menu-item ${location.pathname === '/selector' || location.pathname.startsWith('/selector/') ? 'active' : ''}`} 
+                onClick={closeMenu}
+              >
+                <span className="nav-icon"><Search size={16} /></span>
+                Tool Selector
               </Link>
 
               <div className="nav-menu-item-group">
