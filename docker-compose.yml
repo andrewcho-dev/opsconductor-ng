@@ -206,7 +206,7 @@ services:
       - ./automation-service/execution_context.py:/app/execution_context.py
       - ./automation-service/libraries:/app/libraries
       - ./automation-service/selector:/app/selector
-      - ./automation-service/shared:/app/shared
+      - ./shared:/app/shared
       - ./automation-service/audit:/app/audit
       - ./execution:/app/execution
       - ./pipeline:/app/pipeline
