@@ -22,11 +22,9 @@ import uuid
 import logging
 import httpx
 
-sys.path.append('/app/shared')
-from base_service import BaseService
+# Use package-relative imports
+from shared.base_service import BaseService
 from execution_context import create_execution_context
-
-# Import unified executor
 from unified_executor import UnifiedExecutor
 
 # ============================================================================
@@ -138,8 +136,7 @@ class CleanAutomationService(BaseService):
     def _initialize_connection_managers(self):
         """Initialize connection managers for different target types"""
         try:
-            # Import connection libraries
-            sys.path.append('/app/libraries')
+            # Import connection libraries using package-relative imports
             from libraries.linux_ssh import LinuxSSHLibrary
             from libraries.windows_powershell import WindowsPowerShellLibrary
             from libraries.windows_impacket_executor import WindowsImpacketExecutor
