@@ -854,6 +854,108 @@ async def get_pipeline_status():
         "total_test_cases": "300+ tests"
     }
 
+
+# ============================================================================
+# EXECUTE ENDPOINT (BYPASS LLM FOR TESTING)
+# ============================================================================
+
+class ExecuteRequest(BaseModel):
+    """Request for direct tool execution (bypass LLM)"""
+    input: str
+    tool: str = "echo"
+    trace_id: Optional[str] = None
+
+
+class ExecuteResponse(BaseModel):
+    """Response from direct tool execution"""
+    success: bool
+    output: Optional[str] = None
+    tool: str
+    trace_id: str
+    duration_ms: float
+    timestamp: str
+    error: Optional[str] = None
+
+
+@app.post("/execute", response_model=ExecuteResponse)
+async def execute_tool(request: ExecuteRequest):
+    """
+    Execute a tool directly without LLM processing.
+    
+    This endpoint is used for testing the execution path with FEATURE_BYPASS_LLM=true.
+    Currently supports:
+    - echo: Simple echo tool (ping -> pong)
+    
+    Args:
+        request: ExecuteRequest with input and tool name
+    
+    Returns:
+        ExecuteResponse with execution result
+    """
+    import time
+    from pipeline.tools.echo_tool import EchoTool
+    
+    start_time = time.perf_counter()
+    trace_id = request.trace_id or str(uuid.uuid4())
+    
+    logger.info(f"[{trace_id}] Execute request: tool={request.tool}, input={request.input[:50]}")
+    
+    try:
+        # Check if bypass mode is enabled
+        bypass_llm = os.getenv("FEATURE_BYPASS_LLM", "false").lower() == "true"
+        
+        if not bypass_llm:
+            logger.warning(f"[{trace_id}] Execute endpoint called but FEATURE_BYPASS_LLM is not enabled")
+            return ExecuteResponse(
+                success=False,
+                tool=request.tool,
+                trace_id=trace_id,
+                duration_ms=0,
+                timestamp=datetime.utcnow().isoformat() + "Z",
+                error="FEATURE_BYPASS_LLM is not enabled. Set FEATURE_BYPASS_LLM=true to use this endpoint."
+            )
+        
+        # Execute the tool
+        if request.tool == "echo":
+            tool = EchoTool()
+            result = await tool.execute({"input": request.input})
+            
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            
+            logger.info(f"[{trace_id}] Execute success: output={result['output']}, duration={duration_ms:.2f}ms")
+            
+            return ExecuteResponse(
+                success=True,
+                output=result["output"],
+                tool=request.tool,
+                trace_id=trace_id,
+                duration_ms=round(duration_ms, 2),
+                timestamp=result["timestamp"]
+            )
+        else:
+            logger.error(f"[{trace_id}] Unknown tool: {request.tool}")
+            return ExecuteResponse(
+                success=False,
+                tool=request.tool,
+                trace_id=trace_id,
+                duration_ms=(time.perf_counter() - start_time) * 1000,
+                timestamp=datetime.utcnow().isoformat() + "Z",
+                error=f"Unknown tool: {request.tool}. Supported tools: echo"
+            )
+            
+    except Exception as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"[{trace_id}] Execute failed: {e}")
+        return ExecuteResponse(
+            success=False,
+            tool=request.tool,
+            trace_id=trace_id,
+            duration_ms=round(duration_ms, 2),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            error=str(e)
+        )
+
+
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================

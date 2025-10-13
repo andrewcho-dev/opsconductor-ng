@@ -157,6 +157,7 @@ services:
       ASSET_SERVICE_URL: http://asset-service:3002
       NETWORK_SERVICE_URL: http://network-service:3006
       COMMUNICATION_SERVICE_URL: http://communication-service:3004
+      FEATURE_BYPASS_LLM: "true"
     ports:
       - "3005:8000"
     volumes:
