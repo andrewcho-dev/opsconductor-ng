@@ -194,6 +194,9 @@ services:
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
+      # Audit configuration
+      AUDIT_ALLOW_NO_AUTH: "true"  # For development only
+      AUDIT_SINK: stdout
     ports:
       - "8010:3003"
     volumes:
@@ -202,7 +205,9 @@ services:
       - ./automation-service/unified_executor.py:/app/unified_executor.py
       - ./automation-service/execution_context.py:/app/execution_context.py
       - ./automation-service/libraries:/app/libraries
-      - ./shared:/app/shared
+      - ./automation-service/selector:/app/selector
+      - ./automation-service/shared:/app/shared
+      - ./automation-service/audit:/app/audit
       - ./execution:/app/execution
       - ./pipeline:/app/pipeline
       # NOTE: automation-service is the ONLY container that executes commands

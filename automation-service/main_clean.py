@@ -157,6 +157,26 @@ class CleanAutomationService(BaseService):
         except ImportError as e:
             self.logger.warning(f"Some connection managers unavailable: {e}")
     
+    async def on_startup(self):
+        """Service-specific startup logic."""
+        # Start audit worker in the event loop
+        try:
+            from audit.sinks import start_audit_worker
+            start_audit_worker()
+            self.logger.info("Audit worker started in event loop")
+        except Exception as e:
+            self.logger.warning(f"Failed to start audit worker: {e}")
+    
+    async def on_shutdown(self):
+        """Service-specific shutdown logic."""
+        # Shutdown audit queue gracefully
+        try:
+            from audit.sinks import shutdown_audit_queue
+            await shutdown_audit_queue()
+            self.logger.info("Audit queue shutdown complete")
+        except Exception as e:
+            self.logger.warning(f"Failed to shutdown audit queue: {e}")
+    
     async def execute_command(self, request: CommandRequest) -> ExecutionResult:
         """
         Execute a single command directly (synchronous execution)
@@ -1105,110 +1125,96 @@ async def get_service_status():
         "total_executions": len(service.execution_history)
     }
 
-# --- SELECTOR HOTFIX v2 (single-source) ---
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import JSONResponse
-from time import perf_counter
-import asyncio, time, logging
+# --- SELECTOR v3 ---
+from selector.v3 import router as selector_v3_router
+from selector.metrics import metrics as metrics_handler
+from fastapi.responses import Response
 
-selector_router = APIRouter()
-log = logging.getLogger("selector")
-
-_METRICS = {
-    "selector_requests_total": 0,
-    "selector_failures_total": 0,
-    "selector_cache_hits": 0,
-    "selector_hotfix_version": "v2",
-}
-_LKG_TTL_SEC = 600
-_LKG: dict[tuple, tuple[float, dict]] = {}
-_LKG_LOCK = asyncio.Lock()
-
-def _norm_plats(plats):
-    return tuple(sorted(p.strip().lower() for p in plats if p and p.strip()))
-
-def _cache_key(q, k, plats):
-    return (q.strip().lower(), int(k), _norm_plats(plats))
-
-async def _lkg_get(key):
-    async with _LKG_LOCK:
-        v = _LKG.get(key)
-        if not v:
-            return None
-        exp, payload = v
-        if exp >= time.time():
-            return payload
-        _LKG.pop(key, None)
-        return None
-
-async def _lkg_put(key, payload):
-    async with _LKG_LOCK:
-        _LKG[key] = (time.time() + _LKG_TTL_SEC, dict(payload))
-
-@selector_router.get("/metrics-lite")
-async def _metrics():
-    return JSONResponse({**_METRICS, "selector_cache_ttl_sec": _LKG_TTL_SEC})
-
-@selector_router.get("/api/selector/search")
-async def _selector_search(
-    request: Request,
-    query: str = Query(..., min_length=1),
-    platform: list[str] = Query(default_factory=list),
-    k: int = Query(3, ge=1, le=20),
-):
-    t0 = perf_counter()
-    _METRICS["selector_requests_total"] += 1
-    plats = platform or []
-    key = _cache_key(query, k, plats)
-
-    # Cache fast-path (DB independent)
-    cached = await _lkg_get(key)
-    if cached:
-        _METRICS["selector_cache_hits"] += 1
-        out = dict(cached)
-        out["from_cache"] = True
-        return JSONResponse(out)
-
-    # Resolve DB pool
-    pool = getattr(getattr(request.app, "state", request.app), "db_pool", None)
-    if pool is None:
-        _METRICS["selector_failures_total"] += 1
-        return JSONResponse({"error": "service_unavailable", "message": "db_pool not ready"}, status_code=503)
-
-    # Query live; store LKG on success; gracefully degrade on failure
-    try:
-        async with pool.acquire() as conn:
-            from selector.dao import select_topk
-            rows = await select_topk(conn, query, plats, k)
-            payload = {
-                "query": query,
-                "k": k,
-                "platform": _norm_plats(plats),
-                "results": [dict(r) if not isinstance(r, dict) else r for r in rows],
-                "from_cache": False,
-                "duration_ms": round((perf_counter() - t0) * 1000, 1),
-            }
-            await _lkg_put(key, payload)
-            return JSONResponse(payload)
-    except Exception as e:
-        _METRICS["selector_failures_total"] += 1
-        cached = await _lkg_get(key)
-        if cached:
-            out = dict(cached)
-            out["from_cache"] = True
-            out["degraded"] = True
-            return JSONResponse(out)
-        log.error("selector failure: %s", e, extra={"service": "automation-service", "event": "selector.error"})
-        return JSONResponse({"error": "internal_server_error", "message": "selector failed"}, status_code=500)
-
-# Mount router on existing app or service.app
+# Mount selector v3 router
 try:
-    app.include_router(selector_router)
-    print("[selector] v2 hotfix mounted on", getattr(app, "title", "app"))
+    app.include_router(selector_v3_router)
+    print("[selector] v3 mounted on", getattr(app, "title", "app"))
+    # Register /metrics endpoint at app root
+    app.add_api_route(
+        "/metrics",
+        metrics_handler,
+        methods=["GET"],
+        response_class=Response,
+        include_in_schema=True,
+    )
+    print("[selector] /metrics endpoint registered at app root")
 except NameError:
-    service.app.include_router(selector_router)
-    print("[selector] v2 hotfix mounted on", getattr(service.app, "title", "service.app"))
-# --- END SELECTOR HOTFIX v2 ---
+    service.app.include_router(selector_v3_router)
+    print("[selector] v3 mounted on", getattr(service.app, "title", "service.app"))
+    # Register /metrics endpoint at app root
+    service.app.add_api_route(
+        "/metrics",
+        metrics_handler,
+        methods=["GET"],
+        response_class=Response,
+        include_in_schema=True,
+    )
+    print("[selector] /metrics endpoint registered at service.app root")
+# --- END SELECTOR v3 ---
+
+# --- OPENTELEMETRY TRACING ---
+# Initialize OpenTelemetry tracing for observability
+try:
+    from shared.otel import (
+        init_tracing,
+        instrument_fastapi,
+        instrument_httpx,
+        instrument_asyncpg,
+        is_enabled as otel_is_enabled
+    )
+    
+    # Initialize tracing
+    if init_tracing(service_name="automation-service", service_version="1.0.0"):
+        # Instrument FastAPI app
+        try:
+            instrument_fastapi(app)
+        except NameError:
+            instrument_fastapi(service.app)
+        
+        # Instrument HTTP client
+        instrument_httpx()
+        
+        # Note: asyncpg auto-instrumentation disabled due to compatibility issues
+        # Database spans are created manually in the DAO layer
+        # instrument_asyncpg()
+        
+        print("[otel] OpenTelemetry tracing initialized and instrumented")
+    else:
+        print("[otel] OpenTelemetry tracing disabled or unavailable")
+except ImportError as e:
+    print(f"[otel] OpenTelemetry not available: {e}")
+except Exception as e:
+    print(f"[otel] Failed to initialize OpenTelemetry: {e}")
+# --- END OPENTELEMETRY TRACING ---
+
+# --- AUDIT SUBSYSTEM ---
+# Initialize audit queue and mount audit router for AI query compliance tracking
+try:
+    from audit.routes import router as audit_router
+    from audit.sinks import init_audit_queue
+    
+    # Initialize the audit queue and background worker
+    init_audit_queue()
+    
+    # Mount audit router
+    try:
+        app.include_router(audit_router)
+        print("[audit] Audit router mounted on app")
+    except NameError:
+        service.app.include_router(audit_router)
+        print("[audit] Audit router mounted on service.app")
+    
+    print("[audit] Audit subsystem initialized")
+except ImportError as e:
+    print(f"[audit] Audit module not available: {e}")
+except Exception as e:
+    print(f"[audit] Failed to initialize audit subsystem: {e}")
+# --- END AUDIT SUBSYSTEM ---
 
 # ============================================================================
 # STARTUP

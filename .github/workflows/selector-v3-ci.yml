@@ -1,0 +1,76 @@
+name: Selector v3 CI
+
+on:
+  pull_request:
+    branches:
+      - stabilize/automation-service-v3
+    paths:
+      - 'automation-service/selector/**'
+      - 'automation-service/tests/selector/**'
+      - 'automation-service/main_clean.py'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          cd automation-service
+          pip install -r requirements.clean.txt
+          pip install pytest pytest-asyncio httpx
+      
+      - name: Run unit tests
+        run: |
+          cd automation-service
+          python -m pytest tests/selector/test_unit.py -v
+      
+      - name: Run integration tests
+        run: |
+          cd automation-service
+          python -m pytest tests/selector/test_integration.py -v
+      
+      - name: Check metrics presence (CI gate)
+        run: |
+          cd automation-service
+          # This will fail if required metrics are missing
+          python -m pytest tests/selector/test_ci_metrics.py -v || exit 1
+      
+      - name: Run smoke tests
+        run: |
+          cd automation-service
+          python tests/selector/test_smoke.py || exit 1
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install linting tools
+        run: |
+          pip install black flake8 mypy
+      
+      - name: Check code formatting
+        run: |
+          cd automation-service
+          black --check selector/v3.py tests/selector/
+      
+      - name: Run flake8
+        run: |
+          cd automation-service
+          flake8 selector/v3.py tests/selector/ --max-line-length=120 --ignore=E501,W503
