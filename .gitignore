@@ -302,4 +302,5 @@ fix_*.py
 
 # ChromaDB data
 chroma_data/
-*.chroma
+*.chromacompose.override.yaml
+docker-compose.override.yml
