@@ -157,6 +157,26 @@ class CleanAutomationService(BaseService):
         except ImportError as e:
             self.logger.warning(f"Some connection managers unavailable: {e}")
     
+    async def on_startup(self):
+        """Service-specific startup logic."""
+        # Start audit worker in the event loop
+        try:
+            from audit.sinks import start_audit_worker
+            start_audit_worker()
+            self.logger.info("Audit worker started in event loop")
+        except Exception as e:
+            self.logger.warning(f"Failed to start audit worker: {e}")
+    
+    async def on_shutdown(self):
+        """Service-specific shutdown logic."""
+        # Shutdown audit queue gracefully
+        try:
+            from audit.sinks import shutdown_audit_queue
+            await shutdown_audit_queue()
+            self.logger.info("Audit queue shutdown complete")
+        except Exception as e:
+            self.logger.warning(f"Failed to shutdown audit queue: {e}")
+    
     async def execute_command(self, request: CommandRequest) -> ExecutionResult:
         """
         Execute a single command directly (synchronous execution)
@@ -1107,15 +1127,94 @@ async def get_service_status():
 
 # --- SELECTOR v3 ---
 from selector.v3 import router as selector_v3_router
+from selector.metrics import metrics as metrics_handler
+from fastapi.responses import Response
 
 # Mount selector v3 router
 try:
     app.include_router(selector_v3_router)
     print("[selector] v3 mounted on", getattr(app, "title", "app"))
+    # Register /metrics endpoint at app root
+    app.add_api_route(
+        "/metrics",
+        metrics_handler,
+        methods=["GET"],
+        response_class=Response,
+        include_in_schema=True,
+    )
+    print("[selector] /metrics endpoint registered at app root")
 except NameError:
     service.app.include_router(selector_v3_router)
     print("[selector] v3 mounted on", getattr(service.app, "title", "service.app"))
+    # Register /metrics endpoint at app root
+    service.app.add_api_route(
+        "/metrics",
+        metrics_handler,
+        methods=["GET"],
+        response_class=Response,
+        include_in_schema=True,
+    )
+    print("[selector] /metrics endpoint registered at service.app root")
 # --- END SELECTOR v3 ---
+
+# --- OPENTELEMETRY TRACING ---
+# Initialize OpenTelemetry tracing for observability
+try:
+    from shared.otel import (
+        init_tracing,
+        instrument_fastapi,
+        instrument_httpx,
+        instrument_asyncpg,
+        is_enabled as otel_is_enabled
+    )
+    
+    # Initialize tracing
+    if init_tracing(service_name="automation-service", service_version="1.0.0"):
+        # Instrument FastAPI app
+        try:
+            instrument_fastapi(app)
+        except NameError:
+            instrument_fastapi(service.app)
+        
+        # Instrument HTTP client
+        instrument_httpx()
+        
+        # Note: asyncpg auto-instrumentation disabled due to compatibility issues
+        # Database spans are created manually in the DAO layer
+        # instrument_asyncpg()
+        
+        print("[otel] OpenTelemetry tracing initialized and instrumented")
+    else:
+        print("[otel] OpenTelemetry tracing disabled or unavailable")
+except ImportError as e:
+    print(f"[otel] OpenTelemetry not available: {e}")
+except Exception as e:
+    print(f"[otel] Failed to initialize OpenTelemetry: {e}")
+# --- END OPENTELEMETRY TRACING ---
+
+# --- AUDIT SUBSYSTEM ---
+# Initialize audit queue and mount audit router for AI query compliance tracking
+try:
+    from audit.routes import router as audit_router
+    from audit.sinks import init_audit_queue
+    
+    # Initialize the audit queue and background worker
+    init_audit_queue()
+    
+    # Mount audit router
+    try:
+        app.include_router(audit_router)
+        print("[audit] Audit router mounted on app")
+    except NameError:
+        service.app.include_router(audit_router)
+        print("[audit] Audit router mounted on service.app")
+    
+    print("[audit] Audit subsystem initialized")
+except ImportError as e:
+    print(f"[audit] Audit module not available: {e}")
+except Exception as e:
+    print(f"[audit] Failed to initialize audit subsystem: {e}")
+# --- END AUDIT SUBSYSTEM ---
 
 # ============================================================================
 # STARTUP
