@@ -512,72 +512,6 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     return {"executions": recent_history, "total": len(service.execution_history)}
 
 # ============================================================================
-# MOUNT ROUTERS
-# ============================================================================
-
-# Import and mount selector router with safe retry logic
-try:
-    from shared.selector_router import router as selector_router
-except Exception as _e:
-    print("[selector] import error:", _e)
-    selector_router = None
-
-def _include_router_on(obj):
-    if not obj or not selector_router:
-        return False
-    app_obj = getattr(obj, "app", None) if hasattr(obj, "app") else obj
-    if hasattr(app_obj, "include_router"):
-        try:
-            # Store service instance for router access to db pool
-            if hasattr(app_obj, "state") and "service" in globals():
-                app_obj.state.service = globals()["service"]
-            app_obj.include_router(selector_router)
-            print("[selector] route mounted on", getattr(app_obj, "title", "app"))
-            return True
-        except Exception as ee:
-            print("[selector] include_router failed:", ee)
-    return False
-
-# Try immediate mount on all likely names
-_mounted = False
-for _name in ("service", "app", "application", "api"):
-    _mounted |= _include_router_on(globals().get(_name))
-
-# If not yet mounted, schedule a short retry after startup
-if not _mounted:
-    try:
-        import asyncio
-        async def _retry_mount():
-            await asyncio.sleep(0.1)
-            ok = False
-            for _name in ("service", "app", "application", "api"):
-                ok |= _include_router_on(globals().get(_name))
-            if not ok:
-                print("[selector] WARNING: router not mounted; check app variable names")
-        # Attach to whichever app exists to ensure loop context; fall back to bare create_task
-        _app = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
-        try:
-            @_app.on_event("startup")
-            async def _mount_selector_on_startup():
-                await _retry_mount()
-        except Exception:
-            asyncio.get_event_loop().create_task(_retry_mount())
-    except Exception as e:
-        print("[selector] scheduling retry failed:", e)
-
-# Optional: list route once if mounted
-try:
-    _app2 = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
-    if _app2:
-        for r in _app2.routes:
-            p = getattr(r, "path", None) or getattr(r, "path_format", None)
-            if p == "/api/selector/search":
-                print("[selector] confirmed:", p, getattr(r, "methods", []))
-                break
-except Exception:
-    pass
-
-# ============================================================================
 # PLAN EXECUTION MODELS
 # ============================================================================
 
@@ -1171,6 +1105,111 @@ async def get_service_status():
         "total_executions": len(service.execution_history)
     }
 
+# --- SELECTOR HOTFIX v2 (single-source) ---
+from fastapi import APIRouter, Request, Query
+from fastapi.responses import JSONResponse
+from time import perf_counter
+import asyncio, time, logging
+
+selector_router = APIRouter()
+log = logging.getLogger("selector")
+
+_METRICS = {
+    "selector_requests_total": 0,
+    "selector_failures_total": 0,
+    "selector_cache_hits": 0,
+    "selector_hotfix_version": "v2",
+}
+_LKG_TTL_SEC = 600
+_LKG: dict[tuple, tuple[float, dict]] = {}
+_LKG_LOCK = asyncio.Lock()
+
+def _norm_plats(plats):
+    return tuple(sorted(p.strip().lower() for p in plats if p and p.strip()))
+
+def _cache_key(q, k, plats):
+    return (q.strip().lower(), int(k), _norm_plats(plats))
+
+async def _lkg_get(key):
+    async with _LKG_LOCK:
+        v = _LKG.get(key)
+        if not v:
+            return None
+        exp, payload = v
+        if exp >= time.time():
+            return payload
+        _LKG.pop(key, None)
+        return None
+
+async def _lkg_put(key, payload):
+    async with _LKG_LOCK:
+        _LKG[key] = (time.time() + _LKG_TTL_SEC, dict(payload))
+
+@selector_router.get("/metrics-lite")
+async def _metrics():
+    return JSONResponse({**_METRICS, "selector_cache_ttl_sec": _LKG_TTL_SEC})
+
+@selector_router.get("/api/selector/search")
+async def _selector_search(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    platform: list[str] = Query(default_factory=list),
+    k: int = Query(3, ge=1, le=20),
+):
+    t0 = perf_counter()
+    _METRICS["selector_requests_total"] += 1
+    plats = platform or []
+    key = _cache_key(query, k, plats)
+
+    # Cache fast-path (DB independent)
+    cached = await _lkg_get(key)
+    if cached:
+        _METRICS["selector_cache_hits"] += 1
+        out = dict(cached)
+        out["from_cache"] = True
+        return JSONResponse(out)
+
+    # Resolve DB pool
+    pool = getattr(getattr(request.app, "state", request.app), "db_pool", None)
+    if pool is None:
+        _METRICS["selector_failures_total"] += 1
+        return JSONResponse({"error": "service_unavailable", "message": "db_pool not ready"}, status_code=503)
+
+    # Query live; store LKG on success; gracefully degrade on failure
+    try:
+        async with pool.acquire() as conn:
+            from selector.dao import select_topk
+            rows = await select_topk(conn, query, plats, k)
+            payload = {
+                "query": query,
+                "k": k,
+                "platform": _norm_plats(plats),
+                "results": [dict(r) if not isinstance(r, dict) else r for r in rows],
+                "from_cache": False,
+                "duration_ms": round((perf_counter() - t0) * 1000, 1),
+            }
+            await _lkg_put(key, payload)
+            return JSONResponse(payload)
+    except Exception as e:
+        _METRICS["selector_failures_total"] += 1
+        cached = await _lkg_get(key)
+        if cached:
+            out = dict(cached)
+            out["from_cache"] = True
+            out["degraded"] = True
+            return JSONResponse(out)
+        log.error("selector failure: %s", e, extra={"service": "automation-service", "event": "selector.error"})
+        return JSONResponse({"error": "internal_server_error", "message": "selector failed"}, status_code=500)
+
+# Mount router on existing app or service.app
+try:
+    app.include_router(selector_router)
+    print("[selector] v2 hotfix mounted on", getattr(app, "title", "app"))
+except NameError:
+    service.app.include_router(selector_router)
+    print("[selector] v2 hotfix mounted on", getattr(service.app, "title", "service.app"))
+# --- END SELECTOR HOTFIX v2 ---
+
 # ============================================================================
 # STARTUP
 # ============================================================================
@@ -1189,108 +1228,6 @@ if __name__ == "__main__":
         reload=False,
         log_level="info"
     )
-# --- SELECTOR ENDPOINT HOTFIX ---
-from typing import Optional, List
-from fastapi import APIRouter, Request, Query
-
-try:
-    from selector.dao import select_topk
-except Exception as e:
-    select_topk = None
-    print("[selector] import error:", e)
-
-_selector_router = APIRouter()
-
-@_selector_router.get("/api/selector/search")
-async def _selector_search(
-    request: Request,
-    query: str = Query(..., min_length=1),
-    k: int = Query(5, ge=1, le=20),
-    platform: Optional[str] = None,
-):
-    if select_topk is None:
-        return {"error": "selector.dao not available"}
-    plats: List[str] = [p.strip() for p in platform.split(",")] if platform else []
-    app = request.app
-    pool = getattr(getattr(app, "state", app), "db", None) or \
-           getattr(getattr(app, "state", app), "db_pool", None) or \
-           getattr(app, "db_pool", None)
-    if pool is None:
-        return {"error": "DB pool not found on app.state"}
-    async with pool.acquire() as conn:
-        rows = await select_topk(conn, query, plats, k)
-    return {"query": query, "k": k, "platform": plats, "results": rows}
-
-def _mount_selector(candidate):
-    if candidate is None:
-        return False
-    app_obj = getattr(candidate, "app", None) if hasattr(candidate, "app") else candidate
-    if hasattr(app_obj, "include_router"):
-        app_obj.include_router(_selector_router)
-        print("[selector] route mounted on", getattr(app_obj, "title", "app"))
-        return True
-    return False
-
-_mounted = False
-for _name in ("service", "app", "application", "api"):
-    _mounted |= _mount_selector(globals().get(_name))
-if not _mounted:
-    print("[selector] WARNING: failed to mount; ensure this block is at file end after app creation")
-# --- END SELECTOR ENDPOINT HOTFIX ---
-
-
-# --- DB POOL STARTUP (idempotent, robust) ---
-import os
-import asyncio
-from typing import Optional
-
-async def _ensure_db_pool(_app) -> None:
-    try:
-        import asyncpg
-    except Exception as e:
-        print("[db] asyncpg not available:", e)
-        return
-    state = getattr(_app, "state", _app)
-    if getattr(state, "db_pool", None) or getattr(state, "db", None):
-        return  # already present
-
-    # Build DSN
-    dsn = os.getenv("DATABASE_URL")
-    if not dsn:
-        host = os.getenv("POSTGRES_HOST", "postgres")
-        port = os.getenv("POSTGRES_PORT", "5432")
-        user = os.getenv("POSTGRES_USER", "postgres")
-        pwd  = os.getenv("POSTGRES_PASSWORD", "postgres")
-        db   = os.getenv("POSTGRES_DB", "postgres")
-        dsn = f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
-
-    # Create pool
-    try:
-        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=int(os.getenv("DB_POOL_MAX", "10")))
-        setattr(state, "db_pool", pool)
-        print("[db] asyncpg pool established")
-    except Exception as e:
-        print("[db] failed to create pool:", e)
-
-def _get_app_obj():
-    # Prefer service.app; fall back to bare app
-    try:
-        if "service" in globals() and hasattr(service, "app"):
-            return service.app
-    except Exception:
-        pass
-    return globals().get("app")
-
-_app_obj = _get_app_obj()
-if _app_obj and hasattr(_app_obj, "add_event_handler"):
-    async def _startup():
-        await _ensure_db_pool(_app_obj)
-    _app_obj.add_event_handler("startup", _startup)
-    print("[db] startup hook installed for pool creation")
-else:
-    print("[db] app not available at import time; no startup hook installed")
-# --- END DB POOL STARTUP ---
-
 
 # --- DB POOL RELIABILITY v3 ---
 import os, asyncio, time, random
@@ -1380,11 +1317,6 @@ from fastapi import Response
 
 def _get_pool():
     # Fast but resilient to attribute names
-    st = getattr(_app, "state", None) if "_app" in globals() else None
-    if st:
-        for a in ("db", "db_pool"):
-            if hasattr(st, a):
-                return getattr(st, a)
     if "service" in globals() and hasattr(service, "app") and hasattr(service.app, "state"):
         st = service.app.state
         for a in ("db", "db_pool"):
@@ -1392,28 +1324,31 @@ def _get_pool():
                 return getattr(st, a)
     return None
 
-@_app.get("/ready")
-async def _ready():
-    try:
-        pool = _get_pool()
-        if not pool:
-            return Response(status_code=503)
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT 1 FROM pg_extension WHERE extname='vector'")
-            return Response(status_code=200 if row else 503)
-    except Exception:
-        return Response(status_code=503)
+_pgv_app = service.app if "service" in globals() and hasattr(service, "app") else None
 
-@_app.on_event("startup")
-async def _ensure_pgvector_extension():
-    try:
-        pool = _get_pool()
-        if not pool:
-            print("[db] pool not available at startup; will rely on middleware to create it before first query")
-            return
-        async with pool.acquire() as conn:
-            await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            print("[db] pgvector extension ensured")
-    except Exception as e:
-        print("[db] could not ensure pgvector:", e)
+if _pgv_app:
+    @_pgv_app.get("/ready")
+    async def _ready():
+        try:
+            pool = _get_pool()
+            if not pool:
+                return Response(status_code=503)
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT 1 FROM pg_extension WHERE extname='vector'")
+                return Response(status_code=200 if row else 503)
+        except Exception:
+            return Response(status_code=503)
+
+    @_pgv_app.on_event("startup")
+    async def _ensure_pgvector_extension():
+        try:
+            pool = _get_pool()
+            if not pool:
+                print("[db] pool not available at startup; will rely on middleware to create it before first query")
+                return
+            async with pool.acquire() as conn:
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+                print("[db] pgvector extension ensured")
+        except Exception as e:
+            print("[db] could not ensure pgvector:", e)
 # --- END PGVECTOR GUARANTEE PATCH v1 ---
