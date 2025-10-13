@@ -1,0 +1,5 @@
+services:
+  automation-service:
+    ports:
+      - "8010:3003"   # already there
+      - "3003:3003"   # add this for smoke/defaults

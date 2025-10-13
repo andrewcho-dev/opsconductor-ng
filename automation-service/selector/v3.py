@@ -11,7 +11,6 @@ Features:
 """
 
 import asyncio
-import logging as stdlib_logging
 import os
 import sys
 import time
@@ -19,24 +18,37 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+# Add parent directory to path so 'shared' module can be imported
+# Try both /app (Docker) and relative path (local dev)
+parent_paths = [
+    '/app',
+    os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+]
+for path in parent_paths:
+    shared_dir = os.path.join(path, 'shared')
+    if os.path.exists(shared_dir) and path not in sys.path:
+        sys.path.insert(0, path)
+        break
+
 import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field, validator
 
-# Add shared to path for embeddings import (but after stdlib imports)
-# Try both /app/shared (Docker) and relative path (local dev)
-shared_paths = ['/app/shared', os.path.join(os.path.dirname(__file__), '../../shared')]
-for path in shared_paths:
-    if os.path.exists(path) and path not in sys.path:
-        sys.path.append(path)
-        break
-
-# Import selector DAO
-from selector.dao import select_topk
+# Use stdlib logging (avoid conflict with shared.logging)
+import logging as stdlib_logging
 
 # Use stdlib logging
 logging = stdlib_logging
+
+# OpenTelemetry tracing (optional)
+try:
+    from shared.otel import get_tracer, add_span_attributes
+    _tracer = None  # Will be initialized on first use
+except ImportError:
+    get_tracer = None
+    add_span_attributes = None
+    _tracer = None
 
 # ============================================================================
 # CONFIGURATION
@@ -232,10 +244,20 @@ class LRUTTLCache:
         """Get current cache size."""
         async with self._lock:
             return len(self._cache)
+    
+    async def clear(self):
+        """Clear all cache entries (for testing)."""
+        async with self._lock:
+            self._cache.clear()
 
 
 # Global cache instance
 _cache = LRUTTLCache(max_entries=SELECTOR_CACHE_MAX_ENTRIES, ttl_sec=SELECTOR_CACHE_TTL_SEC)
+
+
+def get_cache() -> LRUTTLCache:
+    """Get the global cache instance (for testing)."""
+    return _cache
 
 
 # ============================================================================
@@ -268,6 +290,7 @@ def generate_trace_id(request: Request) -> str:
 
 def validate_query(query: str) -> str:
     """Validate and normalize query parameter."""
+    # Check for empty or whitespace-only query
     if not query or not query.strip():
         raise HTTPException(
             status_code=400,
@@ -277,6 +300,8 @@ def validate_query(query: str) -> str:
                 "message": "Query parameter cannot be empty"
             }
         )
+    
+    query = query.strip()
     
     if len(query) > 200:
         raise HTTPException(
@@ -288,7 +313,7 @@ def validate_query(query: str) -> str:
             }
         )
     
-    return query.strip()
+    return query
 
 
 def validate_platforms(platforms: List[str]) -> List[str]:
@@ -347,7 +372,7 @@ logger = logging.getLogger("selector.v3")
 @router.get("/api/selector/search", response_model=SelectorResponse)
 async def selector_search(
     request: Request,
-    query: str = Query(..., description="Search query (required, max 200 chars)"),
+    query: str = Query(..., min_length=1, description="Search query (required, max 200 chars)"),
     platform: List[str] = Query(default=[], description="Platform filters (max 5, each 1-32 chars)"),
     k: int = Query(3, ge=1, le=10, description="Number of results (1-10)")
 ):
@@ -362,6 +387,14 @@ async def selector_search(
     """
     t0 = time.time()
     trace_id = generate_trace_id(request)
+    
+    # Add span attributes for tracing
+    if add_span_attributes:
+        add_span_attributes(
+            query_len=len(query),
+            k=k,
+            platforms_count=len(platform)
+        )
     
     # Validate inputs
     try:
@@ -392,6 +425,13 @@ async def selector_search(
         _metrics.observe_duration(duration_sec)
         _metrics.cache_entries = await _cache.size()
         
+        # Add span attributes
+        if add_span_attributes:
+            add_span_attributes(
+                from_cache=True,
+                status="ok"
+            )
+        
         # Log request
         logger.info(
             "Selector request (cached)",
@@ -408,7 +448,12 @@ async def selector_search(
             }
         )
         
-        return SelectorResponse(**cached_value)
+        # Update from_cache flag and duration for cached response
+        cached_response = cached_value.copy()
+        cached_response["from_cache"] = True
+        cached_response["duration_ms"] = round(duration_sec * 1000, 1)
+        
+        return SelectorResponse(**cached_response)
     
     # Get DB pool
     pool = getattr(getattr(request.app, "state", None), "db_pool", None)
@@ -475,13 +520,16 @@ async def selector_search(
         )
         
         return Response(
-            content=error_response.json(),
+            content=error_response.model_dump_json(),
             status_code=503,
             headers={"Retry-After": "30", "Content-Type": "application/json"}
         )
     
     # Query database
     try:
+        # Import here to allow test mocking of selector.dao.select_topk
+        from selector.dao import select_topk
+        
         async with pool.acquire() as conn:
             rows = await select_topk(conn, query, platforms, k)
             
@@ -500,7 +548,7 @@ async def selector_search(
                 "query": query,
                 "platforms": platforms,
                 "k": k,
-                "results": [r.dict() for r in results],
+                "results": [r.model_dump() for r in results],
                 "from_cache": False,
                 "duration_ms": round(duration_sec * 1000, 1)
             }
@@ -512,6 +560,13 @@ async def selector_search(
             _metrics.inc_request("ok", "fresh")
             _metrics.observe_duration(duration_sec)
             _metrics.cache_entries = await _cache.size()
+            
+            # Add span attributes
+            if add_span_attributes:
+                add_span_attributes(
+                    from_cache=False,
+                    status="ok"
+                )
             
             # Log request
             logger.info(
@@ -591,7 +646,7 @@ async def selector_search(
         )
         
         return Response(
-            content=error_response.json(),
+            content=error_response.model_dump_json(),
             status_code=503,
             headers={"Retry-After": "30", "Content-Type": "application/json"}
         )
@@ -603,5 +658,8 @@ async def metrics():
     Prometheus metrics endpoint.
     
     Exposes selector metrics in Prometheus text format (version 0.0.4).
+    
+    Note: This endpoint is also registered at app root level in main_clean.py
+    to ensure it's accessible at /metrics for CI tests and production.
     """
     return _metrics.to_prometheus_text()
