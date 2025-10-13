@@ -94,16 +94,32 @@ const SelectorSearch: React.FC = () => {
         platforms: selectedPlatforms.length > 0 ? selectedPlatforms : undefined,
       };
 
+      console.log(`[Selector] Starting search: query="${request.query}", k=${request.k}, platforms=${request.platforms?.join(',') || 'none'}`);
+      
       const response = await searchTools(request);
-      setResults(response);
+      const duration = Date.now() - startTime;
+      
+      // Runtime guard: ensure response has required fields
+      if (!response || typeof response !== 'object') {
+        throw new Error('Invalid response from server');
+      }
+      
+      const safeResponse: SelectorSearchResponse = {
+        results: Array.isArray(response.results) ? response.results : [],
+        from_cache: response.from_cache === true,
+        duration_ms: typeof response.duration_ms === 'number' ? response.duration_ms : duration,
+      };
+      
+      console.log(`[Selector] Search completed in ${duration}ms: ${safeResponse.results.length} results, from_cache=${safeResponse.from_cache}`);
+      
+      setResults(safeResponse);
 
       // Record audit trail (fire-and-forget)
-      const duration = Date.now() - startTime;
       recordAuditTrail({
         trace_id: traceId,
         user_id: getCurrentUserId(),
         input: query.trim(),
-        output: `Found ${response.results.length} tools`,
+        output: `Found ${safeResponse.results.length} tools`,
         tools: [
           {
             name: 'selector',
@@ -115,6 +131,9 @@ const SelectorSearch: React.FC = () => {
         created_at: new Date().toISOString(),
       });
     } catch (err) {
+      const duration = Date.now() - startTime;
+      console.error(`[Selector] Search failed after ${duration}ms:`, err);
+      
       if (err instanceof Error && 'status' in err) {
         const httpError = err as HttpError;
 
@@ -240,18 +259,18 @@ const SelectorSearch: React.FC = () => {
             <h3>Results</h3>
             <div className="results-meta">
               <span className="badge badge-info">
-                {results.results.length} tools found
+                {Array.isArray(results.results) ? results.results.length : 0} tools found
               </span>
               {results.from_cache && (
                 <span className="badge badge-warning">From Cache</span>
               )}
               <span className="badge badge-secondary">
-                {results.duration_ms.toFixed(1)}ms
+                {typeof results.duration_ms === 'number' ? results.duration_ms.toFixed(1) : '0.0'}ms
               </span>
             </div>
           </div>
 
-          {results.results.length === 0 ? (
+          {!Array.isArray(results.results) || results.results.length === 0 ? (
             <div className="empty-state">
               <p>No tools found matching your query.</p>
               <p>Try adjusting your search terms or removing platform filters.</p>
@@ -259,7 +278,7 @@ const SelectorSearch: React.FC = () => {
           ) : (
             <div className="results-list">
               {results.results.map((tool, index) => (
-                <ToolCard key={`${tool.name}-${index}`} tool={tool} />
+                <ToolCard key={`${tool?.name || 'unknown'}-${index}`} tool={tool} />
               ))}
             </div>
           )}
@@ -274,10 +293,23 @@ interface ToolCardProps {
 }
 
 const ToolCard: React.FC<ToolCardProps> = ({ tool }) => {
+  // Runtime guards for missing fields
+  if (!tool || typeof tool !== 'object') {
+    return (
+      <div className="tool-card">
+        <div className="tool-name">Unknown Tool</div>
+        <div className="tool-description">Tool data unavailable</div>
+      </div>
+    );
+  }
+
+  const name = typeof tool.name === 'string' ? tool.name : 'Unknown Tool';
+  const description = typeof tool.short_desc === 'string' ? tool.short_desc : 'No description available';
+
   return (
     <div className="tool-card">
-      <div className="tool-name">{tool.name}</div>
-      <div className="tool-description">{tool.short_desc}</div>
+      <div className="tool-name">{name}</div>
+      <div className="tool-description">{description}</div>
     </div>
   );
 };

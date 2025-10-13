@@ -20,6 +20,15 @@ export const searchTools = async (
 ): Promise<SelectorSearchResponse> => {
   const baseUrl = getSelectorBaseUrl();
   
+  // Runtime guard: validate request
+  if (!request || typeof request !== 'object') {
+    throw new Error('Invalid search request');
+  }
+  
+  if (typeof request.query !== 'string' || !request.query.trim()) {
+    throw new Error('Query is required');
+  }
+  
   // Build query parameters
   const params = new URLSearchParams();
   params.append('query', request.query);
@@ -37,7 +46,31 @@ export const searchTools = async (
   const url = `${baseUrl}/search?${params.toString()}`;
   
   try {
-    return await http.get<SelectorSearchResponse>(url);
+    const response = await http.get<SelectorSearchResponse>(url);
+    
+    // Runtime guard: validate response structure
+    if (!response || typeof response !== 'object') {
+      console.error('[Selector] Invalid response structure:', response);
+      throw new Error('Invalid response from server');
+    }
+    
+    // Ensure results is an array
+    if (!Array.isArray(response.results)) {
+      console.warn('[Selector] Response missing results array, defaulting to empty');
+      response.results = [];
+    }
+    
+    // Ensure from_cache is boolean
+    if (typeof response.from_cache !== 'boolean') {
+      response.from_cache = false;
+    }
+    
+    // Ensure duration_ms is number
+    if (typeof response.duration_ms !== 'number') {
+      response.duration_ms = 0;
+    }
+    
+    return response;
   } catch (error) {
     // Re-throw with additional context
     if (error instanceof Error && 'status' in error) {
@@ -98,12 +131,21 @@ export const generateTraceId = (): string => {
 export const getCurrentUserId = (): string => {
   try {
     const userStr = localStorage.getItem('user');
-    if (userStr) {
+    if (userStr && typeof userStr === 'string') {
       const user = JSON.parse(userStr);
-      return user.id || user.username || 'anonymous';
+      
+      // Runtime guard: ensure user is an object
+      if (user && typeof user === 'object') {
+        // Try multiple common user ID fields
+        const userId = user.id || user.user_id || user.username || user.email;
+        if (typeof userId === 'string' && userId.trim()) {
+          return userId.trim();
+        }
+      }
     }
   } catch (e) {
     // Ignore parse errors
+    console.debug('[Selector] Failed to parse user from localStorage:', e);
   }
   return 'anonymous';
 };
