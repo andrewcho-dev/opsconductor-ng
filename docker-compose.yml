@@ -195,6 +195,8 @@ services:
     environment:
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       REDIS_URL: redis://redis:6379
+      AI_PIPELINE_BASE_URL: http://ai-pipeline:8000
+      EXEC_TIMEOUT_MS: 5000
     ports:
       - "8010:3003"
     volumes:
@@ -202,7 +204,11 @@ services:
       - ./automation-service/main_clean.py:/app/main_clean.py
       - ./automation-service/unified_executor.py:/app/unified_executor.py
       - ./automation-service/execution_context.py:/app/execution_context.py
+      - ./automation-service/config.py:/app/config.py
       - ./automation-service/libraries:/app/libraries
+      - ./automation-service/clients:/app/clients
+      - ./automation-service/routes:/app/routes
+      - ./automation-service/observability:/app/observability
       - ./shared:/app/shared
       - ./execution:/app/execution
       - ./pipeline:/app/pipeline

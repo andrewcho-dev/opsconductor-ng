@@ -1146,9 +1146,20 @@ async def metrics_endpoint():
     """
     Prometheus metrics endpoint.
     
-    Exposes selector metrics in Prometheus text format (version 0.0.4).
+    Exposes selector and AI exec metrics in Prometheus text format.
     """
-    return _metrics.to_prometheus_text()
+    # Get selector metrics
+    selector_metrics = _metrics.to_prometheus_text()
+    
+    # Get AI exec metrics
+    try:
+        from observability.metrics import get_metrics_text
+        ai_metrics = get_metrics_text()
+        # Combine both metrics
+        return selector_metrics + "\n" + ai_metrics
+    except Exception as e:
+        log.warning(f"Failed to get AI exec metrics: {e}")
+        return selector_metrics
 
 @selector_router.get("/api/selector/search")
 async def _selector_search(
@@ -1225,6 +1236,17 @@ except NameError:
     service.app.include_router(selector_router)
     print("[selector] v2 hotfix mounted on", getattr(service.app, "title", "service.app"))
 # --- END SELECTOR HOTFIX v2 ---
+
+# ============================================================================
+# AI EXECUTION PROXY ROUTER (PR #4)
+# ============================================================================
+try:
+    from routes.exec import router as exec_router
+    service.app.include_router(exec_router)
+    print("[exec] AI execution proxy router mounted on /ai/execute")
+except Exception as e:
+    print(f"[exec] WARNING: Failed to mount exec router: {e}")
+# --- END EXEC ROUTER ---
 
 # ============================================================================
 # STARTUP

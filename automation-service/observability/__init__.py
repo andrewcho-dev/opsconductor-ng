@@ -1,0 +1,1 @@
+"""Observability components for automation service"""
