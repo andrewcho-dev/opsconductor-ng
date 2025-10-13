@@ -60,20 +60,12 @@ selector.index:
 	docker compose exec -T $(DB_SERVICE) psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c "ANALYZE tool;"
 
 selector.smoke:
-	@python3 - <<'PY'
-import json,sys,urllib.request
-def ok(url):
-  try:
-    with urllib.request.urlopen(url, timeout=5) as r:
-      j=json.load(r)
-      assert isinstance(j.get("results"), list) and len(j["results"])>=1
-      return True
-  except Exception as e:
-    print("FAIL:", url, e); return False
-ok1=ok("http://localhost:8010/api/selector/search?query=network&platform=linux&k=3")
-ok2=ok("http://localhost:8010/api/selector/search?query=windows%20networking&platform=windows&k=3")
-if not (ok1 and ok2): sys.exit(1)
-print("selector.smoke OK")
-PY
+	@echo "Running selector v3 smoke tests..."
+	@docker compose exec -T automation-service python -m pytest tests/selector/test_smoke.py -v || \
+	SELECTOR_URL=http://localhost:3003 python3 automation-service/tests/selector/test_smoke.py
+
+smoke-automation-service:
+	@echo "Running automation-service smoke tests..."
+	@SELECTOR_URL=http://localhost:3003 python3 automation-service/tests/selector/test_smoke.py
 
 selector.all: selector.seed selector.index selector.smoke
