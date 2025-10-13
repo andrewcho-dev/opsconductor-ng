@@ -512,6 +512,72 @@ async def get_execution_history(limit: int = Query(50, ge=1, le=1000)):
     return {"executions": recent_history, "total": len(service.execution_history)}
 
 # ============================================================================
+# MOUNT ROUTERS
+# ============================================================================
+
+# Import and mount selector router with safe retry logic
+try:
+    from shared.selector_router import router as selector_router
+except Exception as _e:
+    print("[selector] import error:", _e)
+    selector_router = None
+
+def _include_router_on(obj):
+    if not obj or not selector_router:
+        return False
+    app_obj = getattr(obj, "app", None) if hasattr(obj, "app") else obj
+    if hasattr(app_obj, "include_router"):
+        try:
+            # Store service instance for router access to db pool
+            if hasattr(app_obj, "state") and "service" in globals():
+                app_obj.state.service = globals()["service"]
+            app_obj.include_router(selector_router)
+            print("[selector] route mounted on", getattr(app_obj, "title", "app"))
+            return True
+        except Exception as ee:
+            print("[selector] include_router failed:", ee)
+    return False
+
+# Try immediate mount on all likely names
+_mounted = False
+for _name in ("service", "app", "application", "api"):
+    _mounted |= _include_router_on(globals().get(_name))
+
+# If not yet mounted, schedule a short retry after startup
+if not _mounted:
+    try:
+        import asyncio
+        async def _retry_mount():
+            await asyncio.sleep(0.1)
+            ok = False
+            for _name in ("service", "app", "application", "api"):
+                ok |= _include_router_on(globals().get(_name))
+            if not ok:
+                print("[selector] WARNING: router not mounted; check app variable names")
+        # Attach to whichever app exists to ensure loop context; fall back to bare create_task
+        _app = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
+        try:
+            @_app.on_event("startup")
+            async def _mount_selector_on_startup():
+                await _retry_mount()
+        except Exception:
+            asyncio.get_event_loop().create_task(_retry_mount())
+    except Exception as e:
+        print("[selector] scheduling retry failed:", e)
+
+# Optional: list route once if mounted
+try:
+    _app2 = globals().get("service").app if ("service" in globals() and hasattr(globals().get("service"), "app")) else globals().get("app")
+    if _app2:
+        for r in _app2.routes:
+            p = getattr(r, "path", None) or getattr(r, "path_format", None)
+            if p == "/api/selector/search":
+                print("[selector] confirmed:", p, getattr(r, "methods", []))
+                break
+except Exception:
+    pass
+
+# ============================================================================
 # PLAN EXECUTION MODELS
 # ============================================================================
 
@@ -1105,108 +1171,6 @@ async def get_service_status():
         "total_executions": len(service.execution_history)
     }
 
-# --- SELECTOR ENDPOINT HOTFIX ---
-from typing import Optional, List
-from fastapi import APIRouter, Request, Query
-from time import perf_counter
-
-# metrics (process-local)
-_METRICS = {
-    "selector_requests_total": 0,
-    "selector_failures_total": 0,
-    "selector_cache_hits": 0,
-}
-
-try:
-    from selector.dao import select_topk
-except Exception as e:
-    select_topk = None
-    print("[selector] import error:", e)
-
-_selector_router = APIRouter()
-
-@_selector_router.get("/api/selector/search")
-async def _selector_search(
-    request: Request,
-    query: str = Query(..., min_length=1),
-    k: int = Query(5, ge=1, le=20),
-    platform: Optional[str] = None,
-):
-    start = perf_counter()
-    _METRICS["selector_requests_total"] += 1
-    try:
-        if select_topk is None:
-            return {"error": "selector.dao not available"}, 500
-
-        k = max(1, min(20, k))
-        plats: List[str] = [p.strip() for p in platform.split(",")] if platform else []
-
-        app = request.app
-        service = getattr(app.state, "service", None)
-        if service is None:
-            return {"error": "Service instance not found on app.state"}, 500
-        
-        # Get the pool from service.db.pool (DatabasePool wrapper)
-        pool = None
-        if hasattr(service, 'db') and hasattr(service.db, 'pool'):
-            pool = service.db.pool
-        
-        if pool is None:
-            return {"error": "Database pool not initialized"}, 500
-
-        async with pool.acquire() as conn:
-            rows = await select_topk(conn, query, plats, k)
-
-        payload = {
-            "query": query,
-            "k": k,
-            "platform": plats,
-            "results": rows,
-            "from_cache": False,
-        }
-        # if later you add LKG cache and set from_cache=True, this will count it:
-        if payload.get("from_cache"):
-            _METRICS["selector_cache_hits"] += 1
-
-        return payload
-    except Exception:
-        _METRICS["selector_failures_total"] += 1
-        raise
-    finally:
-        dur_ms = (perf_counter() - start) * 1000.0
-        try:
-            print(
-                f"event=selector.search query_len={len(query)} k={k} "
-                f"platform_count={len(plats) if platform else 0} duration_ms={dur_ms:.1f}"
-            )
-        except Exception:
-            pass
-
-@_selector_router.get("/metrics-lite")
-async def _metrics_lite():
-    # simple snapshot of counters (no locks needed for this use)
-    return dict(_METRICS)
-
-def _mount_selector(candidate):
-    if candidate is None:
-        return False
-    app_obj = getattr(candidate, "app", None) if hasattr(candidate, "app") else candidate
-    if hasattr(app_obj, "include_router"):
-        # Store service instance on app.state for DB pool access
-        if hasattr(app_obj, "state") and "service" in globals():
-            app_obj.state.service = globals()["service"]
-        app_obj.include_router(_selector_router)
-        print("[selector] route(s) mounted on", getattr(app_obj, "title", "app"))
-        return True
-    return False
-
-_mounted = False
-for _name in ("service", "app", "application", "api"):
-    _mounted |= _mount_selector(globals().get(_name))
-if not _mounted:
-    print("[selector] WARNING: failed to mount; ensure this block is at file end after app creation")
-# --- END SELECTOR ENDPOINT HOTFIX ---
-
 # ============================================================================
 # STARTUP
 # ============================================================================
@@ -1225,3 +1189,188 @@ if __name__ == "__main__":
         reload=False,
         log_level="info"
     )
+# --- SELECTOR ENDPOINT HOTFIX ---
+from typing import Optional, List
+from fastapi import APIRouter, Request, Query
+
+try:
+    from selector.dao import select_topk
+except Exception as e:
+    select_topk = None
+    print("[selector] import error:", e)
+
+_selector_router = APIRouter()
+
+@_selector_router.get("/api/selector/search")
+async def _selector_search(
+    request: Request,
+    query: str = Query(..., min_length=1),
+    k: int = Query(5, ge=1, le=20),
+    platform: Optional[str] = None,
+):
+    if select_topk is None:
+        return {"error": "selector.dao not available"}
+    plats: List[str] = [p.strip() for p in platform.split(",")] if platform else []
+    app = request.app
+    pool = getattr(getattr(app, "state", app), "db", None) or \
+           getattr(getattr(app, "state", app), "db_pool", None) or \
+           getattr(app, "db_pool", None)
+    if pool is None:
+        return {"error": "DB pool not found on app.state"}
+    async with pool.acquire() as conn:
+        rows = await select_topk(conn, query, plats, k)
+    return {"query": query, "k": k, "platform": plats, "results": rows}
+
+def _mount_selector(candidate):
+    if candidate is None:
+        return False
+    app_obj = getattr(candidate, "app", None) if hasattr(candidate, "app") else candidate
+    if hasattr(app_obj, "include_router"):
+        app_obj.include_router(_selector_router)
+        print("[selector] route mounted on", getattr(app_obj, "title", "app"))
+        return True
+    return False
+
+_mounted = False
+for _name in ("service", "app", "application", "api"):
+    _mounted |= _mount_selector(globals().get(_name))
+if not _mounted:
+    print("[selector] WARNING: failed to mount; ensure this block is at file end after app creation")
+# --- END SELECTOR ENDPOINT HOTFIX ---
+
+
+# --- DB POOL STARTUP (idempotent, robust) ---
+import os
+import asyncio
+from typing import Optional
+
+async def _ensure_db_pool(_app) -> None:
+    try:
+        import asyncpg
+    except Exception as e:
+        print("[db] asyncpg not available:", e)
+        return
+    state = getattr(_app, "state", _app)
+    if getattr(state, "db_pool", None) or getattr(state, "db", None):
+        return  # already present
+
+    # Build DSN
+    dsn = os.getenv("DATABASE_URL")
+    if not dsn:
+        host = os.getenv("POSTGRES_HOST", "postgres")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        user = os.getenv("POSTGRES_USER", "postgres")
+        pwd  = os.getenv("POSTGRES_PASSWORD", "postgres")
+        db   = os.getenv("POSTGRES_DB", "postgres")
+        dsn = f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
+
+    # Create pool
+    try:
+        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=int(os.getenv("DB_POOL_MAX", "10")))
+        setattr(state, "db_pool", pool)
+        print("[db] asyncpg pool established")
+    except Exception as e:
+        print("[db] failed to create pool:", e)
+
+def _get_app_obj():
+    # Prefer service.app; fall back to bare app
+    try:
+        if "service" in globals() and hasattr(service, "app"):
+            return service.app
+    except Exception:
+        pass
+    return globals().get("app")
+
+_app_obj = _get_app_obj()
+if _app_obj and hasattr(_app_obj, "add_event_handler"):
+    async def _startup():
+        await _ensure_db_pool(_app_obj)
+    _app_obj.add_event_handler("startup", _startup)
+    print("[db] startup hook installed for pool creation")
+else:
+    print("[db] app not available at import time; no startup hook installed")
+# --- END DB POOL STARTUP ---
+
+
+# --- DB POOL RELIABILITY v3 ---
+import os, asyncio, time, random
+from typing import Optional
+
+def _get_app_obj():
+    try:
+        if "service" in globals() and hasattr(service, "app"):
+            return service.app
+    except Exception:
+        pass
+    return globals().get("app")
+
+def _build_dsn():
+    dsn = os.getenv("DATABASE_URL")
+    if dsn:
+        return dsn
+    host = os.getenv("POSTGRES_HOST", "postgres")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    user = os.getenv("POSTGRES_USER", "postgres")
+    pwd  = os.getenv("POSTGRES_PASSWORD", "postgres")
+    db   = os.getenv("POSTGRES_DB", "postgres")
+    return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
+
+async def _create_pool_once(_app):
+    try:
+        import asyncpg
+    except Exception as e:
+        print("[db] asyncpg not available:", e)
+        return None
+    state = getattr(_app, "state", _app)
+    dsn = _build_dsn()
+    max_size = int(os.getenv("DB_POOL_MAX", "10"))
+    try:
+        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=max_size)
+        setattr(state, "db_pool", pool)
+        print("[db] asyncpg pool established")
+        return pool
+    except Exception as e:
+        print("[db] failed to create pool:", e)
+        return None
+
+async def _create_pool_with_retry(_app):
+    total = int(os.getenv("DB_WAIT_MAX_SECONDS", "60"))
+    start = time.time()
+    attempt = 0
+    while True:
+        attempt += 1
+        pool = await _create_pool_once(_app)
+        if pool:
+            return
+        elapsed = time.time() - start
+        if elapsed >= total:
+            print(f"[db] giving up after {attempt} attempts / {int(elapsed)}s")
+            return
+        # capped backoff (0.5s..2.0s) with jitter
+        delay = min(2.0, 0.5 + attempt*0.2) + random.random()*0.2
+        await asyncio.sleep(delay)
+
+_app_obj = _get_app_obj()
+if _app_obj and hasattr(_app_obj, "add_event_handler"):
+    async def _startup():
+        await _create_pool_with_retry(_app_obj)
+    _app_obj.add_event_handler("startup", _startup)
+    print("[db] startup hook installed for pool creation (v3 with retry)")
+else:
+    print("[db] app not available at import time; no startup hook installed (v3)")
+
+# Middleware safety net: try once on-demand if pool is missing
+try:
+    state = getattr(_app_obj, "state", _app_obj) if _app_obj else None
+    if _app_obj and hasattr(_app_obj, "middleware") and _app_obj not in (None,):
+        @_app_obj.middleware("http")
+        async def _ensure_pool_mw(request, call_next):
+            st = getattr(_app_obj, "state", _app_obj)
+            if not getattr(st, "db_pool", None):
+                # don’t block requests long; single fast attempt
+                await _create_pool_once(_app_obj)
+            return await call_next(request)
+        print("[db] ensure-pool middleware installed (v3)")
+except Exception as e:
+    print("[db] failed to install ensure-pool middleware:", e)
+# --- END DB POOL RELIABILITY v3 ---

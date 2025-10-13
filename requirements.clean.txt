@@ -1,0 +1,45 @@
+# Clean Automation Service Requirements
+# Removed: Celery, Flower (background processing)
+# Focus: Direct execution only
+
+# Core FastAPI and async support
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic[email]==2.5.0
+python-multipart==0.0.6
+
+# Database and caching
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.23
+psycopg2-binary==2.9.9
+redis==5.0.1
+
+# HTTP client for service communication
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Security and authentication
+PyJWT==2.8.0
+bcrypt==4.1.2
+cryptography==41.0.7
+
+# Remote execution libraries
+paramiko==3.4.0      # SSH connections
+pywinrm==0.4.3       # Windows PowerShell
+
+# Logging and monitoring
+structlog==23.2.0
+prometheus_client==0.19.0
+
+# ============================================================================
+# REMOVED PACKAGES (Clean Architecture)
+# ============================================================================
+# celery==5.3.4        # Background job processing (Prefect handles this)
+# flower==2.0.1         # Celery monitoring (not needed)
+#
+# REASONING:
+# - Celery creates redundancy with Prefect orchestration
+# - Clean architecture uses Prefect as single orchestration engine
+# - Automation service focuses on direct, synchronous execution
+# - Background processing handled by Prefect workers
+# ============================================================================

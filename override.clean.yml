@@ -1,0 +1,11 @@
+services:
+  automation-service:
+    build:
+      context: .
+      dockerfile: automation-service/Dockerfile.clean
+    volumes: []              # IMPORTANT: do not mount /app
+    environment:
+      UVICORN_RELOAD: "false"
+      RELOAD: "0"
+      DB_WAIT_MAX_SECONDS: "60"
+      DB_POOL_MAX: "10"
