@@ -1249,6 +1249,17 @@ except Exception as e:
 # --- END EXEC ROUTER ---
 
 # ============================================================================
+# AI TOOLS PROXY ROUTER (PR #7)
+# ============================================================================
+try:
+    from routes.tools import router as tools_router
+    service.app.include_router(tools_router)
+    print("[tools] AI tools proxy router mounted on /ai/tools/*")
+except Exception as e:
+    print(f"[tools] WARNING: Failed to mount tools router: {e}")
+# --- END TOOLS ROUTER ---
+
+# ============================================================================
 # STARTUP
 # ============================================================================
 
