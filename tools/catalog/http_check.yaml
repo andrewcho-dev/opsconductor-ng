@@ -5,7 +5,7 @@ category: network
 platform: cross-platform
 version: 1.0.0
 
-command_template: "curl -X {method} -s -o /dev/null -w 'HTTP Status: %{{http_code}}\\nTime: %{{time_total}}s\\n' --max-time {timeout_s} '{url}'"
+command_template: "curl -X {method} -s -o /dev/null -w 'HTTP Status: %{http_code}\\nTime: %{time_total}s\\n' --max-time {timeout_s} '{url}'"
 timeout_seconds: 15
 requires_admin: false
 

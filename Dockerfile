@@ -3,9 +3,12 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and network tools
 RUN apt-get update && apt-get install -y \
     curl \
+    iputils-ping \
+    dnsutils \
+    traceroute \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
