@@ -1,0 +1,198 @@
+# Prometheus Alert Rules for OpsConductor NG
+# Covers AI execution, selector, and SLO-based burn-rate alerts
+
+groups:
+  # ============================================================================
+  # AI EXECUTION ALERTS
+  # ============================================================================
+  - name: ai_execution_alerts
+    interval: 30s
+    rules:
+      # High error rate on AI execution path
+      - alert: AIExecutionErrorRateHigh
+        expr: |
+          (
+            rate(ai_request_errors_total[5m])
+            /
+            rate(ai_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: ai_execution
+        annotations:
+          summary: "AI execution error rate above 5%"
+          description: "AI execution error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+          runbook: "Check automation-service logs for error patterns. Verify tool availability and LLM connectivity."
+
+      # P95 latency too high
+      - alert: AIExecutionLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(ai_request_duration_seconds_bucket[5m]))
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: ai_execution
+        annotations:
+          summary: "AI execution P95 latency above 1s"
+          description: "P95 latency is {{ $value | humanizeDuration }} (threshold: 1s)"
+          runbook: "Check tool execution times. Review LLM response times. Check for resource contention."
+
+      # P99 latency critical
+      - alert: AIExecutionLatencyP99Critical
+        expr: |
+          histogram_quantile(0.99,
+            sum by (le) (rate(ai_request_duration_seconds_bucket[5m]))
+          ) > 5.0
+        for: 3m
+        labels:
+          severity: critical
+          component: ai_execution
+        annotations:
+          summary: "AI execution P99 latency above 5s"
+          description: "P99 latency is {{ $value | humanizeDuration }} (threshold: 5s)"
+          runbook: "Immediate investigation required. Check for stuck executions or resource exhaustion."
+
+  # ============================================================================
+  # SELECTOR ALERTS
+  # ============================================================================
+  - name: selector_alerts
+    interval: 30s
+    rules:
+      # Selector error burst
+      - alert: SelectorErrorBurst
+        expr: increase(selector_db_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: selector
+        annotations:
+          summary: "Selector database errors detected"
+          description: "{{ $value }} database errors in the last 5 minutes"
+          runbook: "Check PostgreSQL connectivity. Verify database pool health. Review selector logs."
+
+      # Selector latency high
+      - alert: SelectorLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(selector_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: selector
+        annotations:
+          summary: "Selector P95 latency above 500ms"
+          description: "Selector P95 latency is {{ $value | humanizeDuration }} (threshold: 500ms)"
+          runbook: "Check database query performance. Review vector search efficiency. Check cache hit rate."
+
+      # Cache eviction rate high
+      - alert: SelectorCacheEvictionRateHigh
+        expr: rate(selector_cache_evictions_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: info
+          component: selector
+        annotations:
+          summary: "High cache eviction rate"
+          description: "Cache eviction rate is {{ $value | humanize }} evictions/sec"
+          runbook: "Consider increasing cache size or TTL. Review query patterns for optimization."
+
+  # ============================================================================
+  # SLO BURN-RATE ALERTS (99% Success Target)
+  # ============================================================================
+  - name: slo_burn_rate_alerts
+    interval: 30s
+    rules:
+      # Fast burn (5m/1h windows) - Critical
+      - alert: SLOBurnRateFast
+        expr: |
+          (
+            (
+              sum(rate(ai_requests_total{status="success"}[5m]))
+              /
+              sum(rate(ai_requests_total[5m]))
+            ) < 0.99
+          )
+          and
+          (
+            (
+              sum(rate(ai_requests_total{status="success"}[1h]))
+              /
+              sum(rate(ai_requests_total[1h]))
+            ) < 0.99
+          )
+        for: 2m
+        labels:
+          severity: critical
+          component: slo
+          window: fast
+        annotations:
+          summary: "Fast SLO burn detected (5m/1h windows)"
+          description: "Success rate {{ $value | humanizePercentage }} is below 99% SLO target in both 5m and 1h windows"
+          runbook: "Immediate action required. Check for ongoing incidents. Review error patterns. Consider rollback if recent deployment."
+
+      # Slow burn (30m/6h windows) - Warning
+      - alert: SLOBurnRateSlow
+        expr: |
+          (
+            (
+              sum(rate(ai_requests_total{status="success"}[30m]))
+              /
+              sum(rate(ai_requests_total[30m]))
+            ) < 0.99
+          )
+          and
+          (
+            (
+              sum(rate(ai_requests_total{status="success"}[6h]))
+              /
+              sum(rate(ai_requests_total[6h]))
+            ) < 0.99
+          )
+        for: 10m
+        labels:
+          severity: warning
+          component: slo
+          window: slow
+        annotations:
+          summary: "Slow SLO burn detected (30m/6h windows)"
+          description: "Success rate {{ $value | humanizePercentage }} is below 99% SLO target in both 30m and 6h windows"
+          runbook: "Investigate error trends. Review recent changes. Plan corrective actions before fast burn threshold."
+
+  # ============================================================================
+  # SYSTEM HEALTH ALERTS
+  # ============================================================================
+  - name: system_health_alerts
+    interval: 30s
+    rules:
+      # Metrics endpoint down
+      - alert: MetricsEndpointDown
+        expr: up{job=~"automation-service.*"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "Metrics endpoint unreachable"
+          description: "{{ $labels.job }} metrics endpoint has been down for 1 minute"
+          runbook: "Check service health. Verify container status. Review service logs."
+
+      # No requests in last 10 minutes (potential issue)
+      - alert: NoRequestsReceived
+        expr: |
+          (
+            rate(ai_requests_total[10m]) == 0
+            and
+            rate(selector_requests_total[10m]) == 0
+          )
+        for: 10m
+        labels:
+          severity: info
+          component: monitoring
+        annotations:
+          summary: "No requests received in 10 minutes"
+          description: "Both AI execution and selector have received no requests"
+          runbook: "Verify if this is expected (e.g., maintenance window). Check upstream routing and API gateway."

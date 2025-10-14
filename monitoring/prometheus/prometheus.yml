@@ -1,0 +1,40 @@
+# Prometheus Configuration for OpsConductor NG
+# Scrapes metrics from automation-service (selector + exec paths)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'opsconductor-ng'
+    environment: 'dev'
+
+# Load alert rules
+rule_files:
+  - '/etc/prometheus/opsconductor.rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Automation Service - Both selector and execution metrics on same endpoint
+  - job_name: 'automation-service'
+    static_configs:
+      - targets: ['automation-service:3003']
+        labels:
+          service: 'automation-service'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # AI Pipeline (port 8000) - if it exposes metrics
+  - job_name: 'ai-pipeline'
+    static_configs:
+      - targets: ['ai-pipeline:8000']
+        labels:
+          service: 'ai-pipeline'
+    metrics_path: '/pipeline/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 5s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
