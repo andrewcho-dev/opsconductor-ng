@@ -162,6 +162,7 @@ services:
       - "3005:8000"
     volumes:
       # DEVELOPMENT VOLUME MOUNTS - Live file changes for 4-stage pipeline
+      - ./main.py:/app/main.py  # Mount main.py for live updates
       - ./pipeline:/app/pipeline
       - ./llm:/app/llm
       - ./api:/app/api
