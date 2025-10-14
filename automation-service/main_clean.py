@@ -1260,6 +1260,54 @@ except Exception as e:
 # --- END TOOLS ROUTER ---
 
 # ============================================================================
+# ASSET FAÇADE ROUTER (PR #11)
+# ============================================================================
+try:
+    from routes.assets import router as assets_router
+    from asset_facade import AssetFacade
+    from secrets_broker import SecretsManager
+    
+    # Initialize asset façade
+    database_url = os.getenv("DATABASE_URL", "postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor")
+    asset_service_base = os.getenv("ASSET_SERVICE_BASE", None)
+    service.app.state.asset_facade = AssetFacade(database_url, asset_service_base)
+    
+    # Initialize secrets manager
+    secrets_kms_key = os.getenv("SECRETS_KMS_KEY", "")
+    if secrets_kms_key:
+        service.app.state.secrets_manager = SecretsManager(secrets_kms_key, database_url)
+        print("[secrets] Secrets manager initialized with AES-256-GCM encryption")
+    else:
+        print("[secrets] WARNING: SECRETS_KMS_KEY not set - secrets broker disabled")
+    
+    service.app.include_router(assets_router)
+    print("[assets] Asset façade router mounted on /assets/*")
+except Exception as e:
+    print(f"[assets] WARNING: Failed to mount assets router: {e}")
+    import traceback
+    traceback.print_exc()
+# --- END ASSET FAÇADE ROUTER ---
+
+# ============================================================================
+# SECRETS BROKER ROUTER (PR #11 - INTERNAL ONLY)
+# ============================================================================
+try:
+    from routes.secrets import router as secrets_router
+    
+    # Only mount if INTERNAL_KEY is configured
+    internal_key = os.getenv("INTERNAL_KEY", "")
+    if internal_key:
+        service.app.include_router(secrets_router)
+        print("[secrets] Secrets broker router mounted on /internal/secrets/* (INTERNAL USE ONLY)")
+    else:
+        print("[secrets] WARNING: INTERNAL_KEY not set - secrets broker routes disabled")
+except Exception as e:
+    print(f"[secrets] WARNING: Failed to mount secrets router: {e}")
+    import traceback
+    traceback.print_exc()
+# --- END SECRETS BROKER ROUTER ---
+
+# ============================================================================
 # STARTUP
 # ============================================================================
 

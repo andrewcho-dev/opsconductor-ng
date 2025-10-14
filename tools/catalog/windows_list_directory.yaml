@@ -107,14 +107,16 @@ parameters:
   
   - name: username
     type: string
-    description: Windows username for authentication
-    required: true
+    description: Windows username for authentication (defaults to 'Administrator' if not provided)
+    required: false
+    default: "Administrator"
     pattern: "^[A-Za-z0-9\\.\\-_@]+$"
   
   - name: password
     type: string
-    description: Windows password for authentication
-    required: true
+    description: Windows password for authentication (defaults to empty string if not provided)
+    required: false
+    default: ""
     sensitive: true
   
   - name: domain

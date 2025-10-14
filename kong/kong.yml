@@ -224,6 +224,18 @@ routes:
       - POST
       - OPTIONS
 
+  # Asset Façade Routes (PR #11 - Asset Intelligence)
+  - name: asset-facade-routes
+    service: automation-service
+    paths:
+      - /assets
+    strip_path: false
+    preserve_host: false
+    regex_priority: 300
+    methods:
+      - GET
+      - OPTIONS
+
   # Communication Service Routes - Notifications
   - name: communication-notifications-routes
     service: communication-service

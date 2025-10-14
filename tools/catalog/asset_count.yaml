@@ -1,0 +1,102 @@
+name: asset_count
+display_name: Asset Count
+description: Count assets in inventory matching filters (OS, hostname, IP, status, environment)
+category: asset
+platform: cross-platform
+version: 1.0.0
+
+command_template: |
+  python3 -c "
+  import sys
+  import json
+  import httpx
+  
+  # Parse parameters
+  filters = {}
+  if '{os}':
+      filters['os'] = '{os}'
+  if '{hostname}':
+      filters['hostname'] = '{hostname}'
+  if '{ip}':
+      filters['ip'] = '{ip}'
+  if '{status}':
+      filters['status'] = '{status}'
+  if '{environment}':
+      filters['environment'] = '{environment}'
+  
+  try:
+      # Call asset façade API
+      base_url = 'http://automation-service:3003'
+      params = {{k: v for k, v in filters.items() if v}}
+      
+      response = httpx.get(f'{{base_url}}/assets/count', params=params, timeout=10.0)
+      response.raise_for_status()
+      
+      result = response.json()
+      print(json.dumps(result, indent=2))
+      sys.exit(0)
+      
+  except Exception as e:
+      print(json.dumps({{'error': str(e), 'success': False}}))
+      sys.exit(1)
+  "
+
+timeout_seconds: 15
+requires_admin: false
+
+parameters:
+  - name: os
+    type: string
+    description: OS type or version filter (e.g., "Windows 10", "linux", "ubuntu")
+    required: false
+    default: ""
+  
+  - name: hostname
+    type: string
+    description: Hostname filter (partial match supported)
+    required: false
+    default: ""
+  
+  - name: ip
+    type: string
+    description: IP address filter (exact match)
+    required: false
+    default: ""
+    pattern: "^(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})?$"
+  
+  - name: status
+    type: string
+    description: Status filter (e.g., "active", "inactive")
+    required: false
+    default: ""
+    enum: ["", "active", "inactive", "maintenance"]
+  
+  - name: environment
+    type: string
+    description: Environment filter (e.g., "production", "staging")
+    required: false
+    default: ""
+    enum: ["", "production", "staging", "development", "test"]
+
+max_output_bytes: 4096
+redact_patterns: []
+
+tags:
+  - asset
+  - inventory
+  - count
+  - query
+
+examples:
+  - description: "Count all Windows 10 assets"
+    parameters:
+      os: "Windows 10"
+  
+  - description: "Count active production servers"
+    parameters:
+      status: "active"
+      environment: "production"
+  
+  - description: "Count Linux servers"
+    parameters:
+      os: "linux"
