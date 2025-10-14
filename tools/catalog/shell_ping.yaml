@@ -1,0 +1,54 @@
+name: shell_ping
+display_name: Ping
+description: Send ICMP echo requests to test network connectivity
+category: network
+platform: cross-platform
+version: 1.0.0
+
+command_template: "ping -c {count} -W {timeout_s} {host}"
+timeout_seconds: 30
+requires_admin: false
+
+parameters:
+  - name: host
+    type: string
+    description: Target hostname or IP address
+    required: true
+  
+  - name: count
+    type: integer
+    description: Number of ping packets to send
+    required: false
+    default: 3
+    min_value: 1
+    max_value: 10
+  
+  - name: timeout_s
+    type: integer
+    description: Timeout per packet in seconds
+    required: false
+    default: 2
+    min_value: 1
+    max_value: 10
+
+max_output_bytes: 4096
+redact_patterns: []
+
+tags:
+  - ping
+  - icmp
+  - network
+  - connectivity
+  - troubleshooting
+
+examples:
+  - description: "Ping Google DNS 3 times"
+    parameters:
+      host: "8.8.8.8"
+      count: 3
+  
+  - description: "Ping example.com 5 times with 1s timeout"
+    parameters:
+      host: "example.com"
+      count: 5
+      timeout_s: 1

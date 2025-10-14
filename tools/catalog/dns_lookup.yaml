@@ -1,0 +1,44 @@
+name: dns_lookup
+display_name: DNS Lookup
+description: Perform DNS lookup for a domain name
+category: network
+platform: cross-platform
+version: 1.0.0
+
+command_template: "nslookup -type={record_type} {domain}"
+timeout_seconds: 10
+requires_admin: false
+
+parameters:
+  - name: domain
+    type: string
+    description: Domain name to lookup
+    required: true
+    pattern: "^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$"
+  
+  - name: record_type
+    type: string
+    description: DNS record type
+    required: false
+    default: "A"
+    enum: ["A", "AAAA", "NS", "MX", "TXT", "CNAME", "SOA"]
+
+max_output_bytes: 8192
+redact_patterns: []
+
+tags:
+  - dns
+  - network
+  - lookup
+  - troubleshooting
+
+examples:
+  - description: "Lookup A record for example.com"
+    parameters:
+      domain: "example.com"
+      record_type: "A"
+  
+  - description: "Lookup MX records for gmail.com"
+    parameters:
+      domain: "gmail.com"
+      record_type: "MX"

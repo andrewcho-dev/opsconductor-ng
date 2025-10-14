@@ -1,0 +1,53 @@
+name: tcp_port_check
+display_name: TCP Port Check
+description: Check if a TCP port is open and accepting connections
+category: network
+platform: cross-platform
+version: 1.0.0
+
+command_template: "timeout {timeout_s} bash -c 'cat < /dev/null > /dev/tcp/{host}/{port}' && echo 'Port {port} is OPEN' || echo 'Port {port} is CLOSED'"
+timeout_seconds: 10
+requires_admin: false
+
+parameters:
+  - name: host
+    type: string
+    description: Target hostname or IP address
+    required: true
+  
+  - name: port
+    type: integer
+    description: TCP port number
+    required: true
+    min_value: 1
+    max_value: 65535
+  
+  - name: timeout_s
+    type: integer
+    description: Connection timeout in seconds
+    required: false
+    default: 5
+    min_value: 1
+    max_value: 30
+
+max_output_bytes: 1024
+redact_patterns: []
+
+tags:
+  - tcp
+  - port
+  - connectivity
+  - network
+  - troubleshooting
+
+examples:
+  - description: "Check if SSH port is open"
+    parameters:
+      host: "example.com"
+      port: 22
+  
+  - description: "Check if web server is listening"
+    parameters:
+      host: "192.168.1.100"
+      port: 80
+      timeout_s: 3

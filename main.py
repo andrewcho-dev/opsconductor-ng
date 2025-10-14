@@ -23,13 +23,14 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, AsyncGenerator
 import httpx
 import uuid
 import json
 from datetime import datetime
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 # Add paths
 sys.path.append('/app')
@@ -126,11 +127,20 @@ async def lifespan(app: FastAPI):
         # Initialize Stage D Answerer
         stage_d_answerer = StageDAnswerer(llm_client)
         
+        # Initialize Tool Registry (PR #7)
+        try:
+            from pipeline.tools.registry import initialize_registry
+            await initialize_registry()
+            logger.info("✅ Tool Registry initialized")
+        except Exception as e:
+            logger.warning(f"⚠️  Tool Registry initialization failed: {e}")
+        
         logger.info("✅ NEWIDEA.MD Pipeline V2 started successfully")
         logger.info("🏗️  Stage AB: Combined Understanding & Selection - READY (V2)")
         logger.info("🏗️  Stage C: Planner - READY")
         logger.info("🏗️  Stage D: Answerer - READY")
         logger.info("🚀 Stage E: Executor - READY (integrated)")
+        logger.info("🔧 Tool Registry: READY (PR #7)")
         logger.info("💡 Pipeline V2 Active: Merged A+B eliminates hallucinations")
         
         yield
@@ -212,6 +222,15 @@ except Exception as e:
 # ============================================================================
 # API ENDPOINTS
 # ============================================================================
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
 
 @app.get("/health")
 async def health_check():
@@ -953,6 +972,264 @@ async def execute_tool(request: ExecuteRequest):
             duration_ms=round(duration_ms, 2),
             timestamp=datetime.utcnow().isoformat() + "Z",
             error=str(e)
+        )
+
+
+# ============================================================================
+# TOOL REGISTRY & RUNNER ENDPOINTS (PR #7)
+# ============================================================================
+
+from pipeline.tools.registry import (
+    ToolSpec,
+    ToolParameter,
+    get_tool_registry,
+    initialize_registry
+)
+from pipeline.tools.runner import (
+    ToolRunner,
+    ToolExecutionRequest,
+    ToolExecutionResult,
+    get_tool_runner
+)
+
+
+class ToolRegisterRequest(BaseModel):
+    """Request to register a new tool"""
+    tool_spec: Dict[str, Any]
+
+
+class ToolRegisterResponse(BaseModel):
+    """Response from tool registration"""
+    success: bool
+    tool_name: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ToolListResponse(BaseModel):
+    """Response from tool list"""
+    success: bool
+    tools: List[Dict[str, Any]]
+    total: int
+    filters: Dict[str, Any]
+
+
+class ToolExecuteRequest(BaseModel):
+    """Request to execute a tool"""
+    name: str
+    params: Dict[str, Any] = {}
+    trace_id: Optional[str] = None
+
+
+class ToolExecuteResponse(BaseModel):
+    """Response from tool execution"""
+    success: bool
+    tool: str
+    output: Optional[str] = None
+    error: Optional[str] = None
+    duration_ms: float
+    trace_id: str
+    timestamp: str
+    exit_code: Optional[int] = None
+    truncated: bool = False
+    redacted: bool = False
+
+
+@app.post("/tools/register", response_model=ToolRegisterResponse)
+async def register_tool(request: ToolRegisterRequest):
+    """
+    Register a new tool or update existing tool
+    
+    This endpoint is used for admin/seed operations to add tools to the registry.
+    
+    Args:
+        request: Tool specification
+    
+    Returns:
+        ToolRegisterResponse with registration result
+    """
+    # Check if tools feature is enabled
+    tools_enabled = os.getenv("FEATURE_TOOLS_ENABLE", "true").lower() == "true"
+    if not tools_enabled:
+        return ToolRegisterResponse(
+            success=False,
+            error="Tools feature is not enabled. Set FEATURE_TOOLS_ENABLE=true"
+        )
+    
+    try:
+        # Parse tool spec
+        tool_spec = ToolSpec(**request.tool_spec)
+        
+        # Register tool
+        registry = get_tool_registry()
+        success = registry.register(tool_spec)
+        
+        if success:
+            logger.info(f"[Tools] Registered tool: {tool_spec.name}")
+            return ToolRegisterResponse(
+                success=True,
+                tool_name=tool_spec.name
+            )
+        else:
+            return ToolRegisterResponse(
+                success=False,
+                error="Failed to register tool"
+            )
+    
+    except Exception as e:
+        logger.error(f"[Tools] Registration failed: {e}")
+        return ToolRegisterResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@app.get("/tools/list", response_model=ToolListResponse)
+async def list_tools(
+    platform: Optional[str] = None,
+    category: Optional[str] = None,
+    tags: Optional[str] = None
+):
+    """
+    List available tools with optional filtering
+    
+    Args:
+        platform: Filter by platform (windows, linux, cross-platform)
+        category: Filter by category (network, system, database, etc.)
+        tags: Comma-separated list of tags to filter by
+    
+    Returns:
+        ToolListResponse with list of tools
+    """
+    # Check if tools feature is enabled
+    tools_enabled = os.getenv("FEATURE_TOOLS_ENABLE", "true").lower() == "true"
+    if not tools_enabled:
+        return ToolListResponse(
+            success=False,
+            tools=[],
+            total=0,
+            filters={}
+        )
+    
+    try:
+        registry = get_tool_registry()
+        
+        # Parse tags
+        tag_list = [t.strip() for t in tags.split(',')] if tags else None
+        
+        # Get filtered tools
+        tools = registry.list(
+            platform=platform,
+            category=category,
+            tags=tag_list
+        )
+        
+        # Convert to dict
+        tools_dict = [tool.dict() for tool in tools]
+        
+        logger.info(
+            f"[Tools] Listed {len(tools)} tools "
+            f"(platform={platform}, category={category}, tags={tag_list})"
+        )
+        
+        return ToolListResponse(
+            success=True,
+            tools=tools_dict,
+            total=len(tools),
+            filters={
+                "platform": platform,
+                "category": category,
+                "tags": tag_list
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"[Tools] List failed: {e}")
+        return ToolListResponse(
+            success=False,
+            tools=[],
+            total=0,
+            filters={}
+        )
+
+
+@app.post("/tools/execute", response_model=ToolExecuteResponse)
+async def execute_registered_tool(request: ToolExecuteRequest):
+    """
+    Execute a registered tool with parameters
+    
+    This endpoint executes tools from the registry with full safety controls:
+    - Parameter validation
+    - Timeout enforcement
+    - Output truncation
+    - Credential redaction
+    
+    Args:
+        request: Tool execution request
+    
+    Returns:
+        ToolExecuteResponse with execution result
+    """
+    import time
+    
+    start_time = time.perf_counter()
+    trace_id = request.trace_id or str(uuid.uuid4())
+    
+    # Check if tools feature is enabled
+    tools_enabled = os.getenv("FEATURE_TOOLS_ENABLE", "true").lower() == "true"
+    if not tools_enabled:
+        return ToolExecuteResponse(
+            success=False,
+            tool=request.name,
+            error="Tools feature is not enabled. Set FEATURE_TOOLS_ENABLE=true",
+            duration_ms=0,
+            trace_id=trace_id,
+            timestamp=datetime.utcnow().isoformat() + "Z"
+        )
+    
+    logger.info(f"[Tools] [{trace_id}] Execute request: tool={request.name}, params={list(request.params.keys())}")
+    
+    try:
+        # Get tool runner
+        runner = get_tool_runner()
+        
+        # Execute tool
+        exec_request = ToolExecutionRequest(
+            tool_name=request.name,
+            parameters=request.params,
+            trace_id=trace_id
+        )
+        
+        result = await runner.execute(exec_request)
+        
+        logger.info(
+            f"[Tools] [{trace_id}] Execute completed: "
+            f"success={result.success}, duration={result.duration_ms:.2f}ms"
+        )
+        
+        return ToolExecuteResponse(
+            success=result.success,
+            tool=result.tool_name,
+            output=result.output,
+            error=result.error,
+            duration_ms=result.duration_ms,
+            trace_id=result.trace_id,
+            timestamp=result.timestamp,
+            exit_code=result.exit_code,
+            truncated=result.truncated,
+            redacted=result.redacted
+        )
+    
+    except Exception as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"[Tools] [{trace_id}] Execute failed: {e}")
+        
+        return ToolExecuteResponse(
+            success=False,
+            tool=request.name,
+            error=str(e),
+            duration_ms=round(duration_ms, 2),
+            trace_id=trace_id,
+            timestamp=datetime.utcnow().isoformat() + "Z"
         )
 
 

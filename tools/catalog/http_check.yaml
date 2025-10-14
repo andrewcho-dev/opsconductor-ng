@@ -1,0 +1,55 @@
+name: http_check
+display_name: HTTP Health Check
+description: Check HTTP endpoint availability and response time
+category: network
+platform: cross-platform
+version: 1.0.0
+
+command_template: "curl -X {method} -s -o /dev/null -w 'HTTP Status: %{{http_code}}\\nTime: %{{time_total}}s\\n' --max-time {timeout_s} '{url}'"
+timeout_seconds: 15
+requires_admin: false
+
+parameters:
+  - name: url
+    type: string
+    description: URL to check
+    required: true
+    pattern: "^https?://.*"
+  
+  - name: method
+    type: string
+    description: HTTP method
+    required: false
+    default: "GET"
+    enum: ["GET", "HEAD", "POST", "PUT", "DELETE"]
+  
+  - name: timeout_s
+    type: integer
+    description: Request timeout in seconds
+    required: false
+    default: 10
+    min_value: 1
+    max_value: 30
+
+max_output_bytes: 4096
+redact_patterns:
+  - "(?i)(api[_-]?key|token|password|secret)=[^&\\s]+"
+  - "(?i)authorization:\\s*[^\\n]+"
+
+tags:
+  - http
+  - health
+  - monitoring
+  - api
+
+examples:
+  - description: "Check Google homepage"
+    parameters:
+      url: "https://www.google.com"
+      method: "GET"
+  
+  - description: "HEAD request to API endpoint"
+    parameters:
+      url: "https://api.example.com/health"
+      method: "HEAD"
+      timeout_s: 5

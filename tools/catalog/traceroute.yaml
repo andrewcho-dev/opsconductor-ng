@@ -1,0 +1,54 @@
+name: traceroute
+display_name: Traceroute
+description: Trace network path to a destination host
+category: network
+platform: cross-platform
+version: 1.0.0
+
+command_template: "traceroute -m {max_hops} -w {timeout_s} {host}"
+timeout_seconds: 60
+requires_admin: false
+
+parameters:
+  - name: host
+    type: string
+    description: Target hostname or IP address
+    required: true
+  
+  - name: max_hops
+    type: integer
+    description: Maximum number of hops
+    required: false
+    default: 5
+    min_value: 1
+    max_value: 30
+  
+  - name: timeout_s
+    type: integer
+    description: Timeout per hop in seconds
+    required: false
+    default: 3
+    min_value: 1
+    max_value: 10
+
+max_output_bytes: 16384
+redact_patterns: []
+
+tags:
+  - traceroute
+  - network
+  - routing
+  - troubleshooting
+  - latency
+
+examples:
+  - description: "Trace route to Google DNS"
+    parameters:
+      host: "8.8.8.8"
+      max_hops: 5
+  
+  - description: "Trace route to example.com with 10 hops"
+    parameters:
+      host: "example.com"
+      max_hops: 10
+      timeout_s: 5
