@@ -9,7 +9,7 @@ This is a CLEAN BREAK from the old AI Brain architecture.
 No backward compatibility, no fallback mechanisms.
 """
 
-__version__ = "1.0.0-newidea"
+__version__ = "1.1.0"
 __architecture__ = "4-stage-pipeline"
 
 # Pipeline stages

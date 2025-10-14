@@ -1,0 +1,338 @@
+name: Release Tag Workflow
+
+on:
+  push:
+    tags:
+      - 'v*.*.*-walking-skeleton'
+      - 'v*.*.*-automation-service'
+      - 'v*.*.*-ai-pipeline'
+      - 'v*.*.*-frontend'
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  validate-tag:
+    name: Validate Release Tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      component: ${{ steps.extract.outputs.component }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version and component
+        id: extract
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          
+          # Extract version (e.g., v1.1.0)
+          VERSION=$(echo $TAG | grep -oP 'v\d+\.\d+\.\d+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Extract component (e.g., walking-skeleton, automation-service)
+          COMPONENT=$(echo $TAG | sed 's/v[0-9.]*-//')
+          echo "component=$COMPONENT" >> $GITHUB_OUTPUT
+          
+          echo "📦 Release Tag: $TAG"
+          echo "🔢 Version: $VERSION"
+          echo "🎯 Component: $COMPONENT"
+
+      - name: Verify CHANGELOG entry
+        run: |
+          if ! grep -q "${{ steps.extract.outputs.version }}" CHANGELOG.md; then
+            echo "❌ CHANGELOG.md does not contain entry for ${{ steps.extract.outputs.version }}"
+            exit 1
+          fi
+          echo "✅ CHANGELOG.md contains entry for ${{ steps.extract.outputs.version }}"
+
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    strategy:
+      matrix:
+        service:
+          - automation-service
+          - ai-pipeline
+          - frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }} image
+        run: |
+          if [ "${{ matrix.service }}" = "automation-service" ]; then
+            docker build -f automation-service/Dockerfile.clean -t opsconductor-${{ matrix.service }}:${{ needs.validate-tag.outputs.version }} .
+          elif [ "${{ matrix.service }}" = "ai-pipeline" ]; then
+            docker build -f Dockerfile -t opsconductor-${{ matrix.service }}:${{ needs.validate-tag.outputs.version }} .
+          elif [ "${{ matrix.service }}" = "frontend" ]; then
+            docker build -f frontend/Dockerfile -t opsconductor-${{ matrix.service }}:${{ needs.validate-tag.outputs.version }} frontend/
+          fi
+
+      - name: Save image artifact
+        run: |
+          docker save opsconductor-${{ matrix.service }}:${{ needs.validate-tag.outputs.version }} | gzip > ${{ matrix.service }}-${{ needs.validate-tag.outputs.version }}.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}-image
+          path: ${{ matrix.service }}-${{ needs.validate-tag.outputs.version }}.tar.gz
+          retention-days: 7
+
+  staging-smoke-tests:
+    name: Staging Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build-images]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: opsconductor
+          POSTGRES_USER: opsconductor
+          POSTGRES_PASSWORD: opsconductor_secure_2024
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download automation-service image
+        uses: actions/download-artifact@v4
+        with:
+          name: automation-service-image
+
+      - name: Download ai-pipeline image
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-pipeline-image
+
+      - name: Load Docker images
+        run: |
+          docker load < automation-service-${{ needs.validate-tag.outputs.version }}.tar.gz
+          docker load < ai-pipeline-${{ needs.validate-tag.outputs.version }}.tar.gz
+
+      - name: Start services
+        run: |
+          # Create minimal docker-compose for testing
+          cat > docker-compose.test.yml <<EOF
+          version: '3.8'
+          services:
+            automation-service:
+              image: opsconductor-automation-service:${{ needs.validate-tag.outputs.version }}
+              ports:
+                - "3003:3003"
+              environment:
+                - DATABASE_URL=postgresql://opsconductor:opsconductor_secure_2024@localhost:5432/opsconductor
+                - REDIS_URL=redis://localhost:6379
+                - AI_PIPELINE_BASE_URL=http://ai-pipeline:8001
+                - FEATURE_BYPASS_LLM=true
+              network_mode: host
+              
+            ai-pipeline:
+              image: opsconductor-ai-pipeline:${{ needs.validate-tag.outputs.version }}
+              ports:
+                - "8001:8001"
+              environment:
+                - DATABASE_URL=postgresql://opsconductor:opsconductor_secure_2024@localhost:5432/opsconductor
+                - REDIS_URL=redis://localhost:6379
+                - FEATURE_BYPASS_LLM=true
+              network_mode: host
+          EOF
+          
+          docker-compose -f docker-compose.test.yml up -d
+          
+          # Wait for services to be healthy
+          sleep 30
+
+      - name: Run health checks
+        run: |
+          echo "🏥 Checking automation-service health..."
+          curl -f http://localhost:3003/health || exit 1
+          
+          echo "🏥 Checking ai-pipeline health..."
+          curl -f http://localhost:8001/health || exit 1
+
+      - name: Run metrics checks
+        run: |
+          echo "📊 Checking automation-service metrics..."
+          curl -f http://localhost:3003/metrics | grep -q "ai_requests_total" || exit 1
+          
+          echo "📊 Checking ai-pipeline metrics..."
+          curl -f http://localhost:8001/metrics | grep -q "selector_search_total" || exit 1
+
+      - name: Run echo tool test
+        run: |
+          echo "🧪 Testing /ai/execute (ping→pong)..."
+          
+          RESPONSE=$(curl -s -X POST http://localhost:3003/ai/execute \
+            -H "Content-Type: application/json" \
+            -H "X-Trace-Id: ci-test-${{ github.run_id }}" \
+            -d '{"input":"ping","tool":"echo"}')
+          
+          echo "Response: $RESPONSE"
+          
+          # Check success field
+          SUCCESS=$(echo $RESPONSE | jq -r '.success')
+          if [ "$SUCCESS" != "true" ]; then
+            echo "❌ Test failed: success=$SUCCESS"
+            exit 1
+          fi
+          
+          # Check output field
+          OUTPUT=$(echo $RESPONSE | jq -r '.output')
+          if [ "$OUTPUT" != "pong" ]; then
+            echo "❌ Test failed: output=$OUTPUT (expected: pong)"
+            exit 1
+          fi
+          
+          echo "✅ Echo tool test passed!"
+
+      - name: Verify metrics increment
+        run: |
+          echo "📈 Verifying metrics increment..."
+          
+          # Wait for metrics to be recorded
+          sleep 5
+          
+          # Check if ai_requests_total incremented
+          METRICS=$(curl -s http://localhost:3003/metrics)
+          
+          if echo "$METRICS" | grep -q 'ai_requests_total.*tool="echo"'; then
+            echo "✅ Metrics incremented successfully"
+          else
+            echo "❌ Metrics not found or not incremented"
+            exit 1
+          fi
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "📋 Automation Service Logs:"
+          docker-compose -f docker-compose.test.yml logs automation-service
+          
+          echo "📋 AI Pipeline Logs:"
+          docker-compose -f docker-compose.test.yml logs ai-pipeline
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose -f docker-compose.test.yml down -v
+
+  release-summary:
+    name: Generate Release Summary
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build-images, staging-smoke-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract CHANGELOG entry
+        id: changelog
+        run: |
+          # Extract the relevant section from CHANGELOG.md
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          
+          # Get content between version header and next version header
+          CHANGELOG_ENTRY=$(awk "/## \[$VERSION\]/,/## \[/" CHANGELOG.md | head -n -1)
+          
+          # Save to file for GitHub release
+          echo "$CHANGELOG_ENTRY" > release_notes.md
+          
+          echo "📝 CHANGELOG entry extracted"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            CHANGELOG.md
+            docs/RELEASE_NOTES_${{ needs.validate-tag.outputs.version }}.md
+            docs/RELEASE_RUNBOOK.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post release summary
+        run: |
+          cat <<EOF
+          
+          ╔════════════════════════════════════════════════════════════╗
+          ║  🎉 RELEASE TAG WORKFLOW COMPLETED SUCCESSFULLY 🎉        ║
+          ╚════════════════════════════════════════════════════════════╝
+          
+          📦 Release: ${{ needs.validate-tag.outputs.version }}
+          🎯 Component: ${{ needs.validate-tag.outputs.component }}
+          
+          ✅ Tag validated
+          ✅ Docker images built
+          ✅ Staging smoke tests passed
+          ✅ GitHub release created
+          
+          📚 Next Steps:
+          1. Review release notes: docs/RELEASE_NOTES_${{ needs.validate-tag.outputs.version }}.md
+          2. Follow deployment runbook: docs/RELEASE_RUNBOOK.md
+          3. Deploy to staging environment
+          4. Run full smoke tests: ./scripts/release_smoke.sh staging
+          5. Run metrics gate: ./scripts/release_metrics_gate.sh staging 10
+          6. Proceed with canary rollout
+          
+          🔗 Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          
+          EOF
+
+  notify-on-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [validate-tag, build-images, staging-smoke-tests]
+    if: failure()
+    steps:
+      - name: Post failure summary
+        run: |
+          cat <<EOF
+          
+          ╔════════════════════════════════════════════════════════════╗
+          ║  ⚠️  RELEASE TAG WORKFLOW FAILED ⚠️                        ║
+          ╚════════════════════════════════════════════════════════════╝
+          
+          📦 Release: ${{ needs.validate-tag.outputs.version }}
+          🎯 Component: ${{ needs.validate-tag.outputs.component }}
+          
+          ❌ Workflow failed - DO NOT DEPLOY
+          
+          🔍 Troubleshooting:
+          1. Check workflow logs for errors
+          2. Verify CHANGELOG.md contains version entry
+          3. Ensure Docker builds succeed locally
+          4. Run smoke tests locally: ./scripts/release_smoke.sh local
+          5. Fix issues and re-tag
+          
+          🔗 Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          EOF
