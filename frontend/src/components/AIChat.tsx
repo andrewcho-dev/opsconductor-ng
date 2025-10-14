@@ -2,6 +2,7 @@ import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } f
 import { Send, User, Bot } from 'lucide-react';
 import { aiApi } from '../services/api';
 import MessageContent from './MessageContent';
+import chatIntentRouter from '../services/chatIntentRouter';
 
 export interface AIChatRef {
   clearChat: () => void;
@@ -23,6 +24,15 @@ interface Message {
   isLoading?: boolean;
   loadingStatus?: string;
   executionStatus?: string;
+  // New fields for direct exec
+  intent?: 'exec.echo' | 'selector.search' | 'legacy';
+  tools?: Array<{
+    name: string;
+    description: string;
+    platform?: string;
+    category?: string;
+  }>;
+  traceId?: string;
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
@@ -145,111 +155,183 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
     const loadingMessageId = (Date.now() + 1).toString();
     const loadingMessage: Message = {
       id: loadingMessageId,
-      content: 'AI is thinking...',
+      content: 'Processing...',
       sender: 'ai',
       timestamp: new Date(),
       isLoading: true,
-      loadingStatus: 'Processing your request...'
+      loadingStatus: 'Analyzing your request...'
     };
     setMessages(prev => [...prev, loadingMessage]);
 
-    // Call the real AI Pipeline API with progress callback and session ID
-    try {
-      const response = await aiApi.process(
-        userMessage.content,
-        {},
-        (status: string) => {
-          // Update loading message with progress
-          setMessages(prev => prev.map(msg => 
-            msg.id === loadingMessageId 
-              ? { ...msg, loadingStatus: status }
-              : msg
-          ));
-        },
-        sessionId  // Pass the persistent session ID for this chat tab
-      );
-      
-      let aiContent = '';
-      let responseType = 'information';
-      let executionId: string | null = null;
-      let approvalData: any = null;
-      
-      if (response.success && response.result) {
-        const result = response.result;
-        responseType = result.response?.response_type || 'information';
-        executionId = result.execution_id || result.response?.execution_id || null;
+    // Check if direct exec is enabled
+    if (chatIntentRouter.isChatDirectExecEnabled()) {
+      try {
+        // Route the message through ChatIntentRouter
+        const result = await chatIntentRouter.routeChatMessage(userMessage.content);
         
-        // Handle approval requests specially
-        if (responseType === 'approval_request') {
-          approvalData = {
-            message: result.response?.message || '',
-            executionSummary: result.response?.execution_summary || {},
-            approvalPoints: result.response?.approval_points || [],
-            suggestedActions: result.response?.suggested_actions || []
-          };
-          aiContent = 'I need your approval to proceed with this action.';
-        } else {
-          // Extract the AI response message
-          aiContent = result.message || result.response?.message || 'AI processing completed successfully.';
-          
-          // Add some context about what the AI determined
-          const decision = result.decision;
-          const selection = result.selection;
-          const plan = result.plan;
-          
-          if (decision) {
-            aiContent += `\n\n**Analysis:**\n`;
-            aiContent += `• Intent: ${decision.intent?.category}/${decision.intent?.action}\n`;
-            aiContent += `• Confidence: ${decision.confidence_level?.value} (${(decision.overall_confidence * 100).toFixed(1)}%)\n`;
-            aiContent += `• Risk Level: ${decision.risk_level?.value}\n`;
-          }
-          
-          if (selection && selection.selected_tools?.length > 0) {
-            aiContent += `\n**Tools Selected:** ${selection.selected_tools.map((t: any) => t.tool_name).join(', ')}\n`;
-          }
-          
-          if (plan && plan.plan?.steps?.length > 0) {
-            aiContent += `\n**Execution Plan:** ${plan.plan.steps.length} steps planned\n`;
-          }
+        if (result.error) {
+          throw new Error(result.error);
         }
-      } else {
-        aiContent = response.error || 'Sorry, I encountered an error processing your request.';
-      }
 
-      // Replace loading message with actual response
-      setMessages(prev => prev.map(msg => 
-        msg.id === loadingMessageId
-          ? {
-              ...msg,
-              content: aiContent,
-              isLoading: false,
-              loadingStatus: undefined,
-              responseType,
-              executionId,
-              approvalData
-            } as Message
-          : msg
-      ));
+        let aiContent = '';
+        let tools: any[] | undefined;
+        let traceId: string | undefined;
 
-      // Start polling for execution status if we have an execution ID
-      if (executionId) {
-        pollExecutionStatus(loadingMessageId, executionId);
+        if (result.intent === 'exec.echo' && result.execResponse) {
+          // Handle echo execution
+          const exec = result.execResponse;
+          traceId = exec.trace_id;
+          
+          if (exec.success) {
+            aiContent = exec.output;
+          } else {
+            aiContent = `Error: ${exec.error || 'Unknown error'}`;
+          }
+        } else if (result.intent === 'selector.search' && result.selectorResponse) {
+          // Handle selector search
+          const selector = result.selectorResponse;
+          traceId = selector.trace_id;
+          tools = selector.tools;
+          
+          if (tools.length === 0) {
+            aiContent = 'No tools found matching your query.';
+          } else {
+            aiContent = `Found ${tools.length} tool${tools.length > 1 ? 's' : ''} matching your query:`;
+          }
+        } else {
+          aiContent = 'Unable to process your request.';
+        }
+
+        // Replace loading message with actual response
+        setMessages(prev => prev.map(msg => 
+          msg.id === loadingMessageId
+            ? {
+                ...msg,
+                content: aiContent,
+                isLoading: false,
+                loadingStatus: undefined,
+                intent: result.intent,
+                tools,
+                traceId
+              } as Message
+            : msg
+        ));
+      } catch (error) {
+        console.error('ChatIntentRouter Error:', error);
+        // Replace loading message with error
+        setMessages(prev => prev.map(msg => 
+          msg.id === loadingMessageId
+            ? {
+                ...msg,
+                content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                isLoading: false,
+                loadingStatus: undefined
+              }
+            : msg
+        ));
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('AI API Error:', error);
-      // Replace loading message with error
-      setMessages(prev => prev.map(msg => 
-        msg.id === loadingMessageId
-          ? {
-              ...msg,
-              content: `Sorry, I'm having trouble connecting to the AI system. Please check that the backend is running.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-              isLoading: false,
-              loadingStatus: undefined
+    } else {
+      // Legacy behavior - use AI Pipeline API
+      try {
+        const response = await aiApi.process(
+          userMessage.content,
+          {},
+          (status: string) => {
+            // Update loading message with progress
+            setMessages(prev => prev.map(msg => 
+              msg.id === loadingMessageId 
+                ? { ...msg, loadingStatus: status }
+                : msg
+            ));
+          },
+          sessionId  // Pass the persistent session ID for this chat tab
+        );
+        
+        let aiContent = '';
+        let responseType = 'information';
+        let executionId: string | null = null;
+        let approvalData: any = null;
+        
+        if (response.success && response.result) {
+          const result = response.result;
+          responseType = result.response?.response_type || 'information';
+          executionId = result.execution_id || result.response?.execution_id || null;
+          
+          // Handle approval requests specially
+          if (responseType === 'approval_request') {
+            approvalData = {
+              message: result.response?.message || '',
+              executionSummary: result.response?.execution_summary || {},
+              approvalPoints: result.response?.approval_points || [],
+              suggestedActions: result.response?.suggested_actions || []
+            };
+            aiContent = 'I need your approval to proceed with this action.';
+          } else {
+            // Extract the AI response message
+            aiContent = result.message || result.response?.message || 'AI processing completed successfully.';
+            
+            // Add some context about what the AI determined
+            const decision = result.decision;
+            const selection = result.selection;
+            const plan = result.plan;
+            
+            if (decision) {
+              aiContent += `\n\n**Analysis:**\n`;
+              aiContent += `• Intent: ${decision.intent?.category}/${decision.intent?.action}\n`;
+              aiContent += `• Confidence: ${decision.confidence_level?.value} (${(decision.overall_confidence * 100).toFixed(1)}%)\n`;
+              aiContent += `• Risk Level: ${decision.risk_level?.value}\n`;
             }
-          : msg
-      ));
-    } finally {
-      setIsLoading(false);
+            
+            if (selection && selection.selected_tools?.length > 0) {
+              aiContent += `\n**Tools Selected:** ${selection.selected_tools.map((t: any) => t.tool_name).join(', ')}\n`;
+            }
+            
+            if (plan && plan.plan?.steps?.length > 0) {
+              aiContent += `\n**Execution Plan:** ${plan.plan.steps.length} steps planned\n`;
+            }
+          }
+        } else {
+          aiContent = response.error || 'Sorry, I encountered an error processing your request.';
+        }
+
+        // Replace loading message with actual response
+        setMessages(prev => prev.map(msg => 
+          msg.id === loadingMessageId
+            ? {
+                ...msg,
+                content: aiContent,
+                isLoading: false,
+                loadingStatus: undefined,
+                responseType,
+                executionId,
+                approvalData,
+                intent: 'legacy'
+              } as Message
+            : msg
+        ));
+
+        // Start polling for execution status if we have an execution ID
+        if (executionId) {
+          pollExecutionStatus(loadingMessageId, executionId);
+        }
+      } catch (error) {
+        console.error('AI API Error:', error);
+        // Replace loading message with error
+        setMessages(prev => prev.map(msg => 
+          msg.id === loadingMessageId
+            ? {
+                ...msg,
+                content: `Sorry, I'm having trouble connecting to the AI system. Please check that the backend is running.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                isLoading: false,
+                loadingStatus: undefined
+              }
+            : msg
+        ));
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -575,6 +657,70 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                         ✗ Reject
                       </button>
                     </div>
+                  </div>
+                )}
+                
+                {/* Tool Cards (for selector.search intent) */}
+                {message.tools && message.tools.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    marginTop: '8px'
+                  }}>
+                    {message.tools.map((tool, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '8px',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #e5e7eb',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <div style={{
+                          fontWeight: '600',
+                          color: '#1f2937',
+                          marginBottom: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <span>{tool.name}</span>
+                          {tool.platform && (
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: tool.platform === 'windows' ? '#dbeafe' : '#dcfce7',
+                              color: tool.platform === 'windows' ? '#1e40af' : '#166534',
+                              fontWeight: '500'
+                            }}>
+                              {tool.platform}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          color: '#6b7280',
+                          lineHeight: '1.5'
+                        }}>
+                          {tool.description}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Trace ID (for debugging) */}
+                {message.traceId && (
+                  <div style={{
+                    fontSize: '11px',
+                    color: '#9ca3af',
+                    fontFamily: 'monospace',
+                    marginTop: '4px'
+                  }}>
+                    trace: {message.traceId}
                   </div>
                 )}
               </div>
