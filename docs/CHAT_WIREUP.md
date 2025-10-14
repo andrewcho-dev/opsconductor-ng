@@ -206,42 +206,10 @@ Find three tools for packet capture
 - `k` - Number of results (default: 3)
 - `platform` - Optional platform filter (windows|linux)
 
-#### Fallback to Tool Registry (PR #8)
-
-When the Selector returns 0 results, the system automatically falls back to the Tool Registry:
-
-**Flow:**
-```
-1. User Query → Selector Search
-2. If Selector returns 0 results:
-   a. Call GET /ai/tools/list (with platform filter if specified)
-   b. Extract keywords from query (words > 2 chars)
-   c. Filter tools by keywords in name/description/tags
-   d. Convert to Selector format
-   e. Return filtered results
-3. Else: Return Selector results
-```
-
-**Example:**
-```
-User: "What tools can help troubleshoot DNS issues?"
-
-Selector: 0 results (no embeddings match)
-  ↓
-Fallback to Tool Registry
-  ↓
-Keywords: ["tools", "help", "troubleshoot", "dns", "issues"]
-  ↓
-Filtered: dns_lookup, shell_ping, traceroute
-  ↓
-Return: 3 tools as Selector format
-```
-
-**Benefits:**
-- Users always get useful suggestions
-- No "No tools found" dead ends
-- Leverages both semantic search (Selector) and keyword matching (Registry)
-- Maintains consistent UI rendering
+**Behavior:**
+- If Selector finds matching tools → Returns those tools
+- If Selector returns 0 results → Returns empty list (no fallback)
+- This is the correct behavior: if we don't have a tool for the task, we should be honest about it
 
 ## Feature Flags
 

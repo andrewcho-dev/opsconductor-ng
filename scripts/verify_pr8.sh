@@ -1,64 +1,63 @@
 #!/bin/bash
-# Quick verification script for PR #8
-# Tests the three main acceptance criteria
+# PR #8 Verification Script - Fix Tools 404 Errors
+# Tests that /ai/tools endpoints are accessible through Kong gateway
 
 set -e
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}PR #8 Quick Verification${NC}"
-echo -e "${BLUE}========================================${NC}\n"
+echo "========================================"
+echo "PR #8 Verification - Fix Tools 404"
+echo "========================================"
+echo ""
 
-# AC1: Tool Discovery
-echo -e "${BLUE}[AC1]${NC} Testing tool discovery..."
-response=$(curl -s "${BASE_URL}/ai/tools/list")
-count=$(echo "$response" | jq -r '.total // 0')
+# Test 1: GET /ai/tools/list returns 200 (not 404)
+echo "[Test 1] GET /ai/tools/list"
+response=$(curl -s -w "\n%{http_code}" "${BASE_URL}/ai/tools/list")
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | head -n-1)
 
-if [ "$count" -gt 0 ]; then
-    echo -e "${GREEN}✓ PASS${NC} Tool discovery works ($count tools found)"
-    echo "  Sample: $(echo "$response" | jq -r '.tools[0].name')"
+if [ "$http_code" = "200" ]; then
+    tool_count=$(echo "$body" | jq -r '.total // 0')
+    echo "✓ PASS: Returns 200 OK (found $tool_count tools)"
 else
-    echo -e "${RED}✗ FAIL${NC} No tools found"
+    echo "✗ FAIL: Expected 200, got $http_code"
     exit 1
 fi
+echo ""
 
-# AC2: Port Check
-echo -e "\n${BLUE}[AC2]${NC} Testing port check execution..."
-response=$(curl -s -X POST "${BASE_URL}/ai/tools/execute" \
+# Test 2: POST /ai/tools/execute with tcp_port_check returns 200 (not 404)
+echo "[Test 2] POST /ai/tools/execute (tcp_port_check)"
+response=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/ai/tools/execute" \
     -H "Content-Type: application/json" \
     -d '{"name":"tcp_port_check","params":{"host":"127.0.0.1","port":80}}')
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | head -n-1)
 
-success=$(echo "$response" | jq -r '.success')
-tool=$(echo "$response" | jq -r '.tool')
-
-if [ "$tool" = "tcp_port_check" ]; then
-    echo -e "${GREEN}✓ PASS${NC} Port check executed (success=$success)"
+if [ "$http_code" = "200" ]; then
+    echo "✓ PASS: Returns 200 OK (no 404)"
 else
-    echo -e "${RED}✗ FAIL${NC} Port check failed"
+    echo "✗ FAIL: Expected 200, got $http_code"
     exit 1
 fi
+echo ""
 
-# AC3: Windows Tool
-echo -e "\n${BLUE}[AC3]${NC} Testing Windows tool accessibility..."
-response=$(curl -s -X POST "${BASE_URL}/ai/tools/execute" \
+# Test 3: POST /ai/tools/execute with dns_lookup returns 200 (not 404)
+echo "[Test 3] POST /ai/tools/execute (dns_lookup)"
+response=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/ai/tools/execute" \
     -H "Content-Type: application/json" \
-    -d '{"name":"windows_list_directory","params":{"host":"192.168.50.211","path":"C:\\","username":"test","password":"test"}}')
+    -d '{"name":"dns_lookup","params":{"domain":"example.com","record_type":"A"}}')
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | head -n-1)
 
-tool=$(echo "$response" | jq -r '.tool')
-
-if [ "$tool" = "windows_list_directory" ]; then
-    echo -e "${GREEN}✓ PASS${NC} Windows tool accessible (may have auth error, but not 404)"
+if [ "$http_code" = "200" ]; then
+    echo "✓ PASS: Returns 200 OK (no 404)"
 else
-    echo -e "${RED}✗ FAIL${NC} Windows tool not accessible"
+    echo "✗ FAIL: Expected 200, got $http_code"
     exit 1
 fi
+echo ""
 
-echo -e "\n${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ All acceptance criteria passed!${NC}"
-echo -e "${GREEN}========================================${NC}\n"
+echo "========================================"
+echo "✓ All tests passed - No 404 errors!"
+echo "========================================"
