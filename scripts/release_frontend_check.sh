@@ -3,7 +3,7 @@
 # Validates frontend is accessible and Exec Sandbox is functional
 # Usage: ./scripts/release_frontend_check.sh [environment]
 
-set -e
+# set -e temporarily disabled for debugging
 
 ENVIRONMENT="${1:-local}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

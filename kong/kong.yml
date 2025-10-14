@@ -199,6 +199,18 @@ routes:
       - DELETE
       - OPTIONS
 
+  # AI Execution Proxy Route (PR #4 - Walking Skeleton)
+  - name: ai-execute-routes
+    service: automation-service
+    paths:
+      - /ai/execute
+    strip_path: false
+    preserve_host: false
+    regex_priority: 300
+    methods:
+      - POST
+      - OPTIONS
+
   # Communication Service Routes - Notifications
   - name: communication-notifications-routes
     service: communication-service
