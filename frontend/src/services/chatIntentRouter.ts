@@ -71,6 +71,20 @@ export interface ToolExecutionResponse {
   exit_code?: number;
 }
 
+export interface ToolListResponse {
+  success: boolean;
+  tools: Array<{
+    name: string;
+    display_name: string;
+    description: string;
+    category?: string;
+    platform?: string;
+    tags?: string[];
+  }>;
+  total: number;
+  filters: Record<string, any>;
+}
+
 /**
  * Analyze user message and determine intent
  */
@@ -387,6 +401,67 @@ export async function searchTools(
 }
 
 /**
+ * List tools from Tool Registry with optional filtering
+ */
+export async function listTools(
+  platform?: string,
+  category?: string,
+  tags?: string,
+  traceId?: string
+): Promise<ToolListResponse> {
+  const startTime = performance.now();
+  const trace = traceId || uuidv4();
+  
+  console.log(`[ChatToolRegistry] Listing tools: platform=${platform || 'any'}, category=${category || 'any'}, tags=${tags || 'none'}, trace_id=${trace}`);
+
+  try {
+    const baseUrl = getAutomationServiceUrl();
+    
+    // Build query params
+    const params = new URLSearchParams();
+    if (platform) {
+      params.append('platform', platform);
+    }
+    if (category) {
+      params.append('category', category);
+    }
+    if (tags) {
+      params.append('tags', tags);
+    }
+
+    const url = `${baseUrl}/ai/tools/list${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Trace-Id': trace
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const duration = performance.now() - startTime;
+    
+    console.log(`[ChatToolRegistry] List completed: duration=${duration.toFixed(2)}ms, count=${data.total || 0}, trace_id=${trace}`);
+
+    return data;
+  } catch (error) {
+    const duration = performance.now() - startTime;
+    console.error(`[ChatToolRegistry] List failed: duration=${duration.toFixed(2)}ms, error=${error}`);
+    
+    return {
+      success: false,
+      tools: [],
+      total: 0,
+      filters: {}
+    };
+  }
+}
+
+/**
  * Main router function - analyzes intent and executes appropriate action
  */
 export async function routeChatMessage(message: string): Promise<{
@@ -436,6 +511,48 @@ export async function routeChatMessage(message: string): Promise<{
           3,
           traceId
         );
+        
+        // If Selector returns 0 results, fallback to Tool Registry
+        if (selectorResponse.count === 0) {
+          console.log(`[ChatRouter] Selector returned 0 results, falling back to Tool Registry`);
+          
+          const toolListResponse = await listTools(
+            intentResult.platform,
+            undefined,
+            undefined,
+            traceId
+          );
+          
+          // Filter tools by query keywords
+          const queryLower = intentResult.query!.toLowerCase();
+          const keywords = queryLower.split(/\s+/).filter(k => k.length > 2);
+          
+          const filteredTools = toolListResponse.tools.filter(tool => {
+            const searchText = `${tool.name} ${tool.display_name} ${tool.description} ${tool.category || ''} ${(tool.tags || []).join(' ')}`.toLowerCase();
+            return keywords.some(keyword => searchText.includes(keyword));
+          });
+          
+          console.log(`[ChatRouter] Tool Registry fallback: found ${filteredTools.length} tools matching keywords: ${keywords.join(', ')}`);
+          
+          // Convert Tool Registry format to Selector format
+          const fallbackTools: SelectorTool[] = filteredTools.map(tool => ({
+            name: tool.name,
+            description: tool.description,
+            platform: tool.platform,
+            category: tool.category
+          }));
+          
+          return {
+            intent: 'selector.search',
+            selectorResponse: {
+              tools: fallbackTools,
+              query: intentResult.query!,
+              count: fallbackTools.length,
+              trace_id: traceId
+            }
+          };
+        }
+        
         return {
           intent: 'selector.search',
           selectorResponse
@@ -461,6 +578,7 @@ export default {
   executeEcho,
   executeTool,
   searchTools,
+  listTools,
   routeChatMessage,
   isChatDirectExecEnabled
 };

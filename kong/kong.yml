@@ -211,6 +211,19 @@ routes:
       - POST
       - OPTIONS
 
+  # AI Tools Proxy Routes (PR #8 - Tools Registry & Fallback)
+  - name: ai-tools-routes
+    service: automation-service
+    paths:
+      - /ai/tools
+    strip_path: false
+    preserve_host: false
+    regex_priority: 300
+    methods:
+      - GET
+      - POST
+      - OPTIONS
+
   # Communication Service Routes - Notifications
   - name: communication-notifications-routes
     service: communication-service
