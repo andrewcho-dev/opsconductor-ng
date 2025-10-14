@@ -1,0 +1,185 @@
+name: windows_list_directory
+display_name: Windows List Directory (WinRM)
+description: List directory contents on a Windows host via WinRM/PowerShell
+category: system
+platform: windows
+version: 1.0.0
+
+command_template: |
+  python3 -c "
+  import sys
+  import winrm
+  import json
+  from urllib.parse import quote
+  
+  # Parse parameters
+  host = '{host}'
+  path = r'{path}'
+  username = '{username}'
+  password = '{password}'
+  domain = '{domain}'
+  port = {port}
+  use_ssl = {use_ssl}
+  timeout_s = {timeout_s}
+  
+  # Build endpoint
+  protocol = 'https' if use_ssl else 'http'
+  endpoint = f'{{protocol}}://{{host}}:{{port}}/wsman'
+  
+  # Build auth string
+  if domain:
+      auth_user = f'{{domain}}\\{{username}}'
+  else:
+      auth_user = username
+  
+  try:
+      # Create WinRM session
+      session = winrm.Session(
+          endpoint,
+          auth=(auth_user, password),
+          server_cert_validation='ignore' if not use_ssl else 'validate',
+          read_timeout_sec=timeout_s,
+          operation_timeout_sec=timeout_s
+      )
+      
+      # PowerShell command to list directory
+      ps_cmd = f'Get-ChildItem -Path \"{{path}}\" -Name -Force -ErrorAction Stop | ConvertTo-Json -Compress'
+      
+      # Execute command
+      result = session.run_ps(ps_cmd)
+      
+      if result.status_code == 0:
+          output = result.std_out.decode('utf-8').strip()
+          # Parse JSON output
+          try:
+              entries = json.loads(output) if output else []
+              if isinstance(entries, str):
+                  entries = [entries]
+              print(json.dumps({
+                  'success': True,
+                  'path': path,
+                  'entries': entries,
+                  'count': len(entries)
+              }))
+          except json.JSONDecodeError:
+              # Fallback to raw output
+              lines = output.split('\\n') if output else []
+              print(json.dumps({
+                  'success': True,
+                  'path': path,
+                  'entries': lines,
+                  'count': len(lines)
+              }))
+      else:
+          error_msg = result.std_err.decode('utf-8').strip()
+          print(json.dumps({
+              'success': False,
+              'error': error_msg or 'Command failed',
+              'exit_code': result.status_code
+          }))
+          sys.exit(1)
+  
+  except Exception as e:
+      print(json.dumps({
+          'success': False,
+          'error': str(e),
+          'error_type': type(e).__name__
+      }))
+      sys.exit(1)
+  "
+
+timeout_seconds: 30
+requires_admin: false
+
+parameters:
+  - name: host
+    type: string
+    description: Windows host IP or hostname
+    required: true
+    pattern: "^[A-Za-z0-9\\.\\-:_]+$"
+  
+  - name: path
+    type: string
+    description: Directory path to list
+    required: false
+    default: "C:\\"
+    pattern: "^[A-Za-z]:\\\\.*$"
+  
+  - name: username
+    type: string
+    description: Windows username for authentication
+    required: true
+    pattern: "^[A-Za-z0-9\\.\\-_@]+$"
+  
+  - name: password
+    type: string
+    description: Windows password for authentication
+    required: true
+    sensitive: true
+  
+  - name: domain
+    type: string
+    description: Windows domain (optional)
+    required: false
+    default: ""
+    pattern: "^[A-Za-z0-9\\.\\-_]*$"
+  
+  - name: port
+    type: integer
+    description: WinRM port
+    required: false
+    default: 5985
+    min_value: 1
+    max_value: 65535
+  
+  - name: use_ssl
+    type: boolean
+    description: Use HTTPS for WinRM connection
+    required: false
+    default: false
+  
+  - name: timeout_s
+    type: integer
+    description: Operation timeout in seconds
+    required: false
+    default: 15
+    min_value: 5
+    max_value: 60
+
+max_output_bytes: 16384
+redact_patterns:
+  - "(?i)(password|pwd|secret|token|key)\\s*[=:]\\s*[^\\s&]+"
+  - "(?i)password=[^&\\s]+"
+  - "(?i)auth[^\\s]*\\s*[=:]\\s*[^\\s]+"
+
+tags:
+  - windows
+  - winrm
+  - directory
+  - filesystem
+  - remote
+
+examples:
+  - description: "List C drive root on Windows host"
+    parameters:
+      host: "192.168.50.211"
+      path: "C:\\"
+      username: "Administrator"
+      password: "SecurePass123"
+  
+  - description: "List Program Files directory"
+    parameters:
+      host: "win-server-01"
+      path: "C:\\Program Files"
+      username: "admin"
+      password: "P@ssw0rd"
+      domain: "CORP"
+  
+  - description: "List directory over HTTPS WinRM"
+    parameters:
+      host: "192.168.1.100"
+      path: "C:\\Users"
+      username: "sysadmin"
+      password: "SecretPass"
+      port: 5986
+      use_ssl: true

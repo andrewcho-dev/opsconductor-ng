@@ -2,7 +2,7 @@
  * Unit tests for ChatIntentRouter
  */
 
-import { analyzeIntent, executeEcho, searchTools } from './chatIntentRouter';
+import { analyzeIntent, executeEcho, executeTool, searchTools } from './chatIntentRouter';
 
 describe('ChatIntentRouter', () => {
   describe('analyzeIntent', () => {
@@ -60,6 +60,70 @@ describe('ChatIntentRouter', () => {
       const result = analyzeIntent('  ping  ');
       expect(result.intent).toBe('exec.echo');
       expect(result.input).toBe('ping');
+    });
+
+    test('should detect Windows list directory command', () => {
+      const result = analyzeIntent('show directory of c drive on 192.168.50.211');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('windows_list_directory');
+      expect(result.toolParams).toEqual({
+        host: '192.168.50.211',
+        path: 'C:\\'
+      });
+    });
+
+    test('should detect DNS lookup command', () => {
+      const result = analyzeIntent('dns lookup example.com');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('dns_lookup');
+      expect(result.toolParams).toEqual({
+        domain: 'example.com',
+        record_type: 'A'
+      });
+    });
+
+    test('should detect TCP port check command', () => {
+      const result = analyzeIntent('check port 80 on 127.0.0.1');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('tcp_port_check');
+      expect(result.toolParams).toEqual({
+        host: '127.0.0.1',
+        port: 80
+      });
+    });
+
+    test('should detect HTTP check command', () => {
+      const result = analyzeIntent('http check https://example.com');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('http_check');
+      expect(result.toolParams).toEqual({
+        url: 'https://example.com',
+        method: 'GET'
+      });
+    });
+
+    test('should detect traceroute command', () => {
+      const result = analyzeIntent('traceroute google.com');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('traceroute');
+      expect(result.toolParams).toEqual({
+        host: 'google.com'
+      });
+    });
+
+    test('should detect ping command with host', () => {
+      const result = analyzeIntent('ping 8.8.8.8');
+      expect(result.intent).toBe('tool.execute');
+      expect(result.toolName).toBe('shell_ping');
+      expect(result.toolParams).toEqual({
+        host: '8.8.8.8'
+      });
+    });
+
+    test('should route "tools" queries to selector search', () => {
+      const result = analyzeIntent('What tools can help troubleshoot DNS issues?');
+      expect(result.intent).toBe('selector.search');
+      expect(result.query).toBe('What tools can help troubleshoot DNS issues?');
     });
   });
 
@@ -145,6 +209,70 @@ describe('ChatIntentRouter', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Network error');
+    });
+  });
+
+  describe('executeTool', () => {
+    global.fetch = jest.fn();
+
+    beforeEach(() => {
+      (global.fetch as jest.Mock).mockClear();
+    });
+
+    test('should call /ai/tools/execute with correct payload', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          tool: 'dns_lookup',
+          output: { domain: 'example.com', ip: '93.184.216.34' },
+          trace_id: 'test-trace-tool-123',
+          duration_ms: 125.5
+        })
+      });
+
+      const result = await executeTool('dns_lookup', { domain: 'example.com' }, 'test-trace-tool-123');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/tools/execute'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'X-Trace-Id': 'test-trace-tool-123'
+          }),
+          body: JSON.stringify({
+            name: 'dns_lookup',
+            params: { domain: 'example.com' }
+          })
+        })
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.tool).toBe('dns_lookup');
+      expect(result.output).toEqual({ domain: 'example.com', ip: '93.184.216.34' });
+    });
+
+    test('should handle tool execution errors', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => 'Invalid parameters'
+      });
+
+      const result = await executeTool('tcp_port_check', { host: 'invalid', port: 99999 });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('400');
+    });
+
+    test('should handle network errors', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Connection refused'));
+
+      const result = await executeTool('http_check', { url: 'http://localhost:9999' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Connection refused');
     });
   });
 

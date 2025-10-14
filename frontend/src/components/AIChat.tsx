@@ -25,13 +25,15 @@ interface Message {
   loadingStatus?: string;
   executionStatus?: string;
   // New fields for direct exec
-  intent?: 'exec.echo' | 'selector.search' | 'legacy';
+  intent?: 'exec.echo' | 'tool.execute' | 'selector.search' | 'legacy';
   tools?: Array<{
     name: string;
     description: string;
     platform?: string;
     category?: string;
   }>;
+  toolResult?: any;
+  toolName?: string;
   traceId?: string;
 }
 
@@ -175,6 +177,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
 
         let aiContent = '';
         let tools: any[] | undefined;
+        let toolResult: any | undefined;
+        let toolName: string | undefined;
         let traceId: string | undefined;
 
         if (result.intent === 'exec.echo' && result.execResponse) {
@@ -186,6 +190,18 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
             aiContent = exec.output;
           } else {
             aiContent = `Error: ${exec.error || 'Unknown error'}`;
+          }
+        } else if (result.intent === 'tool.execute' && result.toolResponse) {
+          // Handle tool execution
+          const tool = result.toolResponse;
+          traceId = tool.trace_id;
+          toolName = tool.tool;
+          toolResult = tool.output;
+          
+          if (tool.success) {
+            aiContent = `Tool "${tool.tool}" executed successfully (${tool.duration_ms.toFixed(0)}ms)`;
+          } else {
+            aiContent = `Tool "${tool.tool}" failed: ${tool.error || 'Unknown error'}`;
           }
         } else if (result.intent === 'selector.search' && result.selectorResponse) {
           // Handle selector search
@@ -212,6 +228,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                 loadingStatus: undefined,
                 intent: result.intent,
                 tools,
+                toolResult,
+                toolName,
                 traceId
               } as Message
             : msg
@@ -709,6 +727,41 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+                
+                {/* Tool Execution Result (for tool.execute intent) */}
+                {message.toolResult && message.intent === 'tool.execute' && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    fontSize: '13px',
+                    fontFamily: 'monospace'
+                  }}>
+                    <div style={{
+                      fontWeight: '600',
+                      color: '#1f2937',
+                      marginBottom: '8px',
+                      fontFamily: 'system-ui'
+                    }}>
+                      {message.toolName} Output:
+                    </div>
+                    <pre style={{
+                      margin: 0,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      color: '#374151',
+                      fontSize: '12px',
+                      maxHeight: '400px',
+                      overflowY: 'auto'
+                    }}>
+                      {typeof message.toolResult === 'string' 
+                        ? message.toolResult 
+                        : JSON.stringify(message.toolResult, null, 2)}
+                    </pre>
                   </div>
                 )}
                 
