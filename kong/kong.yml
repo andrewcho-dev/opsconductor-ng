@@ -78,8 +78,10 @@ services:
             - Content-Type
             - Date
             - Authorization
+            - X-Trace-Id
           exposed_headers:
             - Authorization
+            - X-Trace-Id
           credentials: true
           max_age: 3600
 

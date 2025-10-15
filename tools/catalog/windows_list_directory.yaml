@@ -49,8 +49,14 @@ command_template: |
           operation_timeout_sec=timeout_s
       )
       
-      # PowerShell command to list directory (just names)
-      ps_cmd = 'Get-ChildItem -Path \"' + path + '\" -Force -ErrorAction Stop | Select-Object -ExpandProperty Name | ConvertTo-Json -Compress'
+      # PowerShell command to list directory with type and size info
+      ps_cmd = '''Get-ChildItem -Path "''' + path + '''" -Force -ErrorAction Stop | Select-Object @{
+          Name='Name'; Expression={$_.Name}
+      }, @{
+          Name='Type'; Expression={if($_.PSIsContainer){'Directory'}else{'File'}}
+      }, @{
+          Name='Size'; Expression={if($_.PSIsContainer){$null}else{$_.Length}}
+      } | ConvertTo-Json -Compress'''
       
       # Execute command
       result = session.run_ps(ps_cmd)
@@ -60,10 +66,12 @@ command_template: |
           # Parse JSON output
           try:
               entries = json.loads(output) if output else []
-              if isinstance(entries, str):
+              # Handle single item (not in array)
+              if isinstance(entries, dict):
                   entries = [entries]
               print(json.dumps({
                   'success': True,
+                  'host': host,
                   'path': path,
                   'entries': entries,
                   'count': len(entries)
@@ -73,6 +81,7 @@ command_template: |
               lines = output.split('\\n') if output else []
               print(json.dumps({
                   'success': True,
+                  'host': host,
                   'path': path,
                   'entries': lines,
                   'count': len(lines)

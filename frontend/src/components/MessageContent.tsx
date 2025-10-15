@@ -8,9 +8,13 @@ import { Copy, Download, Check } from 'lucide-react';
 interface MessageContentProps {
   content: string;
   isUser: boolean;
+  formatToggle?: {
+    currentFormat: 'text' | 'json';
+    onToggle: () => void;
+  };
 }
 
-const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
+const MessageContent: React.FC<MessageContentProps> = ({ content, isUser, formatToggle }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const copyToClipboard = async (code: string) => {
@@ -107,16 +111,61 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
                       borderBottom: '1px solid #444',
                     }}
                   >
-                    <span
-                      style={{
-                        fontFamily: 'monospace',
-                        fontSize: '12px',
-                        color: '#888',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {language}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {!formatToggle && (
+                        <span
+                          style={{
+                            fontFamily: 'monospace',
+                            fontSize: '12px',
+                            color: '#888',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {language}
+                        </span>
+                      )}
+                      {formatToggle && (
+                        <div style={{
+                          display: 'inline-flex',
+                          borderRadius: '4px',
+                          backgroundColor: '#1a1a1a',
+                          padding: '2px'
+                        }}>
+                          {(['text', 'json'] as const).map((format) => {
+                            const isActive = formatToggle.currentFormat === format;
+                            return (
+                              <button
+                                key={format}
+                                onClick={formatToggle.onToggle}
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: '500',
+                                  border: 'none',
+                                  borderRadius: '3px',
+                                  backgroundColor: isActive ? '#3d3d3d' : 'transparent',
+                                  color: isActive ? '#fff' : '#888',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isActive) {
+                                    e.currentTarget.style.backgroundColor = '#2d2d2d';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isActive) {
+                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                  }
+                                }}
+                              >
+                                {format.toUpperCase()}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
                         onClick={() => copyToClipboard(codeString)}

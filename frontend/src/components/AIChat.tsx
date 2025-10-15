@@ -35,12 +35,17 @@ interface Message {
   toolResult?: any;
   toolName?: string;
   traceId?: string;
+  // Format toggle for tool results
+  toolResultFormat?: 'text' | 'json';
+  toolResultTextContent?: string;
+  toolResultJsonContent?: string;
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [messageFormats, setMessageFormats] = useState<Record<string, 'text' | 'json'>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   
@@ -124,6 +129,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
   useImperativeHandle(ref, () => ({
     clearChat: () => {
       setMessages([]);
+      setMessageFormats({});
       localStorage.removeItem('opsconductor_ai_chat_history');
       // Generate NEW session ID for this chat tab when clearing
       const chatId = props.activeChatId || 'default';
@@ -133,6 +139,13 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       setSessionId(newSessionId);
     }
   }));
+
+  const toggleMessageFormat = (messageId: string, currentFormat: 'text' | 'json') => {
+    setMessageFormats(prev => ({
+      ...prev,
+      [messageId]: currentFormat === 'text' ? 'json' : 'text'
+    }));
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -199,12 +212,98 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
           toolResult = tool.output;
           
           if (tool.success) {
-            // Format output as markdown code block
-            const outputStr = typeof tool.output === 'string' 
-              ? tool.output 
-              : JSON.stringify(tool.output, null, 2);
+            // Parse output if it's a JSON string
+            let parsedOutput = tool.output;
+            if (typeof tool.output === 'string') {
+              try {
+                parsedOutput = JSON.parse(tool.output);
+              } catch {
+                parsedOutput = tool.output;
+              }
+            }
             
-            aiContent = `Tool **${tool.tool}** executed successfully (${tool.duration_ms.toFixed(0)}ms)\n\n\`\`\`json\n${outputStr}\n\`\`\``;
+            // Extract asset identifier and prepare both text and JSON formats
+            let assetInfo = '';
+            let textContent = '';
+            let jsonContent = '';
+            
+            if (typeof parsedOutput === 'object' && parsedOutput !== null) {
+              const host = (parsedOutput as any).host;
+              const path = (parsedOutput as any).path;
+              const entries = (parsedOutput as any).entries;
+              const count = (parsedOutput as any).count;
+              
+              if (host) {
+                assetInfo = ` on **${host}**`;
+                if (path) {
+                  assetInfo += ` (${path})`;
+                }
+              }
+              
+              // Always prepare JSON format
+              jsonContent = JSON.stringify(parsedOutput, null, 2);
+              
+              // Prepare text format for directory listings
+              if (tool.tool === 'windows_list_directory' && Array.isArray(entries)) {
+                const hostInfo = host ? `${host}:` : '';
+                const header = `Directory listing: ${hostInfo}${path || 'unknown'}\n${count} item${count !== 1 ? 's' : ''}\n`;
+                
+                // Format entries with type indicators and size
+                const items = entries.map(entry => {
+                  if (typeof entry === 'object' && entry !== null) {
+                    const name = (entry as any).Name || '';
+                    const type = (entry as any).Type || '';
+                    const size = (entry as any).Size;
+                    
+                    if (type === 'Directory') {
+                      return `  [DIR]  ${name}`;
+                    } else {
+                      // Format file size
+                      let sizeStr = '';
+                      if (size !== null && size !== undefined) {
+                        if (size < 1024) {
+                          sizeStr = `${size} B`;
+                        } else if (size < 1024 * 1024) {
+                          sizeStr = `${(size / 1024).toFixed(1)} KB`;
+                        } else if (size < 1024 * 1024 * 1024) {
+                          sizeStr = `${(size / (1024 * 1024)).toFixed(1)} MB`;
+                        } else {
+                          sizeStr = `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                        }
+                        sizeStr = sizeStr.padStart(12);
+                      }
+                      return `  ${sizeStr}  ${name}`;
+                    }
+                  } else {
+                    // Fallback for simple string entries
+                    return `  ${entry}`;
+                  }
+                }).join('\n');
+                
+                textContent = `${header}\n${items}`;
+              } else {
+                // For non-directory tools, text format is same as JSON
+                textContent = jsonContent;
+              }
+            } else {
+              const strOutput = typeof parsedOutput === 'string' ? parsedOutput : JSON.stringify(parsedOutput, null, 2);
+              textContent = strOutput;
+              jsonContent = strOutput;
+            }
+            
+            // Default to text format for directory listings, JSON for others
+            const defaultFormat = tool.tool === 'windows_list_directory' ? 'text' : 'json';
+            const outputStr = defaultFormat === 'text' ? textContent : jsonContent;
+            const codeBlockType = defaultFormat === 'text' ? 'text' : 'json';
+            
+            aiContent = `Tool **${tool.tool}** executed successfully${assetInfo} (${tool.duration_ms.toFixed(0)}ms)\n\n\`\`\`${codeBlockType}\n${outputStr}\n\`\`\``;
+            
+            // Store both formats in the message for toggling
+            toolResult = {
+              textContent,
+              jsonContent,
+              defaultFormat
+            };
           } else {
             aiContent = `Tool "${tool.tool}" failed: ${tool.error || 'Unknown error'}`;
           }
@@ -561,8 +660,28 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                   wordWrap: 'break-word'
                 }}>
                   <MessageContent 
-                    content={message.content} 
-                    isUser={message.sender === 'user'} 
+                    content={
+                      message.toolResult && message.toolResult.textContent && message.toolResult.jsonContent
+                        ? (() => {
+                            const currentFormat = messageFormats[message.id] || message.toolResult.defaultFormat;
+                            const outputStr = currentFormat === 'text' ? message.toolResult.textContent : message.toolResult.jsonContent;
+                            const codeBlockType = currentFormat === 'text' ? 'text' : 'json';
+                            // Extract the header from the original content
+                            const headerMatch = message.content.match(/^(Tool.*?\n\n)/s);
+                            const header = headerMatch ? headerMatch[1] : '';
+                            return `${header}\`\`\`${codeBlockType}\n${outputStr}\n\`\`\``;
+                          })()
+                        : message.content
+                    }
+                    isUser={message.sender === 'user'}
+                    formatToggle={
+                      message.toolResult && message.toolResult.textContent && message.toolResult.jsonContent
+                        ? {
+                            currentFormat: messageFormats[message.id] || message.toolResult.defaultFormat,
+                            onToggle: () => toggleMessageFormat(message.id, messageFormats[message.id] || message.toolResult.defaultFormat)
+                          }
+                        : undefined
+                    }
                   />
                   
                   {/* Loading indicator */}
