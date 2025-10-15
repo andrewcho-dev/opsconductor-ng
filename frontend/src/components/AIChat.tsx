@@ -181,14 +181,41 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
         responseType = result.response?.response_type || 'information';
         executionId = result.execution_id || result.response?.execution_id || null;
         
-        // Extract target hosts from execution plan
-        if (result.intermediate_results?.stage_c?.plan?.steps) {
-          const steps = result.intermediate_results.stage_c.plan.steps;
-          const hosts: string[] = steps
-            .map((step: any) => step.inputs?.target_host)
-            .filter((host: any) => host) as string[];
-          targetHosts = [...new Set(hosts)]; // Remove duplicates
+        // Extract target hosts from multiple sources
+        const hostsSet = new Set<string>();
+        
+        // 1. From execution results (stage_e) - most reliable
+        if (result.intermediate_results?.stage_e?.step_results) {
+          result.intermediate_results.stage_e.step_results.forEach((step: any) => {
+            if (step.target_hostname) {
+              hostsSet.add(step.target_hostname);
+            }
+          });
         }
+        
+        // 2. From execution plan (stage_c) inputs
+        if (result.intermediate_results?.stage_c?.plan?.steps) {
+          result.intermediate_results.stage_c.plan.steps.forEach((step: any) => {
+            if (step.inputs?.target_host) {
+              hostsSet.add(step.inputs.target_host);
+            }
+            if (step.inputs?.target_hosts && Array.isArray(step.inputs.target_hosts)) {
+              step.inputs.target_hosts.forEach((host: string) => hostsSet.add(host));
+            }
+          });
+        }
+        
+        // 3. From response execution summary
+        if (result.response?.execution_summary?.target_hosts) {
+          const hosts = result.response.execution_summary.target_hosts;
+          if (Array.isArray(hosts)) {
+            hosts.forEach((host: string) => hostsSet.add(host));
+          }
+        }
+        
+        targetHosts = Array.from(hostsSet).filter(host => 
+          host && !host.includes('{{') && !host.includes('}}')
+        );
         
         // Handle approval requests specially
         if (responseType === 'approval_request') {
@@ -471,17 +498,17 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                         key={idx}
                         style={{
                           padding: '4px 10px',
-                          borderRadius: '6px',
-                          backgroundColor: '#3b82f6',
+                          borderRadius: '4px',
+                          backgroundColor: '#1e40af',
                           color: 'white',
-                          fontSize: '12px',
-                          fontWeight: '500',
+                          fontSize: '11px',
+                          fontWeight: '600',
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
                         }}
                       >
-                        <span style={{ fontSize: '10px' }}>🖥️</span>
                         {host}
                       </div>
                     ))}
