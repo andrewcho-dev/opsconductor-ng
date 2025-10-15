@@ -17,11 +17,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt .
+COPY network-analyzer-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy shared modules
+COPY shared/*.py ./
+
 # Copy application code
-COPY . .
+COPY network-analyzer-service/ .
 
 # Create non-root user for security (but with necessary capabilities)
 RUN useradd -m -u 1000 netanalyzer && \

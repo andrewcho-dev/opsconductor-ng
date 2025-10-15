@@ -210,7 +210,7 @@ class AuditListResponse(BaseModel):
 
 class CommunicationService(BaseService):
     def __init__(self):
-        super().__init__("communication-service", "1.0.0", 3004)
+        super().__init__("communication-service", "1.0.0", 8004)
         self.worker_status = {
             "running": True,
             "started_at": datetime.utcnow().isoformat(),

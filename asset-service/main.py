@@ -318,7 +318,7 @@ class AssetDetail(BaseModel):
 
 class ConsolidatedAssetService(BaseService):
     def __init__(self):
-        super().__init__("asset-service", port=3002)
+        super().__init__("asset-service", port=8002)
         # Use the shared CredentialManager
         self.credential_manager = CredentialManager()
     

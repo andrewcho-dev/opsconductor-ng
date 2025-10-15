@@ -25,7 +25,6 @@ from pipeline.stages.stage_e.executor import StageEExecutor
 from pipeline.schemas.decision_v1 import DecisionV1, ConfidenceLevel
 from pipeline.schemas.response_v1 import ResponseV1, ResponseType, ClarificationResponse, ClarificationRequest
 from execution.dtos import ExecutionRequest
-from pipeline.conversation_history import get_conversation_manager
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +87,23 @@ class PipelineOrchestrator:
         """Initialize the pipeline orchestrator with all stage components."""
         # Initialize LLM client if not provided
         if llm_client is None:
-            from llm.factory import get_default_llm_client
-            llm_client = get_default_llm_client()
+            from llm.ollama_client import OllamaClient
+            default_config = {
+                "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+                "default_model": os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
+                "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
+            }
+            llm_client = OllamaClient(default_config)
         
         self.llm_client = llm_client
         
+        # Initialize tool registry
+        from pipeline.stages.stage_b.tool_registry import ToolRegistry
+        self.tool_registry = ToolRegistry()
+        
         # Initialize stages with required parameters
-        # NOTE: tool_registry has been removed - database is the single source of truth
         self.stage_a = StageAClassifier(llm_client)
-        self.stage_b = StageBSelector(llm_client)
+        self.stage_b = StageBSelector(llm_client, self.tool_registry)
         self.stage_c = StageCPlanner(llm_client)
         self.stage_d = StageDAnswerer(llm_client)
         self.stage_e = StageEExecutor()
@@ -130,9 +137,7 @@ class PipelineOrchestrator:
         self, 
         user_request: str, 
         request_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        session_id: Optional[str] = None,
-        progress_callback: Optional[callable] = None
+        context: Optional[Dict[str, Any]] = None
     ) -> PipelineResult:
         """
         Process a user request through the complete 4-stage pipeline with confidence-driven clarification.
@@ -141,9 +146,6 @@ class PipelineOrchestrator:
             user_request: The user's natural language request
             request_id: Optional request identifier for tracking
             context: Optional context including clarification history
-            session_id: Optional session identifier for conversation history
-            progress_callback: Optional callback function for real-time progress updates
-                              Called with (stage: str, status: str, data: dict)
             
         Returns:
             PipelineResult containing the response and execution metrics
@@ -164,42 +166,43 @@ class PipelineOrchestrator:
         context.setdefault("original_request", user_request)
         context.setdefault("clarification_history", [])
         
-        # Add conversation history to context if session_id is provided
-        if session_id:
-            conversation_manager = get_conversation_manager()
-            # Add user message to history
-            conversation_manager.add_message(session_id, "user", user_request)
-            # Get formatted history for context injection
-            conversation_history = conversation_manager.get_formatted_history(session_id, max_messages=10)
-            context["conversation_history"] = conversation_history
-            context["session_id"] = session_id
-            logger.info(f"Session {session_id}: {conversation_manager.get_message_count(session_id)} messages in history")
-        
         try:
-            logger.info(f"🚀 [REQUEST {request_id}] Starting pipeline processing")
-            logger.info(f"📝 User request: {user_request[:100]}...")
-            
             # Stage A: Classification
-            logger.info(f"⏱️  [STAGE A] Starting classification...")
-            if progress_callback:
-                await progress_callback("stage_a", "start", {"stage": "A", "name": "Classification", "message": "🔍 Analyzing your request..."})
-            
             stage_start = time.time()
             classification_result = await self._execute_stage_a(user_request, context)
             stage_durations["stage_a"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_a"] = classification_result
-            logger.info(f"✅ [STAGE A] Complete in {stage_durations['stage_a']:.2f}ms")
-            logger.info(f"   Intent: {classification_result.intent.category}/{classification_result.intent.action}, Confidence: {classification_result.overall_confidence:.2f} ({classification_result.confidence_level.value})")
             
-            # Compress Stage A result for context management
-            context["compressed_stage_a"] = await self._compress_stage_result("Stage A", classification_result, user_request)
+            # 🚀 FAST PATH: Check if Stage A suggests skipping to a specific stage
+            print(f"DEBUG: hasattr next_stage: {hasattr(classification_result, 'next_stage')}")
+            if hasattr(classification_result, 'next_stage'):
+                print(f"DEBUG: next_stage value: '{classification_result.next_stage}'")
+                print(f"DEBUG: next_stage == 'stage_d': {classification_result.next_stage == 'stage_d'}")
             
-            if progress_callback:
-                await progress_callback("stage_a", "complete", {"stage": "A", "name": "Classification", "duration_ms": stage_durations["stage_a"], "message": f"✅ Classification complete ({stage_durations['stage_a']:.0f}ms)"})
-            
-            # ✅ PURE LLM PIPELINE: All requests go through Stage B → C → D → E
-            # No fast paths, no shortcuts - full intelligent routing
-            logger.info(f"🧠 Stage A complete, routing to Stage B for tool selection")
+            if hasattr(classification_result, 'next_stage') and classification_result.next_stage == "stage_d":
+                print("🚀 FAST PATH: Taking Stage A → Stage D shortcut!")
+                # Skip Stage B and C for simple questions
+                response_result = await self._execute_stage_d(classification_result, None, None, context)
+                stage_durations["stage_d"] = (time.time() - stage_start) * 1000
+                intermediate_results["stage_d"] = response_result
+                
+                # Calculate metrics for fast path
+                total_duration = (time.time() - start_time) * 1000
+                metrics = PipelineMetrics(
+                    total_duration_ms=total_duration,
+                    stage_durations=stage_durations,
+                    memory_usage_mb=self._get_memory_usage(),
+                    request_id=request_id,
+                    timestamp=start_time,
+                    status=PipelineStatus.COMPLETED
+                )
+                
+                return PipelineResult(
+                    response=response_result,
+                    metrics=metrics,
+                    intermediate_results=intermediate_results,
+                    success=True
+                )
             
             # Check if clarification is needed due to low confidence
             if await self._needs_clarification(classification_result, context):
@@ -227,77 +230,28 @@ class PipelineOrchestrator:
                 )
             
             # Stage B: Selection
-            logger.info(f"⏱️  [STAGE B] Starting tool selection...")
-            if progress_callback:
-                await progress_callback("stage_b", "start", {"stage": "B", "name": "Tool Selection", "message": "🔧 Selecting tools..."})
-            
             stage_start = time.time()
             selection_result = await self._execute_stage_b(classification_result, context)
             stage_durations["stage_b"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_b"] = selection_result
-            logger.info(f"✅ [STAGE B] Complete in {stage_durations['stage_b']:.2f}ms")
-            if selection_result and hasattr(selection_result, 'selected_tools'):
-                logger.info(f"   Selected {len(selection_result.selected_tools)} tools")
             
-            # Compress Stage B result for context management
-            context["compressed_stage_b"] = await self._compress_stage_result("Stage B", selection_result, user_request)
-            
-            if progress_callback:
-                await progress_callback("stage_b", "complete", {"stage": "B", "name": "Tool Selection", "duration_ms": stage_durations["stage_b"], "message": f"✅ Tool selection complete ({stage_durations['stage_b']:.0f}ms)"})
-            
-            # Stage C: Planning (skip if no tool selection)
-            planning_result = None
-            has_tools = (selection_result is not None and 
-                        hasattr(selection_result, 'selected_tools') and 
-                        len(selection_result.selected_tools) > 0)
-            
-            if has_tools:
-                logger.info(f"⏱️  [STAGE C] Starting plan creation...")
-                if progress_callback:
-                    await progress_callback("stage_c", "start", {"stage": "C", "name": "Planning", "message": "📋 Creating execution plan..."})
-                
-                stage_start = time.time()
-                planning_result = await self._execute_stage_c(classification_result, selection_result)
-                stage_durations["stage_c"] = (time.time() - stage_start) * 1000
-                intermediate_results["stage_c"] = planning_result
-                logger.info(f"✅ [STAGE C] Complete in {stage_durations['stage_c']:.2f}ms")
-                if planning_result and hasattr(planning_result, 'plan'):
-                    plan_dict = planning_result.plan if isinstance(planning_result.plan, dict) else {}
-                    steps = plan_dict.get('steps', [])
-                    logger.info(f"   Created plan with {len(steps)} steps")
-                
-                # Compress Stage C result for context management
-                context["compressed_stage_c"] = await self._compress_stage_result("Stage C", planning_result, user_request)
-                
-                if progress_callback:
-                    await progress_callback("stage_c", "complete", {"stage": "C", "name": "Planning", "duration_ms": stage_durations["stage_c"], "message": f"✅ Planning complete ({stage_durations['stage_c']:.0f}ms)"})
-            else:
-                logger.info("⏭️  Skipping Stage C: No tool selection (information-only request)")
-                stage_durations["stage_c"] = 0
+            # Stage C: Planning
+            stage_start = time.time()
+            planning_result = await self._execute_stage_c(classification_result, selection_result)
+            stage_durations["stage_c"] = (time.time() - stage_start) * 1000
+            intermediate_results["stage_c"] = planning_result
             
             # Stage D: Response Generation
-            logger.info(f"⏱️  [STAGE D] Starting response generation...")
-            if progress_callback:
-                await progress_callback("stage_d", "start", {"stage": "D", "name": "Response Generation", "message": "💬 Generating response..."})
-            
             stage_start = time.time()
             response_result = await self._execute_stage_d(classification_result, selection_result, planning_result, context)
             stage_durations["stage_d"] = (time.time() - stage_start) * 1000
             intermediate_results["stage_d"] = response_result
-            logger.info(f"✅ [STAGE D] Complete in {stage_durations['stage_d']:.2f}ms")
-            logger.info(f"   Response type: {response_result.response_type}, Approval required: {response_result.approval_required}")
-            
-            if progress_callback:
-                await progress_callback("stage_d", "complete", {"stage": "D", "name": "Response Generation", "duration_ms": stage_durations["stage_d"], "message": f"✅ Response complete ({stage_durations['stage_d']:.0f}ms)"})
             
             # 🚀 PHASE 7: Stage E - Execution (if plan exists and should be executed)
             should_execute = False
             
-            # Skip execution for information-only requests (no plan)
-            if planning_result is None:
-                logger.info("⏭️  Skipping Stage E: No execution plan (information-only request)")
             # Check if we have a plan with steps
-            elif planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
+            if planning_result and hasattr(planning_result, 'plan') and planning_result.plan:
                 plan_steps = planning_result.plan.get('steps', []) if isinstance(planning_result.plan, dict) else getattr(planning_result.plan, 'steps', [])
                 if plan_steps and len(plan_steps) > 0:
                     # Execute if: EXECUTION_READY, or if approval_required is False
@@ -436,24 +390,9 @@ class PipelineOrchestrator:
                 status=PipelineStatus.COMPLETED
             )
             
-            # Log comprehensive performance summary
-            logger.info(f"🎉 [REQUEST {request_id}] Pipeline complete in {total_duration:.2f}ms")
-            logger.info(f"📊 Performance breakdown:")
-            logger.info(f"   Stage A (Classification): {stage_durations.get('stage_a', 0):.2f}ms")
-            logger.info(f"   Stage B (Tool Selection): {stage_durations.get('stage_b', 0):.2f}ms")
-            logger.info(f"   Stage C (Planning):       {stage_durations.get('stage_c', 0):.2f}ms")
-            logger.info(f"   Stage D (Response):       {stage_durations.get('stage_d', 0):.2f}ms")
-            logger.info(f"   Stage E (Execution):      {stage_durations.get('stage_e', 0):.2f}ms")
-            logger.info(f"   Memory usage: {metrics.memory_usage_mb:.2f}MB")
-            
             # Update success metrics
             self._success_count += 1
             self._update_metrics_history(metrics)
-            
-            # Store assistant response in conversation history
-            if session_id and response_result:
-                conversation_manager = get_conversation_manager()
-                conversation_manager.add_message(session_id, "assistant", response_result.message)
             
             return PipelineResult(
                 response=response_result,
@@ -518,7 +457,7 @@ class PipelineOrchestrator:
     async def _execute_stage_c(self, decision: DecisionV1, selection: Any) -> Any:
         """Execute Stage C: Planning."""
         try:
-            result = await self.stage_c.create_plan(decision, selection)
+            result = self.stage_c.create_plan(decision, selection)
             return result
         except Exception as e:
             raise Exception(f"Stage C failed: {str(e)}")
@@ -576,93 +515,6 @@ class PipelineOrchestrator:
         self._completed_requests.append(metrics)
         if len(self._completed_requests) > self._max_history:
             self._completed_requests = self._completed_requests[-self._max_history:]
-    
-    async def _compress_stage_result(self, stage_name: str, result: Any, user_request: str) -> str:
-        """
-        Compress stage result into a compact summary (200-400 tokens).
-        This prevents context window explosion in multi-stage pipelines.
-        
-        Args:
-            stage_name: Name of the stage (e.g., "Stage A", "Stage B")
-            result: Stage result object
-            user_request: Original user request for context
-            
-        Returns:
-            Compressed summary string (200-400 tokens)
-        """
-        from llm.client import LLMRequest
-        
-        # Convert result to string representation
-        if hasattr(result, '__dict__'):
-            result_str = str(result.__dict__)
-        else:
-            result_str = str(result)
-        
-        # Truncate if too long (rough estimate: 4 chars = 1 token)
-        if len(result_str) > 4000:  # ~1000 tokens
-            result_str = result_str[:4000] + "... [truncated]"
-        
-        compression_prompt = f"""Compress the following {stage_name} result into a compact summary (≤ 250 tokens).
-
-**User Request:** {user_request}
-
-**{stage_name} Result:**
-{result_str}
-
-**Instructions:**
-- Preserve: numeric settings, file paths, API params, tool names, entity IDs, and key decisions
-- Omit: narrative text, boilerplate, and redundant details
-- Format: Bullet points, each ≤ 25 tokens
-- Output under "Summary:" heading
-
-Summary:"""
-
-        try:
-            request = LLMRequest(
-                prompt=compression_prompt,
-                system_prompt="You are a compression agent. Summarize technical data into compact, loss-aware summaries.",
-                temperature=0.1,
-                max_tokens=400  # Cap at 400 tokens for summary
-            )
-            
-            response = await self.llm_client.generate(request)
-            compressed = response.content.strip()
-            
-            logger.info(f"📦 Compressed {stage_name}: {len(result_str)} chars → {len(compressed)} chars")
-            return compressed
-            
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to compress {stage_name} result: {e}. Using truncated version.")
-            # Fallback: simple truncation
-            return result_str[:1000] + "... [compression failed, truncated]"
-    
-    async def _create_rolling_summary(self, context: Dict[str, Any]) -> str:
-        """
-        Create a rolling summary of all stage results so far.
-        This is used to pass compressed context between stages.
-        
-        Args:
-            context: Pipeline context with intermediate results
-            
-        Returns:
-            Rolling summary string (≤ 500 tokens)
-        """
-        summaries = []
-        
-        # Collect compressed summaries from context
-        if "compressed_stage_a" in context:
-            summaries.append(f"**Stage A (Classification):**\n{context['compressed_stage_a']}")
-        
-        if "compressed_stage_b" in context:
-            summaries.append(f"**Stage B (Tool Selection):**\n{context['compressed_stage_b']}")
-        
-        if "compressed_stage_c" in context:
-            summaries.append(f"**Stage C (Planning):**\n{context['compressed_stage_c']}")
-        
-        if not summaries:
-            return ""
-        
-        return "\n\n".join(summaries)
     
     async def _needs_clarification(self, classification_result: DecisionV1, context: Dict[str, Any]) -> bool:
         """
@@ -844,32 +696,6 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
         
         return missing_info
     
-    def _format_asset_list_directly(self, assets: List[Dict]) -> str:
-        """Format asset list directly without LLM - for simple listing queries."""
-        if not assets:
-            return "No assets found."
-        
-        result = f"### Asset List ({len(assets)} total)\n\n"
-        
-        for i, asset in enumerate(assets, 1):
-            result += f"**{i}. {asset.get('name', 'Unknown')}**\n"
-            result += f"   - Hostname: {asset.get('hostname', 'N/A')}\n"
-            result += f"   - IP Address: {asset.get('ip_address', 'N/A')}\n"
-            result += f"   - OS: {asset.get('os_version', asset.get('os_type', 'N/A'))}\n"
-            result += f"   - Device Type: {asset.get('device_type', 'N/A')}\n"
-            result += f"   - Environment: {asset.get('environment', 'N/A')}\n"
-            result += f"   - Service: {asset.get('service_type', 'N/A')}"
-            if asset.get('database_type'):
-                result += f" ({asset.get('database_type')})"
-            result += f"\n"
-            result += f"   - Data Center: {asset.get('data_center', 'N/A')}\n"
-            result += f"   - Criticality: {asset.get('criticality', 'N/A')}\n"
-            if asset.get('description'):
-                result += f"   - Description: {asset.get('description')}\n"
-            result += "\n"
-        
-        return result
-    
     async def _analyze_execution_results(
         self,
         user_request: str,
@@ -890,7 +716,6 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
         try:
             # Extract relevant data from execution steps
             execution_data = []
-            raw_assets = []
             for step in execution_steps:
                 if step.output_data and isinstance(step.output_data, dict):
                     if step.output_data.get("status") != "failed":
@@ -900,197 +725,45 @@ I'm designed to be helpful while maintaining safety standards. Please try again 
                             "count": step.output_data.get("count"),
                             "query_type": step.output_data.get("query_type")
                         })
-                        # Extract raw asset data for direct formatting
-                        if step.output_data.get("data") and isinstance(step.output_data.get("data"), list):
-                            raw_assets.extend(step.output_data.get("data"))
             
             if not execution_data:
                 return "No data was retrieved from the execution."
             
-            # Check if this is a simple asset listing query - format directly without LLM!
-            is_simple_asset_list = (
-                decision and 
-                decision.intent.category == "asset_management" and
-                any(keyword in user_request.lower() for keyword in ["list all", "show all", "list assets", "show assets"])
-            )
-            
-            if is_simple_asset_list and raw_assets:
-                logger.info(f"🔍 ORCHESTRATOR: Simple asset list detected, formatting {len(raw_assets)} assets directly")
-                return self._format_asset_list_directly(raw_assets)
-            
-            
-            # OPTIMIZATION: Detect query type and intelligently truncate data
-            import json
-            
-            # Detect if this is a "count" or "how many" query
-            is_count_query = any(
-                keyword in user_request.lower() 
-                for keyword in ["how many", "count", "number of", "total"]
-            )
-            
-            # Detect if this is asking for specific attributes (OS types, environments, etc.)
-            is_attribute_query = any(
-                keyword in user_request.lower()
-                for keyword in ["what os", "which os", "what environment", "which environment", 
-                               "what type", "which type", "what database", "which database"]
-            )
-            
-            # Detect if query asks for breakdowns (by OS, environment, etc.)
-            is_breakdown_query = any(
-                keyword in user_request.lower()
-                for keyword in ["windows", "linux", "ubuntu", "centos", "macos", "os", "operating system",
-                               "environment", "production", "staging", "development",
-                               "database", "mysql", "postgres", "mongodb",
-                               "device type", "server", "workstation", "laptop"]
-            )
-            
-            # Optimize execution data based on query type
-            if is_count_query:
-                # Check if this is a count query with breakdown requirements
-                if is_breakdown_query and raw_assets:
-                    # Count query with breakdown - include aggregated counts by attributes
-                    logger.info("🚀 OPTIMIZATION: Count query with breakdown detected - sending counts + breakdowns")
-                    
-                    # Calculate breakdowns
-                    os_counts = {}
-                    env_counts = {}
-                    device_counts = {}
-                    
-                    for asset in raw_assets:
-                        # OS breakdown
-                        os_type = asset.get("os_type", "Unknown")
-                        os_counts[os_type] = os_counts.get(os_type, 0) + 1
-                        
-                        # Environment breakdown
-                        environment = asset.get("environment", "Unknown")
-                        env_counts[environment] = env_counts.get(environment, 0) + 1
-                        
-                        # Device type breakdown
-                        device_type = asset.get("device_type", "Unknown")
-                        device_counts[device_type] = device_counts.get(device_type, 0) + 1
-                    
-                    optimized_data = [{
-                        "total_count": len(raw_assets),
-                        "breakdown_by_os": os_counts,
-                        "breakdown_by_environment": env_counts,
-                        "breakdown_by_device_type": device_counts,
-                        "query_type": "count_with_breakdown"
-                    }]
-                    execution_data_json = json.dumps(optimized_data, indent=2, default=str)
-                    asset_schema_context = "\n**Note:** Data includes total count and breakdowns by OS, environment, and device type."
-                else:
-                    # Simple count query - only send counts
-                    logger.info("🚀 OPTIMIZATION: Count query detected - sending only counts")
-                    optimized_data = []
-                    for item in execution_data:
-                        optimized_data.append({
-                            "step_name": item["step_name"],
-                            "count": item.get("count", len(item.get("data", [])) if item.get("data") else 0),
-                            "query_type": item.get("query_type")
-                        })
-                    execution_data_json = json.dumps(optimized_data, indent=2, default=str)
-                    asset_schema_context = ""  # No schema needed for counts
-                
-            elif is_attribute_query and raw_assets and len(raw_assets) > 10:
-                # For attribute queries with many results, send summary + sample
-                logger.info(f"🚀 OPTIMIZATION: Attribute query with {len(raw_assets)} assets - sending summary")
-                
-                # Extract unique values for common attributes
-                summary = {
-                    "total_count": len(raw_assets),
-                    "sample_assets": raw_assets[:5],  # First 5 as examples
-                    "unique_os_types": list(set(a.get("os_type") for a in raw_assets if a.get("os_type"))),
-                    "unique_environments": list(set(a.get("environment") for a in raw_assets if a.get("environment"))),
-                    "unique_device_types": list(set(a.get("device_type") for a in raw_assets if a.get("device_type"))),
-                    "unique_database_types": list(set(a.get("database_type") for a in raw_assets if a.get("database_type"))),
-                    "unique_data_centers": list(set(a.get("data_center") for a in raw_assets if a.get("data_center")))
-                }
-                execution_data_json = json.dumps(summary, indent=2, default=str)
-                asset_schema_context = "\n**Note:** Data includes summary statistics and sample assets."
-                
-            elif raw_assets and len(raw_assets) > 15:
-                # For large result sets, truncate to first 10 + summary
-                logger.info(f"🚀 OPTIMIZATION: Large result set ({len(raw_assets)} assets) - truncating to 10 + summary")
-                truncated_data = []
-                for item in execution_data:
-                    if item.get("data") and isinstance(item["data"], list) and len(item["data"]) > 15:
-                        truncated_data.append({
-                            "step_name": item["step_name"],
-                            "count": len(item["data"]),
-                            "data": item["data"][:10],  # First 10 items
-                            "truncated": True,
-                            "query_type": item.get("query_type")
-                        })
-                    else:
-                        truncated_data.append(item)
-                execution_data_json = json.dumps(truncated_data, indent=2, default=str)
-                asset_schema_context = "\n**Note:** Large result set truncated to first 10 items for analysis."
-                
-            else:
-                # Normal query - send full data but with condensed schema
-                execution_data_json = json.dumps(execution_data, indent=2, default=str)
-                asset_schema_context = "\n**Asset Fields:** name, hostname, ip_address, os_type, os_version, device_type, environment, service_type, database_type, data_center, criticality"
-            
-            logger.info(f"🔍 ORCHESTRATOR: Execution data length: {len(execution_data_json)} chars")
-            logger.info(f"🔍 ORCHESTRATOR: Execution data preview: {execution_data_json[:500]}...")
-            
-            # Simplified prompt - reduced verbosity
-            prompt = f"""Answer the user's question based on the execution results.
+            # Build prompt for LLM to analyze results
+            prompt = f"""You are analyzing execution results to answer a user's question.
 
-**Question:** {user_request}
-{asset_schema_context}
+**User's Question:** {user_request}
 
-**Data:**
-```json
-{execution_data_json}
-```
+**Execution Results:**
+{execution_data}
 
-**Instructions:**
-- Extract the specific information requested
-- Provide a clear, direct answer
-- For counts: state the number
-- For lists: summarize key details
-- For attributes: list unique values
+**Your Task:**
+1. Extract the specific information the user asked for from the execution results
+2. Provide a clear, concise answer to their question
+3. If the data contains lists, summarize unique values
+4. Format the answer in a user-friendly way
+
+**Important:**
+- Focus ONLY on answering the user's specific question
+- Don't just say "6 assets retrieved" - extract what they actually asked for
+- If they asked for OS types, list the unique OS types found
+- If they asked for counts, provide the counts
+- Be specific and direct
 
 **Answer:**"""
 
             # Call LLM to analyze results
             from llm.client import LLMRequest
-            
-            # Calculate max_tokens dynamically based on prompt size
-            # Rough estimate: 1 token ≈ 4 characters for English text
-            estimated_prompt_tokens = len(prompt) // 4
-            max_context_length = 16000  # Qwen2.5-32B-Instruct-AWQ context window (16K tokens)
-            safety_buffer = 100  # Reserve tokens for formatting overhead
-            
-            # Calculate available tokens for output
-            available_tokens = max_context_length - estimated_prompt_tokens - safety_buffer
-            max_output_tokens = max(500, min(available_tokens, 8000))  # Between 500-8000 tokens
-            
-            logger.info(f"🔍 ORCHESTRATOR: Prompt length: {len(prompt)} chars (~{estimated_prompt_tokens} tokens)")
-            logger.info(f"🔍 ORCHESTRATOR: Available output tokens: {available_tokens}, using: {max_output_tokens}")
-            
             llm_request = LLMRequest(
                 prompt=prompt,
-                temperature=0.1,  # Very low temperature for factual extraction
-                max_tokens=max_output_tokens  # Dynamically calculated to fit within context window
+                temperature=0.3,  # Low temperature for factual extraction
+                max_tokens=500
             )
-            
-            logger.info(f"🔍 ORCHESTRATOR: Sending prompt to LLM (length: {len(prompt)} chars)")
-            
-            # DEBUG: Save the full prompt to a file to see what's being sent
-            with open("/tmp/llm_prompt_debug.txt", "w") as f:
-                f.write(prompt)
-            logger.info("🔍 ORCHESTRATOR: Full prompt saved to /tmp/llm_prompt_debug.txt")
-            
             response = await self.llm_client.generate(llm_request)
             
             if response and response.content:
-                logger.info(f"🔍 ORCHESTRATOR: LLM response length: {len(response.content)} chars")
-                logger.info(f"🔍 ORCHESTRATOR: LLM response preview: {response.content[:500]}...")
                 return response.content.strip()
             else:
-                logger.warning("🔍 ORCHESTRATOR: LLM returned no content")
                 return "Unable to analyze execution results."
                 
         except Exception as e:

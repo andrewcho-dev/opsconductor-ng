@@ -8,11 +8,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY asset-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy shared modules
+COPY shared/*.py ./
+
 # Copy application code
-COPY . .
+COPY asset-service/ .
 
 # Expose port (will be overridden by docker-compose)
 EXPOSE 3000

@@ -1230,7 +1230,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main_clean:service.app",
         host="0.0.0.0",
-        port=3003,
+        port=8005,
         reload=False,
         log_level="info"
     )

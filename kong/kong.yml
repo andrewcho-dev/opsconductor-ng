@@ -3,6 +3,7 @@ _transform: true
 
 services:
   # Keycloak Authentication Service
+  # NOTE: Keycloak container listens on 8080 internally
   - name: keycloak-auth
     url: http://keycloak:8080
     plugins:
@@ -31,7 +32,7 @@ services:
 
   # Asset Service
   - name: asset-service
-    url: http://asset-service:3002
+    url: http://asset-service:8002
     plugins:
       - name: cors
         config:
@@ -58,34 +59,7 @@ services:
 
   # Automation Service
   - name: automation-service
-    url: http://automation-service:3003
-    plugins:
-      - name: cors
-        config:
-          origins:
-            - "*"
-          methods:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - OPTIONS
-          headers:
-            - Accept
-            - Accept-Version
-            - Content-Length
-            - Content-MD5
-            - Content-Type
-            - Date
-            - Authorization
-          exposed_headers:
-            - Authorization
-          credentials: true
-          max_age: 3600
-
-  # Communication Service
-  - name: communication-service
-    url: http://communication-service:3004
+    url: http://automation-service:8005
     plugins:
       - name: cors
         config:
@@ -112,11 +86,7 @@ services:
 
   # AI Pipeline Service
   - name: ai-pipeline-service
-    url: http://ai-pipeline:8000
-    # Increased timeouts for full LLM pipeline processing (no fast paths)
-    connect_timeout: 120000  # 120 seconds
-    write_timeout: 120000    # 120 seconds
-    read_timeout: 120000     # 120 seconds
+    url: http://ai-pipeline:8006
     plugins:
       - name: cors
         config:
@@ -144,6 +114,7 @@ routes:
   - name: keycloak-auth-routes
     service: keycloak-auth
     paths:
+      - /api/v1/auth/
       - /api/v1/auth
     strip_path: true
     preserve_host: false
@@ -157,6 +128,7 @@ routes:
   - name: asset-routes
     service: asset-service
     paths:
+      - /api/v1/assets/
       - /api/v1/assets
     strip_path: true
     preserve_host: false
@@ -172,8 +144,11 @@ routes:
   - name: automation-jobs-routes
     service: automation-service
     paths:
+      - /api/v1/jobs/
       - /api/v1/jobs
+      - /api/v1/runs/
       - /api/v1/runs
+      - /api/v1/credentials/
       - /api/v1/credentials
     strip_path: true
     preserve_host: false
@@ -189,6 +164,7 @@ routes:
   - name: automation-routes
     service: automation-service
     paths:
+      - /api/automation/
       - /api/automation
     strip_path: true
     preserve_host: false
@@ -199,70 +175,11 @@ routes:
       - DELETE
       - OPTIONS
 
-  # Communication Service Routes - Notifications
-  - name: communication-notifications-routes
-    service: communication-service
-    paths:
-      - ~/api/v1/notifications(/.*)?$
-    strip_path: false
-    preserve_host: false
-    regex_priority: 250
-    methods:
-      - GET
-      - POST
-      - PUT
-      - DELETE
-      - OPTIONS
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: "/notifications$(uri_captures[1])"
-
-  # Communication Service Routes - Channels
-  - name: communication-channels-routes
-    service: communication-service
-    paths:
-      - ~/api/v1/channels(/.*)?$
-    strip_path: false
-    preserve_host: false
-    regex_priority: 250
-    methods:
-      - GET
-      - POST
-      - PUT
-      - DELETE
-      - OPTIONS
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: "/channels$(uri_captures[1])"
-
-  # Communication Service Routes - Templates
-  - name: communication-templates-routes
-    service: communication-service
-    paths:
-      - ~/api/v1/templates(/.*)?$
-    strip_path: false
-    preserve_host: false
-    regex_priority: 250
-    methods:
-      - GET
-      - POST
-      - PUT
-      - DELETE
-      - OPTIONS
-    plugins:
-      - name: request-transformer
-        config:
-          replace:
-            uri: "/templates$(uri_captures[1])"
-
   # AI Pipeline Routes
   - name: ai-pipeline-routes
     service: ai-pipeline-service
     paths:
+      - /api/ai/
       - /api/ai
     strip_path: true
     preserve_host: false
