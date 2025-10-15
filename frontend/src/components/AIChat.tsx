@@ -23,6 +23,7 @@ interface Message {
   isLoading?: boolean;
   loadingStatus?: string;
   executionStatus?: string;
+  targetHosts?: string[];  // Array of target hosts from execution plan
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
@@ -173,11 +174,21 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       let responseType = 'information';
       let executionId: string | null = null;
       let approvalData: any = null;
+      let targetHosts: string[] = [];
       
       if (response.success && response.result) {
         const result = response.result;
         responseType = result.response?.response_type || 'information';
         executionId = result.execution_id || result.response?.execution_id || null;
+        
+        // Extract target hosts from execution plan
+        if (result.intermediate_results?.stage_c?.plan?.steps) {
+          const steps = result.intermediate_results.stage_c.plan.steps;
+          const hosts: string[] = steps
+            .map((step: any) => step.inputs?.target_host)
+            .filter((host: any) => host) as string[];
+          targetHosts = [...new Set(hosts)]; // Remove duplicates
+        }
         
         // Handle approval requests specially
         if (responseType === 'approval_request') {
@@ -226,7 +237,8 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
               loadingStatus: undefined,
               responseType,
               executionId,
-              approvalData
+              approvalData,
+              targetHosts
             } as Message
           : msg
       ));
@@ -441,19 +453,51 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                 )}
               </div>
               <div style={{
-                maxWidth: '85%',
+                width: '85%',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px'
               }}>
+                {/* Target Hosts Badge */}
+                {message.targetHosts && message.targetHosts.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    gap: '6px',
+                    flexWrap: 'wrap',
+                    marginBottom: '4px'
+                  }}>
+                    {message.targetHosts.map((host, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span style={{ fontSize: '10px' }}>🖥️</span>
+                        {host}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
                 <div style={{
+                  width: '100%',
                   padding: '12px 16px',
                   borderRadius: '12px',
                   backgroundColor: message.sender === 'user' ? '#3b82f6' : '#f3f4f6',
                   color: message.sender === 'user' ? 'white' : '#1f2937',
                   fontSize: '16px',
                   lineHeight: '1.8',
-                  wordWrap: 'break-word'
+                  wordWrap: 'break-word',
+                  boxSizing: 'border-box'
                 }}>
                   <MessageContent 
                     content={message.content} 

@@ -82,7 +82,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
   };
 
   return (
-    <div className="message-content">
+    <div className="message-content" style={{ width: '100%' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -94,7 +94,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
             if (!inline && language) {
               // Block code with syntax highlighting
               return (
-                <div style={{ position: 'relative', marginTop: '12px', marginBottom: '12px' }}>
+                <div style={{ position: 'relative', marginTop: '12px', marginBottom: '12px', width: '100%' }}>
                   <div
                     style={{
                       display: 'flex',
@@ -203,6 +203,9 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
                       borderBottomLeftRadius: '8px',
                       borderBottomRightRadius: '8px',
                       fontSize: '14px',
+                      width: '100%',
+                      display: 'block',
+                      boxSizing: 'border-box',
                     }}
                     {...props}
                   >
