@@ -1249,12 +1249,32 @@ except Exception as e:
 # --- END EXEC ROUTER ---
 
 # ============================================================================
-# AI TOOLS PROXY ROUTER (PR #7)
+# TOOL REGISTRY v2 (System Coherence)
+# ============================================================================
+try:
+    from tool_registry import init_registry
+    
+    # Get catalog directories from env (None = use defaults from tool_registry.py)
+    catalog_dirs = os.getenv("AI_TOOL_CATALOG_DIRS", None)
+    
+    # Initialize global registry
+    registry = init_registry(catalog_dirs)
+    print(f"[tools] Tool registry initialized with {registry.get_tool_count()} tools")
+    print(f"[tools] Catalog directories: {registry.catalog_dirs}")
+    print(f"[tools] Available tools: {sorted(registry.tools.keys())}")
+except Exception as e:
+    print(f"[tools] ERROR: Failed to initialize tool registry: {e}")
+    import traceback
+    traceback.print_exc()
+# --- END TOOL REGISTRY ---
+
+# ============================================================================
+# AI TOOLS ROUTER v2 (System Coherence)
 # ============================================================================
 try:
     from routes.tools import router as tools_router
     service.app.include_router(tools_router)
-    print("[tools] AI tools proxy router mounted on /ai/tools/*")
+    print("[tools] AI tools router v2 mounted on /ai/tools/*")
 except Exception as e:
     print(f"[tools] WARNING: Failed to mount tools router: {e}")
 # --- END TOOLS ROUTER ---

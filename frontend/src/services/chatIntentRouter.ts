@@ -96,7 +96,20 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 3. Windows list directory: "show/list directory/contents of c drive on <host>"
+  // 3. Asset count: "how many <os> os assets do we have?"
+  const assetCountMatch = lower.match(/^how\s+many\s+(.+?)\s+(?:os\s+)?assets\s+do\s+we\s+have\??$/i);
+  if (assetCountMatch) {
+    const osFilter = assetCountMatch[1].trim();
+    return {
+      intent: 'tool.execute',
+      toolName: 'asset_count',
+      toolParams: {
+        os: osFilter
+      }
+    };
+  }
+
+  // 4. Windows list directory: "show/list directory/contents of c drive on <host>"
   const winDirMatch = lower.match(/^(show|list)\s+(directory|contents)\s+of\s+(?:the\s+)?c\s+drive\s+on\s+([A-Za-z0-9\.\-:_]+)$/i);
   if (winDirMatch) {
     return {
@@ -109,7 +122,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 4. DNS lookup: "dns lookup/resolve <domain>"
+  // 5. DNS lookup: "dns lookup/resolve <domain>"
   const dnsMatch = lower.match(/^dns\s+(lookup|resolve)\s+([A-Za-z0-9\.\-]+)$/i);
   if (dnsMatch) {
     return {
@@ -122,7 +135,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 5. TCP port check: "check port <port> on <host>"
+  // 6. TCP port check: "check port <port> on <host>"
   const portMatch = lower.match(/^check\s+port\s+(\d+)\s+on\s+([A-Za-z0-9\.\-:_]+)$/i);
   if (portMatch) {
     return {
@@ -135,7 +148,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 6. HTTP check: "http check <url>" or "fetch/get/head <url>"
+  // 7. HTTP check: "http check <url>" or "fetch/get/head <url>"
   const httpMatch = lower.match(/^(?:http\s+check|fetch|get|head)\s+(https?:\/\/\S+)$/i);
   if (httpMatch) {
     return {
@@ -148,7 +161,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 7. Traceroute: "traceroute <host>"
+  // 8. Traceroute: "traceroute <host>"
   const traceMatch = lower.match(/^traceroute\s+([A-Za-z0-9\.\-:_]+)$/i);
   if (traceMatch) {
     return {
@@ -160,7 +173,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 8. Ping: "ping <host>"
+  // 9. Ping: "ping <host>"
   const pingMatch = lower.match(/^ping\s+([A-Za-z0-9\.\-:_]+)$/i);
   if (pingMatch) {
     return {
@@ -172,7 +185,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 9. If message contains "tools" or "tool", use selector search
+  // 10. If message contains "tools" or "tool", use selector search
   if (lower.includes('tool')) {
     let platform: 'windows' | 'linux' | undefined;
     if (lower.includes('windows')) {
@@ -188,7 +201,7 @@ export function analyzeIntent(message: string): ChatIntentResult {
     };
   }
 
-  // 10. Default: selector search
+  // 11. Default: selector search
   let platform: 'windows' | 'linux' | undefined;
   if (lower.includes('windows')) {
     platform = 'windows';

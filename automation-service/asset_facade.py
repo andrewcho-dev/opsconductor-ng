@@ -217,69 +217,128 @@ class AssetFacade:
             if conn:
                 conn.close()
     
-    async def get_connection_profile(self, host: str) -> Dict[str, Any]:
+    async def get_connection_profile(self, host: str, asset_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Get connection profile for a host
-        Resolves host by IP or hostname and returns connection parameters
+        Resolves host by IP, FQDN, or short hostname and returns connection parameters
+        with credential references (not plaintext secrets)
         
         Args:
-            host: Hostname or IP address
+            host: Hostname, IP address, or short hostname
+            asset_id: Optional asset UUID for disambiguation
             
         Returns:
             Dict with connection profile or {"found": False} if not found
+            Returns {"error": "ambiguous_asset", "candidates": [...]} if multiple matches
         """
         conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
             
-            # Try to find asset by hostname or IP (case-insensitive)
-            cur.execute("""
-                SELECT id, name, hostname, ip_address, os_type, os_version,
-                       service_type, port, is_secure, domain,
-                       credential_type, username
-                FROM assets.assets
-                WHERE LOWER(hostname) = %s OR ip_address = %s
-                LIMIT 1
-            """, (host.lower(), host))
+            # Try to find asset by multiple matching strategies
+            # 1. Exact IP match (highest priority)
+            # 2. Case-insensitive FQDN match
+            # 3. Case-insensitive short hostname match
             
-            result = cur.fetchone()
+            if asset_id:
+                # If asset_id provided, use it directly
+                cur.execute("""
+                    SELECT id, name, hostname, ip_address, os_type, os_version,
+                           service_type, port, is_secure, domain,
+                           credential_type, username
+                    FROM assets.assets
+                    WHERE id = %s
+                    LIMIT 1
+                """, (asset_id,))
+            else:
+                # Try multiple matching strategies
+                cur.execute("""
+                    SELECT id, name, hostname, ip_address, os_type, os_version,
+                           service_type, port, is_secure, domain,
+                           credential_type, username
+                    FROM assets.assets
+                    WHERE ip_address = %s 
+                       OR LOWER(hostname) = %s
+                       OR LOWER(SPLIT_PART(hostname, '.', 1)) = %s
+                    ORDER BY 
+                        CASE 
+                            WHEN ip_address = %s THEN 1
+                            WHEN LOWER(hostname) = %s THEN 2
+                            ELSE 3
+                        END
+                """, (host, host.lower(), host.lower(), host, host.lower()))
             
-            if not result:
+            results = cur.fetchall()
+            
+            if not results:
                 logger.warning(f"Connection profile not found for host: {host}")
-                return {"found": False}
+                return {"found": False, "error": "asset_not_found", "host": host}
+            
+            # Check for ambiguous matches (multiple results with same priority)
+            if len(results) > 1 and not asset_id:
+                # Check if we have multiple matches at the same priority level
+                candidates = [
+                    {
+                        "asset_id": str(row['id']),
+                        "host": row['ip_address'],
+                        "hostname": row['hostname'],
+                        "os": row['os_version'] or row['os_type']
+                    }
+                    for row in results
+                ]
+                
+                logger.warning(f"Ambiguous asset match for host: {host}, found {len(candidates)} candidates")
+                return {
+                    "found": False,
+                    "error": "ambiguous_asset",
+                    "host": host,
+                    "candidates": candidates
+                }
+            
+            result = results[0]
             
             # Build connection profile based on OS and service type
+            asset_id_str = str(result['id'])
+            canonical_host = result['ip_address'] or result['hostname']
+            
             profile = {
                 "found": True,
+                "asset_id": asset_id_str,
                 "host": result['hostname'] or result['ip_address'],
                 "ip": result['ip_address'],
                 "hostname": result['hostname'],
+                "hostnames": [result['hostname']] if result['hostname'] else [],
                 "os": result['os_version'] or result['os_type'],
                 "os_type": result['os_type']
             }
             
-            # Add service-specific connection parameters
+            # Add service-specific connection parameters with credential_ref
             if result['os_type'] and 'windows' in result['os_type'].lower():
                 # Windows host - provide WinRM defaults
                 profile['winrm'] = {
                     "port": 5985 if result['service_type'] == 'winrm' else 5985,
                     "use_ssl": result['is_secure'] if result['service_type'] == 'winrm' else False,
-                    "domain": result.get('domain')
+                    "domain": result.get('domain'),
+                    "username": result.get('username'),
+                    "credential_ref": f"secret://secrets.winrm/{canonical_host}"
                 }
                 
                 # Also provide RDP info if available
                 if result['service_type'] == 'rdp':
                     profile['rdp'] = {
                         "port": result['port'],
-                        "use_ssl": result['is_secure']
+                        "use_ssl": result['is_secure'],
+                        "credential_ref": f"secret://secrets.rdp/{canonical_host}"
                     }
             
             if result['os_type'] and result['os_type'].lower() in ['linux', 'unix', 'macos']:
                 # Unix-like host - provide SSH defaults
                 profile['ssh'] = {
                     "port": result['port'] if result['service_type'] == 'ssh' else 22,
-                    "key_based": result['credential_type'] == 'ssh_key' if result['credential_type'] else False
+                    "key_based": result['credential_type'] == 'ssh_key' if result['credential_type'] else False,
+                    "username": result.get('username'),
+                    "credential_ref": f"secret://secrets.ssh/{canonical_host}"
                 }
             
             # Add primary service info
@@ -289,7 +348,7 @@ class AssetFacade:
                 "is_secure": result['is_secure']
             }
             
-            logger.info(f"Connection profile resolved for host: {host} -> {result['hostname']}")
+            logger.info(f"Connection profile resolved for host: {host} -> {result['hostname']} (asset_id={asset_id_str})")
             
             return profile
             

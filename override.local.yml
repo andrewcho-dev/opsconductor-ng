@@ -1,0 +1,11 @@
+services:
+  automation-service:
+    environment:
+      AI_TOOLS_DIR: /opt/oc-tools/catalog
+      TOOL_REGISTRY_DIR: /opt/oc-tools/catalog
+      TOOLS_DIR: /opt/oc-tools/catalog
+      AI_TOOL_CATALOG_DIR: /opt/oc-tools/catalog
+      # If asset tools call asset-service directly, make sure this resolves:
+      ASSET_SERVICE_URL: http://asset-service:3002
+    volumes:
+      - ./tools/catalog:/opt/oc-tools/catalog:ro

@@ -6,7 +6,7 @@ NOT exposed via Kong - requires X-Internal-Key header
 
 import logging
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Header, status
+from fastapi import APIRouter, HTTPException, Header, Request, status
 from pydantic import BaseModel
 import os
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/internal/secrets", tags=["secrets-internal"])
 INTERNAL_KEY = os.getenv("INTERNAL_KEY", "")
 
 
-def verify_internal_key(x_internal_key: Optional[str] = Header(None)):
+def verify_internal_key(x_internal_key: Optional[str]):
     """Verify internal key for service-to-service calls"""
     if not INTERNAL_KEY:
         raise HTTPException(
@@ -27,7 +27,7 @@ def verify_internal_key(x_internal_key: Optional[str] = Header(None)):
         )
     
     if not x_internal_key or x_internal_key != INTERNAL_KEY:
-        logger.warning("Unauthorized internal API access attempt")
+        logger.warning(f"Unauthorized internal API access attempt - provided key: {x_internal_key[:10] if x_internal_key else 'None'}...")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid or missing X-Internal-Key header"
@@ -160,6 +160,99 @@ async def credential_lookup(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to lookup credential: {str(e)}"
+        )
+
+
+@router.get("/resolve", response_model=CredentialResponse, responses={404: {"model": CredentialNotFoundResponse}})
+async def resolve_credential_ref(
+    request: Request,
+    ref: str,
+    x_internal_key: Optional[str] = Header(None)
+):
+    """
+    Resolve a credential reference (INTERNAL USE ONLY)
+    
+    Requires X-Internal-Key header matching INTERNAL_KEY env var.
+    
+    Args:
+        ref: Credential reference URI (e.g., "secret://secrets.winrm/192.168.50.211")
+    
+    Returns:
+        Decrypted credentials for server-side use.
+        NEVER expose this endpoint via Kong gateway.
+    
+    Returns 404 if credential not found.
+    """
+    verify_internal_key(x_internal_key)
+    
+    try:
+        secrets_manager = request.app.state.secrets_manager
+        
+        result = secrets_manager.resolve_credential_ref(
+            credential_ref=ref,
+            accessed_by="automation-service"
+        )
+        
+        if not result:
+            logger.warning(f"Credential not found for ref={ref}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"reason": "not_found"}
+            )
+        
+        # Mask password in logs
+        logger.info(f"Credential resolved for ref={ref} (password masked)")
+        
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid credential_ref format: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid credential_ref format: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve credential_ref: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to resolve credential_ref: {str(e)}"
+        )
+
+
+@router.post("/import-from-assets")
+async def import_from_assets(
+    request: Request,
+    x_internal_key: Optional[str] = Header(None)
+):
+    """
+    Import credentials from assets table (INTERNAL USE ONLY)
+    
+    Requires X-Internal-Key header matching INTERNAL_KEY env var.
+    
+    Migrates any legacy plaintext credentials from assets.assets table
+    into encrypted secrets.host_credentials table. Idempotent - safe to run multiple times.
+    
+    Returns:
+        Statistics about the import operation
+    """
+    verify_internal_key(x_internal_key)
+    
+    try:
+        secrets_manager = request.app.state.secrets_manager
+        
+        result = secrets_manager.import_from_assets(created_by="automation-service")
+        
+        logger.info(f"Import from assets completed: {result}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to import from assets: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to import from assets: {str(e)}"
         )
 
 

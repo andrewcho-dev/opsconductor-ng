@@ -6,7 +6,7 @@ Exposed via Kong gateway at /assets/*
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -30,15 +30,19 @@ class AssetSearchResponse(BaseModel):
 class ConnectionProfileResponse(BaseModel):
     """Response for connection profile queries"""
     found: bool
+    asset_id: Optional[str] = None
     host: Optional[str] = None
     ip: Optional[str] = None
     hostname: Optional[str] = None
+    hostnames: Optional[list] = None
     os: Optional[str] = None
     os_type: Optional[str] = None
     winrm: Optional[dict] = None
     ssh: Optional[dict] = None
     rdp: Optional[dict] = None
     primary_service: Optional[dict] = None
+    error: Optional[str] = None
+    candidates: Optional[list] = None
 
 
 # Dependency to get asset façade from app state
@@ -49,12 +53,12 @@ def get_asset_facade(request):
 
 @router.get("/count", response_model=AssetCountResponse)
 async def count_assets(
+    request: Request,
     os: Optional[str] = Query(None, description="OS type or version filter (e.g., 'Windows 10', 'linux')"),
     hostname: Optional[str] = Query(None, description="Hostname filter (partial match)"),
     ip: Optional[str] = Query(None, description="IP address filter (exact match)"),
     status: Optional[str] = Query(None, description="Status filter (e.g., 'active')"),
-    environment: Optional[str] = Query(None, description="Environment filter (e.g., 'production')"),
-    request = None
+    environment: Optional[str] = Query(None, description="Environment filter (e.g., 'production')")
 ):
     """
     Count assets matching filters
@@ -82,13 +86,13 @@ async def count_assets(
 
 @router.get("/search", response_model=AssetSearchResponse)
 async def search_assets(
+    request: Request,
     os: Optional[str] = Query(None, description="OS type or version filter"),
     hostname: Optional[str] = Query(None, description="Hostname filter (partial match)"),
     ip: Optional[str] = Query(None, description="IP address filter (exact match)"),
     status: Optional[str] = Query(None, description="Status filter"),
     environment: Optional[str] = Query(None, description="Environment filter"),
-    limit: int = Query(50, ge=1, le=500, description="Maximum number of results"),
-    request = None
+    limit: int = Query(50, ge=1, le=500, description="Maximum number of results")
 ):
     """
     Search assets matching filters
@@ -117,26 +121,29 @@ async def search_assets(
 
 @router.get("/connection-profile", response_model=ConnectionProfileResponse)
 async def get_connection_profile(
-    host: str = Query(..., description="Hostname or IP address"),
-    request = None
+    request: Request,
+    host: str = Query(..., description="Hostname, IP address, or short hostname"),
+    asset_id: Optional[str] = Query(None, description="Optional asset UUID for disambiguation")
 ):
     """
     Get connection profile for a host
     
-    Resolves host and returns connection parameters:
-    - WinRM port, SSL, domain for Windows hosts
-    - SSH port for Linux/Unix hosts
+    Resolves host by IP, FQDN, or short hostname and returns connection parameters
+    with credential references (not plaintext secrets):
+    - WinRM port, SSL, domain, credential_ref for Windows hosts
+    - SSH port, credential_ref for Linux/Unix hosts
     - Primary service information
     
     Used by tools to auto-configure connection parameters.
     
     Returns 200 with found=false if host not in asset database.
+    Returns ambiguous_asset error if multiple matches found.
     
     Performance target: <50ms p50
     """
     try:
         facade = request.app.state.asset_facade
-        result = await facade.get_connection_profile(host)
+        result = await facade.get_connection_profile(host, asset_id=asset_id)
         return result
     except Exception as e:
         logger.error(f"Failed to get connection profile: {e}")

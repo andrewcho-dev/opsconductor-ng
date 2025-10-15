@@ -4,6 +4,7 @@ description: Count assets in inventory matching filters (OS, hostname, IP, statu
 category: asset
 platform: cross-platform
 version: 1.0.0
+source: local
 
 command_template: |
   python3 -c "

@@ -4,6 +4,7 @@ description: Search and list assets in inventory matching filters
 category: asset
 platform: cross-platform
 version: 1.0.0
+source: local
 
 command_template: |
   python3 -c "

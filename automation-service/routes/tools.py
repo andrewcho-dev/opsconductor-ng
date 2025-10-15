@@ -1,17 +1,25 @@
 """
-AI Tools Proxy Router
-Proxies tool requests to ai-pipeline service
+AI Tools Router v2 - Unified Tool Registry and Execution
+
+Responsibilities:
+- List tools from unified registry
+- Execute tools via unified runner
+- Support hot-reload of tool catalog
+- Apply asset intelligence server-side
+- Return consistent response format
 """
+
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import logging
 import time
 import uuid
-import httpx
+import os
 
-from config import config
-
+from tool_registry import get_registry
+from tool_runner import ToolRunner
+from execution_enricher import ExecutionEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +35,7 @@ class ToolListResponse(BaseModel):
     success: bool
     tools: List[Dict[str, Any]]
     total: int
-    filters: Dict[str, Any]
+    filters: Optional[Dict[str, Any]] = None
 
 
 class ToolExecuteRequest(BaseModel):
@@ -49,27 +57,17 @@ class ToolExecuteResponse(BaseModel):
     exit_code: Optional[int] = None
     truncated: bool = False
     redacted: bool = False
+    metadata: Optional[Dict[str, Any]] = None  # For enrichment errors and additional context
 
 
-# ============================================================================
-# GLOBAL CLIENT
-# ============================================================================
-
-_http_client: Optional[httpx.AsyncClient] = None
-
-
-def get_http_client() -> httpx.AsyncClient:
-    """Get or create HTTP client singleton"""
-    global _http_client
-    
-    if _http_client is None:
-        _http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=5.0),
-            follow_redirects=True
-        )
-        logger.info("[Tools] HTTP client initialized")
-    
-    return _http_client
+class ToolReloadResponse(BaseModel):
+    """Response from tool reload"""
+    success: bool
+    count: int
+    tools: List[str]
+    missing_required: Optional[List[str]] = None
+    catalog_dirs: Optional[List[str]] = None
+    error: Optional[str] = None
 
 
 # ============================================================================
@@ -84,14 +82,14 @@ async def list_tools(
     x_trace_id: Optional[str] = Header(None, alias="X-Trace-Id")
 ):
     """
-    List available tools from ai-pipeline
+    List available tools from unified registry
     
-    This endpoint proxies to ai-pipeline /tools/list with optional filtering.
+    This endpoint returns tools from the merged registry (built-ins + YAML catalog).
     
     Args:
         platform: Filter by platform (windows, linux, cross-platform)
-        category: Filter by category (network, system, database, etc.)
-        tags: Comma-separated list of tags
+        category: Filter by category (network, system, database, asset, etc.)
+        tags: Comma-separated list of tags (not yet implemented)
         x_trace_id: Optional trace ID from header
     
     Returns:
@@ -106,71 +104,77 @@ async def list_tools(
     )
     
     try:
-        # Build query parameters
-        params = {}
-        if platform:
-            params['platform'] = platform
-        if category:
-            params['category'] = category
-        if tags:
-            params['tags'] = tags
-        
-        # Call ai-pipeline
-        client = get_http_client()
-        url = f"{config.AI_PIPELINE_BASE_URL}/tools/list"
-        
-        response = await client.get(
-            url,
-            params=params,
-            headers={"X-Trace-Id": trace_id}
-        )
-        
-        # Check response
-        if response.status_code >= 400:
-            logger.error(
-                f"[Tools] [{trace_id}] AI Pipeline error: "
-                f"status={response.status_code}"
-            )
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "success": False,
-                    "error": f"AI Pipeline returned {response.status_code}",
-                    "trace_id": trace_id
-                }
-            )
-        
-        # Parse response
-        result = response.json()
+        registry = get_registry()
+        tools = registry.list_tools(platform=platform, category=category)
         
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             f"[Tools] [{trace_id}] List success: "
-            f"total={result.get('total', 0)}, duration={duration_ms:.2f}ms"
+            f"total={len(tools)}, duration={duration_ms:.2f}ms"
         )
         
-        return ToolListResponse(**result)
-    
-    except httpx.TimeoutException as e:
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        logger.error(f"[Tools] [{trace_id}] Timeout: {e}")
-        
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "success": False,
-                "error": "Request timed out",
-                "trace_id": trace_id,
-                "duration_ms": round(duration_ms, 2)
+        return ToolListResponse(
+            success=True,
+            tools=tools,
+            total=len(tools),
+            filters={
+                'platform': platform,
+                'category': category,
+                'tags': tags
             }
         )
-    
-    except HTTPException:
-        raise
     
     except Exception as e:
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.error(f"[Tools] [{trace_id}] Error: {e}")
+        
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "error": str(e),
+                "trace_id": trace_id,
+                "duration_ms": round(duration_ms, 2)
+            }
+        )
+
+
+@router.post("/reload", response_model=ToolReloadResponse)
+async def reload_tools(
+    x_trace_id: Optional[str] = Header(None, alias="X-Trace-Id")
+):
+    """
+    Reload tool registry from catalog directories
+    
+    This endpoint triggers a hot-reload of the tool catalog without restarting
+    the service. Useful for adding/removing tools dynamically.
+    
+    Args:
+        x_trace_id: Optional trace ID from header
+    
+    Returns:
+        ToolReloadResponse with reload status
+    """
+    start_time = time.perf_counter()
+    trace_id = x_trace_id or str(uuid.uuid4())
+    
+    logger.info(f"[Tools] [{trace_id}] Reload request")
+    
+    try:
+        registry = get_registry()
+        result = registry.reload()
+        
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            f"[Tools] [{trace_id}] Reload complete: "
+            f"count={result['count']}, duration={duration_ms:.2f}ms"
+        )
+        
+        return ToolReloadResponse(**result)
+    
+    except Exception as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.error(f"[Tools] [{trace_id}] Reload error: {e}")
         
         raise HTTPException(
             status_code=500,
@@ -190,12 +194,10 @@ async def execute_tool(
     x_trace_id: Optional[str] = Header(None, alias="X-Trace-Id")
 ):
     """
-    Execute a tool via ai-pipeline with asset intelligence
+    Execute a tool via unified runner
     
-    This endpoint proxies tool execution requests to ai-pipeline with full
-    safety controls (timeouts, output limits, redaction).
-    
-    For asset-aware tools (windows_list_directory, etc.), this endpoint:
+    This endpoint executes tools either locally or via ai-pipeline based on
+    the tool's source configuration. For asset-aware tools, it automatically:
     1. Resolves host connection profile from asset database
     2. Fetches credentials server-side (never exposed to client)
     3. Merges parameters and executes
@@ -218,216 +220,101 @@ async def execute_tool(
     )
     
     try:
-        # ====================================================================
-        # ASSET INTELLIGENCE: Resolve host profile and credentials
-        # ====================================================================
+        # Get tool definition from registry
+        registry = get_registry()
+        tool_def = registry.get_tool(tool_request.name)
         
-        params = tool_request.params.copy()
-        
-        # Check if this is an asset-aware tool
-        if tool_request.name in ['windows_list_directory', 'asset_count', 'asset_search']:
+        if not tool_def:
+            logger.error(f"[Tools] [{trace_id}] Tool not found: {tool_request.name}")
+            duration_ms = (time.perf_counter() - start_time) * 1000
             
-            # Handle asset_count and asset_search directly
-            if tool_request.name == 'asset_count':
-                logger.info(f"[Tools] [{trace_id}] Executing asset_count directly")
-                try:
-                    facade = req.app.state.asset_facade if hasattr(req.app.state, 'asset_facade') else None
-                    if not facade:
-                        raise Exception("Asset façade not initialized")
-                    
-                    result = await facade.count_assets(
-                        os=params.get('os'),
-                        hostname=params.get('hostname'),
-                        ip=params.get('ip'),
-                        status=params.get('status'),
-                        environment=params.get('environment')
-                    )
-                    
-                    duration_ms = (time.perf_counter() - start_time) * 1000
-                    return ToolExecuteResponse(
-                        success=True,
-                        tool=tool_request.name,
-                        output=str(result),
-                        duration_ms=duration_ms,
-                        trace_id=trace_id,
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    )
-                except Exception as e:
-                    logger.error(f"[Tools] [{trace_id}] asset_count failed: {e}")
-                    duration_ms = (time.perf_counter() - start_time) * 1000
-                    return ToolExecuteResponse(
-                        success=False,
-                        tool=tool_request.name,
-                        error=str(e),
-                        duration_ms=duration_ms,
-                        trace_id=trace_id,
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    )
-            
-            elif tool_request.name == 'asset_search':
-                logger.info(f"[Tools] [{trace_id}] Executing asset_search directly")
-                try:
-                    facade = req.app.state.asset_facade if hasattr(req.app.state, 'asset_facade') else None
-                    if not facade:
-                        raise Exception("Asset façade not initialized")
-                    
-                    result = await facade.search_assets(
-                        os=params.get('os'),
-                        hostname=params.get('hostname'),
-                        ip=params.get('ip'),
-                        status=params.get('status'),
-                        environment=params.get('environment'),
-                        limit=params.get('limit', 50)
-                    )
-                    
-                    duration_ms = (time.perf_counter() - start_time) * 1000
-                    return ToolExecuteResponse(
-                        success=True,
-                        tool=tool_request.name,
-                        output=str(result),
-                        duration_ms=duration_ms,
-                        trace_id=trace_id,
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    )
-                except Exception as e:
-                    logger.error(f"[Tools] [{trace_id}] asset_search failed: {e}")
-                    duration_ms = (time.perf_counter() - start_time) * 1000
-                    return ToolExecuteResponse(
-                        success=False,
-                        tool=tool_request.name,
-                        error=str(e),
-                        duration_ms=duration_ms,
-                        trace_id=trace_id,
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                    )
-            
-            # Handle windows_list_directory with asset intelligence
-            elif tool_request.name == 'windows_list_directory' and 'host' in params:
-                host = params['host']
-                logger.info(f"[Tools] [{trace_id}] Resolving asset profile for host: {host}")
-                
-                try:
-                    # Get connection profile
-                    facade = req.app.state.asset_facade if req else None
-                    if facade:
-                        profile = await facade.get_connection_profile(host)
-                        
-                        if profile.get('found'):
-                            logger.info(f"[Tools] [{trace_id}] Asset profile found: {profile.get('hostname')}")
-                            
-                            # Merge connection parameters from profile
-                            if 'winrm' in profile:
-                                params.setdefault('port', profile['winrm']['port'])
-                                params.setdefault('use_ssl', profile['winrm']['use_ssl'])
-                                if profile['winrm'].get('domain'):
-                                    params.setdefault('domain', profile['winrm']['domain'])
-                            
-                            # Try to fetch credentials server-side
-                            secrets_manager = req.app.state.secrets_manager if req and hasattr(req.app.state, 'secrets_manager') else None
-                            if secrets_manager:
-                                try:
-                                    creds = secrets_manager.lookup_credential(host, 'winrm', accessed_by='tools-api')
-                                    if creds:
-                                        logger.info(f"[Tools] [{trace_id}] Credentials found for host (password masked)")
-                                        params.setdefault('username', creds['username'])
-                                        params.setdefault('password', creds['password'])
-                                        if creds.get('domain'):
-                                            params.setdefault('domain', creds['domain'])
-                                except Exception as e:
-                                    logger.warning(f"[Tools] [{trace_id}] Credential lookup failed: {e}")
-                        else:
-                            logger.info(f"[Tools] [{trace_id}] Host not found in asset database")
-                    
-                    # Check if we still need credentials
-                    if not params.get('username') or not params.get('password'):
-                        logger.warning(f"[Tools] [{trace_id}] Missing credentials for windows_list_directory")
-                        duration_ms = (time.perf_counter() - start_time) * 1000
-                        
-                        # Return structured missing_credentials error
-                        raise HTTPException(
-                            status_code=400,
-                            detail={
-                                "success": False,
-                                "error": "missing_credentials",
-                                "missing_params": [
-                                    {"name": "username", "type": "string", "secret": False, "description": "Windows username"},
-                                    {"name": "password", "type": "string", "secret": True, "description": "Windows password"},
-                                    {"name": "domain", "type": "string", "secret": False, "optional": True, "description": "Windows domain (optional)"}
-                                ],
-                                "hint": f"Credentials not found for host {host}. Please provide username and password.",
-                                "trace_id": trace_id,
-                                "duration_ms": round(duration_ms, 2)
-                            }
-                        )
-                
-                except HTTPException:
-                    raise
-                except Exception as e:
-                    logger.error(f"[Tools] [{trace_id}] Asset intelligence failed: {e}")
-                    # Continue with original params if asset intelligence fails
-        
-        # ====================================================================
-        # EXECUTE VIA AI-PIPELINE
-        # ====================================================================
-        
-        # Call ai-pipeline
-        client = get_http_client()
-        url = f"{config.AI_PIPELINE_BASE_URL}/tools/execute"
-        
-        payload = {
-            "name": tool_request.name,
-            "params": params,
-            "trace_id": trace_id
-        }
-        
-        response = await client.post(
-            url,
-            json=payload,
-            headers={"X-Trace-Id": trace_id}
-        )
-        
-        # Check response
-        if response.status_code >= 400:
-            error_detail = response.text
-            logger.error(
-                f"[Tools] [{trace_id}] AI Pipeline error: "
-                f"status={response.status_code}, detail={error_detail[:200]}"
-            )
-            raise HTTPException(
-                status_code=502,
-                detail={
-                    "success": False,
-                    "error": f"AI Pipeline returned {response.status_code}",
-                    "trace_id": trace_id
-                }
+            return ToolExecuteResponse(
+                success=False,
+                tool=tool_request.name,
+                error=f"Tool not found: {tool_request.name}",
+                duration_ms=round(duration_ms, 2),
+                trace_id=trace_id,
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             )
         
-        # Parse response
-        result = response.json()
+        # Get asset façade and secrets manager from app state
+        asset_facade = getattr(req.app.state, 'asset_facade', None)
+        secrets_manager = getattr(req.app.state, 'secrets_manager', None)
+        internal_key = os.getenv("INTERNAL_KEY", "")
         
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        logger.info(
-            f"[Tools] [{trace_id}] Execute completed: "
-            f"success={result.get('success')}, duration={duration_ms:.2f}ms"
-        )
+        # Apply execution enrichment (auto asset lookup + credential resolution)
+        enriched_params = tool_request.params
+        if asset_facade and secrets_manager and internal_key:
+            enricher = ExecutionEnricher(asset_facade, secrets_manager, internal_key)
+            enriched_params, enrichment_error = await enricher.enrich_execution(
+                tool_name=tool_request.name,
+                tool_def=tool_def,
+                parameters=tool_request.params,
+                trace_id=trace_id
+            )
+            
+            # If enrichment failed with structured error, return it
+            if enrichment_error:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                
+                logger.warning(
+                    f"[Tools] [{trace_id}] Enrichment failed: {enrichment_error.get('error')}"
+                )
+                
+                return ToolExecuteResponse(
+                    success=False,
+                    tool=tool_request.name,
+                    error=enrichment_error.get('error'),
+                    duration_ms=round(duration_ms, 2),
+                    trace_id=trace_id,
+                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    metadata=enrichment_error  # Include full error details in metadata
+                )
         
-        return ToolExecuteResponse(**result)
-    
-    except httpx.TimeoutException as e:
-        duration_ms = (time.perf_counter() - start_time) * 1000
-        logger.error(f"[Tools] [{trace_id}] Timeout: {e}")
+        # Create runner and execute
+        runner = ToolRunner(asset_facade=asset_facade, secrets_manager=secrets_manager)
         
-        raise HTTPException(
-            status_code=504,
-            detail={
-                "success": False,
-                "tool": tool_request.name,
-                "error": "Request timed out",
-                "trace_id": trace_id,
-                "duration_ms": round(duration_ms, 2),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            }
-        )
+        try:
+            result = await runner.execute(
+                tool_name=tool_request.name,
+                tool_def=tool_def,
+                parameters=enriched_params,  # Use enriched parameters
+                trace_id=trace_id
+            )
+            
+            return ToolExecuteResponse(**result)
+            
+        except Exception as e:
+            # Check for missing_credentials error
+            error_str = str(e)
+            if error_str.startswith('missing_credentials:'):
+                # Parse error details
+                parts = error_str.split(':', 1)[1].split(',')
+                error_details = {}
+                for part in parts:
+                    key, value = part.split('=')
+                    error_details[key] = value
+                
+                logger.warning(
+                    f"[Tools] [{trace_id}] Missing credentials: "
+                    f"host={error_details.get('host')}, purpose={error_details.get('purpose')}"
+                )
+                
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                
+                return ToolExecuteResponse(
+                    success=False,
+                    tool=tool_request.name,
+                    error=f"missing_credentials",
+                    duration_ms=round(duration_ms, 2),
+                    trace_id=trace_id,
+                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                )
+            else:
+                raise
+        
+        finally:
+            await runner.close()
     
     except HTTPException:
         raise
@@ -436,14 +323,11 @@ async def execute_tool(
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.error(f"[Tools] [{trace_id}] Error: {e}")
         
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "success": False,
-                "tool": tool_request.name,
-                "error": str(e),
-                "trace_id": trace_id,
-                "duration_ms": round(duration_ms, 2),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            }
+        return ToolExecuteResponse(
+            success=False,
+            tool=tool_request.name,
+            error=str(e),
+            duration_ms=round(duration_ms, 2),
+            trace_id=trace_id,
+            timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         )

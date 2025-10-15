@@ -199,7 +199,12 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
           toolResult = tool.output;
           
           if (tool.success) {
-            aiContent = `Tool "${tool.tool}" executed successfully (${tool.duration_ms.toFixed(0)}ms)`;
+            // Format output as markdown code block
+            const outputStr = typeof tool.output === 'string' 
+              ? tool.output 
+              : JSON.stringify(tool.output, null, 2);
+            
+            aiContent = `Tool **${tool.tool}** executed successfully (${tool.duration_ms.toFixed(0)}ms)\n\n\`\`\`json\n${outputStr}\n\`\`\``;
           } else {
             aiContent = `Tool "${tool.tool}" failed: ${tool.error || 'Unknown error'}`;
           }
@@ -730,40 +735,6 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                   </div>
                 )}
                 
-                {/* Tool Execution Result (for tool.execute intent) */}
-                {message.toolResult && message.intent === 'tool.execute' && (
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    backgroundColor: '#f9fafb',
-                    border: '1px solid #e5e7eb',
-                    fontSize: '13px',
-                    fontFamily: 'monospace'
-                  }}>
-                    <div style={{
-                      fontWeight: '600',
-                      color: '#1f2937',
-                      marginBottom: '8px',
-                      fontFamily: 'system-ui'
-                    }}>
-                      {message.toolName} Output:
-                    </div>
-                    <pre style={{
-                      margin: 0,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      color: '#374151',
-                      fontSize: '12px',
-                      maxHeight: '400px',
-                      overflowY: 'auto'
-                    }}>
-                      {typeof message.toolResult === 'string' 
-                        ? message.toolResult 
-                        : JSON.stringify(message.toolResult, null, 2)}
-                    </pre>
-                  </div>
-                )}
                 
                 {/* Trace ID (for debugging) */}
                 {message.traceId && (

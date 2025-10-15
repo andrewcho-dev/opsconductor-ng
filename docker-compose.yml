@@ -198,6 +198,9 @@ services:
       REDIS_URL: redis://redis:6379
       AI_PIPELINE_BASE_URL: http://ai-pipeline:8000
       EXEC_TIMEOUT_MS: 5000
+      INTERNAL_KEY: ${INTERNAL_KEY:-opsconductor-internal-key-change-in-production}
+      SECRETS_KMS_KEY: ${SECRETS_KMS_KEY:-opsconductor-kms-key-change-in-production}
+      EXEC_ENRICH_ENABLE: ${EXEC_ENRICH_ENABLE:-true}
     ports:
       - "8010:3003"
     volumes:
@@ -206,13 +209,20 @@ services:
       - ./automation-service/unified_executor.py:/app/unified_executor.py
       - ./automation-service/execution_context.py:/app/execution_context.py
       - ./automation-service/config.py:/app/config.py
+      - ./automation-service/tool_registry.py:/app/tool_registry.py
+      - ./automation-service/tool_runner.py:/app/tool_runner.py
+      - ./automation-service/asset_facade.py:/app/asset_facade.py
+      - ./automation-service/secrets_broker.py:/app/secrets_broker.py
+      - ./automation-service/execution_enricher.py:/app/execution_enricher.py
       - ./automation-service/libraries:/app/libraries
       - ./automation-service/clients:/app/clients
       - ./automation-service/routes:/app/routes
       - ./automation-service/observability:/app/observability
+      - ./automation-service/tools:/app/tools
       - ./shared:/app/shared
       - ./execution:/app/execution
       - ./pipeline:/app/pipeline
+      - ./tools:/app/tools_shared
       # NOTE: automation-service is the ONLY container that executes commands
     networks:
       - opsconductor
