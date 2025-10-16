@@ -1,0 +1,14 @@
+name: Sort-Object
+version: "1.0"
+description: "Sorts objects by property values in ascending or descending order. Essential PowerShell pipeline cmdlet."
+platform: windows
+category: system
+tags:
+  - pipeline
+  - sort
+  - order
+  - objects
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: true

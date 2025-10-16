@@ -1,0 +1,14 @@
+name: Get-NetTCPConnection
+version: "1.0"
+description: "Gets current TCP connections and listening ports. PowerShell alternative to netstat."
+platform: windows
+category: network
+tags:
+  - network
+  - tcp
+  - connections
+  - ports
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: true

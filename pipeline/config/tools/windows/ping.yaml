@@ -1,0 +1,14 @@
+name: ping
+version: "1.0"
+description: "Tests network connectivity to a host by sending ICMP echo requests."
+platform: windows
+category: network
+tags:
+  - network
+  - connectivity
+  - icmp
+  - diagnostic
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

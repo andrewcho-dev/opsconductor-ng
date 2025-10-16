@@ -1,0 +1,33 @@
+tool:
+  name: Stop-Service
+  version: "1.0"
+  description: "Stops a running Windows service"
+  platform: windows
+  category: system
+  
+  capability:
+    name: service_stop
+    description: "Stop Windows services"
+    
+  pattern:
+    name: stop_service
+    description: "Stop service, disable service, halt service"
+    
+  inputs:
+    - name: host
+      type: string
+      required: true
+      description: "Target Windows host IP address or hostname"
+    - name: service_name
+      type: string
+      required: true
+      description: "Name of the service to stop"
+    - name: force
+      type: boolean
+      required: false
+      description: "Force stop the service"
+      
+  policy:
+    approval_required: true
+    production_safe: false
+    timeout_seconds: 120

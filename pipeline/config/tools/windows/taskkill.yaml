@@ -1,0 +1,14 @@
+name: taskkill
+version: "1.0"
+description: "Terminates one or more processes by process ID or image name. Legacy CMD tool, prefer Stop-Process."
+platform: windows
+category: system
+tags:
+  - process
+  - kill
+  - terminate
+  - legacy
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: false

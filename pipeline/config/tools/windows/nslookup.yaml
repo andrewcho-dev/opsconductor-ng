@@ -1,0 +1,14 @@
+name: nslookup
+version: "1.0"
+description: "Queries DNS servers to obtain domain name or IP address mapping. Legacy tool, prefer Resolve-DnsName."
+platform: windows
+category: network
+tags:
+  - dns
+  - network
+  - lookup
+  - legacy
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

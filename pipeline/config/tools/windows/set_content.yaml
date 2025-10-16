@@ -1,0 +1,14 @@
+name: Set-Content
+version: "1.0"
+description: "Writes or replaces content in a file. Creates the file if it doesn't exist."
+platform: windows
+category: system
+tags:
+  - file
+  - write
+  - content
+  - text
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: false

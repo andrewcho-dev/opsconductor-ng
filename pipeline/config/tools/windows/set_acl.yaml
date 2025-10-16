@@ -1,0 +1,14 @@
+name: Set-Acl
+version: "1.0"
+description: "Changes the security descriptor (permissions) of a specified file, directory, or registry key."
+platform: windows
+category: security
+tags:
+  - permissions
+  - acl
+  - security
+  - access
+metadata:
+  execution_method: powershell
+  requires_admin: true
+  idempotent: false

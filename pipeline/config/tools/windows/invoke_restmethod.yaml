@@ -1,0 +1,14 @@
+name: Invoke-RestMethod
+version: "1.0"
+description: "Sends HTTP/HTTPS requests to RESTful web services and automatically parses the response."
+platform: windows
+category: network
+tags:
+  - http
+  - rest
+  - api
+  - web
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: false

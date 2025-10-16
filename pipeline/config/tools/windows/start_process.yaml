@@ -1,0 +1,14 @@
+name: Start-Process
+version: "1.0"
+description: "Starts one or more processes on the local computer with specified parameters."
+platform: windows
+category: system
+tags:
+  - process
+  - start
+  - launch
+  - execute
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: false

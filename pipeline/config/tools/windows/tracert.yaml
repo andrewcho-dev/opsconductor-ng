@@ -1,0 +1,14 @@
+name: tracert
+version: "1.0"
+description: "Traces the route packets take to reach a network destination, showing each hop along the way."
+platform: windows
+category: network
+tags:
+  - network
+  - trace
+  - route
+  - diagnostic
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

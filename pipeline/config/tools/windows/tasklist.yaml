@@ -1,0 +1,14 @@
+name: tasklist
+version: "1.0"
+description: "Displays a list of currently running processes. Legacy CMD tool, prefer Get-Process."
+platform: windows
+category: system
+tags:
+  - process
+  - list
+  - task
+  - legacy
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

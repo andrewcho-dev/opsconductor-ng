@@ -1,0 +1,14 @@
+name: Resolve-DnsName
+version: "1.0"
+description: "Performs DNS name resolution for specified names. Modern replacement for nslookup."
+platform: windows
+category: network
+tags:
+  - dns
+  - network
+  - lookup
+  - resolution
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: true

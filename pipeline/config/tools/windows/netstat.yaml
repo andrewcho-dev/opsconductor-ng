@@ -1,0 +1,14 @@
+name: netstat
+version: "1.0"
+description: "Displays active network connections, listening ports, and network statistics."
+platform: windows
+category: network
+tags:
+  - network
+  - connections
+  - ports
+  - statistics
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

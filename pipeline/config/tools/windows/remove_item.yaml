@@ -1,0 +1,37 @@
+tool:
+  name: Remove-Item
+  version: "1.0"
+  description: "Deletes files or directories on a Windows system"
+  platform: windows
+  category: system
+  
+  capability:
+    name: file_deletion
+    description: "Delete files and directories"
+    
+  pattern:
+    name: delete_file
+    description: "Delete file, remove file, delete folder, remove directory, del command, rm command"
+    
+  inputs:
+    - name: host
+      type: string
+      required: true
+      description: "Target Windows host IP address or hostname"
+    - name: path
+      type: string
+      required: true
+      description: "Path to the file or directory to delete"
+    - name: recurse
+      type: boolean
+      required: false
+      description: "Delete directories recursively"
+    - name: force
+      type: boolean
+      required: false
+      description: "Force deletion without confirmation"
+      
+  policy:
+    approval_required: true
+    production_safe: false
+    timeout_seconds: 300

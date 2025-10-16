@@ -1,0 +1,37 @@
+tool:
+  name: Stop-Process
+  version: "1.0"
+  description: "Stops one or more running processes on a Windows system"
+  platform: windows
+  category: system
+  
+  capability:
+    name: process_termination
+    description: "Stop or kill running processes"
+    
+  pattern:
+    name: kill_process
+    description: "Stop process, kill process, terminate process, end process, taskkill"
+    
+  inputs:
+    - name: host
+      type: string
+      required: true
+      description: "Target Windows host IP address or hostname"
+    - name: process_id
+      type: integer
+      required: false
+      description: "Process ID to stop"
+    - name: process_name
+      type: string
+      required: false
+      description: "Process name to stop"
+    - name: force
+      type: boolean
+      required: false
+      description: "Force stop the process"
+      
+  policy:
+    approval_required: true
+    production_safe: false
+    timeout_seconds: 60

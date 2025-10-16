@@ -1,0 +1,14 @@
+name: ipconfig
+version: "1.0"
+description: "Displays network configuration information including IP addresses, subnet masks, and default gateways."
+platform: windows
+category: network
+tags:
+  - network
+  - ip
+  - configuration
+  - adapter
+metadata:
+  execution_method: cmd
+  requires_admin: false
+  idempotent: true

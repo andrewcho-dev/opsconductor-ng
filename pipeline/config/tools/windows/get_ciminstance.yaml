@@ -1,0 +1,14 @@
+name: Get-CimInstance
+version: "1.0"
+description: "Gets CIM instances from a CIM server. Modern replacement for Get-WmiObject with better performance."
+platform: windows
+category: system
+tags:
+  - cim
+  - wmi
+  - query
+  - management
+metadata:
+  execution_method: powershell
+  requires_admin: false
+  idempotent: true
