@@ -1321,6 +1321,12 @@ Example for windows-impacket-executor with explicit credentials (if needed):
             # Remove trailing commas before closing braces/brackets (common LLM mistake)
             content = re.sub(r',(\s*[}\]])', r'\1', content)
             
+            # Fix unescaped backslashes in Windows paths (common LLM mistake)
+            # This handles paths like C:\Windows\ -> C:\\Windows\\
+            # We need to be careful not to double-escape already escaped backslashes
+            # Match backslashes that are NOT already escaped (not preceded by another backslash)
+            content = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', content)
+            
             # Parse JSON
             steps_data = json.loads(content)
             
