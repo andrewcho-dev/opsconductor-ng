@@ -1023,18 +1023,26 @@ CRITICAL NOTES:
         entities = [entity.dict() if hasattr(entity, 'dict') else entity for entity in decision.entities]
         selected_tools = [tool.tool_name for tool in selection.selected_tools]
         
-        prompt = f"""🚨🚨🚨 CRITICAL RULES FOR DIRECTORY LISTINGS 🚨🚨🚨
+        prompt = f"""🚨🚨🚨 CRITICAL RULES FOR ALL WINDOWS POWERSHELL COMMANDS 🚨🚨🚨
 
-1. NEVER use -Recurse unless EXPLICITLY requested!
+1. **ALWAYS START WITH HOSTNAME HEADER** - Every PowerShell command MUST begin with a hostname/IP header!
+   ✅ CORRECT: Write-Host "Host: 192.168.50.212" -ForegroundColor Cyan; <your-command-here>
+   ❌ WRONG: <your-command-here>  (missing hostname header!)
+   
+   Examples:
+   - Write-Host "Host: 192.168.50.212" -ForegroundColor Cyan; Get-ChildItem C:\\Windows\\
+   - Write-Host "Host: 192.168.50.214" -ForegroundColor Cyan; Get-Service
+   - Write-Host "Host: 192.168.50.212" -ForegroundColor Cyan; Get-Process | Where-Object {{$_.CPU -gt 100}}
+
+2. NEVER use -Recurse unless EXPLICITLY requested!
    ❌ WRONG: Get-ChildItem C:\\Windows\\ -Recurse  (takes 10+ minutes, will timeout!)
    ✅ CORRECT: Get-ChildItem C:\\Windows\\  (fast, <5 seconds)
 
-2. KEEP OUTPUT SIMPLE - Use normal dir/ls style output WITH hostname header!
+3. KEEP OUTPUT SIMPLE - Use normal PowerShell output, don't add unnecessary Select-Object formatting!
    ❌ WRONG: Get-ChildItem C:\\Windows\\ | Select-Object @{{Name='Host';Expression={{'192.168.50.212'}}}}, Name, Directory, Length, LastWriteTime
    ✅ CORRECT: Write-Host "Host: 192.168.50.212" -ForegroundColor Cyan; Get-ChildItem C:\\Windows\\
    
-   For directory listings, add a simple "Host: <IP>" header line, then use NORMAL Get-ChildItem output!
-   DO NOT add Select-Object with custom columns - keep the standard dir/ls format!
+   The hostname header handles host identification - keep the rest of the output clean and standard!
 
 Create an execution plan for the following request:
 
@@ -1242,16 +1250,20 @@ Example for windows-impacket-executor with explicit credentials (if needed):
         prompt += "\n2. Use the EXACT API parameter names shown above (e.g., 'gotoserverpresetname', NOT 'presets')"
         prompt += "\n3. Use the EXACT auth_type specified in 'Tool Defaults' (e.g., 'digest' for Axis cameras)"
         prompt += "\n4. Return ONLY valid JSON - NO comments, NO explanations, NO trailing commas"
-        prompt += "\n5. **FOR POWERSHELL COMMANDS: Show hostname/IP appropriately based on command type**"
-        prompt += "\n   - Directory listings: Write-Host \"Host: <IP>\" -ForegroundColor Cyan; Get-ChildItem C:\\\\"
-        prompt += "\n   - Data queries (multiple hosts): Get-Volume | Select-Object @{{Name='Host';Expression={{'<IP>'}}}}, DriveLetter, SizeGB"
+        prompt += "\n5. **FOR ALL POWERSHELL COMMANDS: ALWAYS start with hostname/IP header!**"
+        prompt += "\n   - EVERY command MUST begin with: Write-Host \"Host: <IP>\" -ForegroundColor Cyan; <command>"
+        prompt += "\n   - Examples:"
+        prompt += "\n     * Write-Host \"Host: 192.168.50.212\" -ForegroundColor Cyan; Get-ChildItem C:\\\\"
+        prompt += "\n     * Write-Host \"Host: 192.168.50.214\" -ForegroundColor Cyan; Get-Service"
+        prompt += "\n     * Write-Host \"Host: 192.168.50.212\" -ForegroundColor Cyan; Get-Process"
+        prompt += "\n   - NO EXCEPTIONS - hostname header is MANDATORY for all Windows commands!"
         prompt += "\n6. **NEVER use -Recurse for directory listings unless EXPLICITLY requested by user!**"
         prompt += "\n   - 'show directory' = NO -Recurse (top-level only)"
         prompt += "\n   - 'list files' = NO -Recurse (top-level only)"
         prompt += "\n   - 'show all files recursively' = YES -Recurse (only when explicit)"
-        prompt += "\n7. **Keep directory listings SIMPLE - add hostname header, then use normal dir/ls output!**"
-        prompt += "\n   - Use Write-Host to show hostname, then Get-ChildItem for clean directory listing"
-        prompt += "\n   - DO NOT use Select-Object formatting for directory listings!"
+        prompt += "\n7. **Keep PowerShell output SIMPLE - hostname header handles host identification!**"
+        prompt += "\n   - Use Write-Host for hostname, then standard PowerShell commands"
+        prompt += "\n   - DO NOT add Select-Object with custom Host columns - the header already shows the host!"
         prompt += "\nGenerate the execution steps as a JSON array. Remember to be intelligent about field selection!"
         
         return prompt
