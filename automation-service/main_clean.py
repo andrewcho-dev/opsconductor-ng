@@ -130,6 +130,9 @@ class CleanAutomationService(BaseService):
         # Initialize unified executor
         self.unified_executor = UnifiedExecutor(self.logger)
         
+        # Tool registry is not needed (planner provides tool definitions)
+        self.tool_registry = None
+        
         logger = logging.getLogger(__name__)
         logger.info("🧹 Clean Automation Service initialized - No Celery, Direct Execution Only")
         logger.info("🎯 Unified Execution Framework enabled")

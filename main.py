@@ -110,9 +110,7 @@ async def lifespan(app: FastAPI):
         # Initialize LLM Client using factory (supports both Ollama and vLLM)
         llm_client = get_default_llm_client()
         await llm_client.connect()
-        
-        # Declare global variables
-        global stage_a_classifier, stage_b_selector, stage_c_planner, stage_d_answerer
+        logger.info(f"DEBUG STARTUP: llm_client.is_connected = {llm_client.is_connected}")
         
         # Initialize Stage A Classifier
         stage_a_classifier = StageAClassifier(llm_client)
@@ -297,6 +295,7 @@ async def process_pipeline_request(request: PipelineRequest):
     request_id = str(uuid.uuid4())
     
     logger.info(f"🚀 Processing pipeline request: {request.request[:100]}...")
+    logger.info(f"DEBUG: llm_client = {llm_client}, is_connected = {llm_client.is_connected if llm_client else 'N/A'}")
     
     try:
         # Get the global pipeline orchestrator with proper LLM client
@@ -372,6 +371,9 @@ async def process_pipeline_request(request: PipelineRequest):
         )
 
 
+
+
+
 @app.post("/pipeline/stream")
 async def process_pipeline_request_streaming(request: PipelineRequest):
     """
@@ -435,9 +437,30 @@ async def process_pipeline_request_streaming(request: PipelineRequest):
             
             # Send final result
             if pipeline_result.success:
-                yield f"data: {json.dumps({'type': 'complete', 'success': True, 'total_duration_ms': pipeline_result.metrics.total_duration_ms, 'message': pipeline_result.response.message, 'response': pipeline_result.response.model_dump(mode='json')})}\n\n"
+                # Include intermediate_results for debugging/future use
+                final_data = {
+                    'type': 'complete',
+                    'success': True,
+                    'total_duration_ms': pipeline_result.metrics.total_duration_ms,
+                    'message': pipeline_result.response.message,
+                    'response': pipeline_result.response.model_dump(mode='json'),
+                    'intermediate_results': {
+                        stage: result.model_dump(mode='json') if hasattr(result, 'model_dump') else str(result)
+                        for stage, result in pipeline_result.intermediate_results.items()
+                    }
+                }
+                yield f"data: {json.dumps(final_data)}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'error', 'success': False, 'error': pipeline_result.error_message})}\n\n"
+                # Send error with proper response object (includes user-friendly message)
+                error_data = {
+                    'type': 'complete',  # Changed from 'error' to 'complete' so frontend treats it as a normal response
+                    'success': False,
+                    'total_duration_ms': pipeline_result.metrics.total_duration_ms,
+                    'message': pipeline_result.response.message if pipeline_result.response else pipeline_result.error_message,
+                    'response': pipeline_result.response.model_dump(mode='json') if pipeline_result.response else None,
+                    'error': pipeline_result.error_message  # Keep for debugging
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
             
         except Exception as e:
             logger.error(f"❌ Streaming pipeline failed: {e}")

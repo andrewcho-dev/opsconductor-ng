@@ -258,6 +258,9 @@ class CombinedSelector:
             # Step 15: Build SelectionV1 response
             processing_time = total_time_ms
             
+            # Store entities in context for downstream stages (e.g., asset validation)
+            context["entities"] = parsed['entities']
+            
             selection = SelectionV1(
                 selection_id=self._generate_selection_id(),
                 decision_id=self._generate_decision_id(),  # Generate decision ID for compatibility
@@ -722,8 +725,8 @@ Return JSON only."""
                 search_query = identifier["value"]
                 result = await self.asset_client.search_assets(search_query, limit=5)
                 
-                if result.get("success") and result.get("assets"):
-                    assets = result["assets"]
+                if result.get("success"):
+                    assets = result.get("data", {}).get("assets", [])
                     
                     if len(assets) == 1:
                         # Exact match found

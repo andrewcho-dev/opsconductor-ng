@@ -14,7 +14,7 @@ volumes:
 services:
   # Core Infrastructure
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: opsconductor-postgres
     environment:
       POSTGRES_DB: opsconductor
@@ -143,11 +143,23 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: opsconductor-ai-pipeline
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: qwen2.5:7b-instruct-q4_k_m
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: opsconductor
+      POSTGRES_USER: opsconductor
+      POSTGRES_PASSWORD: opsconductor_secure_2024
       AUTOMATION_SERVICE_URL: http://automation-service:8005
       ASSET_SERVICE_URL: http://asset-service:8002
       NETWORK_SERVICE_URL: http://network-service:8003

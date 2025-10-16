@@ -40,3 +40,4 @@ psutil==5.9.6
 # NOTE: NO EXECUTION LIBRARIES IN AI-PIPELINE
 # All command execution happens in automation-service container
 # AI-pipeline is ORCHESTRATION ONLY - no SSH, WinRM, or direct execution
+aiohttp==3.9.1

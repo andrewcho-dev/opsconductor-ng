@@ -17,7 +17,7 @@ class OllamaClient(LLMClient):
         super().__init__(config)
         self.base_url = config.get("base_url", "http://localhost:11434")
         self.default_model = config.get("default_model", "llama2")
-        self.timeout = config.get("timeout", 30)
+        self.timeout = config.get("timeout", 180)
         self.client: Optional[httpx.AsyncClient] = None
     
     async def connect(self) -> bool:
@@ -69,7 +69,7 @@ class OllamaClient(LLMClient):
                 "stream": False,
                 "options": {
                     "temperature": request.temperature,
-                    "num_ctx": 16384,  # Increase context window to 16K tokens
+                    "num_ctx": 16384,
                 }
             }
             
@@ -122,13 +122,19 @@ class OllamaClient(LLMClient):
     
     async def health_check(self) -> bool:
         """Check Ollama health"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         if not self.client:
+            logger.error("DEBUG: health_check - self.client is None")
             return False
         
         try:
             response = await self.client.get("/api/tags")
+            logger.info(f"DEBUG: health_check - status_code = {response.status_code}")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.error(f"DEBUG: health_check - exception: {e}")
             return False
     
     def get_available_models(self) -> List[str]:

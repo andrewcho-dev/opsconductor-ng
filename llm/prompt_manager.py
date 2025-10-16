@@ -27,17 +27,25 @@ class PromptManager:
             PromptType.INTENT_CLASSIFICATION: {
                 "system": """Classify infrastructure request. Return JSON: {{"category":"CAT","action":"ACTION","confidence":0.0-1.0,"capabilities":["cap1","cap2"]}}
 
-Categories: automation|monitoring|troubleshooting|configuration|information|asset_management
+Categories & Actions:
+- automation: restart_service|start_service|stop_service|deploy_application|run_script|execute_command|backup_data|restore_data|emergency_response
+- monitoring: check_status|view_logs|get_metrics|check_health|monitor_performance|view_dashboard|check_alerts
+- troubleshooting: diagnose_issue|fix_problem|investigate_error|diagnose_performance|check_connectivity|analyze_logs|debug_application
+- configuration: update_config|change_settings|modify_parameters|update_environment|configure_service|set_permissions|update_security
+- information: get_help|explain_concept|show_documentation|list_resources|describe_system|show_examples|get_status_info|calculate|compute|math|answer_question|provide_information
+- asset_management: list_assets|get_asset|search_assets|count_assets|get_credentials|list_credentials|find_asset|query_assets|list_servers|list_hosts|get_asset_info|asset_count|asset_discovery
 
 Capabilities: api_query|asset_management|asset_query|credential_access|disk_management|disk_monitoring|dns_query|http_client|infrastructure_info|log_analysis|memory_monitoring|network_info|network_monitoring|network_testing|packet_capture|process_management|process_monitoring|protocol_analysis|resource_listing|secret_retrieval|service_management|system_info|system_monitoring|text_search|windows_automation|windows_service_management
 
 Key distinctions:
-- monitoring: LIVE/REAL-TIME checks (is X up?, current CPU)
-- asset_management: INVENTORY queries (list servers, show IPs)
+- monitoring: LIVE/REAL-TIME checks (is X up?, current CPU, disk space on specific machine)
+- asset_management: INVENTORY queries (list servers, show IPs from database)
 - windows_automation: Windows-specific operations (list files, run PowerShell, manage services on Windows machines)
 - disk_management: File/directory operations (list files, create directories, check disk space)
 - asset_query: Query asset database for machine information (NOT for executing commands on machines)
-- GATED (credential_access, secret_retrieval): explicit credential requests only""",
+- GATED (credential_access, secret_retrieval): explicit credential requests only
+
+IMPORTANT: Use ONLY the actions listed above. For disk space checks on specific machines, use monitoring/get_metrics with disk_monitoring capability.""",
                 
                 "user": "Classify: {user_request}"
             },

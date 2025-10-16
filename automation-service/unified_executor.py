@@ -18,6 +18,7 @@ Universal Execution Pipeline:
 """
 
 import logging
+import os
 import httpx
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
@@ -516,12 +517,32 @@ class UnifiedExecutor:
         
         return None
     
+    async def _fetch_asset_by_id(self, asset_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch FULL asset record from asset service by asset ID"""
+        try:
+            asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:8002")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{asset_service_url}/{asset_id}",
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    asset_data = response.json()
+                    if asset_data.get("success"):
+                        asset = asset_data.get("data", {})
+                        self.logger.info(f"✅ Fetched asset {asset_id}: service_type={asset.get('service_type')}, port={asset.get('port')}")
+                        return asset
+        except Exception as e:
+            self.logger.error(f"Error fetching asset {asset_id}: {e}")
+        return None
+    
     async def _fetch_credentials_by_asset_id(self, asset_id: str) -> Optional[Dict[str, Any]]:
         """Fetch credentials from asset service by asset ID"""
         try:
+            asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:8002")
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://asset-service:3002/{asset_id}/credentials",
+                    f"{asset_service_url}/{asset_id}/credentials",
                     timeout=10.0
                 )
                 if response.status_code == 200:
@@ -540,36 +561,38 @@ class UnifiedExecutor:
             self.logger.error(f"Error fetching credentials for asset {asset_id}: {e}")
         return None
     
-    async def _fetch_credentials_by_host(self, target_host: str) -> Optional[Dict[str, Any]]:
-        """Auto-fetch credentials by querying asset service for host IP"""
+    async def _fetch_asset_by_host(self, target_host: str) -> Optional[Dict[str, Any]]:
+        """Fetch FULL asset record by querying asset service for host IP/hostname"""
         try:
             async with httpx.AsyncClient() as client:
-                # Query asset service to find asset by IP
-                response = await client.post(
-                    "http://asset-service:3002/execute-plan",
-                    json={
-                        "execution_id": "auto-cred-fetch",
-                        "plan": {
-                            "steps": [{
-                                "tool": "asset-query",
-                                "inputs": {"filters": {"ip_address": target_host}}
-                            }]
-                        },
-                        "tenant_id": "default",
-                        "actor_id": 1
-                    },
+                # Query asset service to find asset by IP or hostname
+                asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:8002")
+                response = await client.get(
+                    f"{asset_service_url}/?search={target_host}&limit=1",
                     timeout=10.0
                 )
                 
                 if response.status_code == 200:
                     result = response.json()
-                    step_results = result.get("step_results", [])
-                    if step_results and step_results[0].get("status") == "completed":
-                        assets = step_results[0].get("output", {}).get("assets", [])
+                    if result.get("success") and result.get("data"):
+                        assets = result.get("data", [])
                         if assets:
-                            asset_id = assets[0].get("asset_id")
-                            self.logger.info(f"🔍 Found asset {asset_id} for IP {target_host}")
-                            return await self._fetch_credentials_by_asset_id(asset_id)
+                            asset = assets[0]
+                            asset_id = asset.get("id")
+                            self.logger.info(f"🔍 Found asset {asset_id} for host {target_host}: service_type={asset.get('service_type')}, port={asset.get('port')}")
+                            return asset
+        except Exception as e:
+            self.logger.error(f"Error fetching asset for {target_host}: {e}")
+        return None
+    
+    async def _fetch_credentials_by_host(self, target_host: str) -> Optional[Dict[str, Any]]:
+        """Auto-fetch credentials by querying asset service for host IP"""
+        try:
+            # First fetch the full asset record
+            asset = await self._fetch_asset_by_host(target_host)
+            if asset:
+                asset_id = asset.get("id")
+                return await self._fetch_credentials_by_asset_id(asset_id)
         except Exception as e:
             self.logger.error(f"Error auto-fetching credentials for {target_host}: {e}")
         return None
@@ -600,6 +623,27 @@ class UnifiedExecutor:
         resolved_params = self.resolve_parameters(parameters, config)
         target_host = resolved_params.get("_target_host")
         
+        # STAGE 2.5: Fetch asset record and override connection_type from asset's service_type
+        # This applies to ALL tools that have a target_host, regardless of requires_target_host flag
+        actual_connection_type = config.connection_type.value
+        if target_host:
+            asset = await self._fetch_asset_by_host(target_host)
+            if asset:
+                service_type = asset.get("service_type", "").lower()
+                if service_type:
+                    # Map asset service_type to ConnectionType
+                    service_type_mapping = {
+                        "ssh": "ssh",
+                        "winrm": "powershell",
+                        "powershell": "powershell",
+                        "http": "http",
+                        "https": "https",
+                        "impacket": "impacket"
+                    }
+                    if service_type in service_type_mapping:
+                        actual_connection_type = service_type_mapping[service_type]
+                        self.logger.info(f"🎯 Overriding connection_type from asset: {config.connection_type.value} → {actual_connection_type}")
+        
         # STAGE 3: Build command
         command = self.build_command(tool_name, resolved_params, config)
         self.logger.info(f"🔨 Built command: {command}")
@@ -612,7 +656,7 @@ class UnifiedExecutor:
         return (
             command,
             target_host,
-            config.connection_type.value,
+            actual_connection_type,
             credentials
         )
 # --- Stage A selector integration (non-invasive) -----------------------------

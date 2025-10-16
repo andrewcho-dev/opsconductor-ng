@@ -33,9 +33,9 @@ class ToolIndexService:
     TOKENS_PER_ROW_EST = 95  # Increased from 45 to account for JSON formatting and all fields
     
     # Recall constants - KEEP THESE LOW for precision!
-    VECTOR_TOP_K = 15  # Vector similarity top-K (reduced from 120)
+    VECTOR_TOP_K = 10  # Vector similarity top-K (reduced from 15)
     KEYWORD_TOP_K = 10  # Keyword/tag fallback top-K (reduced from 60)
-    SIMILARITY_THRESHOLD = 0.70  # Minimum similarity score to include (0.70 = strong relevance)
+    SIMILARITY_THRESHOLD = 0.50  # Minimum similarity score to include (balanced precision/recall)
     ALWAYS_INCLUDE = ["asset-query"]  # Always include these tools
     
     def __init__(self):

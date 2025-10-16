@@ -56,13 +56,13 @@ export const getServiceUrl = (service: string) => {
 
 // Get direct backend URL for streaming (bypasses Kong to avoid buffering)
 export const getStreamingUrl = () => {
-  // In production, streaming goes directly to backend on port 3005
+  // In production, streaming goes directly to backend on port 8006
   // This bypasses Kong which buffers SSE responses
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
   
-  // Use port 3005 for direct backend access (ai-pipeline service)
-  return `${protocol}//${hostname}:3005`;
+  // Use port 8006 for direct backend access (ai-pipeline service)
+  return `${protocol}//${hostname}:8006`;
 };
 
 // Create axios instance with dynamic baseURL
@@ -70,7 +70,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 120000, // 120 second timeout for AI requests
+  timeout: 300000, // 300 second (5 minute) timeout for AI requests
 });
 
 // Request interceptor to set dynamic baseURL
@@ -805,12 +805,14 @@ export const aiApi = {
                   
                 case 'complete':
                   finalResult = {
-                    success: true,
+                    success: data.success !== false,  // Use actual success value from backend
                     result: {
                       message: data.message,
                       response: data.response,
-                      execution_id: data.response?.execution_id
-                    }
+                      execution_id: data.response?.execution_id,
+                      intermediate_results: data.intermediate_results  // Include for host extraction
+                    },
+                    error: data.error  // Include error message if present
                   };
                   break;
                   

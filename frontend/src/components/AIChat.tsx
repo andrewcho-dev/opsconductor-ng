@@ -23,7 +23,6 @@ interface Message {
   isLoading?: boolean;
   loadingStatus?: string;
   executionStatus?: string;
-  targetHosts?: string[];  // Array of target hosts from execution plan
 }
 
 const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
@@ -174,48 +173,11 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
       let responseType = 'information';
       let executionId: string | null = null;
       let approvalData: any = null;
-      let targetHosts: string[] = [];
       
       if (response.success && response.result) {
         const result = response.result;
         responseType = result.response?.response_type || 'information';
         executionId = result.execution_id || result.response?.execution_id || null;
-        
-        // Extract target hosts from multiple sources
-        const hostsSet = new Set<string>();
-        
-        // 1. From execution results (stage_e) - most reliable
-        if (result.intermediate_results?.stage_e?.step_results) {
-          result.intermediate_results.stage_e.step_results.forEach((step: any) => {
-            if (step.target_hostname) {
-              hostsSet.add(step.target_hostname);
-            }
-          });
-        }
-        
-        // 2. From execution plan (stage_c) inputs
-        if (result.intermediate_results?.stage_c?.plan?.steps) {
-          result.intermediate_results.stage_c.plan.steps.forEach((step: any) => {
-            if (step.inputs?.target_host) {
-              hostsSet.add(step.inputs.target_host);
-            }
-            if (step.inputs?.target_hosts && Array.isArray(step.inputs.target_hosts)) {
-              step.inputs.target_hosts.forEach((host: string) => hostsSet.add(host));
-            }
-          });
-        }
-        
-        // 3. From response execution summary
-        if (result.response?.execution_summary?.target_hosts) {
-          const hosts = result.response.execution_summary.target_hosts;
-          if (Array.isArray(hosts)) {
-            hosts.forEach((host: string) => hostsSet.add(host));
-          }
-        }
-        
-        targetHosts = Array.from(hostsSet).filter(host => 
-          host && !host.includes('{{') && !host.includes('}}')
-        );
         
         // Handle approval requests specially
         if (responseType === 'approval_request') {
@@ -264,8 +226,7 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
               loadingStatus: undefined,
               responseType,
               executionId,
-              approvalData,
-              targetHosts
+              approvalData
             } as Message
           : msg
       ));
@@ -485,36 +446,6 @@ const AIChat = forwardRef<AIChatRef, AIChatProps>((props, ref) => {
                 flexDirection: 'column',
                 gap: '8px'
               }}>
-                {/* Target Hosts Badge */}
-                {message.targetHosts && message.targetHosts.length > 0 && (
-                  <div style={{
-                    display: 'flex',
-                    gap: '6px',
-                    flexWrap: 'wrap',
-                    marginBottom: '4px'
-                  }}>
-                    {message.targetHosts.map((host, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '4px',
-                          backgroundColor: '#1e40af',
-                          color: 'white',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}
-                      >
-                        {host}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
                 <div style={{
                   width: '100%',
                   padding: '12px 16px',

@@ -180,7 +180,7 @@ class IntentClassifier:
     
     async def classify_with_fallback(self, user_request: str, max_retries: int = 0) -> IntentV1:
         """
-        Classify intent - TRUST THE LLM, NO VALIDATION
+        Classify intent with validation and correction
         
         Args:
             user_request: User request to classify
@@ -190,13 +190,77 @@ class IntentClassifier:
             IntentV1 object with classification
         """
         try:
-            # TRUST THE LLM - single call, no validation bullshit
+            # Get LLM classification
             intent = await self.classify_intent(user_request)
+            
+            # Validate and correct if needed
+            if not self.validate_intent(intent):
+                # Try to map to correct action
+                corrected_intent = self._correct_invalid_action(intent)
+                if corrected_intent:
+                    return corrected_intent
+                # If correction fails, raise error
+                raise ValueError(f"Invalid action '{intent.action}' for category '{intent.category}'")
+            
             return intent
                 
         except Exception as e:
             # FAIL FAST: OpsConductor requires AI-BRAIN to function
             raise Exception(f"AI-BRAIN (LLM) unavailable - OpsConductor cannot function without LLM: {str(e)}")
+    
+    def _correct_invalid_action(self, intent: IntentV1) -> Optional[IntentV1]:
+        """
+        Attempt to correct invalid actions by mapping to valid ones
+        
+        Args:
+            intent: Intent with potentially invalid action
+            
+        Returns:
+            Corrected IntentV1 or None if cannot correct
+        """
+        supported = self.get_supported_categories()
+        
+        # If category is invalid, cannot correct
+        if intent.category not in supported:
+            return None
+        
+        supported_actions = supported[intent.category]
+        action_lower = intent.action.lower()
+        
+        # Common action mappings for monitoring category
+        if intent.category == "monitoring":
+            if "disk" in action_lower or "space" in action_lower:
+                intent.action = "get_metrics"
+                return intent
+            if "cpu" in action_lower or "memory" in action_lower or "metric" in action_lower:
+                intent.action = "get_metrics"
+                return intent
+            if "log" in action_lower:
+                intent.action = "view_logs"
+                return intent
+            if "status" in action_lower or "health" in action_lower:
+                intent.action = "check_status"
+                return intent
+        
+        # Common action mappings for asset_management category
+        if intent.category == "asset_management":
+            if "list" in action_lower or "show" in action_lower:
+                intent.action = "list_assets"
+                return intent
+            if "count" in action_lower or "how many" in action_lower:
+                intent.action = "count_assets"
+                return intent
+            if "search" in action_lower or "find" in action_lower:
+                intent.action = "search_assets"
+                return intent
+        
+        # Try fuzzy matching as last resort
+        for supported_action in supported_actions:
+            if supported_action in action_lower or action_lower in supported_action:
+                intent.action = supported_action
+                return intent
+        
+        return None
     
     # 🚨 ARCHITECTURAL VIOLATION REMOVED
     # The _pattern_based_classification method has been REMOVED because it violates

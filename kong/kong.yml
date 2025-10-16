@@ -87,6 +87,9 @@ services:
   # AI Pipeline Service
   - name: ai-pipeline-service
     url: http://ai-pipeline:8006
+    read_timeout: 180000
+    write_timeout: 180000
+    connect_timeout: 60000
     plugins:
       - name: cors
         config:

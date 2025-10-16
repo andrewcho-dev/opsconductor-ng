@@ -105,6 +105,9 @@ const SelectorSearch: React.FC = () => {
       }
       
       const safeResponse: SelectorSearchResponse = {
+        query: response.query || request.query,
+        platforms: response.platforms || request.platforms || [],
+        k: response.k || request.k || k,
         results: Array.isArray(response.results) ? response.results : [],
         from_cache: response.from_cache === true,
         duration_ms: typeof response.duration_ms === 'number' ? response.duration_ms : duration,

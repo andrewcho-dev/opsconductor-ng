@@ -146,30 +146,11 @@ class ResponseFormatter:
         decision: DecisionV1,
         plan: PlanV1
     ) -> str:
-        """Format message for execution-ready plans"""
+        """Format message for execution-ready plans - returns minimal message since execution output will replace it"""
         
-        try:
-            # Create context for LLM
-            context = {
-                "intent": f"{decision.intent.category}/{decision.intent.action}",
-                "total_steps": len(plan.plan.steps),
-                "estimated_time": plan.execution_metadata.total_estimated_time,
-                "tools": list(set(step.tool for step in plan.plan.steps)),
-                "safety_checks": len(plan.plan.safety_checks),
-                "key_steps": [step.description for step in plan.plan.steps[:2]]  # First 2 steps
-            }
-            
-            # Generate execution ready message using LLM
-            prompt = self._create_execution_ready_prompt(context)
-            llm_request = LLMRequest(prompt=prompt)
-            llm_response = await self.llm_client.generate(llm_request)
-            response = llm_response.content
-            
-            return response.strip()
-            
-        except Exception as e:
-            logger.error(f"Failed to format execution ready message: {e}")
-            return self._create_fallback_execution_ready(decision, plan)
+        # Return empty string - the execution output will be the actual message
+        # This eliminates the verbose "ready for execution" preamble
+        return ""
     
     async def format_clarification_message(
         self,

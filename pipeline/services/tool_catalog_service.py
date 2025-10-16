@@ -269,13 +269,13 @@ class ToolCatalogService:
                 if version:
                     cursor.execute("""
                         SELECT * FROM tool_catalog.tools
-                        WHERE tool_name = %s AND version = %s
+                        WHERE LOWER(tool_name) = LOWER(%s) AND version = %s
                         AND enabled = true
                     """, (tool_name, version))
                 else:
                     cursor.execute("""
                         SELECT * FROM tool_catalog.tools
-                        WHERE tool_name = %s AND is_latest = true
+                        WHERE LOWER(tool_name) = LOWER(%s) AND is_latest = true
                         AND enabled = true
                     """, (tool_name,))
                 

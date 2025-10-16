@@ -21,7 +21,7 @@ from pipeline.stages.stage_ab.combined_selector import CombinedSelector
 from pipeline.stages.stage_c.planner import StageCPlanner
 from pipeline.stages.stage_d.answerer import StageDAnswerer
 from pipeline.stages.stage_e.executor import StageEExecutor
-from pipeline.schemas.response_v1 import ResponseV1, ResponseType
+from pipeline.schemas.response_v1 import ResponseV1, ResponseType, ConfidenceLevel as ResponseConfidenceLevel
 from pipeline.conversation_history import get_conversation_manager
 
 logger = logging.getLogger(__name__)
@@ -183,6 +183,41 @@ class PipelineOrchestratorV2:
                     "duration_ms": stage_durations["stage_ab"], 
                     "message": f"✅ Analysis complete ({stage_durations['stage_ab']:.0f}ms)"
                 })
+            
+            # ============================================================
+            # ASSET VALIDATION: Verify all target hosts exist in asset database
+            # ============================================================
+            validation_error = await self._validate_target_assets(context)
+            if validation_error:
+                logger.warning(f"❌ Asset validation failed: {validation_error}")
+                # Return error response immediately
+                total_duration = (time.time() - start_time) * 1000
+                error_response = ResponseV1(
+                    response_type=ResponseType.ERROR,
+                    message=validation_error,
+                    confidence=ResponseConfidenceLevel.HIGH,
+                    approval_required=False,
+                    response_id=f"resp_error_{request_id}",
+                    processing_time_ms=int(total_duration)
+                )
+                
+                metrics = PipelineMetrics(
+                    total_duration_ms=total_duration,
+                    stage_durations=stage_durations,
+                    memory_usage_mb=0,
+                    request_id=request_id,
+                    timestamp=start_time,
+                    status=PipelineStatus.FAILED,
+                    error_details=validation_error
+                )
+                
+                return PipelineResult(
+                    response=error_response,
+                    metrics=metrics,
+                    intermediate_results=intermediate_results,
+                    success=False,
+                    error_message=validation_error
+                )
             
             # ============================================================
             # Stage C: Planning (if tools were selected)
@@ -366,12 +401,11 @@ class PipelineOrchestratorV2:
             self._error_count += 1
             
             # Create error response
-            from pipeline.schemas.response_v1 import ConfidenceLevel
             error_response = ResponseV1(
                 response_id=f"resp_{request_id}",
                 response_type=ResponseType.ERROR,
                 message=f"I encountered an error processing your request: {str(e)}",
-                confidence=ConfidenceLevel.LOW,
+                confidence=ResponseConfidenceLevel.LOW,
                 approval_required=False,
                 processing_time_ms=int(total_duration)
             )
@@ -417,6 +451,86 @@ class PipelineOrchestratorV2:
             next_stage="stage_c" if selection.selected_tools else "stage_d"
         )
     
+    async def _validate_target_assets(self, context: Dict[str, Any]) -> Optional[str]:
+        """
+        Validate that all target hosts (hostnames/IPs) exist in the asset database.
+        
+        Args:
+            context: Pipeline context containing entities from Stage AB
+        
+        Returns:
+            Error message if validation fails, None if validation passes
+        """
+        import aiohttp
+        
+        # Extract target hosts from entities in context
+        entities = context.get("entities", [])
+        target_hosts = []
+        for entity in entities:
+            entity_type = entity.get("type", "")
+            entity_value = entity.get("value", "")
+            if entity_type in ['hostname', 'ip_address', 'target_host']:
+                target_hosts.append(entity_value)
+        
+        # If no target hosts found, validation passes (might be an info query)
+        if not target_hosts:
+            logger.debug("No target hosts found in entities, skipping asset validation")
+            return None
+        
+        # Check each target host against asset database
+        asset_service_url = os.getenv("ASSET_SERVICE_URL", "http://asset-service:3002")
+        invalid_hosts = []
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                for host in target_hosts:
+                    # Query asset service to see if this host exists
+                    try:
+                        async with session.get(
+                            f"{asset_service_url}/",
+                            params={"search": host, "limit": 10},
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                assets = data.get("data", {}).get("assets", [])
+                                
+                                # Check if any asset matches this host (by IP or hostname)
+                                found = False
+                                for asset in assets:
+                                    if (asset.get("ip_address") == host or 
+                                        asset.get("hostname") == host):
+                                        found = True
+                                        break
+                                
+                                if not found:
+                                    invalid_hosts.append(host)
+                                    logger.warning(f"Host '{host}' not found in asset database")
+                            else:
+                                logger.error(f"Asset service returned status {response.status} for host '{host}'")
+                                # Don't block on asset service errors, just log
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout querying asset service for host '{host}'")
+                        # Don't block on timeouts
+                    except Exception as e:
+                        logger.error(f"Error querying asset service for host '{host}': {e}")
+                        # Don't block on errors
+        except Exception as e:
+            logger.error(f"Failed to validate assets: {e}")
+            # Don't block the entire request if asset service is down
+            return None
+        
+        # If any hosts are invalid, return error message
+        if invalid_hosts:
+            if len(invalid_hosts) == 1:
+                return f"❌ **Asset Not Found**: The hostname/IP address `{invalid_hosts[0]}` is not defined in the asset database. Please verify the hostname/IP address or add it to the asset database first."
+            else:
+                hosts_list = "`, `".join(invalid_hosts)
+                return f"❌ **Assets Not Found**: The following hostname/IP addresses are not defined in the asset database: `{hosts_list}`. Please verify these addresses or add them to the asset database first."
+        
+        logger.info(f"✅ Asset validation passed for hosts: {target_hosts}")
+        return None
+    
     async def _execute_stage_e(self, planning_result, context, progress_callback):
         """Execute Stage E (Executor)"""
         from execution.dtos import ExecutionRequest
@@ -447,9 +561,9 @@ class PipelineOrchestratorV2:
         # Extract execution status and results
         status = execution_result.status if hasattr(execution_result, 'status') else None
         
-        # Build execution summary
+        # Build execution summary - CONCISE VERSION
         if status == ExecutionStatus.COMPLETED:
-            execution_summary = "✅ **Execution completed successfully!**\n\n"
+            execution_summary = ""
             
             # Add step results if available - check both .step_results attribute and .result['step_results']
             step_results = None
@@ -459,16 +573,8 @@ class PipelineOrchestratorV2:
                 step_results = execution_result.result.get('step_results')
             
             if step_results:
-                execution_summary += f"**Steps executed:** {len(step_results)}\n\n"
                 for i, step_result in enumerate(step_results, 1):
                     step_status = step_result.get('status', 'unknown')
-                    step_tool = step_result.get('tool', step_result.get('tool_name', 'Unknown'))
-                    step_command = step_result.get('command', '')
-                    
-                    execution_summary += f"**Step {i}: {step_tool}**\n"
-                    if step_command:
-                        execution_summary += f"Command: `{step_command}`\n"
-                    execution_summary += f"Status: {step_status}\n"
                     
                     # Show output for successful commands (stdout for commands, output for API tools)
                     if step_status == 'completed' or step_status == 'success':
@@ -478,7 +584,8 @@ class PipelineOrchestratorV2:
                             # Limit output to first 100000 chars to avoid overwhelming the user
                             if len(stdout) > 100000:
                                 stdout = stdout[:100000] + "...(truncated)"
-                            # Use 'text' language to enable copy/download buttons in UI
+                            
+                            # Just display the output as-is (hostname is now included in the PowerShell output itself)
                             execution_summary += f"```text\n{stdout}\n```\n"
                         
                         # Check for output (API-based tools like asset-query)
@@ -520,16 +627,9 @@ class PipelineOrchestratorV2:
                         # Filter out PowerShell progress CLIXML (not real errors)
                         if stderr and not (stderr.startswith('#< CLIXML') and 'progress' in stderr.lower()):
                             execution_summary += f"⚠️ Warnings/Errors:\n```text\n{stderr}\n```\n"
-                    
-                    execution_summary += "\n"
             
-            # Add duration
-            if hasattr(execution_result, 'completed_at') and hasattr(execution_result, 'created_at'):
-                duration = (execution_result.completed_at - execution_result.created_at).total_seconds()
-                execution_summary += f"**Total Duration:** {duration:.2f}s\n"
-            
-            # Append to existing message
-            response.message = f"{response.message}\n\n{execution_summary}"
+            # Replace the verbose message with just the output
+            response.message = execution_summary.strip() if execution_summary.strip() else "Execution completed."
             
         elif status == ExecutionStatus.FAILED:
             error_msg = execution_result.error_message if hasattr(execution_result, 'error_message') else "Unknown error"

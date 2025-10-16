@@ -47,8 +47,8 @@ def create_llm_client(config: Optional[Dict[str, Any]] = None) -> LLMClient:
     elif provider == "ollama":
         # Ollama configuration (backward compatibility)
         ollama_config = {
-            "base_url": config.get("base_url", os.getenv("OLLAMA_HOST", "http://localhost:11434")),
-            "default_model": config.get("default_model", os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m")),
+            "base_url": config.get("base_url", os.getenv("OLLAMA_BASE_URL", os.getenv("OLLAMA_HOST", "http://localhost:11434"))),
+            "default_model": config.get("default_model", os.getenv("OLLAMA_MODEL", os.getenv("DEFAULT_MODEL", "qwen2.5:7b-instruct-q4_k_m"))),
             "timeout": int(config.get("timeout", os.getenv("OLLAMA_TIMEOUT", "180")))
         }
         return OllamaClient(ollama_config)

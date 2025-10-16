@@ -693,6 +693,10 @@ For each selected tool, create an execution step with:
      * use_ssl: true/false (default: false for HTTP WinRM on port 5985)
      * port: WinRM port (default: 5985 for HTTP, 5986 for HTTPS)
      * connection_type: "powershell" (to explicitly mark as PowerShell/WinRM execution)
+     
+     **CRITICAL: ALWAYS include the target hostname/IP as the FIRST column in PowerShell Select-Object output!**
+     Example: Select-Object @{Name='Host';Expression={'192.168.50.212'}}, DriveLetter, SizeGB, FreeGB
+     This ensures users can identify which host the output came from, especially in multi-host queries.
    
    - For Linux/SSH commands (ls, cat, ps, systemctl, etc.):
      * target_host: IP address or hostname of the Linux machine
@@ -1002,7 +1006,9 @@ CRITICAL NOTES:
 - Be intelligent about field selection for asset queries. Don't fetch all 50+ fields when only 5-10 are needed!
 - ALWAYS extract target_host, username, and password from the user's query!
 - The user may use informal language - translate to correct commands (see USER LANGUAGE TRANSLATION above)!
-- For multi-machine operations, ALWAYS use template variables like {{ip_address}}, NOT hardcoded values!"""
+- For multi-machine operations, ALWAYS use template variables like {{ip_address}}, NOT hardcoded values!
+- **FOR ALL POWERSHELL COMMANDS: ALWAYS add the hostname/IP as the FIRST column using @{Name='Host';Expression={'<IP_ADDRESS>'}}**
+- **When user asks about MULTIPLE HOSTS (e.g., "192.168.50.212 and 192.168.50.213"), create SEPARATE steps for EACH host!**"""
 
     def _build_planning_user_prompt(self, decision: DecisionV1, selection: SelectionV1, context: Optional[Dict[str, Any]] = None) -> str:
         """Build the user prompt with decision and selection context"""
@@ -1102,6 +1108,44 @@ Example for PowerShell with automatic credentials (RECOMMENDED):
   }
 }
 
+Example for PowerShell disk space query (CORRECT - use Size and SizeRemaining, ALWAYS include hostname/IP as first column):
+{
+  "tool": "Invoke-Command",
+  "inputs": {
+    "target_host": "192.168.50.212",
+    "use_asset_credentials": true,
+    "asset_id": 22,
+    "command": "Get-Volume -DriveLetter C | Select-Object @{Name='Host';Expression={'192.168.50.212'}}, DriveLetter, @{Name='SizeGB';Expression={[math]::Round($_.Size/1GB,2)}}, @{Name='FreeGB';Expression={[math]::Round($_.SizeRemaining/1GB,2)}}",
+    "connection_type": "powershell"
+  }
+}
+
+Example for MULTIPLE HOSTS (create separate steps for each host):
+User asks: "check disk space on 192.168.50.212 and 192.168.50.213"
+CORRECT PLAN:
+[
+  {
+    "tool": "Invoke-Command",
+    "inputs": {
+      "target_host": "192.168.50.212",
+      "use_asset_credentials": true,
+      "asset_id": 22,
+      "command": "Get-Volume | Select-Object @{Name='Host';Expression={'192.168.50.212'}}, DriveLetter, @{Name='SizeGB';Expression={[math]::Round($_.Size/1GB,2)}}, @{Name='FreeGB';Expression={[math]::Round($_.SizeRemaining/1GB,2)}}",
+      "connection_type": "powershell"
+    }
+  },
+  {
+    "tool": "Invoke-Command",
+    "inputs": {
+      "target_host": "192.168.50.213",
+      "use_asset_credentials": true,
+      "asset_id": 23,
+      "command": "Get-Volume | Select-Object @{Name='Host';Expression={'192.168.50.213'}}, DriveLetter, @{Name='SizeGB';Expression={[math]::Round($_.Size/1GB,2)}}, @{Name='FreeGB';Expression={[math]::Round($_.SizeRemaining/1GB,2)}}",
+      "connection_type": "powershell"
+    }
+  }
+]
+
 Example for windows-impacket-executor with explicit credentials (if needed):
 {
   "tool": "windows-impacket-executor",
@@ -1178,6 +1222,7 @@ Example for windows-impacket-executor with explicit credentials (if needed):
         prompt += "\n2. Use the EXACT API parameter names shown above (e.g., 'gotoserverpresetname', NOT 'presets')"
         prompt += "\n3. Use the EXACT auth_type specified in 'Tool Defaults' (e.g., 'digest' for Axis cameras)"
         prompt += "\n4. Return ONLY valid JSON - NO comments, NO explanations, NO trailing commas"
+        prompt += "\n5. **FOR POWERSHELL: ALWAYS include hostname/IP as FIRST column: @{Name='Host';Expression={'<IP>'}}**"
         prompt += "\nGenerate the execution steps as a JSON array. Remember to be intelligent about field selection!"
         
         return prompt
