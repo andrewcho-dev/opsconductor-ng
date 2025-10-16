@@ -1108,6 +1108,12 @@ Example for PowerShell with automatic credentials (RECOMMENDED):
   }
 }
 
+⚠️ CRITICAL WARNING: NEVER use -Recurse for directory listings unless EXPLICITLY requested!
+- "show me the c:\\windows directory" → Get-ChildItem C:\\Windows (NO -Recurse)
+- "list files in c:\\temp" → Get-ChildItem C:\\Temp (NO -Recurse)
+- "show all files in c:\\windows recursively" → Get-ChildItem C:\\Windows -Recurse (ONLY when explicitly requested)
+Using -Recurse on large directories like C:\\Windows can take 10+ minutes and timeout!
+
 Example for PowerShell disk space query (CORRECT - use Size and SizeRemaining, ALWAYS include hostname/IP as first column):
 {
   "tool": "Invoke-Command",
@@ -1223,6 +1229,10 @@ Example for windows-impacket-executor with explicit credentials (if needed):
         prompt += "\n3. Use the EXACT auth_type specified in 'Tool Defaults' (e.g., 'digest' for Axis cameras)"
         prompt += "\n4. Return ONLY valid JSON - NO comments, NO explanations, NO trailing commas"
         prompt += "\n5. **FOR POWERSHELL: ALWAYS include hostname/IP as FIRST column: @{Name='Host';Expression={'<IP>'}}**"
+        prompt += "\n6. **NEVER use -Recurse for directory listings unless EXPLICITLY requested by user!**"
+        prompt += "\n   - 'show directory' = NO -Recurse (top-level only)"
+        prompt += "\n   - 'list files' = NO -Recurse (top-level only)"
+        prompt += "\n   - 'show all files recursively' = YES -Recurse (only when explicit)"
         prompt += "\nGenerate the execution steps as a JSON array. Remember to be intelligent about field selection!"
         
         return prompt
