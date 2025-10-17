@@ -1,0 +1,79 @@
+{
+  "total_examples": 24985,
+  "capability_distribution": {
+    "asset_management": 3566,
+    "resource_listing": 2425,
+    "asset_query": 2495,
+    "system_info": 11649,
+    "system_monitoring": 8829,
+    "service_management": 8131,
+    "process_management": 2318,
+    "memory_monitoring": 2022,
+    "process_monitoring": 2947,
+    "log_analysis": 4065,
+    "network_info": 838,
+    "disk_management": 3364,
+    "network_testing": 1269,
+    "disk_monitoring": 939,
+    "infrastructure_info": 1247,
+    "text_search": 595,
+    "network_monitoring": 595,
+    "credential_access": 640,
+    "secret_retrieval": 640,
+    "api_query": 595
+  },
+  "category_capability_distribution": {
+    "asset_management": {
+      "asset_management": 3566,
+      "resource_listing": 1378,
+      "asset_query": 2495,
+      "network_info": 838,
+      "credential_access": 640,
+      "secret_retrieval": 640
+    },
+    "information": {
+      "system_info": 4169,
+      "system_monitoring": 347,
+      "resource_listing": 1047,
+      "infrastructure_info": 1247,
+      "log_analysis": 1,
+      "process_monitoring": 1
+    },
+    "configuration": {
+      "service_management": 3765,
+      "system_info": 4165,
+      "disk_management": 1624
+    },
+    "automation": {
+      "service_management": 2581,
+      "system_monitoring": 2310,
+      "process_management": 1723,
+      "system_info": 2125,
+      "disk_management": 1740
+    },
+    "troubleshooting": {
+      "system_monitoring": 2551,
+      "memory_monitoring": 595,
+      "process_monitoring": 2037,
+      "log_analysis": 2576,
+      "network_testing": 1269,
+      "text_search": 595,
+      "network_monitoring": 595,
+      "service_management": 595,
+      "system_info": 595,
+      "process_management": 595
+    },
+    "monitoring": {
+      "system_monitoring": 3621,
+      "service_management": 1190,
+      "memory_monitoring": 1427,
+      "disk_monitoring": 939,
+      "process_monitoring": 909,
+      "log_analysis": 1488,
+      "system_info": 595,
+      "api_query": 595
+    }
+  },
+  "unique_capabilities": 20,
+  "avg_capabilities_per_example": 2.368180908545127
+}

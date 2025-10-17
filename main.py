@@ -572,31 +572,41 @@ async def get_stage_b_health():
 
 @app.get("/stage-b/tools")
 async def get_available_tools():
-    """Get available tools in the tool registry"""
-    global tool_registry
-    
-    if not tool_registry:
+    """Get available tools from the database catalog"""
+    try:
+        from pipeline.services.tool_catalog_service import ToolCatalogService
+        catalog_service = ToolCatalogService()
+        
+        tools = catalog_service.get_all_tools()
+        tool_count = len(tools)
+        
+        return {
+            "total_tools": tool_count,
+            "tools": [
+                {
+                    "name": tool.get("tool_name"),
+                    "description": tool.get("description"),
+                    "platform": tool.get("platform"),
+                    "category": tool.get("category"),
+                    "status": tool.get("status"),
+                    "enabled": tool.get("enabled"),
+                    "version": tool.get("version"),
+                    "metadata": tool.get("metadata", {})
+                }
+                for tool in tools
+            ],
+            "catalog_stats": {
+                "total_tools": tool_count,
+                "enabled_tools": len([t for t in tools if t.get("enabled")]),
+                "platforms": list(set(t.get("platform") for t in tools if t.get("platform"))),
+                "categories": list(set(t.get("category") for t in tools if t.get("category")))
+            }
+        }
+    except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail="Tool Registry not available"
+            detail=f"Tool Catalog not available: {str(e)}"
         )
-    
-    tools = tool_registry.get_all_tools()
-    return {
-        "total_tools": len(tools),
-        "tools": [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "capabilities": [cap.name for cap in tool.capabilities],
-                "permissions": tool.permissions.value,
-                "production_safe": tool.production_safe,
-                "max_execution_time": tool.max_execution_time
-            }
-            for tool in tools
-        ],
-        "registry_stats": tool_registry.get_registry_stats()
-    }
 
 @app.get("/stage-c/health")
 async def get_stage_c_health():

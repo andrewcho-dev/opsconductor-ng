@@ -189,7 +189,7 @@ class StageEExecutor:
     def _get_service_url_for_tool(self, tool_name: str) -> str:
         """
         Determine which execution service should handle a specific tool
-        based on tool's execution_location metadata.
+        based on tool's execution_location metadata from the database.
         
         Args:
             tool_name: Name of the tool to execute
@@ -197,41 +197,23 @@ class StageEExecutor:
         Returns:
             Service URL (e.g., "http://automation-service:3003")
         """
-        import yaml
-        from pathlib import Path
-        
         if not tool_name:
             logger.warning(f"No tool specified, defaulting to automation-service")
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
         
-        # Load tool definition to get execution_location
-        # Use relative path from current file location to work in both dev and container environments
-        current_file = Path(__file__)
-        tools_dir = current_file.parent.parent.parent / "config" / "tools"
-        tool_file = None
-        
-        # Search for tool YAML file (try both hyphenated and underscored versions)
-        for yaml_file in tools_dir.rglob(f"{tool_name}.yaml"):
-            tool_file = yaml_file
-            break
-        
-        # If not found with hyphens, try with underscores
-        if not tool_file:
-            tool_name_underscored = tool_name.replace("-", "_")
-            for yaml_file in tools_dir.rglob(f"{tool_name_underscored}.yaml"):
-                tool_file = yaml_file
-                break
-        
-        if not tool_file or not tool_file.exists():
-            logger.warning(f"Tool definition not found for '{tool_name}', defaulting to automation-service")
-            return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
-        
-        # Load tool definition
+        # Get tool definition from database
         try:
-            with open(tool_file, 'r') as f:
-                tool_def = yaml.safe_load(f)
+            from pipeline.services.tool_catalog_service import ToolCatalogService
+            catalog_service = ToolCatalogService()
             
-            execution_location = tool_def.get("execution_location", "automation-service")
+            tool_data = catalog_service.get_tool_by_name(tool_name)
+            if not tool_data:
+                logger.warning(f"Tool '{tool_name}' not found in database, defaulting to automation-service")
+                return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
+            
+            # Get execution_location from metadata field
+            metadata = tool_data.get("metadata", {})
+            execution_location = metadata.get("execution_location", "automation-service")
             
             # Map service name to URL
             service_urls = {
@@ -253,7 +235,7 @@ class StageEExecutor:
             return service_url
             
         except Exception as e:
-            logger.error(f"Error loading tool definition for '{tool_name}': {e}", exc_info=True)
+            logger.error(f"Error getting tool definition for '{tool_name}': {e}", exc_info=True)
             return os.getenv("AUTOMATION_SERVICE_URL", "http://automation-service:3003")
     
     def _get_execution_service_url(self, execution: ExecutionModel) -> str:

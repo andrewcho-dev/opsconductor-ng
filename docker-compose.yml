@@ -9,13 +9,15 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  ollama_models:
+  vllm_cache:
 
 services:
   # Core Infrastructure
   postgres:
     image: pgvector/pgvector:pg17
     container_name: opsconductor-postgres
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: opsconductor
       POSTGRES_USER: opsconductor
@@ -48,20 +50,26 @@ services:
       retries: 5
 
   # AI Infrastructure
-  ollama:
-    image: ollama/ollama:0.11.11
-    container_name: opsconductor-ollama
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: opsconductor-vllm
     ports:
-      - "11434:11434"
+      - "8007:8000"
     volumes:
-      - ollama_models:/root/.ollama
+      - vllm_cache:/root/.cache/huggingface
     networks:
       opsconductor:
         ipv4_address: 172.28.0.12
     environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_NUM_PARALLEL=12
-      - OLLAMA_MAX_LOADED_MODELS=1
+      - HUGGING_FACE_HUB_TOKEN
+    command: [
+      "--model", "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "--port", "8000",
+      "--host", "0.0.0.0",
+      "--max-model-len", "12288",
+      "--gpu-memory-utilization", "0.85",
+      "--quantization", "awq"
+    ]
     deploy:
       resources:
         reservations:
@@ -70,11 +78,11 @@ services:
               count: all
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD-SHELL", "ollama list || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   # Kong API Gateway
   kong:
@@ -142,6 +150,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: opsconductor-ng-ai-pipeline:latest
     container_name: opsconductor-ai-pipeline
     deploy:
       resources:
@@ -151,8 +160,8 @@ services:
               count: 1
               capabilities: [gpu]
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: qwen2.5:7b-instruct-q4_k_m
+      VLLM_BASE_URL: http://vllm:8000
+      VLLM_MODEL: Qwen/Qwen2.5-7B-Instruct-AWQ
       REDIS_URL: redis://redis:6379
       DATABASE_URL: postgresql://opsconductor:opsconductor_secure_2024@postgres:5432/opsconductor
       POSTGRES_HOST: postgres
@@ -172,7 +181,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      ollama:
+      vllm:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8006/health"]

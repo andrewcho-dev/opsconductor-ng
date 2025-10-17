@@ -23,25 +23,8 @@ class RiskLevel(str, Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
-class ToolCapability(BaseModel):
-    """Individual tool capability definition"""
-    name: str = Field(..., description="Capability name")
-    description: str = Field(..., description="What this capability does")
-    required_inputs: List[str] = Field(default=[], description="Required input parameters")
-    optional_inputs: List[str] = Field(default=[], description="Optional input parameters")
-
-class Tool(BaseModel):
-    """Tool definition with capabilities and constraints"""
-    name: str = Field(..., description="Tool name")
-    description: str = Field(..., description="Tool description")
-    capabilities: List[ToolCapability] = Field(..., description="Tool capabilities")
-    required_inputs: List[str] = Field(default=[], description="Base required inputs")
-    permissions: PermissionLevel = Field(..., description="Required permission level")
-    production_safe: bool = Field(..., description="Safe for production use")
-    max_execution_time: int = Field(default=30, description="Maximum execution time in seconds")
-    dependencies: List[str] = Field(default=[], description="Tool dependencies")
-    examples: List[str] = Field(default=[], description="Usage examples for the tool")
-    execution: Optional[Dict[str, Any]] = Field(default=None, description="Execution metadata (connection type, credentials, etc.)")
+# Note: Tool and ToolCapability schemas removed as they were part of the old YAML-based tool management system
+# The current system uses database-backed capability management instead
 
 class SelectedTool(BaseModel):
     """Selected tool with justification and requirements"""

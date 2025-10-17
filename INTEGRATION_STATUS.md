@@ -158,7 +158,7 @@ The selector endpoint returns **503 (Service Unavailable)** because:
 docker compose exec postgres psql -U opsconductor -d opsconductor -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 # 2. Populate tool catalog
-# (Run tool upsert scripts from automation-service/tools/)
+# (Tools are managed through capability management system)
 ```
 
 ---

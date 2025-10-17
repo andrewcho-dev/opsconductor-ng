@@ -3,7 +3,7 @@ dc ?= docker compose
 DB_SERVICE ?= postgres
 MIGRATIONS_DIR ?= /docker-entrypoint-initdb.d
 
-.PHONY: selector.health selector.preview selector.logs selector.smoke test.selector compose.rebuild selector.migrate selector.reconcile tools.seed tools.sync
+.PHONY: selector.health selector.preview selector.logs selector.smoke test.selector compose.rebuild selector.migrate selector.reconcile
 
 selector.health:
 	@docker compose exec -T automation-service python scripts/selector_healthz.py
@@ -35,24 +35,13 @@ selector.reconcile:
 	@$(dc) exec -T $(DB_SERVICE) psql -U $$POSTGRES_USER -d $$POSTGRES_DB -c "ANALYZE tool;"
 	@echo "Reconciliation complete."
 
-tools.seed:
-	@echo "Validating tool definitions (dry-run)..."
-	@$(dc) exec -T $(DB_SERVICE) python3 tools/tools_upsert.py --glob "config/tools/**/*.yaml" --dry-run
 
-tools.sync:
-	@echo "Syncing tool definitions to database..."
-	@$(dc) exec -T $(DB_SERVICE) python3 tools/tools_upsert.py --glob "config/tools/**/*.yaml"
 # --- selector helpers ---
 DB_SERVICE ?= postgres
 POSTGRES_USER ?= opsconductor
 POSTGRES_DB ?= opsconductor
 
-selector.seed:
-	@CID=$$(docker compose ps -q $(DB_SERVICE)); \
-	docker run --rm --network=container:$$CID -v "$$(pwd)":/work:ro -w /work python:3.11 bash -lc '\
-	  python -m venv /tmp/venv && . /tmp/venv/bin/activate && \
-	  pip install -q asyncpg pyyaml && \
-	  python tools/tools_upsert.py --glob "config/tools/**/*.yaml" --dsn "postgresql://$(POSTGRES_USER)@127.0.0.1:5432/$(POSTGRES_DB)"'
+
 
 selector.index:
 	docker compose exec -T $(DB_SERVICE) psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -c "DROP INDEX IF EXISTS tool_embed_ivff;"
@@ -68,4 +57,4 @@ smoke-automation-service:
 	@echo "Running automation-service smoke tests..."
 	@SELECTOR_URL=http://localhost:3003 python3 automation-service/tests/selector/test_smoke.py
 
-selector.all: selector.seed selector.index selector.smoke
+selector.all: selector.index selector.smoke

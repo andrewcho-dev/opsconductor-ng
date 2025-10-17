@@ -38,12 +38,19 @@ Categories & Actions:
 Capabilities: api_query|asset_management|asset_query|credential_access|disk_management|disk_monitoring|dns_query|http_client|infrastructure_info|log_analysis|memory_monitoring|network_info|network_monitoring|network_testing|packet_capture|process_management|process_monitoring|protocol_analysis|resource_listing|secret_retrieval|service_management|system_info|system_monitoring|text_search|windows_automation|windows_service_management
 
 Key distinctions:
-- monitoring: LIVE/REAL-TIME checks (is X up?, current CPU, disk space on specific machine)
+- monitoring: LIVE/REAL-TIME checks (is X up?, current CPU, disk space on specific machine, READ file contents for status checks)
+- information: Display/show content, read files, get information (cat/view files, show documentation, explain concepts)
 - asset_management: INVENTORY queries (list servers, show IPs from database)
 - windows_automation: Windows-specific operations (list files, run PowerShell, manage services on Windows machines)
 - disk_management: File/directory operations (list files, create directories, check disk space)
+- configuration: MODIFY settings (change configs, update parameters - NOT reading configs)
 - asset_query: Query asset database for machine information (NOT for executing commands on machines)
 - GATED (credential_access, secret_retrieval): explicit credential requests only
+
+FILE READING RULES:
+- "Display/show/cat/read file contents" → information category with provide_information action
+- "Check/view system files for monitoring" → monitoring category with check_status action
+- "Modify/update/change file contents" → configuration category
 
 IMPORTANT: Use ONLY the actions listed above. For disk space checks on specific machines, use monitoring/get_metrics with disk_monitoring capability.""",
                 

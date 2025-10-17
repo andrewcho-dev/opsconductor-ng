@@ -202,7 +202,7 @@ curl -X POST http://localhost:3001/execute-plan \
 6. ⏳ **Deploy to production** - After staging validation
 
 ### Future Enhancements (Optional)
-- Add explicit tool metadata to all YAML definitions
+- Add explicit tool metadata to database definitions
 - Add result parsing based on tool type
 - Add connection pooling for performance
 - Add comprehensive integration tests

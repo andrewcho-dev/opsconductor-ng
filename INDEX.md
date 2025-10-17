@@ -250,12 +250,12 @@ Tests real execution logic for communication and asset services.
 - `/communication-service/main.py` - Communication tools
 - `/asset-service/main.py` - Asset tools
 - `/network-analyzer-service/main.py` - Network tools (stubs)
-- `/pipeline/config/tools/**/*.yaml` - Tool definitions (184 files)
+- Database tool catalog - Tool definitions in database
 
 ### **Related Documentation**
 - `EXECUTION_ARCHITECTURE_AUDIT.md` - Original audit report
 - Service-specific README files
-- Tool YAML files with examples
+- Tool examples in documentation
 
 ---
 

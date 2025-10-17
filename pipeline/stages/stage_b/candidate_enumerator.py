@@ -101,11 +101,12 @@ class CandidateEnumerator:
         Enumerate all candidate tools matching required capabilities.
         
         Process:
-        1. Load tool profiles (cached)
-        2. Filter by required capabilities
-        3. Evaluate expressions with context
-        4. Build ToolCandidate objects
-        5. Skip invalid patterns (log errors)
+        1. Normalize capability names (NEW: permanent fix for capability mismatches)
+        2. Load tool profiles (cached)
+        3. Filter by required capabilities
+        4. Evaluate expressions with context
+        5. Build ToolCandidate objects
+        6. Skip invalid patterns (log errors)
         
         Args:
             required_capabilities: List of capability names (e.g., ["asset_query"])
@@ -126,6 +127,16 @@ class CandidateEnumerator:
             >>> candidates[0].estimated_time_ms > 0
             True
         """
+        # PERMANENT FIX: Normalize capability names to canonical versions
+        try:
+            from capability_validation_hook import normalize_stage_a_capabilities
+            required_capabilities = normalize_stage_a_capabilities(required_capabilities)
+            logger.debug(f"Normalized capabilities: {required_capabilities}")
+        except ImportError:
+            logger.warning("Capability normalization hook not available - using raw capabilities")
+        except Exception as e:
+            logger.error(f"Capability normalization failed: {e} - using raw capabilities")
+        
         # Default context if not provided
         if context is None:
             context = self._default_context()

@@ -1,0 +1,403 @@
+capability_mappings:
+  asset_query:
+    aliases:
+    - asset_search
+    - inventory_query
+    canonical_name: asset_query
+    category: automation
+    description: Query and search asset information
+  credential_access:
+    aliases:
+    - credential_management
+    - credential_lookup
+    canonical_name: credential_access
+    category: security
+    description: Access and manage credentials
+  database_query:
+    aliases:
+    - db_query
+    - sql_execution
+    canonical_name: database_query
+    category: database
+    description: Query and manage database operations
+  docker_management:
+    aliases:
+    - container_management
+    - docker_control
+    canonical_name: docker_management
+    category: container
+    description: Manage Docker containers and images
+  file_reading:
+    aliases:
+    - file_read
+    - file_access
+    - read_file
+    canonical_name: file_reading
+    category: system
+    description: Read contents of files and directories
+  file_writing:
+    aliases:
+    - file_write
+    - file_modify
+    - write_file
+    canonical_name: file_writing
+    category: system
+    description: Write or modify file contents
+  network_analysis:
+    aliases:
+    - traffic_analysis
+    - connection_analysis
+    canonical_name: network_analysis
+    category: network
+    description: Analyze network traffic and connections
+  network_connectivity:
+    aliases:
+    - connectivity_test
+    - network_test
+    - ping_test
+    canonical_name: network_connectivity
+    category: network
+    description: Test network connectivity and reachability
+  service_control:
+    aliases:
+    - service_management
+    - daemon_control
+    canonical_name: service_control
+    category: system
+    description: Start, stop, restart, and manage system services
+  system_monitoring:
+    aliases:
+    - process_monitoring
+    - system_status
+    - resource_monitoring
+    canonical_name: system_monitoring
+    category: monitoring
+    description: Monitor system processes, resources, and status
+examples:
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: read
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: view
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: display
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: show
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: contents
+- example_tools:
+  - cat
+  - head
+  - tail
+  expected_capability: file_reading
+  query_pattern: cat
+- example_tools:
+  - echo
+  - tee
+  - Set-Content
+  expected_capability: file_writing
+  query_pattern: write
+- example_tools:
+  - echo
+  - tee
+  - Set-Content
+  expected_capability: file_writing
+  query_pattern: create
+- example_tools:
+  - echo
+  - tee
+  - Set-Content
+  expected_capability: file_writing
+  query_pattern: edit
+- example_tools:
+  - echo
+  - tee
+  - Set-Content
+  expected_capability: file_writing
+  query_pattern: modify
+- example_tools:
+  - echo
+  - tee
+  - Set-Content
+  expected_capability: file_writing
+  query_pattern: append
+- example_tools:
+  - ps
+  - top
+  - htop
+  expected_capability: system_monitoring
+  query_pattern: monitor
+- example_tools:
+  - ps
+  - top
+  - htop
+  expected_capability: system_monitoring
+  query_pattern: status
+- example_tools:
+  - ps
+  - top
+  - htop
+  expected_capability: system_monitoring
+  query_pattern: check
+- example_tools:
+  - ps
+  - top
+  - htop
+  expected_capability: system_monitoring
+  query_pattern: processes
+- example_tools:
+  - ps
+  - top
+  - htop
+  expected_capability: system_monitoring
+  query_pattern: performance
+- example_tools:
+  - systemctl
+  - service
+  - Start-Service
+  expected_capability: service_control
+  query_pattern: start
+- example_tools:
+  - systemctl
+  - service
+  - Start-Service
+  expected_capability: service_control
+  query_pattern: stop
+- example_tools:
+  - systemctl
+  - service
+  - Start-Service
+  expected_capability: service_control
+  query_pattern: restart
+- example_tools:
+  - systemctl
+  - service
+  - Start-Service
+  expected_capability: service_control
+  query_pattern: service
+- example_tools:
+  - systemctl
+  - service
+  - Start-Service
+  expected_capability: service_control
+  query_pattern: daemon
+- example_tools:
+  - ping
+  - telnet
+  - nc
+  expected_capability: network_connectivity
+  query_pattern: ping
+- example_tools:
+  - ping
+  - telnet
+  - nc
+  expected_capability: network_connectivity
+  query_pattern: connect
+- example_tools:
+  - ping
+  - telnet
+  - nc
+  expected_capability: network_connectivity
+  query_pattern: test
+- example_tools:
+  - ping
+  - telnet
+  - nc
+  expected_capability: network_connectivity
+  query_pattern: network
+- example_tools:
+  - ping
+  - telnet
+  - nc
+  expected_capability: network_connectivity
+  query_pattern: reachable
+- example_tools:
+  - netstat
+  - ss
+  - tcpdump
+  expected_capability: network_analysis
+  query_pattern: analyze
+- example_tools:
+  - netstat
+  - ss
+  - tcpdump
+  expected_capability: network_analysis
+  query_pattern: traffic
+- example_tools:
+  - netstat
+  - ss
+  - tcpdump
+  expected_capability: network_analysis
+  query_pattern: connections
+- example_tools:
+  - netstat
+  - ss
+  - tcpdump
+  expected_capability: network_analysis
+  query_pattern: netstat
+- example_tools:
+  - asset-query
+  - Get-Asset
+  expected_capability: asset_query
+  query_pattern: query
+- example_tools:
+  - asset-query
+  - Get-Asset
+  expected_capability: asset_query
+  query_pattern: search
+- example_tools:
+  - asset-query
+  - Get-Asset
+  expected_capability: asset_query
+  query_pattern: find
+- example_tools:
+  - asset-query
+  - Get-Asset
+  expected_capability: asset_query
+  query_pattern: list
+- example_tools:
+  - asset-query
+  - Get-Asset
+  expected_capability: asset_query
+  query_pattern: assets
+- example_tools:
+  - credential-manager
+  - Get-Credential
+  expected_capability: credential_access
+  query_pattern: credentials
+- example_tools:
+  - credential-manager
+  - Get-Credential
+  expected_capability: credential_access
+  query_pattern: password
+- example_tools:
+  - credential-manager
+  - Get-Credential
+  expected_capability: credential_access
+  query_pattern: key
+- example_tools:
+  - credential-manager
+  - Get-Credential
+  expected_capability: credential_access
+  query_pattern: token
+- example_tools:
+  - docker
+  - docker-compose
+  expected_capability: docker_management
+  query_pattern: docker
+- example_tools:
+  - docker
+  - docker-compose
+  expected_capability: docker_management
+  query_pattern: container
+- example_tools:
+  - docker
+  - docker-compose
+  expected_capability: docker_management
+  query_pattern: image
+- example_tools:
+  - docker
+  - docker-compose
+  expected_capability: docker_management
+  query_pattern: deploy
+- example_tools:
+  - psql
+  - mysql
+  - Invoke-Sqlcmd
+  expected_capability: database_query
+  query_pattern: database
+- example_tools:
+  - psql
+  - mysql
+  - Invoke-Sqlcmd
+  expected_capability: database_query
+  query_pattern: query
+- example_tools:
+  - psql
+  - mysql
+  - Invoke-Sqlcmd
+  expected_capability: database_query
+  query_pattern: sql
+- example_tools:
+  - psql
+  - mysql
+  - Invoke-Sqlcmd
+  expected_capability: database_query
+  query_pattern: select
+recognition_patterns:
+  asset_query:
+  - query
+  - search
+  - find
+  - list
+  - assets
+  credential_access:
+  - credentials
+  - password
+  - key
+  - token
+  database_query:
+  - database
+  - query
+  - sql
+  - select
+  docker_management:
+  - docker
+  - container
+  - image
+  - deploy
+  file_reading:
+  - read
+  - view
+  - display
+  - show
+  - contents
+  - cat
+  file_writing:
+  - write
+  - create
+  - edit
+  - modify
+  - append
+  network_analysis:
+  - analyze
+  - traffic
+  - connections
+  - netstat
+  network_connectivity:
+  - ping
+  - connect
+  - test
+  - network
+  - reachable
+  service_control:
+  - start
+  - stop
+  - restart
+  - service
+  - daemon
+  system_monitoring:
+  - monitor
+  - status
+  - check
+  - processes
+  - performance

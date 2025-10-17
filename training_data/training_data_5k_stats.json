@@ -1,0 +1,79 @@
+{
+  "total_examples": 4995,
+  "capability_distribution": {
+    "service_management": 1632,
+    "system_monitoring": 1757,
+    "system_info": 2326,
+    "disk_management": 699,
+    "log_analysis": 822,
+    "text_search": 119,
+    "credential_access": 128,
+    "secret_retrieval": 128,
+    "resource_listing": 500,
+    "process_management": 456,
+    "process_monitoring": 584,
+    "infrastructure_info": 255,
+    "asset_management": 713,
+    "asset_query": 502,
+    "network_info": 171,
+    "api_query": 119,
+    "network_testing": 242,
+    "memory_monitoring": 396,
+    "disk_monitoring": 178,
+    "network_monitoring": 119
+  },
+  "category_capability_distribution": {
+    "automation": {
+      "service_management": 520,
+      "system_monitoring": 460,
+      "system_info": 422,
+      "disk_management": 351,
+      "process_management": 337
+    },
+    "configuration": {
+      "system_info": 833,
+      "service_management": 755,
+      "disk_management": 348
+    },
+    "information": {
+      "system_info": 833,
+      "resource_listing": 215,
+      "infrastructure_info": 255,
+      "system_monitoring": 69,
+      "log_analysis": 1,
+      "process_monitoring": 1
+    },
+    "troubleshooting": {
+      "log_analysis": 525,
+      "system_monitoring": 505,
+      "text_search": 119,
+      "process_monitoring": 399,
+      "network_testing": 242,
+      "network_monitoring": 119,
+      "service_management": 119,
+      "system_info": 119,
+      "process_management": 119,
+      "memory_monitoring": 119
+    },
+    "asset_management": {
+      "credential_access": 128,
+      "secret_retrieval": 128,
+      "asset_management": 713,
+      "asset_query": 502,
+      "network_info": 171,
+      "resource_listing": 285
+    },
+    "monitoring": {
+      "system_monitoring": 723,
+      "log_analysis": 296,
+      "service_management": 238,
+      "api_query": 119,
+      "memory_monitoring": 277,
+      "system_info": 119,
+      "disk_monitoring": 178,
+      "process_monitoring": 184
+    }
+  },
+  "unique_capabilities": 20,
+  "avg_capabilities_per_example": 2.3715715715715717
+}

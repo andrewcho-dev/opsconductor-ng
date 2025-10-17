@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from llm.ollama_client import OllamaClient
+from llm.vllm_client import VLLMClient
 from pipeline.schemas.decision_v1 import DecisionV1
 from pipeline.schemas.selection_v1 import SelectionV1
 from pipeline.schemas.plan_v1 import PlanV1
@@ -25,7 +25,7 @@ class ContextAnalyzer:
     intelligent insights and recommendations for user responses.
     """
     
-    def __init__(self, llm_client: OllamaClient):
+    def __init__(self, llm_client: VLLMClient):
         """Initialize context analyzer with LLM client"""
         self.llm_client = llm_client
         

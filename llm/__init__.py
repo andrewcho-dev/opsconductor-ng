@@ -3,7 +3,7 @@ LLM Integration Layer
 NEWIDEA.MD Pipeline - Large Language Model Integration
 
 This module provides the interface between the pipeline stages and
-various LLM backends (Ollama, OpenAI, etc.).
+vLLM backend for high-performance inference.
 
 Key components:
 - LLM client abstraction
@@ -14,13 +14,13 @@ Key components:
 """
 
 from .client import LLMClient
-from .ollama_client import OllamaClient
+from .vllm_client import VLLMClient
 from .prompt_manager import PromptManager
 from .response_parser import ResponseParser
 
 __all__ = [
     "LLMClient",
-    "OllamaClient", 
+    "VLLMClient", 
     "PromptManager",
     "ResponseParser"
 ]

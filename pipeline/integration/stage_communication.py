@@ -64,13 +64,13 @@ class StageCommunicationValidator:
         """Initialize the stage communication validator."""
         # Initialize LLM client if not provided
         if llm_client is None:
-            from llm.ollama_client import OllamaClient
+            from llm.vllm_client import VLLMClient
             default_config = {
-                "base_url": "http://localhost:11434",
-                "default_model": "qwen2.5:7b-instruct-q4_k_m",
-                "timeout": 180
+                "base_url": "http://localhost:8007/v1",
+                "default_model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+                "timeout": 60
             }
-            llm_client = OllamaClient(default_config)
+            llm_client = VLLMClient(default_config)
         
         self.llm_client = llm_client
         self.stage_a = StageAClassifier(llm_client)

@@ -35,7 +35,7 @@ class ExecutionStep(BaseModel):
     depends_on: List[str] = Field(default=[], description="Step IDs this step depends on")
     execution_order: int = Field(default=1, description="Order of execution for this step")
     
-    # Tool execution metadata (enriched from tool registry)
+    # Tool execution metadata (enriched from database-backed catalog)
     requires_credentials: bool = Field(default=False, description="Whether this tool requires credentials")
     execution_location: str = Field(default="automation-service", description="Which service should execute this tool")
     tool_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional tool-specific metadata")

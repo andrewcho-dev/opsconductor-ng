@@ -1,0 +1,79 @@
+{
+  "total_examples": 9991,
+  "capability_distribution": {
+    "system_monitoring": 3532,
+    "memory_monitoring": 817,
+    "process_monitoring": 1184,
+    "network_testing": 499,
+    "asset_management": 1432,
+    "asset_query": 981,
+    "log_analysis": 1633,
+    "service_management": 3262,
+    "process_management": 925,
+    "network_info": 327,
+    "system_info": 4664,
+    "resource_listing": 962,
+    "network_monitoring": 238,
+    "infrastructure_info": 495,
+    "disk_monitoring": 387,
+    "disk_management": 1380,
+    "credential_access": 256,
+    "secret_retrieval": 256,
+    "api_query": 238,
+    "text_search": 238
+  },
+  "category_capability_distribution": {
+    "troubleshooting": {
+      "system_monitoring": 1019,
+      "memory_monitoring": 238,
+      "process_monitoring": 811,
+      "network_testing": 499,
+      "log_analysis": 1030,
+      "network_monitoring": 238,
+      "service_management": 238,
+      "system_info": 238,
+      "process_management": 238,
+      "text_search": 238
+    },
+    "asset_management": {
+      "asset_management": 1432,
+      "asset_query": 981,
+      "network_info": 327,
+      "resource_listing": 563,
+      "credential_access": 256,
+      "secret_retrieval": 256
+    },
+    "automation": {
+      "service_management": 1051,
+      "system_monitoring": 925,
+      "process_management": 687,
+      "system_info": 861,
+      "disk_management": 697
+    },
+    "monitoring": {
+      "system_monitoring": 1450,
+      "service_management": 476,
+      "memory_monitoring": 579,
+      "process_monitoring": 372,
+      "log_analysis": 602,
+      "disk_monitoring": 387,
+      "system_info": 238,
+      "api_query": 238
+    },
+    "information": {
+      "system_info": 1661,
+      "infrastructure_info": 495,
+      "resource_listing": 399,
+      "system_monitoring": 138,
+      "process_monitoring": 1,
+      "log_analysis": 1
+    },
+    "configuration": {
+      "system_info": 1666,
+      "service_management": 1497,
+      "disk_management": 683
+    }
+  },
+  "unique_capabilities": 20,
+  "avg_capabilities_per_example": 2.372735461915724
+}

@@ -2,8 +2,7 @@
 Shared embedding utilities for tool catalog and runtime search.
 
 Provides deterministic 128-dimensional embeddings using SHA256-based hashing.
-This ensures compatibility between tool indexing (tools_upsert.py) and runtime
-search queries (selector DAO).
+This ensures compatibility between tool indexing and runtime search queries.
 
 Usage:
     from shared.embeddings import embed_128, to_vec_literal

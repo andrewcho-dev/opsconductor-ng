@@ -247,7 +247,7 @@ opsconductor-ng/
 ### Future
 1. Add more comprehensive integration tests
 2. Add execution metrics and monitoring
-3. Consider adding explicit tool metadata to YAML definitions
+3. Consider adding explicit tool metadata to database definitions
 
 ---
 

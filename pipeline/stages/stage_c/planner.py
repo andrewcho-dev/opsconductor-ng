@@ -1270,7 +1270,7 @@ Example for windows-impacket-executor with explicit credentials (if needed):
     
     def _enrich_step_with_tool_metadata(self, step, selection: SelectionV1):
         """
-        Enrich execution step with tool metadata from the tool registry.
+        Enrich execution step with tool metadata from the database catalog.
         This ensures the automation service has all the information it needs
         without having to infer or guess.
         
@@ -1281,58 +1281,38 @@ Example for windows-impacket-executor with explicit credentials (if needed):
         try:
             logger.info(f"🔍 Enriching step '{step.id}' (tool: {step.tool})...")
             
-            # Import the tool registry
-            from ..stage_b.tool_registry import ToolRegistry
+            # Import the tool catalog service
+            from pipeline.services.tool_catalog_service import ToolCatalogService
             
-            # Create a registry instance and load tools
-            registry = ToolRegistry()
-            logger.debug(f"   Registry has {registry.get_tool_count()} tools")
+            # Create a catalog instance
+            catalog_service = ToolCatalogService()
             
-            # Look up the tool in the registry
-            tool_def = registry.get_tool(step.tool)
-            logger.debug(f"   Tool lookup result: {tool_def is not None}")
+            # Look up the tool in the database
+            tool_data = catalog_service.get_tool_by_name(step.tool)
+            logger.debug(f"   Tool lookup result: {tool_data is not None}")
             
-            if tool_def:
-                logger.debug(f"   Tool has execution attr: {hasattr(tool_def, 'execution')}")
-                if hasattr(tool_def, 'execution'):
-                    logger.debug(f"   Execution value: {tool_def.execution}")
-            
-            if tool_def and hasattr(tool_def, 'execution') and tool_def.execution:
-                # Extract execution metadata from the tool definition
-                execution_meta = tool_def.execution
+            if tool_data:
+                metadata = tool_data.get("metadata", {})
+                logger.debug(f"   Tool metadata: {metadata}")
                 
-                # Handle nested connection metadata
-                if isinstance(execution_meta, dict):
-                    connection_meta = execution_meta.get("connection", {})
-                    step.requires_credentials = connection_meta.get("requires_credentials", False)
-                    step.execution_location = execution_meta.get("execution_location", "automation-service")
-                    step.tool_metadata = execution_meta
-                    
-                    logger.info(f"✅ Enriched step '{step.id}' (tool: {step.tool})")
-                    logger.info(f"   requires_credentials: {step.requires_credentials}")
-                    logger.info(f"   execution_location: {step.execution_location}")
-                    logger.info(f"   tool_metadata keys: {list(execution_meta.keys())}")
-                else:
-                    # Fallback if execution is not a dict
-                    logger.warning(f"⚠️  Tool '{step.tool}' execution metadata is not a dict: {type(execution_meta)}")
-                    step.requires_credentials = False
-                    step.execution_location = "automation-service"
-                    step.tool_metadata = {}
+                # Extract execution metadata from the tool metadata
+                step.requires_credentials = metadata.get("requires_credentials", False)
+                step.execution_location = metadata.get("execution_location", "automation-service")
+                step.tool_metadata = metadata
+                
+                logger.info(f"✅ Enriched step '{step.id}' (tool: {step.tool})")
+                logger.info(f"   requires_credentials: {step.requires_credentials}")
+                logger.info(f"   execution_location: {step.execution_location}")
+                logger.info(f"   tool_metadata keys: {list(metadata.keys())}")
             else:
-                # Tool not in registry or no execution metadata - use defaults
-                logger.warning(f"⚠️  Tool '{step.tool}' not found in registry or has no execution metadata, using defaults")
+                # Tool not found in database - use defaults
+                logger.warning(f"⚠️  Tool '{step.tool}' not found in database, using defaults")
                 step.requires_credentials = False
                 step.execution_location = "automation-service"
                 step.tool_metadata = {}
                 
-        except ImportError as e:
-            # Registry not available - this is OK, we'll use defaults
-            logger.warning(f"Tool registry not available: {e}")
-            step.requires_credentials = False
-            step.execution_location = "automation-service"
-            step.tool_metadata = {}
         except Exception as e:
-            # Any other error - log but don't fail
+            # Any error - log but don't fail
             logger.warning(f"Failed to enrich step with tool metadata: {e}")
             import traceback
             logger.warning(traceback.format_exc())
@@ -1390,7 +1370,7 @@ Example for windows-impacket-executor with explicit credentials (if needed):
                     execution_order=idx + 1
                 )
                 
-                # Enrich step with tool metadata from registry
+                # Enrich step with tool metadata from database-backed catalog
                 self._enrich_step_with_tool_metadata(step, selection)
                 
                 steps.append(step)

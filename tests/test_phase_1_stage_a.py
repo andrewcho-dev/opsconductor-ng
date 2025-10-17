@@ -49,7 +49,7 @@ def mock_llm_client():
 def sample_llm_response():
     """Sample LLM response"""
     return LLMResponse(
-        content='{"category": "automation", "action": "restart_service", "confidence": 0.95}',
+        content='{"category": "automation", "action": "restart_service", "confidence": 0.95, "capabilities": ["service_management"]}',
         model="llama2",
         tokens_used=50,
         processing_time_ms=1500
@@ -173,12 +173,13 @@ class TestLLMIntegration:
     async def test_response_parser_intent_parsing(self):
         """Test response parser intent parsing"""
         parser = ResponseParser()
-        response = '{"category": "automation", "action": "restart_service", "confidence": 0.95}'
+        response = '{"category": "automation", "action": "restart_service", "confidence": 0.95, "capabilities": ["service_management"]}'
         
         result = parser.parse_intent_response(response)
         assert result["category"] == "automation"
         assert result["action"] == "restart_service"
         assert result["confidence"] == 0.95
+        assert result["capabilities"] == ["service_management"]
     
     @pytest.mark.asyncio
     async def test_response_parser_entities_parsing(self):
@@ -248,7 +249,7 @@ class TestIntentClassification:
     async def test_classify_monitoring_intent(self, mock_llm_client):
         """Test monitoring intent classification"""
         monitoring_response = LLMResponse(
-            content='{"category": "monitoring", "action": "check_status", "confidence": 0.88}',
+            content='{"category": "monitoring", "action": "check_status", "confidence": 0.88, "capabilities": ["system_monitoring"]}',
             model="llama2"
         )
         mock_llm_client.generate.return_value = monitoring_response
@@ -296,7 +297,7 @@ class TestIntentClassification:
     async def test_classify_information_intent(self, mock_llm_client):
         """Test information intent classification"""
         info_response = LLMResponse(
-            content='{"category": "information", "action": "get_help", "confidence": 0.93}',
+            content='{"category": "information", "action": "get_help", "confidence": 0.93, "capabilities": ["system_info"]}',
             model="llama2"
         )
         mock_llm_client.generate.return_value = info_response

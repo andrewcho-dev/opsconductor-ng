@@ -27,20 +27,20 @@ docker compose logs -f
 
 ### Access the Platform
 
-- **Frontend**: http://localhost:3100
-- **AI Pipeline API**: http://localhost:3005
-- **Kong API Gateway**: http://localhost:3000
-- **Keycloak Admin**: http://localhost:8090
-- **vLLM API**: http://localhost:8000
+- **Frontend**: http://localhost:8000
+- **AI Pipeline API**: http://localhost:8006
+- **Kong API Gateway**: http://localhost:8008
+- **Keycloak Admin**: http://localhost:8080
+- **Ollama API**: http://localhost:11434
 
 ## 📋 What is OpsConductor NG?
 
 OpsConductor NG automates IT operations using a 4-stage AI pipeline:
 
-1. **Understand** - Analyzes user intent from natural language
-2. **Select** - Chooses appropriate tools and services
-3. **Plan** - Creates detailed execution plan
-4. **Execute** - Runs operations and formats responses
+1. **Understand & Select** - Combined Stage AB analyzes intent and selects tools
+2. **Plan** - Creates detailed execution plan
+3. **Answer** - Formats responses for human readability
+4. **Execute** - Runs operations through specialized services
 
 ### Example Use Cases
 
@@ -55,7 +55,7 @@ OpsConductor NG uses a clean microservices architecture:
 
 ### Core Components
 
-- **AI Pipeline** - 4-stage LLM-powered decision engine
+- **AI Pipeline** - 4-stage LLM-powered decision engine (merged Stage A+B)
 - **Automation Service** - Command execution and workflow management
 - **Asset Service** - Infrastructure asset management
 - **Network Analyzer** - Network monitoring and analysis
@@ -63,9 +63,9 @@ OpsConductor NG uses a clean microservices architecture:
 
 ### Infrastructure
 
-- **PostgreSQL 17** - Primary database
+- **PostgreSQL 17** - Primary database with pgvector
 - **Redis 7** - Message queue and caching
-- **vLLM 0.11** - Local LLM inference with GPU acceleration
+- **Ollama 0.11** - Local LLM inference with GPU acceleration
 - **Kong 3.4** - API Gateway
 - **Keycloak 22** - Identity and access management
 - **React Frontend** - Modern web interface
@@ -110,7 +110,7 @@ For detailed architecture information, see **[ARCHITECTURE.md](ARCHITECTURE.md)*
 opsconductor-ng/
 ├── pipeline/                # 4-stage AI pipeline
 │   ├── stages/              # Individual pipeline stages
-│   └── orchestrator.py      # Main pipeline controller
+│   └── orchestrator_v2.py   # Main pipeline controller (Combined Stage AB)
 ├── automation-service/      # Command execution
 ├── asset-service/           # Asset management
 ├── network-analyzer-service/# Network monitoring
@@ -121,16 +121,20 @@ opsconductor-ng/
 │   └── init-schema.sql      # Complete database schema
 ├── kong/                    # API Gateway config
 ├── keycloak/                # Identity provider config
+├── tests/                   # Test suite
+│   ├── e2e/                 # End-to-end tests
+│   └── test_phase_*.py      # Pipeline stage tests
 └── docker-compose.yml       # Service orchestration
 ```
 
 ### Technologies
 
-- **Backend**: Python 3.12+, FastAPI, PostgreSQL, Redis
-- **AI**: vLLM 0.11 with Qwen2.5-14B-Instruct-AWQ model
-- **Frontend**: TypeScript 4.9, React 18.2, Bootstrap 5.3
-- **Infrastructure**: Docker, Kong, Keycloak
-- **Testing**: pytest, Playwright
+- **Backend**: Python 3.11, FastAPI 0.104.1, PostgreSQL 17, Redis 7
+- **AI**: Ollama 0.11.11 with Qwen2.5-7B-Instruct model
+- **Frontend**: TypeScript 4.9.5, React 18.2.0, Bootstrap 5.3.8
+- **Data Visualization**: AG Grid 32.3.9
+- **Infrastructure**: Docker, Kong 3.4, Keycloak 22.0.1
+- **Testing**: pytest 7.4.3, pytest-asyncio 0.21.1, Playwright
 
 ## 🧪 Testing
 

@@ -130,13 +130,12 @@ class CleanAutomationService(BaseService):
         # Initialize unified executor
         self.unified_executor = UnifiedExecutor(self.logger)
         
-        # Tool registry is not needed (planner provides tool definitions)
-        self.tool_registry = None
+        # Tool registry removed - using database-backed catalog system
         
         logger = logging.getLogger(__name__)
         logger.info("🧹 Clean Automation Service initialized - No Celery, Direct Execution Only")
         logger.info("🎯 Unified Execution Framework enabled")
-        logger.info("📋 Tool metadata will be provided by planner (no local registry needed)")
+        logger.info("📋 Tool metadata provided by database-backed catalog system")
     
     def _initialize_connection_managers(self):
         """Initialize connection managers for different target types"""
@@ -585,7 +584,7 @@ async def _execute_single_step(
         # ====================================================================
         
         # Create tool definition from step metadata
-        # The planner enriches steps with tool metadata from the registry,
+        # The planner enriches steps with tool metadata from the database-backed catalog,
         # so we should use that information instead of inferring
         tool_definition = {
             "tool_name": tool_name,
@@ -972,22 +971,10 @@ async def execute_plan_from_pipeline(request: PlanExecutionRequest):
             
             # Use unified executor for ALL command-based tools
             try:
-                # Look up tool definition from registry, or create minimal one
+                # Tool definition comes from database-backed planner
                 tool_definition = step.get("tool_definition")
-                if not tool_definition and service.tool_registry:
-                    # Try to get from registry
-                    tool_obj = service.tool_registry.get_tool(tool_name)
-                    if tool_obj:
-                        print(f"🔧 DEBUG: Found tool in registry: {tool_name}", flush=True)
-                        tool_definition = {
-                            "tool_name": tool_obj.name,
-                            "description": tool_obj.description,
-                            "execution": tool_obj.execution
-                        }
-                    else:
-                        print(f"⚠️  DEBUG: Tool not found in registry: {tool_name}", flush=True)
                 
-                # Fallback to minimal definition
+                # Fallback to minimal definition if not provided by planner
                 if not tool_definition:
                     tool_definition = {
                         "tool_name": tool_name,

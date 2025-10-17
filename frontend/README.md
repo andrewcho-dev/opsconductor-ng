@@ -221,7 +221,7 @@ This is expected if the database is not populated:
      -c "CREATE EXTENSION IF NOT EXISTS vector;"
    ```
 
-2. Populate tool catalog (see `automation-service/tools/`)
+2. Populate tool catalog (tools are managed through capability management system)
 
 ### Audit Not Recording
 

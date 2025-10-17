@@ -16,8 +16,8 @@
 # 1. Create tool table
 make selector.migrate
 
-# 2. Populate tools from YAML
-make tools.sync
+# 2. Populate tools from database
+# (Tools are managed through capability management system)
 
 # 3. Verify
 docker compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELECT COUNT(*) FROM tool;"
@@ -29,7 +29,7 @@ docker compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "SELEC
 make selector.reconcile
 
 # 2. Update tools
-make tools.sync
+# (Tools are managed through capability management system)
 
 # 3. Verify
 docker compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\d tool"
@@ -37,17 +37,13 @@ docker compose exec -T postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -c "\d to
 
 #### Development Workflow
 ```bash
-# 1. Validate tool definitions
-make tools.seed
-
-# 2. Run migrations
+# 1. Run migrations
 make selector.migrate
 make selector.reconcile
 
-# 3. Sync tools
-make tools.sync
+# 2. Tools are managed through capability management system
 
-# 4. Test selector
+# 3. Test selector
 make selector.smoke
 ```
 
@@ -231,7 +227,7 @@ SELECT COUNT(*) FROM tool WHERE embedding IS NULL;
 - [ ] Verify schema: `\d tool`
 - [ ] Verify data: `SELECT * FROM tool LIMIT 5;`
 - [ ] Run tests: `pytest database/test_002_reconcile.py -v`
-- [ ] Sync tools: `make tools.sync`
+- [ ] Tools managed through capability management system
 - [ ] Test selector: `make selector.smoke`
 
 ## Rollback

@@ -250,7 +250,7 @@ result = await selector.process(user_request, context={
 **Solution:**
 - ✅ Platform filtering ensures Windows tools are retrieved for Windows assets
 - ✅ Linux tools are retrieved for Linux assets
-- ⚠️ Still need to add `Get-ChildItem` tool definition (separate task)
+- ⚠️ Still need to add `Get-ChildItem` tool to database (separate task)
 
 ## Conclusion
 

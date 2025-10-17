@@ -87,23 +87,19 @@ class PipelineOrchestrator:
         """Initialize the pipeline orchestrator with all stage components."""
         # Initialize LLM client if not provided
         if llm_client is None:
-            from llm.ollama_client import OllamaClient
+            from llm.vllm_client import VLLMClient
             default_config = {
-                "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-                "default_model": os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_k_m"),
-                "timeout": int(os.getenv("OLLAMA_TIMEOUT", "30"))
+                "base_url": os.getenv("LLM_BASE_URL", "http://localhost:8007/v1"),
+                "default_model": os.getenv("LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
+                "timeout": int(os.getenv("LLM_TIMEOUT", "60"))
             }
-            llm_client = OllamaClient(default_config)
+            llm_client = VLLMClient(default_config)
         
         self.llm_client = llm_client
         
-        # Initialize tool registry
-        from pipeline.stages.stage_b.tool_registry import ToolRegistry
-        self.tool_registry = ToolRegistry()
-        
         # Initialize stages with required parameters
         self.stage_a = StageAClassifier(llm_client)
-        self.stage_b = StageBSelector(llm_client, self.tool_registry)
+        self.stage_b = StageBSelector(llm_client)
         self.stage_c = StageCPlanner(llm_client)
         self.stage_d = StageDAnswerer(llm_client)
         self.stage_e = StageEExecutor()

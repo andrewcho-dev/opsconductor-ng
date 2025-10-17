@@ -198,29 +198,3 @@ class TestAssetQueryRealToolSelection:
         # For metrics, prometheus is correct
         assert any(keyword in selected_tool.tool_name.lower() for keyword in ["prometheus", "metric", "monitor"])
 
-
-@pytest.mark.asyncio
-class TestToolRegistryHasAssetTools:
-    """Verify that the tool registry actually has asset tools registered"""
-    
-    async def test_tool_registry_has_asset_tools(self):
-        """Verify asset tools are registered in the tool registry"""
-        real_stage_b = await create_real_stage_b()
-        registry = real_stage_b.tool_registry
-        
-        # Get all tools
-        all_tools = registry.get_all_tools()
-        print(f"\n📋 Total tools in registry: {len(all_tools)}")
-        
-        for tool in all_tools:
-            print(f"  - {tool.name}: {tool.capabilities}")
-        
-        # Should have at least one asset tool
-        asset_tools = [t for t in all_tools if any("asset" in cap.name.lower() for cap in t.capabilities)]
-        
-        assert len(asset_tools) > 0, \
-            f"ERROR: No asset tools found in registry! Available tools: {[t.name for t in all_tools]}"
-        
-        print(f"\n✅ Found {len(asset_tools)} asset tools:")
-        for tool in asset_tools:
-            print(f"  - {tool.name}: {[cap.name for cap in tool.capabilities]}")

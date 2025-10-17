@@ -252,7 +252,7 @@ automation-service/
 ## Future Enhancements
 
 ### Optional Improvements
-1. Add explicit tool metadata to all YAML definitions (eliminate inference)
+1. Add explicit tool metadata (eliminate inference)
 2. Add result parsing based on tool type
 3. Add connection pooling for performance
 4. Add comprehensive integration tests
@@ -288,11 +288,10 @@ command, target_host, connection_type, credentials = \
 ```
 
 ### Add a New Tool
-```yaml
-# Just add to tools.yaml - no code changes!
-- tool_name: "my-tool"
-  platform: "linux"
-  description: "My tool"
+```sql
+-- Add to database via capability management system
+INSERT INTO tool_catalog.tools (name, platform, description, ...)
+VALUES ('my-tool', 'linux', 'My tool', ...);
 ```
 
 ### Debug Execution

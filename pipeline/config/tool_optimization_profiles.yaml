@@ -578,6 +578,49 @@ tools:
               cost: 0.9
               complexity: 0.8
               completeness: 1.0
+
+  file-operations:
+    description: "File system operations and content access"
+    
+    defaults:
+      accuracy_level: "real-time"
+      freshness: "current"
+      data_source: "filesystem"
+    
+    capabilities:
+      file_reading:
+        patterns:
+          read_file:
+            description: "Read contents of a file"
+            typical_use_cases:
+              - "display contents"
+              - "show file"
+              - "read file"
+              - "cat"
+              - "view"
+            
+            time_estimate_ms: 200
+            cost_estimate: 1
+            complexity_score: 0.2
+            
+            scope: "single_file"
+            completeness: "complete file contents"
+            
+            limitations:
+              - "Requires file system access"
+              - "File must exist and be readable"
+            
+            policy:
+              max_cost: 5
+              requires_approval: false
+              production_safe: true
+            
+            preference_match:
+              speed: 0.9
+              accuracy: 1.0
+              cost: 0.9
+              complexity: 0.9
+              completeness: 1.0
       
       secret_retrieval:
         patterns:

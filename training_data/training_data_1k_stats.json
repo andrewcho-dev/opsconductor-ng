@@ -1,0 +1,79 @@
+{
+  "total_examples": 965,
+  "capability_distribution": {
+    "system_monitoring": 342,
+    "service_management": 314,
+    "system_info": 453,
+    "infrastructure_info": 57,
+    "asset_management": 138,
+    "asset_query": 94,
+    "network_info": 34,
+    "disk_management": 128,
+    "log_analysis": 163,
+    "process_monitoring": 107,
+    "network_testing": 50,
+    "process_management": 88,
+    "resource_listing": 91,
+    "credential_access": 24,
+    "secret_retrieval": 24,
+    "memory_monitoring": 76,
+    "disk_monitoring": 32,
+    "api_query": 23,
+    "text_search": 23,
+    "network_monitoring": 23
+  },
+  "category_capability_distribution": {
+    "monitoring": {
+      "system_monitoring": 141,
+      "service_management": 46,
+      "log_analysis": 63,
+      "system_info": 23,
+      "process_monitoring": 31,
+      "memory_monitoring": 53,
+      "disk_monitoring": 32,
+      "api_query": 23
+    },
+    "configuration": {
+      "system_info": 161,
+      "service_management": 145,
+      "disk_management": 58
+    },
+    "information": {
+      "system_info": 161,
+      "infrastructure_info": 57,
+      "resource_listing": 36,
+      "system_monitoring": 13,
+      "process_monitoring": 1,
+      "log_analysis": 1
+    },
+    "asset_management": {
+      "asset_management": 138,
+      "asset_query": 94,
+      "network_info": 34,
+      "credential_access": 24,
+      "secret_retrieval": 24,
+      "resource_listing": 55
+    },
+    "troubleshooting": {
+      "system_monitoring": 98,
+      "log_analysis": 99,
+      "process_monitoring": 75,
+      "network_testing": 50,
+      "service_management": 23,
+      "system_info": 23,
+      "process_management": 23,
+      "text_search": 23,
+      "network_monitoring": 23,
+      "memory_monitoring": 23
+    },
+    "automation": {
+      "system_info": 85,
+      "process_management": 65,
+      "service_management": 100,
+      "system_monitoring": 90,
+      "disk_management": 70
+    }
+  },
+  "unique_capabilities": 20,
+  "avg_capabilities_per_example": 2.366839378238342
+}
